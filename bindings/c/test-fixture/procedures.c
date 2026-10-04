@@ -16,25 +16,25 @@
 #include <stdio.h>
 #include <string.h>
 
-static int symbol_is(GalleyHookDoor *door, GalleyNodeAddress node, const char *want) {
+static int symbol_is(GalleyHookDoor *door, unsigned long long generation, GalleyNodeAddress node, const char *want) {
     const char *data = NULL;
     size_t len = 0;
     size_t want_len = strlen(want);
-    if (galley_hook_node_symbol_name(door, node, &data, &len) != galley_ok || data == NULL)
+    if (galley_hook_node_symbol_name(door, generation, node, &data, &len) != galley_ok || data == NULL)
         return 0;
     return len == want_len && memcmp(data, want, want_len) == 0;
 }
 
-static int node_text(GalleyHookDoor *door, GalleyNodeAddress node, const char **data, size_t *len) {
+static int node_text(GalleyHookDoor *door, unsigned long long generation, GalleyNodeAddress node, const char **data, size_t *len) {
     *data = NULL;
     *len = 0;
-    return galley_hook_node_text(door, node, data, len) == galley_ok && *data != NULL;
+    return galley_hook_node_text(door, generation, node, data, len) == galley_ok && *data != NULL;
 }
 
-static void node_pos(GalleyHookDoor *door, GalleyNodeAddress node, unsigned *line, unsigned *column) {
+static void node_pos(GalleyHookDoor *door, unsigned long long generation, GalleyNodeAddress node, unsigned *line, unsigned *column) {
     *line = 0;
     *column = 0;
-    galley_hook_node_line_column(door, node, line, column);
+    galley_hook_node_line_column(door, generation, node, line, column);
 }
 
 static unsigned parse_u(const char *data, size_t len) {
@@ -46,12 +46,12 @@ static unsigned parse_u(const char *data, size_t len) {
     return value;
 }
 
-static void count_pairs(GalleyHookDoor *door, GalleyNodeAddress node, unsigned *count, unsigned *sum) {
-    if (symbol_is(door, node, "Pair")) {
+static void count_pairs(GalleyHookDoor *door, unsigned long long generation, GalleyNodeAddress node, unsigned *count, unsigned *sum) {
+    if (symbol_is(door, generation, node, "Pair")) {
         const char *text = NULL;
         size_t len = 0;
         ++*count;
-        if (node_text(door, node, &text, &len)) {
+        if (node_text(door, generation, node, &text, &len)) {
             for (size_t i = 0; i < len; ++i) {
                 if (text[i] == ':') {
                     *sum += parse_u(text + i + 1, len - i - 1);
@@ -61,10 +61,10 @@ static void count_pairs(GalleyHookDoor *door, GalleyNodeAddress node, unsigned *
         }
         return;
     }
-    GalleyNodeAddress child = galley_hook_node_first_child(door, node);
-    while (child != GALLEY_INVALID_NODE) {
-        count_pairs(door, child, count, sum);
-        child = galley_hook_node_next_sibling(door, child);
+    long long child = galley_hook_node_first_child(door, generation, node);
+    while (child >= 0 && (GalleyNodeAddress)child != GALLEY_INVALID_NODE) {
+        count_pairs(door, generation, (GalleyNodeAddress)child, count, sum);
+        child = galley_hook_node_next_sibling(door, generation, (GalleyNodeAddress)child);
     }
 }
 
@@ -80,15 +80,17 @@ void reduction_Key(void *args) { (void)args; }
 
 void hook_print(void *args) {
     GalleyHookDoor *door = galley_procedure_door(args);
+    unsigned long long generation = 0;
+    galley_hook_generation(door, &generation);
     GalleyNodeAddress node = galley_procedure_current_node(args);
     const char *text = NULL;
     size_t len = 0;
     unsigned line = 0, column = 0;
     if (node == GALLEY_INVALID_NODE)
         return;
-    node_pos(door, node, &line, &column);
+    node_pos(door, generation, node, &line, &column);
     fputs("@print \"", stderr);
-    if (node_text(door, node, &text, &len))
+    if (node_text(door, generation, node, &text, &len))
         fwrite(text, 1, len, stderr);
     fprintf(stderr, "\" at %u:%u\n", line, column);
     fflush(stderr);
@@ -96,15 +98,17 @@ void hook_print(void *args) {
 
 void reduction_Number(void *args) {
     GalleyHookDoor *door = galley_procedure_door(args);
+    unsigned long long generation = 0;
+    galley_hook_generation(door, &generation);
     GalleyNodeAddress node = galley_procedure_current_node(args);
     const char *text = NULL;
     size_t len = 0;
     unsigned line = 0, column = 0;
     if (node == GALLEY_INVALID_NODE)
         return;
-    node_pos(door, node, &line, &column);
+    node_pos(door, generation, node, &line, &column);
     fputs("Number ", stderr);
-    if (node_text(door, node, &text, &len))
+    if (node_text(door, generation, node, &text, &len))
         fwrite(text, 1, len, stderr);
     fprintf(stderr, " at %u:%u\n", line, column);
     fflush(stderr);
@@ -129,6 +133,7 @@ static long long stashed_kind_status = galley_ok;
 static GalleyHookDoor *first_pair_door = NULL;
 static GalleyNodeAddress first_pair_node = GALLEY_INVALID_NODE;
 static int later_hook_shares_door = 0;
+static int hook_session_matches = 0;
 static long long later_hook_child_count = -1;
 static unsigned long long hook_generation = 0;
 static long long hook_generation_status = galley_ok;
@@ -184,6 +189,106 @@ unsigned fixture_hook_walk_depth(int index) {
     return hook_walk_depth[index];
 }
 
+/* What reduction_Document recorded under fixture_stash_session: every
+ * hook-door call that takes a node, called with the node of this parse
+ * under four refusals. Variants: 0 the previous parse's generation, 1
+ * generation 0, 2 an address outside the parse's node storage, 3 a NULL
+ * door. The suite asserts the status of each call. */
+enum { FIXTURE_PROBE_VARIANTS = 4, FIXTURE_PROBE_CALLS = 21 };
+static long long probe_status[FIXTURE_PROBE_VARIANTS][FIXTURE_PROBE_CALLS];
+enum { FIXTURE_NULL_OUTPUT_CALLS = 8 };
+static long long probe_null_output[FIXTURE_NULL_OUTPUT_CALLS];
+static long long probe_current_node_kept, probe_set_current_status, probe_set_current_took;
+static long long probe_clear_current_status, probe_clear_current_took;
+
+static void probe_calls(void *args, GalleyHookDoor *door, unsigned long long generation,
+                        GalleyNodeAddress node, GalleyNodeAddress other, long long *out) {
+    const char *data = NULL;
+    size_t len = 0;
+    unsigned long long start = 0, length = 0;
+    unsigned line = 0, column = 0;
+    GalleyNodeAddress head = GALLEY_INVALID_NODE;
+    int i = 0;
+    out[i++] = galley_hook_node_child_count(door, generation, node);
+    out[i++] = galley_hook_node_first_child(door, generation, node);
+    out[i++] = galley_hook_node_last_child(door, generation, node);
+    out[i++] = galley_hook_node_next_sibling(door, generation, node);
+    out[i++] = galley_hook_node_prior_sibling(door, generation, node);
+    out[i++] = galley_hook_node_parent(door, generation, node);
+    out[i++] = galley_hook_node_variable_index(door, generation, node);
+    out[i++] = galley_hook_node_symbol_name(door, generation, node, &data, &len);
+    out[i++] = galley_hook_node_text(door, generation, node, &data, &len);
+    out[i++] = galley_hook_node_span(door, generation, node, &start, &length);
+    out[i++] = galley_hook_node_line_column(door, generation, node, &line, &column);
+    out[i++] = galley_hook_tree_append_children(door, generation, node, node);
+    out[i++] = galley_hook_tree_insert_before(door, generation, node, node);
+    out[i++] = galley_hook_tree_insert_after(door, generation, node, node);
+    out[i++] = galley_hook_tree_remove_siblings(door, generation, node, 1, &head);
+    out[i++] = galley_hook_tree_remove_self(door, generation, node, &head);
+    out[i++] = galley_hook_tree_clean_children(door, generation, node, &head);
+    out[i++] = galley_hook_tree_insert_children_at(door, generation, node, 0, node);
+    out[i++] = galley_hook_tree_remove_children_at(door, generation, node, 0, 1, &head);
+    out[i++] = galley_procedure_set_current_node(args, generation, other);
+    out[i++] = galley_hook_tree_snapshot(door, generation, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0);
+}
+
+static void probe_hook_refusals(void *args, GalleyHookDoor *door, unsigned long long generation,
+                                GalleyNodeAddress node) {
+    /* A live node other than the current one, so a refused set_current_node
+     * is told apart from one that set the node it was already on. */
+    long long child = galley_hook_node_first_child(door, generation, node);
+    GalleyNodeAddress other = child >= 0 ? (GalleyNodeAddress)child : GALLEY_INVALID_NODE;
+    GalleyNodeAddress outside = (GalleyNodeAddress)1 << 40;
+    probe_calls(args, door, generation - 1, node, other, probe_status[0]);
+    probe_calls(args, door, 0, node, other, probe_status[1]);
+    probe_calls(args, door, generation, outside, outside, probe_status[2]);
+    probe_calls(NULL, NULL, generation, node, other, probe_status[3]);
+    /* A NULL output is reported before the generation is looked at: with
+     * generation 0 (stale) these still answer null argument. */
+    {
+        int n = 0;
+        probe_null_output[n++] = galley_hook_node_symbol_name(door, 0, node, NULL, NULL);
+        probe_null_output[n++] = galley_hook_node_text(door, 0, node, NULL, NULL);
+        probe_null_output[n++] = galley_hook_node_span(door, 0, node, NULL, NULL);
+        probe_null_output[n++] = galley_hook_node_line_column(door, 0, node, NULL, NULL);
+        probe_null_output[n++] = galley_hook_tree_remove_siblings(door, 0, node, 1, NULL);
+        probe_null_output[n++] = galley_hook_tree_remove_self(door, 0, node, NULL);
+        probe_null_output[n++] = galley_hook_tree_clean_children(door, 0, node, NULL);
+        probe_null_output[n++] = galley_hook_tree_remove_children_at(door, 0, node, 0, 1, NULL);
+    }
+    /* Every refused set_current_node above left the current node as it was;
+     * a live node sets, and GALLEY_INVALID_NODE clears without a generation. */
+    probe_current_node_kept = galley_procedure_current_node(args) == node;
+    probe_set_current_status = galley_procedure_set_current_node(args, generation, other);
+    probe_set_current_took = other != GALLEY_INVALID_NODE && galley_procedure_current_node(args) == other;
+    probe_clear_current_status = galley_procedure_set_current_node(args, 0, GALLEY_INVALID_NODE);
+    probe_clear_current_took = galley_procedure_current_node(args) == GALLEY_INVALID_NODE;
+    galley_procedure_set_current_node(args, generation, node);
+}
+
+long long fixture_hook_null_output_status(int call) {
+    if (call < 0 || call >= FIXTURE_NULL_OUTPUT_CALLS) return galley_ok;
+    return probe_null_output[call];
+}
+
+long long fixture_hook_probe_current(int which) {
+    switch (which) {
+    case 0: return probe_current_node_kept;
+    case 1: return probe_set_current_status;
+    case 2: return probe_set_current_took;
+    case 3: return probe_clear_current_status;
+    default: return probe_clear_current_took;
+    }
+}
+
+long long fixture_hook_probe_status(int variant, int call) {
+    if (variant < 0 || variant >= FIXTURE_PROBE_VARIANTS || call < 0 || call >= FIXTURE_PROBE_CALLS)
+        return galley_ok;
+    return probe_status[variant][call];
+}
+
+int fixture_hook_probe_calls(void) { return FIXTURE_PROBE_CALLS; }
+
 void fixture_stash_session(GalleySession *session) {
     stashed_session = session;
     if (session == NULL)
@@ -203,6 +308,8 @@ void fixture_stash_session(GalleySession *session) {
     hook_walk_skipped = 0;
     hook_walk_status = galley_ok;
     stashed_walk_status = galley_ok;
+    memset(probe_status, 0, sizeof probe_status);
+    memset(probe_null_output, 0, sizeof probe_null_output);
 }
 
 long long fixture_hook_text_status(void) { return hook_text_status; }
@@ -214,6 +321,8 @@ long long fixture_stashed_kind_status(void) { return stashed_kind_status; }
 int fixture_later_hook_shares_door(void) { return later_hook_shares_door; }
 
 long long fixture_later_hook_child_count(void) { return later_hook_child_count; }
+
+int fixture_hook_session_matches(void) { return hook_session_matches; }
 
 unsigned long long fixture_hook_generation(void) { return hook_generation; }
 
@@ -227,6 +336,8 @@ GalleyNodeAddress fixture_stashed_root(void) { return stashed_root; }
 
 void reduction_Pair(void *args) {
     GalleyHookDoor *door = galley_procedure_door(args);
+    unsigned long long generation = 0;
+    galley_hook_generation(door, &generation);
     GalleyNodeAddress node = galley_procedure_current_node(args);
     const char *text = NULL;
     size_t len = 0;
@@ -235,10 +346,10 @@ void reduction_Pair(void *args) {
     size_t colon = 0;
     if (node == GALLEY_INVALID_NODE)
         return;
-    node_pos(door, node, &line, &column);
-    children = galley_hook_node_child_count(door, node);
+    node_pos(door, generation, node, &line, &column);
+    children = (unsigned)galley_hook_node_child_count(door, generation, node);
     fputs("Pair ", stderr);
-    if (node_text(door, node, &text, &len)) {
+    if (node_text(door, generation, node, &text, &len)) {
         while (colon < len && text[colon] != ':')
             ++colon;
         fwrite(text, 1, colon, stderr);
@@ -248,6 +359,8 @@ void reduction_Pair(void *args) {
     }
     fprintf(stderr, " (%u children) at %u:%u\n", children, line, column);
     fflush(stderr);
+    if (stashed_session != NULL)
+        hook_session_matches = galley_procedure_session(args) == stashed_session;
     if (stashed_session != NULL && first_pair_door == NULL) {
         first_pair_door = door;
         first_pair_node = node;
@@ -256,6 +369,8 @@ void reduction_Pair(void *args) {
 
 void reduction_Document(void *args) {
     GalleyHookDoor *door = galley_procedure_door(args);
+    unsigned long long generation = 0;
+    galley_hook_generation(door, &generation);
     GalleyNodeAddress node = galley_procedure_current_node(args);
     unsigned count = 0, sum = 0;
     const char *recorded = NULL;
@@ -272,19 +387,19 @@ void reduction_Document(void *args) {
     if (node == GALLEY_INVALID_NODE)
         return;
     if (stashed_session != NULL) {
-        hook_text_status = galley_hook_node_text(door, node, &recorded, &recorded_len);
+        hook_text_status = galley_hook_node_text(door, generation, node, &recorded, &recorded_len);
         {
             GalleyNodeAddress ignored = GALLEY_INVALID_NODE;
-            hook_range_status[0] = galley_hook_tree_insert_children_at(door, node, (size_t)-1, node);
-            hook_range_status[1] = galley_hook_tree_remove_children_at(door, node, (size_t)-1, 1, &ignored);
-            hook_range_status[2] = galley_hook_tree_remove_siblings(door, node, (size_t)-1, &ignored);
+            hook_range_status[0] = galley_hook_tree_insert_children_at(door, generation, node, (size_t)-1, node);
+            hook_range_status[1] = galley_hook_tree_remove_children_at(door, generation, node, (size_t)-1, 1, &ignored);
+            hook_range_status[2] = galley_hook_tree_remove_siblings(door, generation, node, (size_t)-1, &ignored);
         }
         stashed_kind_status = galley_diagnostic_kind(stashed_session);
         hook_generation_status = galley_hook_generation(door, &hook_generation);
         stashed_published_status = galley_root_node(stashed_session, &stashed_root, &stashed_published_generation);
         if (first_pair_door != NULL) {
             later_hook_shares_door = first_pair_door == door;
-            later_hook_child_count = galley_hook_node_child_count(first_pair_door, first_pair_node);
+            later_hook_child_count = galley_hook_node_child_count(first_pair_door, generation, first_pair_node);
         }
         /* Two doors, one step: the session door is refused while the parse
          * holds the lease, and the hook door walks the in-flight tree rooted
@@ -294,6 +409,7 @@ void reduction_Document(void *args) {
         stashed_walk_status = galley_walk_next(stashed_session, &refused);
         hook_walk_root = node;
         hook_walk_status = galley_hook_generation(door, &walk_generation);
+        probe_hook_refusals(args, door, generation, node);
         if (hook_walk_status == galley_ok) {
             memset(&walk, 0, sizeof walk);
             walk.generation = walk_generation;
@@ -317,7 +433,7 @@ void reduction_Document(void *args) {
             }
         }
     }
-    count_pairs(door, node, &count, &sum);
+    count_pairs(door, generation, node, &count, &sum);
     fprintf(stderr, "Document %u pairs, sum=%u\n", count, sum);
     fflush(stderr);
 }

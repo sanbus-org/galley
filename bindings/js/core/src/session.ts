@@ -11,13 +11,13 @@ import { INVALID_NODE, NO_VARIABLE, Status } from "./constants.ts";
 import type { Kind, RecoveryTarget, Resume } from "./constants.ts";
 import type { Diagnostic } from "./diagnostic.ts";
 import { GalleyError, SessionClosedError, StaleTreeError } from "./errors.ts";
-import type { FfiPort, Handle, SessionCOptions, SnapshotColumns } from "./port.ts";
+import type { FfiPort, Handle, NodeFamily, SessionCOptions, SnapshotColumns } from "./port.ts";
 import { decodeUtf8 } from "./text.ts";
 import { checkArtifactPath, checkMessageBytes, checkParseInput } from "./sources.ts";
 import { rejectSessionOptions } from "./internal.ts";
 import { Node, createNode, installWalkStart, nodeAddress } from "./node.ts";
 import type { NodeDoor } from "./node.ts";
-import { HookDoor, ProcedureArguments, ProcedureRegistry, registryFor, routerFor } from "./procedures.ts";
+import { ProcedureArguments, ProcedureRegistry, registryFor, routerFor } from "./procedures.ts";
 import type { HookFn, HookOwner } from "./procedures.ts";
 
 export interface SessionOptions {
@@ -76,22 +76,23 @@ function isInvalid(addr: bigint): boolean {
 }
 
 /**
- * The session door as an address-level crossing: the `galley_node_*` family
- * over the session handle. Every call carries the generation it addresses,
- * which the core compares against the published tree's, so this binding
- * keeps no cached copy of that generation and no per-call state: the caller
- * passes the node's own generation, or the one `rootNode()` stamped.
+ * A door as an address-level crossing: one family of core calls
+ * (`galley_node_*` over the session handle, or the `galley_hook_*` twins
+ * over a parse's native door) and the handle to call it on. Every call
+ * carries the generation it addresses, which the core compares against the
+ * door's tree, so this binding keeps no cached copy of that generation and
+ * no per-call state: the caller passes the node's own generation, or the one
+ * `rootNode()` stamped.
  */
-class SessionDoor implements NodeDoor {
-  readonly parseGeneration = null;
-  readonly #port: FfiPort;
-  readonly #handle: () => Handle;
+class Door implements NodeDoor {
+  readonly #family: NodeFamily;
+  readonly #handle: Handle;
   /** The session that owns this door, for the one refusal conversion. */
   readonly #session: Session;
 
-  constructor(session: Session, port: FfiPort, handle: () => Handle) {
+  constructor(session: Session, family: NodeFamily, handle: Handle) {
     this.#session = session;
-    this.#port = port;
+    this.#family = family;
     this.#handle = handle;
   }
 
@@ -105,98 +106,110 @@ class SessionDoor implements NodeDoor {
     if (status < 0) throw this.#session.errorFromStatus(status);
   }
 
+  /** A link answer: a status (negative) throws, an address is a BigInt. */
+  #link(value: bigint | number): bigint {
+    if (typeof value === "bigint") {
+      if (value < 0n) throw this.#session.errorFromStatus(Number(value));
+      return value;
+    }
+    if (value < 0) throw this.#session.errorFromStatus(value);
+    return BigInt(value);
+  }
+
   #cross<T>(value: T | number): T {
     if (typeof value === "number" && value < 0) throw this.#session.errorFromStatus(value);
     return value as T;
   }
 
   childCount(generation: number, address: bigint): number {
-    return this.#cross(this.#port.childCount(this.#handle(), generation, address));
+    const count = this.#family.childCount(this.#handle, generation, address);
+    if (count < 0) throw this.#session.errorFromStatus(count);
+    return count;
   }
 
   firstChild(generation: number, address: bigint): bigint {
-    return this.#cross<bigint>(this.#port.firstChild(this.#handle(), generation, address));
+    return this.#link(this.#family.firstChild(this.#handle, generation, address));
   }
 
   lastChild(generation: number, address: bigint): bigint {
-    return this.#cross<bigint>(this.#port.lastChild(this.#handle(), generation, address));
+    return this.#link(this.#family.lastChild(this.#handle, generation, address));
   }
 
   nextSibling(generation: number, address: bigint): bigint {
-    return this.#cross<bigint>(this.#port.nextSibling(this.#handle(), generation, address));
+    return this.#link(this.#family.nextSibling(this.#handle, generation, address));
   }
 
   priorSibling(generation: number, address: bigint): bigint {
-    return this.#cross<bigint>(this.#port.priorSibling(this.#handle(), generation, address));
+    return this.#link(this.#family.priorSibling(this.#handle, generation, address));
   }
 
   parent(generation: number, address: bigint): bigint {
-    return this.#cross<bigint>(this.#port.parent(this.#handle(), generation, address));
+    return this.#link(this.#family.parent(this.#handle, generation, address));
   }
 
   text(generation: number, address: bigint): Uint8Array {
-    return this.#cross(this.#port.nodeText(this.#handle(), generation, address));
+    return this.#cross(this.#family.nodeText(this.#handle, generation, address));
   }
 
   symbolNameBytes(generation: number, address: bigint): Uint8Array {
-    return this.#cross(this.#port.nodeSymbolName(this.#handle(), generation, address));
+    return this.#cross(this.#family.nodeSymbolName(this.#handle, generation, address));
   }
 
   span(generation: number, address: bigint): [bigint, bigint] {
-    return this.#cross(this.#port.nodeSpan(this.#handle(), generation, address));
+    return this.#cross(this.#family.nodeSpan(this.#handle, generation, address));
   }
 
   lineColumn(generation: number, address: bigint): [number, number] {
-    return this.#cross(this.#port.nodeLineColumn(this.#handle(), generation, address));
+    return this.#cross(this.#family.nodeLineColumn(this.#handle, generation, address));
   }
 
   variableIndex(generation: number, address: bigint): number | null {
-    const index = this.#port.nodeVariableIndex(this.#handle(), generation, address);
+    const index = this.#family.nodeVariableIndex(this.#handle, generation, address);
     if (index === null) return null;
     this.#check(index);
     return index;
   }
 
   walkNext(cursor: ArrayBuffer): number {
-    return this.#port.walkNext(this.#handle(), cursor);
+    return this.#family.walkNext(this.#handle, cursor);
   }
 
   cleanChildren(generation: number, address: bigint): bigint {
-    const { status, head } = this.#port.treeCleanChildren(this.#handle(), generation, address);
+    const { status, head } = this.#family.treeCleanChildren(this.#handle, generation, address);
     this.#check(status);
     return head;
   }
 
   appendChildren(generation: number, parent: bigint, chain: bigint): void {
-    this.#check(this.#port.treeAppendChildren(this.#handle(), generation, parent, chain));
+    this.#check(this.#family.treeAppendChildren(this.#handle, generation, parent, chain));
   }
 
   insertBefore(generation: number, target: bigint, chain: bigint): void {
-    this.#check(this.#port.treeInsertBefore(this.#handle(), generation, target, chain));
+    this.#check(this.#family.treeInsertBefore(this.#handle, generation, target, chain));
   }
 
   insertAfter(generation: number, target: bigint, chain: bigint): void {
-    this.#check(this.#port.treeInsertAfter(this.#handle(), generation, target, chain));
+    this.#check(this.#family.treeInsertAfter(this.#handle, generation, target, chain));
   }
 
   removeSiblings(generation: number, address: bigint, count: number): bigint {
-    const { status, head } = this.#port.treeRemoveSiblings(this.#handle(), generation, address, count);
+    const { status, head } = this.#family.treeRemoveSiblings(this.#handle, generation, address, count);
     this.#check(status);
     return head;
   }
 
   removeSelf(generation: number, address: bigint): bigint {
-    const { status, head } = this.#port.treeRemoveSelf(this.#handle(), generation, address);
+    const { status, head } = this.#family.treeRemoveSelf(this.#handle, generation, address);
     this.#check(status);
     return head;
   }
 
   insertChildrenAt(generation: number, parent: bigint, index: number, chain: bigint): void {
-    this.#check(this.#port.treeInsertChildrenAt(this.#handle(), generation, parent, index, chain));
+    this.#check(this.#family.treeInsertChildrenAt(this.#handle, generation, parent, index, chain));
   }
 
   removeChildrenAt(generation: number, parent: bigint, index: number, count: number): bigint {
-    const { status, head } = this.#port.treeRemoveChildrenAt(this.#handle(), generation, parent, index, count);
+    const { status, head } = this.#family.treeRemoveChildrenAt(this.#handle, generation, parent, index, count);
     this.#check(status);
     return head;
   }
@@ -225,11 +238,11 @@ export class Session implements HookOwner {
     // when the session is closed; the generation gate is the one every
     // node argument crosses.
     installWalkStart((session, root, skipSemanticErrors) => {
-      const door = session.#door(); // hook-aware; throws when closed
-      const address = session.admit(root, door); // generation gate for that door
-      // The walk is bound to the tree the node came from: stamp from the
-      // node's own generation, which the gate above just proved live for
-      // this door — no refresh of its own.
+      session.#door(); // throws when the session is closed
+      const address = session.admit(root);
+      // The walk is bound to the tree the node came from: the cursor carries
+      // the node's own generation, and the core refuses it at the first step
+      // if that tree is gone — nothing asks the core here.
       const generation = root.generation;
       return Walker.create(
         WALKER_CONSTRUCTION_TOKEN,
@@ -254,10 +267,17 @@ export class Session implements HookOwner {
   #hookHandle = 0;
   /**
    * The running parse's hook door, learned from its first dispatch (the
-   * native door and the parse's core generation are constant for the parse)
-   * and dropped by the parse's finish gate; null between parses.
+   * native door is constant for the parse) and dropped by the parse's finish
+   * gate; null between parses.
    */
-  #parseDoor: HookDoor | null = null;
+  #parseDoor: Door | null = null;
+  /**
+   * The core generation of the running parse, read through
+   * `galley_hook_generation` on its first dispatch: only the stamp for the
+   * nodes its hooks produce, never compared with anything — the core checks
+   * every node it is handed.
+   */
+  #parseGeneration = 0;
   /**
    * True exactly while a hook runs. JavaScript runs one thread per session
    * and a parse is synchronous, so the only code that can run while a parse
@@ -277,7 +297,7 @@ export class Session implements HookOwner {
   #internGeneration: number | null = null;
   #internedNodes: (Node | undefined)[] = [];
   /** The session door, crossed by every call outside a hook dispatch. */
-  readonly #sessionDoor: SessionDoor;
+  readonly #sessionDoor: Door;
 
   /**
    * Takes a bound port: factories resolve the backend first, so a
@@ -297,7 +317,6 @@ export class Session implements HookOwner {
     );
     const merged = { ...defaultOptions(), ...options };
     this.#port = port;
-    this.#sessionDoor = new SessionDoor(this, port, () => this.#requireHandle());
 
     const hasNonDefault =
       options.maxErrors !== undefined ||
@@ -329,6 +348,7 @@ export class Session implements HookOwner {
       throw new GalleyError("out of memory", Status.ErrorOutOfMemory, null);
     }
     this.#handle = handle;
+    this.#sessionDoor = new Door(this, port.session, handle);
     this.#hookHandle = routerFor(port).register(this);
     try {
       this.#commitHooks(registryFor(port).copy());
@@ -368,30 +388,22 @@ export class Session implements HookOwner {
   }
 
   /**
-   * The single gate for a node argument crossing `door`: a `Node` must
-   * belong to this session, and on the hook door carry the running parse's
-   * generation, because the crossing sends a bare address and native storage
-   * only bounds-checks it, so a node of another session or generation would
-   * alias whichever node holds that index here. The session door takes the
-   * node's own generation as an argument and the core owns that comparison.
-   * A bare address never reaches the crossing: {@link nodeAddress} refuses
-   * it at entry, because it carries no session and no generation to vouch
-   * for it. Callers pass `node.generation` to the crossing: on the hook door
-   * this gate has just proved it is the parse's.
+   * The single gate for a node argument: a `Node` must belong to this
+   * session. The crossing then sends a bare address with the node's own
+   * generation, and the core owns whether that generation is live on the
+   * door in use (stale tree otherwise), on either door. A bare address never
+   * reaches the crossing: {@link nodeAddress} refuses it at entry, because
+   * it carries no session and no generation to vouch for it.
    *
    * @throws TypeError when `node` is not a `Node` or belongs to a
    *         different session.
-   * @throws StaleTreeError on the hook door when `node` is of another parse.
    * @internal
    */
-  admit(node: Node, door: NodeDoor): bigint {
+  admit(node: Node): bigint {
     const address = nodeAddress(node);
     if (node.session.isClosed) throw new SessionClosedError("node's session is closed");
     if (node.session !== this) {
       throw new TypeError("node belongs to a different session than this operation");
-    }
-    if (door.parseGeneration !== null && node.generation !== door.parseGeneration) {
-      throw this.errorFromStatus(Status.ErrorStaleTree);
     }
     return address;
   }
@@ -402,8 +414,8 @@ export class Session implements HookOwner {
    * operation mixing two trees is refused here instead of acting on a chain
    * from another parse.
    */
-  #admitChain(node: Node, chain: Node, door: NodeDoor): bigint {
-    const address = this.admit(chain, door);
+  #admitChain(node: Node, chain: Node): bigint {
+    const address = this.admit(chain);
     if (chain.generation !== node.generation) throw this.errorFromStatus(Status.ErrorStaleTree);
     return address;
   }
@@ -478,7 +490,7 @@ export class Session implements HookOwner {
   }
 
   /**
-   * The one status-to-failure conversion, shared with {@link SessionDoor}
+   * The one status-to-failure conversion, shared with {@link Door}
    * so no crossing spells one out. A stale tree is one failure however it
    * arrived — the core's own stale status, or a walk step — so it is always
    * the `StaleTreeError` subclass, and `instanceof GalleyError` still
@@ -577,11 +589,18 @@ export class Session implements HookOwner {
     // Only the "a hook is running" flag is set per dispatch, which is what
     // lets a call choose its door when it is made.
     if (this.#parseDoor === null) {
-      const door = this.#port.procDoor(args);
-      const generation = this.#port.hookGeneration(door);
-      this.#parseDoor = new HookDoor(door, generation, this.#port, (address) =>
-        this.#nodeForGeneration(generation, address),
-      );
+      try {
+        const nativeDoor = this.#port.procDoor(args);
+        const generation = this.#port.hookGeneration(nativeDoor);
+        if (generation < 0) throw this.errorFromStatus(generation);
+        this.#parseGeneration = generation;
+        this.#parseDoor = new Door(this, this.#port.hook, nativeDoor);
+      } catch (err) {
+        // A refused door: the hook cannot run correctly, so it is skipped
+        // like a throwing one, never run with a generation of 0.
+        console.error(`galley procedure ${name} could not open its door:`, err);
+        return;
+      }
     }
     this.#dispatching = true;
     if (fn.length === 0) {
@@ -594,7 +613,9 @@ export class Session implements HookOwner {
       }
       return;
     }
-    const procedureArguments = new ProcedureArguments(args, this.#parseDoor, this, this.#port);
+    const procedureArguments = new ProcedureArguments(args, this, this.#port, (address) =>
+      this.#wrap(this.#parseGeneration, address),
+    );
     try {
       fn(procedureArguments);
     } catch (err) {
@@ -726,7 +747,7 @@ export class Session implements HookOwner {
 
   childCount(node: Node): number {
     const door = this.#door();
-    return door.childCount(node.generation, this.admit(node, door));
+    return door.childCount(node.generation, this.admit(node));
   }
 
   /**
@@ -736,7 +757,7 @@ export class Session implements HookOwner {
    */
   children(node: Node): Node[] {
     const door = this.#door();
-    const address = this.admit(node, door);
+    const address = this.admit(node);
     const generation = node.generation;
     const count = door.childCount(generation, address);
     const out: Node[] = [];
@@ -752,27 +773,27 @@ export class Session implements HookOwner {
 
   firstChild(node: Node): Node | null {
     const door = this.#door();
-    return this.#wrap(node.generation, door.firstChild(node.generation, this.admit(node, door)));
+    return this.#wrap(node.generation, door.firstChild(node.generation, this.admit(node)));
   }
 
   lastChild(node: Node): Node | null {
     const door = this.#door();
-    return this.#wrap(node.generation, door.lastChild(node.generation, this.admit(node, door)));
+    return this.#wrap(node.generation, door.lastChild(node.generation, this.admit(node)));
   }
 
   nextSibling(node: Node): Node | null {
     const door = this.#door();
-    return this.#wrap(node.generation, door.nextSibling(node.generation, this.admit(node, door)));
+    return this.#wrap(node.generation, door.nextSibling(node.generation, this.admit(node)));
   }
 
   priorSibling(node: Node): Node | null {
     const door = this.#door();
-    return this.#wrap(node.generation, door.priorSibling(node.generation, this.admit(node, door)));
+    return this.#wrap(node.generation, door.priorSibling(node.generation, this.admit(node)));
   }
 
   parent(node: Node): Node | null {
     const door = this.#door();
-    return this.#wrap(node.generation, door.parent(node.generation, this.admit(node, door)));
+    return this.#wrap(node.generation, door.parent(node.generation, this.admit(node)));
   }
 
   /**
@@ -849,35 +870,33 @@ export class Session implements HookOwner {
     };
   }
 
-  symbolNameBytes(node: Node): Uint8Array | null {
+  symbolNameBytes(node: Node): Uint8Array {
     const door = this.#door();
-    return door.symbolNameBytes(node.generation, this.admit(node, door));
+    return door.symbolNameBytes(node.generation, this.admit(node));
   }
 
-  symbolName(node: Node): string | null {
-    const bytes = this.symbolNameBytes(node);
-    if (bytes === null) return null;
-    return decodeUtf8(bytes);
+  symbolName(node: Node): string {
+    return decodeUtf8(this.symbolNameBytes(node));
   }
 
-  text(node: Node): Uint8Array | null {
+  text(node: Node): Uint8Array {
     const door = this.#door();
-    return door.text(node.generation, this.admit(node, door));
+    return door.text(node.generation, this.admit(node));
   }
 
-  span(node: Node): [bigint, bigint] | null {
+  span(node: Node): [bigint, bigint] {
     const door = this.#door();
-    return door.span(node.generation, this.admit(node, door));
+    return door.span(node.generation, this.admit(node));
   }
 
-  lineColumn(node: Node): [number, number] | null {
+  lineColumn(node: Node): [number, number] {
     const door = this.#door();
-    return door.lineColumn(node.generation, this.admit(node, door));
+    return door.lineColumn(node.generation, this.admit(node));
   }
 
   variableIndex(node: Node): number | null {
     const door = this.#door();
-    return door.variableIndex(node.generation, this.admit(node, door));
+    return door.variableIndex(node.generation, this.admit(node));
   }
 
   lastPosition(): [number, number] | null {
@@ -1112,42 +1131,42 @@ export class Session implements HookOwner {
 
   appendChildren(parent: Node, chain: Node): void {
     const door = this.#door();
-    door.appendChildren(parent.generation, this.admit(parent, door), this.#admitChain(parent, chain, door));
+    door.appendChildren(parent.generation, this.admit(parent), this.#admitChain(parent, chain));
   }
 
   insertBefore(target: Node, chain: Node): void {
     const door = this.#door();
-    door.insertBefore(target.generation, this.admit(target, door), this.#admitChain(target, chain, door));
+    door.insertBefore(target.generation, this.admit(target), this.#admitChain(target, chain));
   }
 
   insertAfter(target: Node, chain: Node): void {
     const door = this.#door();
-    door.insertAfter(target.generation, this.admit(target, door), this.#admitChain(target, chain, door));
+    door.insertAfter(target.generation, this.admit(target), this.#admitChain(target, chain));
   }
 
   removeSiblings(node: Node, count: number): Node | null {
     const door = this.#door();
-    return this.#wrap(node.generation, door.removeSiblings(node.generation, this.admit(node, door), count));
+    return this.#wrap(node.generation, door.removeSiblings(node.generation, this.admit(node), count));
   }
 
   removeSelf(node: Node): Node | null {
     const door = this.#door();
-    return this.#wrap(node.generation, door.removeSelf(node.generation, this.admit(node, door)));
+    return this.#wrap(node.generation, door.removeSelf(node.generation, this.admit(node)));
   }
 
   cleanChildren(node: Node): Node | null {
     const door = this.#door();
-    return this.#wrap(node.generation, door.cleanChildren(node.generation, this.admit(node, door)));
+    return this.#wrap(node.generation, door.cleanChildren(node.generation, this.admit(node)));
   }
 
   insertChildrenAt(parent: Node, index: number, chain: Node): void {
     const door = this.#door();
-    door.insertChildrenAt(parent.generation, this.admit(parent, door), index, this.#admitChain(parent, chain, door));
+    door.insertChildrenAt(parent.generation, this.admit(parent), index, this.#admitChain(parent, chain));
   }
 
   removeChildrenAt(parent: Node, index: number, count: number): Node | null {
     const door = this.#door();
-    return this.#wrap(parent.generation, door.removeChildrenAt(parent.generation, this.admit(parent, door), index, count));
+    return this.#wrap(parent.generation, door.removeChildrenAt(parent.generation, this.admit(parent), index, count));
   }
 
   // -- symbol table ----------------------------------------------------

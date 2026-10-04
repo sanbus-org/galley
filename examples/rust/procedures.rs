@@ -36,7 +36,7 @@ fn parse_u(bytes: &[u8]) -> u32 {
 }
 
 fn count_pairs(door: &HookDoor, node: NodeHandle) -> (u32, u32) {
-    if door.symbol_name(node) == Some(b"Pair") {
+    if door.symbol_name(node) == Ok(&b"Pair"[..]) {
         let text = door.text(node).unwrap_or(b"");
         let number = text.split(|&byte| byte == b':').nth(1).unwrap_or(b"");
         return (1, parse_u(number));
@@ -44,6 +44,7 @@ fn count_pairs(door: &HookDoor, node: NodeHandle) -> (u32, u32) {
     let mut count = 0u32;
     let mut total = 0u32;
     for child in door.children(node) {
+        let Ok(child) = child else { break };
         let (child_count, child_sum) = count_pairs(door, child);
         count += child_count;
         total += child_sum;
@@ -78,7 +79,7 @@ pub extern "C" fn reduction_PairListTail(arguments: &mut ProcedureArguments) {
 #[no_mangle]
 pub extern "C" fn hook_print(arguments: &mut ProcedureArguments) {
     let door = arguments.door();
-    let Some(node) = arguments.current_node() else {
+    let Ok(Some(node)) = arguments.current_node() else {
         return;
     };
     let (line, column) = pos(door, node);
@@ -90,7 +91,7 @@ pub extern "C" fn hook_print(arguments: &mut ProcedureArguments) {
 #[no_mangle]
 pub extern "C" fn reduction_Number(arguments: &mut ProcedureArguments) {
     let door = arguments.door();
-    let Some(node) = arguments.current_node() else {
+    let Ok(Some(node)) = arguments.current_node() else {
         return;
     };
     let (line, column) = pos(door, node);
@@ -110,7 +111,7 @@ pub extern "C" fn reduction_Number(arguments: &mut ProcedureArguments) {
 #[no_mangle]
 pub extern "C" fn reduction_Pair(arguments: &mut ProcedureArguments) {
     let door = arguments.door();
-    let Some(node) = arguments.current_node() else {
+    let Ok(Some(node)) = arguments.current_node() else {
         return;
     };
     let (line, column) = pos(door, node);
@@ -124,14 +125,14 @@ pub extern "C" fn reduction_Pair(arguments: &mut ProcedureArguments) {
     write_bytes(number);
     write_stderr(&format!(
         " ({} children) at {line}:{column}\n",
-        door.child_count(node)
+        door.child_count(node).unwrap_or(0)
     ));
 }
 
 #[no_mangle]
 pub extern "C" fn reduction_Document(arguments: &mut ProcedureArguments) {
     let door = arguments.door();
-    let Some(node) = arguments.current_node() else {
+    let Ok(Some(node)) = arguments.current_node() else {
         return;
     };
     let (count, total) = count_pairs(door, node);

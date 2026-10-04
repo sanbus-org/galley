@@ -40,10 +40,17 @@ public final class Session implements AutoCloseable {
     private volatile Consumer<ProcedureArguments>[] hooksByIndex;
     /**
      * The running parse's hook door, learned from its first dispatch (the
-     * native door and the parse's core generation are constant for the
-     * parse) and dropped by the parse's finish gate; null between parses.
+     * native door is constant for the parse) and dropped by the parse's
+     * finish gate; null between parses.
      */
     private volatile NodeDoor parseDoor;
+    /**
+     * The core generation of the running parse, read through
+     * {@code galley_hook_generation} on its first dispatch: only the stamp of
+     * the nodes its hooks produce, never compared with anything — the core
+     * checks every node it is handed.
+     */
+    private volatile long parseGeneration;
     /**
      * The thread running the hook in progress, or null between hooks. Only
      * that thread may cross {@link #parseDoor}; every other thread crosses
@@ -126,28 +133,20 @@ public final class Session implements AutoCloseable {
     }
 
     /**
-     * The single gate for a node argument crossing {@code door}: the node
-     * must belong to this session, and it carries the generation every call
-     * of this operation hands the core. On the session door the core refuses
-     * a generation that is not the published tree's, so the session keeps no
-     * cached copy of it and cannot disagree with the core. On the hook door
-     * the generation is checked here, because the hook twins take none: the
-     * door serves one parse, so a node of another generation would alias
-     * whichever node holds that index in that parse. Either way a bare
-     * address would alias storage unchecked, which is why only a {@link Node}
-     * reaches this gate.
+     * The single gate for a node argument: the node must belong to this
+     * session. It carries the generation every call of this operation hands
+     * the core, which refuses one that is not the live tree's on either door
+     * ({@link StaleTreeException}), so the session keeps no copy of it and
+     * cannot disagree with the core. A bare address would alias storage
+     * unchecked, which is why only a {@link Node} reaches this gate.
      *
      * @throws IllegalArgumentException if {@code node} belongs to another session
-     * @throws StaleTreeException if its generation is not the door's
      */
-    long address(Node node, NodeDoor door) {
+    long address(Node node) {
         Session home = node.session();
         if (home.isClosed()) throw new GalleyClosedException("node's session");
         if (home != this) {
             throw new IllegalArgumentException("node belongs to a different session than this operation");
-        }
-        if (door.isHook() && node.generation() != door.generation()) {
-            throw new StaleTreeException("node");
         }
         return node.getAddress();
     }
@@ -155,8 +154,7 @@ public final class Session implements AutoCloseable {
     /**
      * What one node operation crosses with, fixed by {@link #cross}: the
      * door, the one generation every node of the operation carries (the
-     * first node's own, which on the hook door {@link #address} has just
-     * proved is the running parse's), and that node's address.
+     * first node's own), and that node's address.
      */
     private record Crossing(NodeDoor door, long generation, long address) {}
 
@@ -167,7 +165,7 @@ public final class Session implements AutoCloseable {
      */
     private Crossing cross(Node node) {
         NodeDoor door = door(node);
-        return new Crossing(door, node.generation(), address(node, door));
+        return new Crossing(door, node.generation(), address(node));
     }
 
     /**
@@ -179,7 +177,7 @@ public final class Session implements AutoCloseable {
      * @throws StaleTreeException if {@code chain} does not carry the crossing's generation
      */
     private long second(Crossing crossing, Node chain) {
-        long address = address(chain, crossing.door());
+        long address = address(chain);
         if (chain.generation() != crossing.generation()) throw new StaleTreeException("node");
         return address;
     }
@@ -388,13 +386,14 @@ public final class Session implements AutoCloseable {
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment out = arena.allocate(ValueLayout.JAVA_LONG);
                 if (lib.galley_hook_generation(door, out) >= 0) {
-                    hookDoor = NodeDoor.ofHook(lib, this, door, out.get(ValueLayout.JAVA_LONG, 0));
+                    parseGeneration = out.get(ValueLayout.JAVA_LONG, 0);
+                    hookDoor = NodeDoor.ofHook(lib, door);
                     parseDoor = hookDoor;
                 }
             }
         }
         dispatchThread = hookDoor == null ? null : Thread.currentThread();
-        ProcedureArguments arguments = new ProcedureArguments(argumentsPointer, lib, this, hookDoor);
+        ProcedureArguments arguments = new ProcedureArguments(argumentsPointer, lib, this, hookDoor, parseGeneration);
         try {
             hook.accept(arguments);
         } catch (Throwable t) {
@@ -712,12 +711,11 @@ public final class Session implements AutoCloseable {
 
     /**
      * Grammar name of the node's symbol, decoded as UTF-8 with replacement
-     * for malformed input. Null for invalid nodes. Token content stays raw
-     * bytes: use {@link #text} for that.
+     * for malformed input. A refused node throws, never answers null. Token
+     * content stays raw bytes: use {@link #text} for that.
      */
     public String symbolName(Node node) {
-        byte[] bytes = symbolNameBytes(node);
-        return bytes == null ? null : new String(bytes, StandardCharsets.UTF_8);
+        return new String(symbolNameBytes(node), StandardCharsets.UTF_8);
     }
 
     /** Raw bytes behind {@link #symbolName(Node)}. */

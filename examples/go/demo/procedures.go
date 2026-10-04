@@ -112,8 +112,8 @@ func reduction_PairListTail(ptr unsafe.Pointer) {
 func hook_print(ptr unsafe.Pointer) {
 	args := galley.Args(ptr)
 	door := args.Door()
-	node, ok := args.CurrentNode()
-	if !ok {
+	node, ok, err := args.CurrentNode()
+	if err != nil || !ok {
 		return
 	}
 	line, column := posOf(door, node)
@@ -124,8 +124,8 @@ func hook_print(ptr unsafe.Pointer) {
 func reduction_Number(ptr unsafe.Pointer) {
 	args := galley.Args(ptr)
 	door := args.Door()
-	node, ok := args.CurrentNode()
-	if !ok {
+	node, ok, err := args.CurrentNode()
+	if err != nil || !ok {
 		return
 	}
 	line, column := posOf(door, node)
@@ -146,8 +146,8 @@ func reduction_Number(ptr unsafe.Pointer) {
 func reduction_Pair(ptr unsafe.Pointer) {
 	args := galley.Args(ptr)
 	door := args.Door()
-	node, ok := args.CurrentNode()
-	if !ok {
+	node, ok, err := args.CurrentNode()
+	if err != nil || !ok {
 		return
 	}
 	line, column := posOf(door, node)
@@ -167,8 +167,8 @@ func reduction_Pair(ptr unsafe.Pointer) {
 func reduction_Document(ptr unsafe.Pointer) {
 	args := galley.Args(ptr)
 	door := args.Door()
-	node, ok := args.CurrentNode()
-	if !ok {
+	node, ok, err := args.CurrentNode()
+	if err != nil || !ok {
 		return
 	}
 	count, total := countPairs(door, node)

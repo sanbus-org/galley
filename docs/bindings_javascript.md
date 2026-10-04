@@ -235,9 +235,11 @@ export function hook_print(args: ProcedureArguments): void {
 `ProcedureArguments` is valid only while its hook runs and throws afterwards.
 The nodes it yields belong to the parse: a hook may keep one for later hooks
 of the same parse and, when the parse succeeds, for use after it until the
-session parses again. A node of a failed parse throws `SessionClosedError`. A
+session parses again. A node of a failed parse throws `StaleTreeError`. A
 parse the core refuses (a hook parsing its own session throws a `GalleyError`
-with status `-13`) invalidates nothing.
+with status `-13`) invalidates nothing. Inside a hook the core checks every
+node's generation on the hook door too: a node of an earlier parse throws
+`StaleTreeError` on a read, a link, an edit or a walk step, never `null`.
 
 Every parser owns its hooks: the generated package entry (and the
 internal `openLanguageDirectory` behind it) loads the language

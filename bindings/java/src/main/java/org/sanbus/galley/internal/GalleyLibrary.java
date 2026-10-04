@@ -27,6 +27,15 @@ public final class GalleyLibrary {
     private final Arena libraryArena;
 
     // Downcall handles
+    /**
+     * The node, tree and walk calls of the session door ({@code galley_node_*},
+     * {@code galley_tree_*}, {@code galley_walk_next}) and of the hook door
+     * ({@code galley_hook_*}): two sets of downcall handles with identical
+     * types, one {@link NodeCalls} class.
+     */
+    public final NodeCalls sessionCalls;
+    public final NodeCalls hookCalls;
+
     private final MethodHandle mh_galley_version;
     private final MethodHandle mh_galley_parser_type;
     private final MethodHandle mh_galley_error_recovery_mode;
@@ -56,21 +65,8 @@ public final class GalleyLibrary {
     private final MethodHandle mh_galley_reserve_nodes;
     private final MethodHandle mh_galley_node_capacity;
     private final MethodHandle mh_galley_root_node;
-    private final MethodHandle mh_galley_node_child_count;
-    private final MethodHandle mh_galley_node_first_child;
-    private final MethodHandle mh_galley_node_last_child;
-    private final MethodHandle mh_galley_node_next_sibling;
-    private final MethodHandle mh_galley_node_prior_sibling;
-    private final MethodHandle mh_galley_node_parent;
     private final MethodHandle mh_galley_tree_snapshot;
     private final MethodHandle mh_galley_last_input;
-    private final MethodHandle mh_galley_walk_next;
-    private final MethodHandle mh_galley_hook_walk_next;
-    private final MethodHandle mh_galley_node_symbol_name;
-    private final MethodHandle mh_galley_node_text;
-    private final MethodHandle mh_galley_node_span;
-    private final MethodHandle mh_galley_node_line_column;
-    private final MethodHandle mh_galley_node_variable_index;
     private final MethodHandle mh_galley_has_diagnostic;
     private final MethodHandle mh_galley_diagnostic_kind;
     private final MethodHandle mh_galley_diagnostic_semantic;
@@ -108,34 +104,6 @@ public final class GalleyLibrary {
     private final MethodHandle mh_galley_recorded_recovery_lhs_variable;
     private final MethodHandle mh_galley_recorded_recovery_production;
     private final MethodHandle mh_galley_recorded_recovery_occurrence;
-    private final MethodHandle mh_galley_tree_append_children;
-    private final MethodHandle mh_galley_tree_insert_before;
-    private final MethodHandle mh_galley_tree_insert_after;
-    private final MethodHandle mh_galley_tree_remove_siblings;
-    private final MethodHandle mh_galley_tree_remove_self;
-    private final MethodHandle mh_galley_tree_clean_children;
-    private final MethodHandle mh_galley_tree_insert_children_at;
-    private final MethodHandle mh_galley_tree_remove_children_at;
-    // Hook door: the parse-time twins of the node/tree session accessors.
-    private final MethodHandle mh_galley_hook_node_child_count;
-    private final MethodHandle mh_galley_hook_node_first_child;
-    private final MethodHandle mh_galley_hook_node_last_child;
-    private final MethodHandle mh_galley_hook_node_next_sibling;
-    private final MethodHandle mh_galley_hook_node_prior_sibling;
-    private final MethodHandle mh_galley_hook_node_parent;
-    private final MethodHandle mh_galley_hook_node_symbol_name;
-    private final MethodHandle mh_galley_hook_node_text;
-    private final MethodHandle mh_galley_hook_node_span;
-    private final MethodHandle mh_galley_hook_node_line_column;
-    private final MethodHandle mh_galley_hook_node_variable_index;
-    private final MethodHandle mh_galley_hook_tree_append_children;
-    private final MethodHandle mh_galley_hook_tree_insert_before;
-    private final MethodHandle mh_galley_hook_tree_insert_after;
-    private final MethodHandle mh_galley_hook_tree_remove_siblings;
-    private final MethodHandle mh_galley_hook_tree_remove_self;
-    private final MethodHandle mh_galley_hook_tree_clean_children;
-    private final MethodHandle mh_galley_hook_tree_insert_children_at;
-    private final MethodHandle mh_galley_hook_tree_remove_children_at;
     private final MethodHandle mh_galley_hook_generation;
     private final MethodHandle mh_galley_procedure_door;
     private final MethodHandle mh_galley_procedure_current_node;
@@ -156,6 +124,8 @@ public final class GalleyLibrary {
         this.libraryArena = Arena.global();
         this.lookup = SymbolLookup.libraryLookup(libraryPath, libraryArena);
         // Helper to lookup
+        this.sessionCalls = new NodeCalls(this::downcall, "");
+        this.hookCalls = new NodeCalls(this::downcall, "hook_");
         this.mh_galley_version = downcall("galley_version", FunctionDescriptor.of(ValueLayout.ADDRESS));
         this.mh_galley_parser_type = downcall("galley_parser_type", FunctionDescriptor.of(ValueLayout.JAVA_LONG));
         this.mh_galley_error_recovery_mode = downcall("galley_error_recovery_mode", FunctionDescriptor.of(ValueLayout.JAVA_LONG));
@@ -185,21 +155,8 @@ public final class GalleyLibrary {
         this.mh_galley_reserve_nodes = downcall("galley_reserve_nodes", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
         this.mh_galley_node_capacity = downcall("galley_node_capacity", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
         this.mh_galley_root_node = downcall("galley_root_node", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        this.mh_galley_node_child_count = downcall("galley_node_child_count", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG));
-        this.mh_galley_node_first_child = downcall("galley_node_first_child", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG));
-        this.mh_galley_node_last_child = downcall("galley_node_last_child", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG));
-        this.mh_galley_node_next_sibling = downcall("galley_node_next_sibling", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG));
-        this.mh_galley_node_prior_sibling = downcall("galley_node_prior_sibling", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG));
-        this.mh_galley_node_parent = downcall("galley_node_parent", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG));
         this.mh_galley_tree_snapshot = downcall("galley_tree_snapshot", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
         this.mh_galley_last_input = downcall("galley_last_input", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        this.mh_galley_walk_next = downcall("galley_walk_next", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        this.mh_galley_hook_walk_next = downcall("galley_hook_walk_next", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        this.mh_galley_node_symbol_name = downcall("galley_node_symbol_name", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        this.mh_galley_node_text = downcall("galley_node_text", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        this.mh_galley_node_span = downcall("galley_node_span", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        this.mh_galley_node_line_column = downcall("galley_node_line_column", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        this.mh_galley_node_variable_index = downcall("galley_node_variable_index", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG));
         this.mh_galley_has_diagnostic = downcall("galley_has_diagnostic", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
         this.mh_galley_diagnostic_kind = downcall("galley_diagnostic_kind", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
         this.mh_galley_diagnostic_semantic = downcall("galley_diagnostic_semantic", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
@@ -237,37 +194,10 @@ public final class GalleyLibrary {
         this.mh_galley_recorded_recovery_lhs_variable = downcall("galley_recorded_recovery_lhs_variable", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.mh_galley_recorded_recovery_production = downcall("galley_recorded_recovery_production", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.mh_galley_recorded_recovery_occurrence = downcall("galley_recorded_recovery_occurrence", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        this.mh_galley_tree_append_children = downcall("galley_tree_append_children", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG));
-        this.mh_galley_tree_insert_before = downcall("galley_tree_insert_before", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG));
-        this.mh_galley_tree_insert_after = downcall("galley_tree_insert_after", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG));
-        this.mh_galley_tree_remove_siblings = downcall("galley_tree_remove_siblings", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
-        this.mh_galley_tree_remove_self = downcall("galley_tree_remove_self", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
-        this.mh_galley_tree_clean_children = downcall("galley_tree_clean_children", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
-        this.mh_galley_tree_insert_children_at = downcall("galley_tree_insert_children_at", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG));
-        this.mh_galley_tree_remove_children_at = downcall("galley_tree_remove_children_at", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
-        this.mh_galley_hook_node_child_count = downcall("galley_hook_node_child_count", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-        this.mh_galley_hook_node_first_child = downcall("galley_hook_node_first_child", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-        this.mh_galley_hook_node_last_child = downcall("galley_hook_node_last_child", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-        this.mh_galley_hook_node_next_sibling = downcall("galley_hook_node_next_sibling", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-        this.mh_galley_hook_node_prior_sibling = downcall("galley_hook_node_prior_sibling", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-        this.mh_galley_hook_node_parent = downcall("galley_hook_node_parent", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-        this.mh_galley_hook_node_symbol_name = downcall("galley_hook_node_symbol_name", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        this.mh_galley_hook_node_text = downcall("galley_hook_node_text", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        this.mh_galley_hook_node_span = downcall("galley_hook_node_span", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        this.mh_galley_hook_node_line_column = downcall("galley_hook_node_line_column", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        this.mh_galley_hook_node_variable_index = downcall("galley_hook_node_variable_index", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-        this.mh_galley_hook_tree_append_children = downcall("galley_hook_tree_append_children", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG));
-        this.mh_galley_hook_tree_clean_children = downcall("galley_hook_tree_clean_children", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
-        this.mh_galley_hook_tree_insert_before = downcall("galley_hook_tree_insert_before", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG));
-        this.mh_galley_hook_tree_insert_after = downcall("galley_hook_tree_insert_after", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG));
-        this.mh_galley_hook_tree_remove_siblings = downcall("galley_hook_tree_remove_siblings", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
-        this.mh_galley_hook_tree_remove_self = downcall("galley_hook_tree_remove_self", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
-        this.mh_galley_hook_tree_insert_children_at = downcall("galley_hook_tree_insert_children_at", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG));
-        this.mh_galley_hook_tree_remove_children_at = downcall("galley_hook_tree_remove_children_at", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
         this.mh_galley_hook_generation = downcall("galley_hook_generation", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.mh_galley_procedure_door = downcall("galley_procedure_door", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.mh_galley_procedure_current_node = downcall("galley_procedure_current_node", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
-        this.mh_galley_procedure_set_current_node = downcall("galley_procedure_set_current_node", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+        this.mh_galley_procedure_set_current_node = downcall("galley_procedure_set_current_node", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG));
         this.mh_galley_procedure_drop_self = downcall("galley_procedure_drop_self", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
         this.mh_galley_procedure_drop_children = downcall("galley_procedure_drop_children", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
         this.mh_galley_procedure_drop_if_empty = downcall("galley_procedure_drop_if_empty", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
@@ -365,21 +295,8 @@ public final class GalleyLibrary {
     public long galley_reserve_nodes(MemorySegment session, long capacity) { try { return (long) mh_galley_reserve_nodes.invoke(session, capacity); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_node_capacity(MemorySegment session) { try { return (long) mh_galley_node_capacity.invoke(session); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_root_node(MemorySegment session, MemorySegment outRoot, MemorySegment outGeneration) { try { return (long) mh_galley_root_node.invoke(session, outRoot, outGeneration); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_node_child_count(MemorySegment session, long generation, long node) { try { return (long) mh_galley_node_child_count.invoke(session, generation, node); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_node_first_child(MemorySegment session, long generation, long node) { try { return (long) mh_galley_node_first_child.invoke(session, generation, node); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_node_last_child(MemorySegment session, long generation, long node) { try { return (long) mh_galley_node_last_child.invoke(session, generation, node); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_node_next_sibling(MemorySegment session, long generation, long node) { try { return (long) mh_galley_node_next_sibling.invoke(session, generation, node); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_node_prior_sibling(MemorySegment session, long generation, long node) { try { return (long) mh_galley_node_prior_sibling.invoke(session, generation, node); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_node_parent(MemorySegment session, long generation, long node) { try { return (long) mh_galley_node_parent.invoke(session, generation, node); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_tree_snapshot(MemorySegment session, long generation, MemorySegment outParent, MemorySegment outFirstChild, MemorySegment outNext, MemorySegment outChildCount, MemorySegment outVariable, MemorySegment outSpanStart, MemorySegment outSpanLen, MemorySegment outIsSemanticError, long capacity) { try { return (long) mh_galley_tree_snapshot.invoke(session, generation, outParent, outFirstChild, outNext, outChildCount, outVariable, outSpanStart, outSpanLen, outIsSemanticError, capacity); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_last_input(MemorySegment session, MemorySegment outData, MemorySegment outLen) { try { return (long) mh_galley_last_input.invoke(session, outData, outLen); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_walk_next(MemorySegment session, MemorySegment cursor) { try { return (long) mh_galley_walk_next.invoke(session, cursor); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_hook_walk_next(MemorySegment door, MemorySegment cursor) { try { return (long) mh_galley_hook_walk_next.invoke(door, cursor); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_node_symbol_name(MemorySegment session, long generation, long node, MemorySegment outData, MemorySegment outLen) { try { return (long) mh_galley_node_symbol_name.invoke(session, generation, node, outData, outLen); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_node_text(MemorySegment session, long generation, long node, MemorySegment outData, MemorySegment outLen) { try { return (long) mh_galley_node_text.invoke(session, generation, node, outData, outLen); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_node_span(MemorySegment session, long generation, long node, MemorySegment outStart, MemorySegment outLen) { try { return (long) mh_galley_node_span.invoke(session, generation, node, outStart, outLen); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_node_line_column(MemorySegment session, long generation, long node, MemorySegment outLine, MemorySegment outColumn) { try { return (long) mh_galley_node_line_column.invoke(session, generation, node, outLine, outColumn); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_node_variable_index(MemorySegment session, long generation, long node) { try { return (long) mh_galley_node_variable_index.invoke(session, generation, node); } catch (Throwable t) { throw new RuntimeException(t); } }
 
     // diagnostics (singular)
     public int galley_has_diagnostic(MemorySegment session) { try { return (int) mh_galley_has_diagnostic.invoke(session); } catch (Throwable t) { throw new RuntimeException(t); } }
@@ -425,41 +342,14 @@ public final class GalleyLibrary {
     public long galley_recorded_recovery_occurrence(MemorySegment session, long idx, MemorySegment outParent, MemorySegment outParentLen, MemorySegment outRhs, MemorySegment outSym, MemorySegment outVar, MemorySegment outVarLen) { try { return (long) mh_galley_recorded_recovery_occurrence.invoke(session, idx, outParent, outParentLen, outRhs, outSym, outVar, outVarLen); } catch (Throwable t) { throw new RuntimeException(t); } }
 
     // tree editing
-    public long galley_tree_append_children(MemorySegment session, long generation, long parent, long first) { try { return (long) mh_galley_tree_append_children.invoke(session, generation, parent, first); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_tree_insert_before(MemorySegment session, long generation, long target, long first) { try { return (long) mh_galley_tree_insert_before.invoke(session, generation, target, first); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_tree_insert_after(MemorySegment session, long generation, long target, long first) { try { return (long) mh_galley_tree_insert_after.invoke(session, generation, target, first); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_tree_remove_siblings(MemorySegment session, long generation, long node, long count, MemorySegment outHead) { try { return (long) mh_galley_tree_remove_siblings.invoke(session, generation, node, count, outHead); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_tree_remove_self(MemorySegment session, long generation, long node, MemorySegment outHead) { try { return (long) mh_galley_tree_remove_self.invoke(session, generation, node, outHead); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_tree_clean_children(MemorySegment session, long generation, long node, MemorySegment outHead) { try { return (long) mh_galley_tree_clean_children.invoke(session, generation, node, outHead); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_tree_insert_children_at(MemorySegment session, long generation, long parent, long index, long first) { try { return (long) mh_galley_tree_insert_children_at.invoke(session, generation, parent, index, first); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_tree_remove_children_at(MemorySegment session, long generation, long parent, long index, long count, MemorySegment outHead) { try { return (long) mh_galley_tree_remove_children_at.invoke(session, generation, parent, index, count, outHead); } catch (Throwable t) { throw new RuntimeException(t); } }
 
     // procedure hook state
-    public int galley_hook_node_child_count(MemorySegment door, long node) { try { return (int) mh_galley_hook_node_child_count.invoke(door, node); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_hook_node_first_child(MemorySegment door, long node) { try { return (long) mh_galley_hook_node_first_child.invoke(door, node); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_hook_node_last_child(MemorySegment door, long node) { try { return (long) mh_galley_hook_node_last_child.invoke(door, node); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_hook_node_next_sibling(MemorySegment door, long node) { try { return (long) mh_galley_hook_node_next_sibling.invoke(door, node); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_hook_node_prior_sibling(MemorySegment door, long node) { try { return (long) mh_galley_hook_node_prior_sibling.invoke(door, node); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_hook_node_parent(MemorySegment door, long node) { try { return (long) mh_galley_hook_node_parent.invoke(door, node); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_hook_node_symbol_name(MemorySegment door, long node, MemorySegment outData, MemorySegment outLen) { try { return (long) mh_galley_hook_node_symbol_name.invoke(door, node, outData, outLen); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_hook_node_text(MemorySegment door, long node, MemorySegment outData, MemorySegment outLen) { try { return (long) mh_galley_hook_node_text.invoke(door, node, outData, outLen); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_hook_node_span(MemorySegment door, long node, MemorySegment outStart, MemorySegment outLen) { try { return (long) mh_galley_hook_node_span.invoke(door, node, outStart, outLen); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_hook_node_line_column(MemorySegment door, long node, MemorySegment outLine, MemorySegment outColumn) { try { return (long) mh_galley_hook_node_line_column.invoke(door, node, outLine, outColumn); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_hook_node_variable_index(MemorySegment door, long node) { try { return (long) mh_galley_hook_node_variable_index.invoke(door, node); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_hook_tree_append_children(MemorySegment door, long parent, long first) { try { return (long) mh_galley_hook_tree_append_children.invoke(door, parent, first); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_hook_tree_clean_children(MemorySegment door, long node, MemorySegment outHead) { try { return (long) mh_galley_hook_tree_clean_children.invoke(door, node, outHead); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_hook_tree_insert_before(MemorySegment door, long target, long first) { try { return (long) mh_galley_hook_tree_insert_before.invoke(door, target, first); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_hook_tree_insert_after(MemorySegment door, long target, long first) { try { return (long) mh_galley_hook_tree_insert_after.invoke(door, target, first); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_hook_tree_remove_siblings(MemorySegment door, long node, long count, MemorySegment outHead) { try { return (long) mh_galley_hook_tree_remove_siblings.invoke(door, node, count, outHead); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_hook_tree_remove_self(MemorySegment door, long node, MemorySegment outHead) { try { return (long) mh_galley_hook_tree_remove_self.invoke(door, node, outHead); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_hook_tree_insert_children_at(MemorySegment door, long parent, long index, long first) { try { return (long) mh_galley_hook_tree_insert_children_at.invoke(door, parent, index, first); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_hook_tree_remove_children_at(MemorySegment door, long parent, long index, long count, MemorySegment outHead) { try { return (long) mh_galley_hook_tree_remove_children_at.invoke(door, parent, index, count, outHead); } catch (Throwable t) { throw new RuntimeException(t); } }
     /** The generation of the parse that owns {@code door}: written to {@code outGeneration}; returns the status. */
     public long galley_hook_generation(MemorySegment door, MemorySegment outGeneration) { try { return (long) mh_galley_hook_generation.invoke(door, outGeneration); } catch (Throwable t) { throw new RuntimeException(t); } }
     /** The parse's door: the same pointer for every hook of one parse, valid until it ends. */
     public MemorySegment galley_procedure_door(MemorySegment args) { try { return (MemorySegment) mh_galley_procedure_door.invoke(args); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_procedure_current_node(MemorySegment args) { try { return (long) mh_galley_procedure_current_node.invoke(args); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public void galley_procedure_set_current_node(MemorySegment args, long node) { try { mh_galley_procedure_set_current_node.invoke(args, node); } catch (Throwable t) { throw new RuntimeException(t); } }
+    public long galley_procedure_set_current_node(MemorySegment args, long generation, long node) { try { return (long) mh_galley_procedure_set_current_node.invoke(args, generation, node); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_procedure_drop_self(MemorySegment args) { try { return (long) mh_galley_procedure_drop_self.invoke(args); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_procedure_drop_children(MemorySegment args) { try { return (long) mh_galley_procedure_drop_children.invoke(args); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_procedure_drop_if_empty(MemorySegment args) { try { return (long) mh_galley_procedure_drop_if_empty.invoke(args); } catch (Throwable t) { throw new RuntimeException(t); } }

@@ -177,6 +177,9 @@ until the session parses again. A node of a failed parse raises. A node reads
 through the parse's hook door only inside a hook of that parse on the thread
 running it; from any other thread while the parse runs it raises `GalleyError`
 with `ERROR_SESSION_IN_USE`, and a parse the core refuses invalidates nothing.
+Inside a hook the core checks every node's generation on that door too: a node
+of an earlier parse raises `StaleTreeError` on a read, a link, an edit or a
+walk step, never `None`.
 
 Mechanically, `python -m galley` links the generator's host shim
 (`host_procedures.zig`, written by `--emit-host-procedures`), which forwards

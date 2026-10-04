@@ -72,7 +72,82 @@ export interface SnapshotColumns {
  */
 export type DispatchHandler = (hookHandle: number, hookIndex: number, args: Handle) => void;
 
+/**
+ * One door's node and tree calls: the `galley_node_*` / `galley_tree_*` /
+ * `galley_walk_next` family over a session handle, or its `galley_hook_*`
+ * twin over a parse's hook door. The two families take the same arguments
+ * after the handle and answer the same way, so the core holds one
+ * implementation per capability and an adapter instantiates each twice, once
+ * per prefix; the door is the handle plus which family to call.
+ *
+ * Every call takes the generation of the tree it addresses, which the core
+ * compares against the door's tree. A value below zero is the core's
+ * refusal (stale tree, session in use, invalid node, null argument), never
+ * an answer: addresses are unsigned and counts are non-negative, so nothing
+ * a caller could mistake for a result is negative.
+ */
+export interface NodeFamily {
+  /** Direct child count. */
+  childCount(handle: Handle, generation: number, node: bigint): number;
+  /**
+   * One link: the address (`INVALID_NODE` when the link does not exist) as a
+   * BigInt, or the core's refusal as a negative Number.
+   */
+  firstChild(handle: Handle, generation: number, node: bigint): bigint | number;
+  lastChild(handle: Handle, generation: number, node: bigint): bigint | number;
+  nextSibling(handle: Handle, generation: number, node: bigint): bigint | number;
+  priorSibling(handle: Handle, generation: number, node: bigint): bigint | number;
+  parent(handle: Handle, generation: number, node: bigint): bigint | number;
+  nodeSymbolName(handle: Handle, generation: number, node: bigint): Uint8Array | number;
+  nodeText(handle: Handle, generation: number, node: bigint): Uint8Array | number;
+  nodeSpan(handle: Handle, generation: number, node: bigint): [bigint, bigint] | number;
+  nodeLineColumn(handle: Handle, generation: number, node: bigint): [number, number] | number;
+  /**
+   * Raw variable index, `null` when the node has no variable (the core's
+   * `GALLEY_NO_VARIABLE`); a negative value is the core's refusal.
+   */
+  nodeVariableIndex(handle: Handle, generation: number, node: bigint): number | null;
+  /**
+   * One step of a walk over the host-owned 40-byte cursor, which carries
+   * its own generation: 1 yields a node, 0 ends the walk (and keeps ending
+   * it), negative is a failure (stale tree, session in use, malformed
+   * cursor bytes).
+   */
+  walkNext(handle: Handle, cursor: ArrayBuffer): number;
+  // Tree edits: the generation both nodes of a call must carry.
+  treeAppendChildren(handle: Handle, generation: number, parent: bigint, first: bigint): number;
+  treeInsertBefore(handle: Handle, generation: number, target: bigint, first: bigint): number;
+  treeInsertAfter(handle: Handle, generation: number, target: bigint, first: bigint): number;
+  treeRemoveSiblings(
+    handle: Handle,
+    generation: number,
+    node: bigint,
+    count: number,
+  ): { status: number; head: bigint };
+  treeRemoveSelf(handle: Handle, generation: number, node: bigint): { status: number; head: bigint };
+  treeCleanChildren(handle: Handle, generation: number, node: bigint): { status: number; head: bigint };
+  treeInsertChildrenAt(
+    handle: Handle,
+    generation: number,
+    parent: bigint,
+    index: number,
+    first: bigint,
+  ): number;
+  treeRemoveChildrenAt(
+    handle: Handle,
+    generation: number,
+    parent: bigint,
+    index: number,
+    count: number,
+  ): { status: number; head: bigint };
+}
+
 export interface FfiPort {
+  /** The session door's node and tree calls; the handle is a session. */
+  readonly session: NodeFamily;
+  /** The hook door's twins; the handle is the parse's door (`procDoor`). */
+  readonly hook: NodeFamily;
+
   // -- parser metadata (mirror galley.h; sessions expose these per artifact) --
   version(): string;
   parserType(): number;
@@ -112,12 +187,8 @@ export interface FfiPort {
 
   // -- arena and navigation ----------------------------------------------
   //
-  // Every session-door crossing takes the generation of the tree it
-  // addresses, which the core compares against the published one. A value
-  // below zero is the core's refusal (stale tree, session in use, invalid
-  // node, null argument), never an answer: addresses are unsigned and counts
-  // are non-negative, so nothing a caller could mistake for a result is
-  // negative.
+  // Node and tree calls live on `session` and `hook` (see NodeFamily); what
+  // stays here names no node, or reads the published tree as a whole.
   /** Node count of the tree `generation` names. */
   nodeCount(handle: Handle, generation: number): number;
   /** Negative status on failure (e.g. capacity exceeded). */
@@ -130,17 +201,6 @@ export interface FfiPort {
    * is published; a negative status is a refusal (session in use).
    */
   rootNode(handle: Handle): { status: number; root: bigint; generation: number };
-  /** Direct child count. */
-  childCount(handle: Handle, generation: number, node: bigint): number;
-  /**
-   * One link: the address (`INVALID_NODE` when the link does not exist) as a
-   * BigInt, or the core's refusal as a negative Number.
-   */
-  firstChild(handle: Handle, generation: number, node: bigint): bigint | number;
-  lastChild(handle: Handle, generation: number, node: bigint): bigint | number;
-  nextSibling(handle: Handle, generation: number, node: bigint): bigint | number;
-  priorSibling(handle: Handle, generation: number, node: bigint): bigint | number;
-  parent(handle: Handle, generation: number, node: bigint): bigint | number;
   /** Flat bulk read of the published tree (see `SnapshotColumns`). */
   treeSnapshot(handle: Handle, generation: number): SnapshotColumns | number;
 
@@ -151,29 +211,7 @@ export interface FfiPort {
    * native code, little for a wasm guest.
    */
   readonly walkCursorLittleEndian: boolean;
-  /**
-   * One step of a walk through the session door over the host-owned
-   * 40-byte cursor: 1 yields a node, 0 ends the walk (and keeps ending
-   * it), negative is a failure (stale tree, session in use, malformed
-   * cursor bytes).
-   */
-  walkNext(handle: Handle, cursor: ArrayBuffer): number;
-  /** The hook-door twin over one running parse's in-flight tree. */
-  hookWalkNext(door: Handle, cursor: ArrayBuffer): number;
-
-  // -- node accessors ------------------------------------------------------
-  //
-  // A value below zero is the core's refusal, as everywhere else on this
-  // door: a valid node of the addressed tree always answers one.
-  nodeSymbolName(handle: Handle, generation: number, node: bigint): Uint8Array | number;
-  nodeText(handle: Handle, generation: number, node: bigint): Uint8Array | number;
-  nodeSpan(handle: Handle, generation: number, node: bigint): [bigint, bigint] | number;
-  nodeLineColumn(handle: Handle, generation: number, node: bigint): [number, number] | number;
-  /**
-   * Raw variable index, `null` when the node has no variable (the core's
-   * `GALLEY_NO_VARIABLE`); a negative value is the core's refusal.
-   */
-  nodeVariableIndex(handle: Handle, generation: number, node: bigint): number | null;
+  // -- symbol tables -------------------------------------------------------
   symbolNameAt(handle: Handle, index: number): Uint8Array | null;
   symbolIsTerminal(handle: Handle, index: number): boolean;
   variableNameAt(handle: Handle, index: number): Uint8Array | null;
@@ -226,44 +264,20 @@ export interface FfiPort {
     diagIndex: number,
   ): [string, number, number, string] | null;
 
-  // -- tree editing ----------------------------------------------------------
-  // Every one takes the generation both of its nodes must carry; a
-  // generation the core no longer holds is a stale tree, never an edit.
-  treeAppendChildren(handle: Handle, generation: number, parent: bigint, first: bigint): number;
-  treeInsertBefore(handle: Handle, generation: number, target: bigint, first: bigint): number;
-  treeInsertAfter(handle: Handle, generation: number, target: bigint, first: bigint): number;
-  treeRemoveSiblings(
-    handle: Handle,
-    generation: number,
-    node: bigint,
-    count: number,
-  ): { status: number; head: bigint };
-  treeRemoveSelf(handle: Handle, generation: number, node: bigint): { status: number; head: bigint };
-  treeCleanChildren(handle: Handle, generation: number, node: bigint): { status: number; head: bigint };
-  treeInsertChildrenAt(
-    handle: Handle,
-    generation: number,
-    parent: bigint,
-    index: number,
-    first: bigint,
-  ): number;
-  treeRemoveChildrenAt(
-    handle: Handle,
-    generation: number,
-    parent: bigint,
-    index: number,
-    count: number,
-  ): { status: number; head: bigint };
-
   // -- procedure hooks (per-hook state) ------------------------------------------
   // `args` is valid only while its hook runs.
   /**
    * The parse's door: the same handle for every hook of one parse, valid
-   * until that parse ends. Hook-door accessors below cross through it.
+   * until that parse ends. The `hook` family crosses through it.
    */
   procDoor(args: Handle): Handle;
   procCurrentNode(args: Handle): bigint;
-  procSetCurrentNode(args: Handle, node: bigint): void;
+  /**
+   * Sets the hook's current node to a node of the parse that owns `args`
+   * (`INVALID_NODE` clears it, no generation check). A negative status is the
+   * core's refusal: stale tree, invalid node, null argument.
+   */
+  procSetCurrentNode(args: Handle, generation: number, node: bigint): number;
   procDropSelf(args: Handle): number;
   procDropChildren(args: Handle): number;
   procDropIfEmpty(args: Handle): number;
@@ -273,37 +287,10 @@ export interface FfiPort {
   /** Running semantic-error total, or a negative status code. */
   procReportSemanticError(args: Handle, message: Uint8Array): number;
 
-  // -- hook door: parse-time node/tree accessors over the live parse ------
-  // Unshared by construction: the parse holds the session exclusively for
-  // its whole run, so these cross with the parse's door, not a session.
-  hookNodeChildCount(door: Handle, node: bigint): number;
-  hookNodeFirstChild(door: Handle, node: bigint): bigint;
-  hookNodeLastChild(door: Handle, node: bigint): bigint;
-  hookNodeNextSibling(door: Handle, node: bigint): bigint;
-  hookNodePriorSibling(door: Handle, node: bigint): bigint;
-  hookNodeParent(door: Handle, node: bigint): bigint;
-  hookNodeSymbolName(door: Handle, node: bigint): Uint8Array | null;
-  hookNodeText(door: Handle, node: bigint): Uint8Array | null;
-  hookNodeSpan(door: Handle, node: bigint): [bigint, bigint] | null;
-  hookNodeLineColumn(door: Handle, node: bigint): [number, number] | null;
-  hookTreeAppendChildren(door: Handle, parent: bigint, first: bigint): number;
-  hookTreeCleanChildren(door: Handle, node: bigint): { status: number; head: bigint };
-  /** Raw variable index; `null` for a node without one or an address outside the parse. */
-  hookNodeVariableIndex(door: Handle, node: bigint): number | null;
-  hookTreeInsertBefore(door: Handle, target: bigint, first: bigint): number;
-  hookTreeInsertAfter(door: Handle, target: bigint, first: bigint): number;
-  hookTreeRemoveSiblings(door: Handle, node: bigint, count: number): { status: number; head: bigint };
-  hookTreeRemoveSelf(door: Handle, node: bigint): { status: number; head: bigint };
-  hookTreeInsertChildrenAt(door: Handle, parent: bigint, index: number, first: bigint): number;
-  hookTreeRemoveChildrenAt(
-    door: Handle,
-    parent: bigint,
-    index: number,
-    count: number,
-  ): { status: number; head: bigint };
   /**
    * The core's parse generation of the parse that owns `door`: constant
-   * for the whole parse, so the core reads it once per hook dispatch.
+   * for the whole parse, so the core reads it once per hook dispatch. A
+   * negative value is the core's refusal (a null door), never a generation.
    */
   hookGeneration(door: Handle): number;
   /**

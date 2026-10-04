@@ -1432,6 +1432,78 @@ class EditTests(unittest.TestCase):
             _restore_procedures(saved_procedures)
         self.assertEqual(refusals, [grammar.Status.ERROR_STALE_TREE] * 4)
 
+    def test_hook_door_refuses_a_node_of_an_earlier_parse_on_every_capability(self) -> None:
+        # The core checks the generation inside every hook-door call: a node
+        # of the previous parse raises the one stale-tree error on a read, a
+        # link, a count, an edit and a walk step, and nothing answers None.
+        self.session.parse("alpha:12,beta:3")
+        previous = self.session.root_node()
+        assert previous is not None
+        previous_child = previous.first_child()
+        assert previous_child is not None
+        outcomes: list[str] = []
+        live: list[bytes] = []
+
+        def reduction_Pair(args: grammar.ProcedureArguments) -> None:
+            current = args.current_node()
+            assert current is not None
+            session = self.session
+            for call in (
+                previous.text,
+                previous.symbol_name,
+                previous.span,
+                previous.line_column,
+                previous.first_child,
+                previous.last_child,
+                previous.next_sibling,
+                previous.prior_sibling,
+                previous.parent,
+                lambda: len(previous),
+                lambda: session.child_count(previous),
+                lambda: session.variable_index(previous),
+                lambda: list(previous.walk()),
+                lambda: previous.append_children(current),
+                lambda: current.append_children(previous),
+                # Both nodes of the previous parse: the host's own
+                # mixed-generation check passes, so the core's decides.
+                lambda: previous.append_children(previous_child),
+                lambda: session.insert_before(previous, previous_child),
+                lambda: session.insert_after(previous, previous_child),
+                lambda: session.insert_children_at(previous, 0, previous_child),
+                lambda: session.remove_siblings(previous, 1),
+                lambda: session.remove_children_at(previous, 0, 1),
+                lambda: session.clean_children(previous),
+                lambda: session.remove_self(previous),
+                lambda: args.set_current_node(previous),
+            ):
+                try:
+                    call()
+                except grammar.StaleTreeError as error:
+                    outcomes.append(error.code)
+                else:
+                    outcomes.append("answered")
+            # A node of the running parse still reads and edits, and sets as
+            # the current node.
+            assert args.current_node() == current  # the refused set changed nothing
+            args.set_current_node(current)
+            assert args.current_node() == current
+            text = current.text()
+            assert text is not None
+            live.append(text)
+            detached = current.clean_children()
+            if detached is not None:
+                current.append_children(detached)
+
+        self.session.install_procedure("reduction_Pair", reduction_Pair)
+        try:
+            self.session.parse("alpha:12,beta:3")
+        finally:
+            self.session.clear_procedures()
+        self.assertEqual(
+            outcomes, [grammar.Status.ERROR_STALE_TREE] * (24 * 2)
+        )
+        self.assertEqual(live, [b"alpha:12", b"beta:3"])
+
     def test_chain_detached_in_one_hook_attaches_in_a_later_hook(self) -> None:
         # A chain detached in one hook can be attached in a later hook of
         # the same parse: both nodes carry the running parse's generation.
@@ -1657,7 +1729,7 @@ class GenerationTests(unittest.TestCase):
     def test_hook_node_used_from_another_thread_is_refused_by_the_session_door(
         self,
     ) -> None:
-        # The hook door is ungated, so it is reachable only from the thread
+        # The hook door takes no lock, so it is reachable only from the thread
         # running the hook. Any other thread crosses the session door, which
         # the core refuses while the parse runs.
         stashed: list[grammar.Node] = []

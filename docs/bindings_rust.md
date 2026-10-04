@@ -27,7 +27,7 @@ use procedure::ProcedureArguments;
 #[no_mangle]
 pub extern "C" fn reduction_Pair(arguments: &mut ProcedureArguments) {
     let door = arguments.door();
-    let Some(node) = arguments.current_node() else { return };
+    let Ok(Some(node)) = arguments.current_node() else { return };
     let text = door.text(node).unwrap_or(b"");
     let (line, column) = door.line_column(node).unwrap_or((0, 0));
     eprintln!(
@@ -45,7 +45,7 @@ pub extern "C" fn reduction_KeyTail(arguments: &mut ProcedureArguments) {
 #[no_mangle]
 pub extern "C" fn hook_print(arguments: &mut ProcedureArguments) {
     let door = arguments.door();
-    let Some(node) = arguments.current_node() else { return };
+    let Ok(Some(node)) = arguments.current_node() else { return };
     let text = door.text(node).unwrap_or(b"");
     let (line, column) = door.line_column(node).unwrap_or((0, 0));
     eprintln!("@print \"{}\" at {line}:{column}", String::from_utf8_lossy(text));
@@ -53,7 +53,10 @@ pub extern "C" fn hook_print(arguments: &mut ProcedureArguments) {
 ```
 
 Tree reads go through the parse's door, `arguments.door()`; the arguments
-themselves hold per-hook state and are valid only while the hook runs.
+themselves hold per-hook state and are valid only while the hook runs. A door
+read returns the same types as the session's: `Result<_, Error>`, with the
+core refusing a handle of an earlier parse as `Error::StaleTree` and an
+address outside the parse as `Error::InvalidNode`.
 
 Reduction hooks keep their `reduction_<VariableName>` names (plus the
 general `reduction`); author-defined grammar hooks are declared as

@@ -391,7 +391,9 @@ class ProcedureArguments:
         ...
 
     def set_current_node(self, node: Node) -> None:
-        """Redirect the current-node channel to ``node``."""
+        """Redirect the current-node channel to ``node``, a node of this parse.
+
+        Raises ``StaleTreeError`` for a node of another parse."""
         ...
 
     def drop_self(self) -> None:

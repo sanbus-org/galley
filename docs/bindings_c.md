@@ -28,28 +28,32 @@ namespacing them away from unrelated symbols:
 
 void reduction_Pair(void *args) {
     GalleyHookDoor *door = galley_procedure_door(args);
+    unsigned long long generation = 0;
     GalleyNodeAddress node = galley_procedure_current_node(args);
     const char *text = NULL;
     size_t len = 0;
     unsigned line = 0, column = 0;
     if (node == GALLEY_INVALID_NODE) return;
-    galley_hook_node_text(door, node, &text, &len);
-    galley_hook_node_line_column(door, node, &line, &column);
-    fprintf(stderr, "Pair %.*s (%u children) at %u:%u\n",
-            (int)len, text, galley_hook_node_child_count(door, node), line, column);
+    galley_hook_generation(door, &generation);
+    galley_hook_node_text(door, generation, node, &text, &len);
+    galley_hook_node_line_column(door, generation, node, &line, &column);
+    fprintf(stderr, "Pair %.*s (%lld children) at %u:%u\n", (int)len, text,
+            galley_hook_node_child_count(door, generation, node), line, column);
 }
 void reduction_KeyTail(void *args) {
     galley_procedure_drop_if_empty(args);
 }
 void hook_print(void *args) {
     GalleyHookDoor *door = galley_procedure_door(args);
+    unsigned long long generation = 0;
     GalleyNodeAddress node = galley_procedure_current_node(args);
     const char *text = NULL;
     size_t len = 0;
     unsigned line = 0, column = 0;
     if (node == GALLEY_INVALID_NODE) return;
-    galley_hook_node_text(door, node, &text, &len);
-    galley_hook_node_line_column(door, node, &line, &column);
+    galley_hook_generation(door, &generation);
+    galley_hook_node_text(door, generation, node, &text, &len);
+    galley_hook_node_line_column(door, generation, node, &line, &column);
     fprintf(stderr, "@print \"%.*s\" at %u:%u\n", (int)len, text, line, column);
 }
 ```
@@ -57,9 +61,12 @@ void hook_print(void *args) {
 Each hook receives an opaque `ProcedureArguments` pointer, valid only while
 that hook runs. Tree access crosses the parse's door instead: take it with
 `galley_procedure_door(args)` and inspect nodes with the `galley_hook_*`
-twins, which are ungated while the parse runs. The door is the same pointer
+twins, which take no lock while the parse runs. The door is the same pointer
 for every hook of one parse and dies when that parse ends, so a hook may keep
-it, and the nodes it reads, for later hooks of the same parse. The session
+it, and the nodes it reads, for later hooks of the same parse.
+`galley_procedure_session(args)` names the session whose parse is calling the
+hook, for a host that keeps state of its own per session (the Go binding ends
+its hook doors with the parse that way). The session
 door — `galley_node_*`,
 `galley_tree_*`, diagnostics — refuses with `galley_error_session_in_use`
 until the parse finishes, so a session stashed from a hook gains no
@@ -70,10 +77,21 @@ when nothing is published). **The core owns the check**: every session-door
 node and tree call takes the generation of the tree it addresses and returns
 a status, refusing anything but the published one with
 `galley_error_stale_tree`. No host caches that generation, so no host-side
-reading can disagree with the core about which tree is live; the hook twins
-take none, because their door exists only while its parse runs. There is no
-validity probe: a real read is the answer, and it refuses. The check runs in
-every build — a lifetime contract, one integer compare per call. Drop/replace the current node with
+reading can disagree with the core about which tree is live. The hook twins
+take the same arguments as the session calls after the handle — the door in
+place of the session, the node's generation next — and refuse the same way:
+`galley_error_stale_tree` for a generation that is not the running parse's
+(0 never is), `galley_error_invalid_node` for an address outside that parse's
+node storage, `galley_error_null_argument` for a null door or output. They
+have no `galley_error_session_in_use`, because the door is unshared by
+construction. There is no validity probe: a real read is the answer, and it
+refuses. The check runs in
+every build — a lifetime contract, one integer compare per call.
+`galley_procedure_set_current_node(args, generation, node)` goes through the
+same gate against the running parse (`galley_error_stale_tree`,
+`galley_error_invalid_node`, `galley_error_null_argument`); a refused call
+leaves the current node as it was, and `GALLEY_INVALID_NODE` clears it with no
+generation check. Drop/replace the current node with
 `galley_procedure_drop_*` / `galley_procedure_replace_with_children`; those
 talk to the parser through `args.node_address` and are not the same as
 `galley_tree_remove_self`.
@@ -297,7 +315,8 @@ step continues with the next sibling — and `GALLEY_WALK_SKIP_SEMANTIC_ERRORS`
 in `cursor.options` prunes subtrees rooted at semantic-error nodes.
 `galley_hook_walk_next(door, &cursor)` is the same walk through the hook
 door, for stepping inside a running parse's hook (stamp `generation` with
-`galley_hook_generation`).
+`galley_hook_generation`; a cursor of another generation is
+`galley_error_stale_tree`).
 
 `galley_node_first_child`, `galley_node_next_sibling`,
 `galley_node_child_count`, `galley_node_last_child`,

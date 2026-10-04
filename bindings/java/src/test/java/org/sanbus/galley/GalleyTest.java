@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -1303,7 +1304,7 @@ public class GalleyTest {
 
         @Test
         void hookNodeUsedFromAnotherThreadIsRefusedBySessionDoor() throws Exception {
-            // The hook door is ungated, so it is reachable only from the
+            // The hook door takes no lock, so it is reachable only from the
             // thread running the hook. Any other thread crosses the session
             // door, which the core refuses while the parse runs.
             AtomicReference<Node> stashed = new AtomicReference<>();
@@ -1534,6 +1535,70 @@ public class GalleyTest {
                 session.clearProcedures();
             }
             assertEquals(4, refusals.get());
+        }
+
+        @Test
+        void hookDoorRefusesANodeOfAnEarlierParseOnEveryCapability() {
+            // The core checks the generation inside every hook-door call: a
+            // node of the previous parse raises the one stale-tree error on a
+            // read, a link, a count, an edit and a walk step, and nothing
+            // answers null, while a node of the running parse still reads and
+            // edits.
+            List<String> outcomes = new ArrayList<>();
+            List<String> live = new ArrayList<>();
+            Node previousChild = root.firstChild();
+            assertNotNull(previousChild);
+            session.installProcedure("reduction_Pair", args -> {
+                Node current = args.currentNode();
+                assertNotNull(current);
+                List<Runnable> calls = List.of(
+                    () -> session.text(root),
+                    () -> session.symbolNameBytes(root),
+                    () -> session.span(root),
+                    () -> session.lineColumn(root),
+                    () -> session.variableIndex(root),
+                    () -> session.firstChild(root),
+                    () -> session.lastChild(root),
+                    () -> session.nextSibling(root),
+                    () -> session.priorSibling(root),
+                    () -> session.parent(root),
+                    () -> session.childCount(root),
+                    () -> root.walk(false).next(),
+                    () -> root.appendChildren(current),
+                    () -> current.appendChildren(root),
+                    // Both nodes of the previous parse: the host's own
+                    // mixed-generation check passes, so the core's decides.
+                    () -> root.appendChildren(previousChild),
+                    () -> session.insertBefore(root, previousChild),
+                    () -> session.insertAfter(root, previousChild),
+                    () -> session.insertChildrenAt(root, 0, previousChild),
+                    () -> session.removeSiblings(root, 1),
+                    () -> session.removeChildrenAt(root, 0, 1),
+                    () -> session.cleanChildren(root),
+                    () -> session.removeSelf(root),
+                    () -> args.setCurrentNode(root));
+                for (Runnable call : calls) {
+                    try {
+                        call.run();
+                        outcomes.add("answered");
+                    } catch (StaleTreeException expected) {
+                        outcomes.add("stale");
+                    }
+                }
+                assertEquals(current, args.currentNode());
+                args.setCurrentNode(current);
+                assertEquals(current, args.currentNode());
+                live.add(new String(current.text(), StandardCharsets.UTF_8));
+                Node detached = current.cleanChildren();
+                if (detached != null) current.appendChildren(detached);
+            });
+            try {
+                session.parse("alpha:12,beta:3");
+            } finally {
+                session.clearProcedures();
+            }
+            assertEquals(Collections.nCopies(23 * 2, "stale"), outcomes);
+            assertEquals(List.of("alpha:12", "beta:3"), live);
         }
 
         @Test

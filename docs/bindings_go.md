@@ -83,8 +83,8 @@ import (
 func reduction_Pair(ptr unsafe.Pointer) {
 	args := galley.Args(ptr)
 	door := args.Door()
-	node, ok := args.CurrentNode()
-	if !ok {
+	node, ok, err := args.CurrentNode()
+	if err != nil || !ok {
 		return
 	}
 	text, _ := door.Text(node)
@@ -103,8 +103,8 @@ func reduction_KeyTail(ptr unsafe.Pointer) {
 func hook_print(ptr unsafe.Pointer) {
 	args := galley.Args(ptr)
 	door := args.Door()
-	node, ok := args.CurrentNode()
-	if !ok {
+	node, ok, err := args.CurrentNode()
+	if err != nil || !ok {
 		return
 	}
 	text, _ := door.Text(node)
@@ -132,8 +132,14 @@ general `reduction`); author-defined grammar hooks are declared as
 `hook_<name>`. Semantic payloads are unavailable through bindings. Tree
 queries use the parse's door, `galley.Args(ptr).Door()`, which implements
 `galley.NodeDoor` like a session does; the door is the same for every hook of
-one parse and valid until that parse ends. The arguments themselves are valid
-only while their hook runs; drop/replace use `args.DropSelf()` and friends.
+one parse and usable until that parse ends: a copy kept from one hook still
+works in a later hook of the same parse. Once `Parse` (or `ParseSentinel`,
+`ParseFile`, or closing the session) returns, the door and every walker made
+from it answer `ErrStaleTree` on every call, without the door's native
+pointer being read — it died with the parse. Keep `Node` handles for
+references that outlive the parse; the next parse refuses them with
+`ErrStaleTree` too. The arguments themselves are valid only while their hook
+runs; drop/replace use `args.DropSelf()` and friends.
 
 ## Error Messages
 
@@ -196,8 +202,11 @@ for {
 
 `door.Walk(root, skip)` — `door` from a hook's `galley.Args(ptr).Door()` —
 is the hook-door twin: it walks the running parse's in-flight tree through
-`galley_hook_walk_next`, bound to that parse's own generation, and
-reproduces the post-parse walk once the parse publishes.
+`galley_hook_walk_next`, bound to the root's generation, and reproduces the
+post-parse walk once the parse publishes. Every `HookDoor` read checks the
+node's generation in the core like the session's: a node of an earlier parse
+is `ErrStaleTree`, an address outside the parse `ErrInvalidNode`, never an
+empty answer.
 
 ## Sessions
 

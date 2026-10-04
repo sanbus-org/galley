@@ -63,6 +63,7 @@ import (
 )
 
 var wrapperTemplate = galleybindings.WrapperTemplate
+var wrapperPreamble = galleybindings.WrapperPreamble
 
 const (
 	libName = "galley-go"
@@ -788,7 +789,9 @@ func emitBridge(languageDir, galleySource string) {
 	builder.WriteString("\n#cgo LDFLAGS: -L")
 	builder.WriteString(libDir)
 	builder.WriteString(" -l" + libName + " -Wl,-rpath," + libDir)
-	builder.WriteString("\n#include <stdlib.h>\n#include <galley.h>\n*/\nimport \"C\"\n\n")
+	builder.WriteString("\n#include <stdlib.h>\n#include <galley.h>\n\n")
+	builder.WriteString(strings.TrimRight(wrapperPreamble, "\n"))
+	builder.WriteString("\n*/\nimport \"C\"\n\n")
 	builder.WriteString(strings.TrimRight(wrapperTemplate, "\n"))
 	builder.WriteString("\n")
 

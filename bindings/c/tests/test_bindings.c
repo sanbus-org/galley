@@ -762,6 +762,7 @@ long long fixture_stashed_kind_status(void);
 int fixture_later_hook_shares_door(void);
 long long fixture_later_hook_child_count(void);
 unsigned long long fixture_hook_generation(void);
+int fixture_hook_session_matches(void);
 long long fixture_hook_generation_status(void);
 unsigned long long fixture_stashed_published_generation(void);
 long long fixture_stashed_published_status(void);
@@ -773,6 +774,10 @@ int fixture_hook_walk_skipped(void);
 GalleyNodeAddress fixture_hook_walk_root(void);
 GalleyNodeAddress fixture_hook_walk_node(int index);
 unsigned fixture_hook_walk_depth(int index);
+long long fixture_hook_probe_status(int variant, int call);
+int fixture_hook_probe_calls(void);
+long long fixture_hook_probe_current(int which);
+long long fixture_hook_null_output_status(int call);
 void fixture_arm_gate(void);
 int fixture_gate_entered(void);
 void fixture_release_gate(void);
@@ -791,8 +796,77 @@ static void test_hook_door(void) {
     CHECK(fixture_hook_range_status(1) == galley_error_invalid_node);
     CHECK(fixture_hook_range_status(2) == galley_error_invalid_node);
     CHECK(fixture_stashed_kind_status() == galley_error_session_in_use);
+    /* A hook finds its session from its arguments; NULL arguments find none. */
+    CHECK(fixture_hook_session_matches() == 1);
+    CHECK(galley_procedure_session(NULL) == NULL);
     CHECK(fixture_later_hook_shares_door() == 1);
     CHECK(fixture_later_hook_child_count() > 0);
+    galley_session_destroy(session);
+}
+
+/* Every hook-door call that takes a node refuses the way its session twin
+ * does, called from a hook of a second parse: the previous parse's
+ * generation and generation 0 are stale, an address outside the parse's
+ * storage is invalid, a NULL door is a null argument. The probe is the
+ * last call, the snapshot, which names no address; the one before it is
+ * galley_procedure_set_current_node, which takes the hook arguments (NULL in
+ * the null variant). */
+static void test_hook_refusals(void) {
+    GalleySession *session = make_session();
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    fixture_stash_session(session);
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    fixture_stash_session(NULL);
+    CHECK(fixture_hook_generation() >= 2);
+    int calls = fixture_hook_probe_calls();
+    CHECK(calls > 0);
+    for (int call = 0; call < calls; ++call) {
+        CHECK(fixture_hook_probe_status(0, call) == galley_error_stale_tree);
+        CHECK(fixture_hook_probe_status(1, call) == galley_error_stale_tree);
+        if (call == calls - 1)
+            CHECK(fixture_hook_probe_status(2, call) >= 0);
+        else
+            CHECK(fixture_hook_probe_status(2, call) == galley_error_invalid_node);
+        CHECK(fixture_hook_probe_status(3, call) == galley_error_null_argument);
+    }
+    /* Argument errors come before the gate on the hook door too. */
+    for (int call = 0; call < 8; ++call)
+        CHECK(fixture_hook_null_output_status(call) == galley_error_null_argument);
+    /* set_current_node goes through the same gate: the refused calls above
+     * left the current node alone, a live node sets, INVALID clears. */
+    CHECK(fixture_hook_probe_current(0) == 1);
+    CHECK(fixture_hook_probe_current(1) == galley_ok);
+    CHECK(fixture_hook_probe_current(2) == 1);
+    CHECK(fixture_hook_probe_current(3) == galley_ok);
+    CHECK(fixture_hook_probe_current(4) == 1);
+    galley_session_destroy(session);
+}
+
+/* Argument errors come before the gate: a NULL output pointer is
+ * galley_error_null_argument whatever the generation says, as is a NULL
+ * session. The snapshot's columns are optional, so it still answers the
+ * gate. */
+static void test_null_outputs_before_the_gate(void) {
+    GalleySession *session = make_session();
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    unsigned long long generation = 0;
+    GalleyNodeAddress root = GALLEY_INVALID_NODE;
+    CHECK(galley_root_node(session, &root, &generation) == galley_ok);
+    unsigned long long stale = generation + 1;
+    GalleyNodeAddress head = GALLEY_INVALID_NODE;
+    for (unsigned long long attempt = 0; attempt < 2; ++attempt) {
+        unsigned long long used = attempt == 0 ? generation : stale;
+        CHECK(galley_node_symbol_name(session, used, root, NULL, NULL) == galley_error_null_argument);
+        CHECK(galley_node_text(session, used, root, NULL, NULL) == galley_error_null_argument);
+        CHECK(galley_node_span(session, used, root, NULL, NULL) == galley_error_null_argument);
+        CHECK(galley_node_line_column(session, used, root, NULL, NULL) == galley_error_null_argument);
+        CHECK(galley_tree_remove_siblings(session, used, root, 1, NULL) == galley_error_null_argument);
+        CHECK(galley_tree_clean_children(session, used, root, NULL) == galley_error_null_argument);
+        CHECK(galley_tree_remove_children_at(session, used, root, 0, 1, NULL) == galley_error_null_argument);
+    }
+    CHECK(galley_tree_remove_siblings(NULL, generation, root, 1, &head) == galley_error_null_argument);
+    CHECK(galley_tree_snapshot(session, stale, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0) ==
+          galley_error_stale_tree);
     galley_session_destroy(session);
 }
 
@@ -1150,6 +1224,8 @@ int main(void) {
     test_tree_edit();
     test_tree_edit_range();
     test_hook_door();
+    test_hook_refusals();
+    test_null_outputs_before_the_gate();
     test_generations();
     test_walk_skip_children();
     test_walk_stale();

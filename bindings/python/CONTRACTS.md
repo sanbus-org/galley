@@ -18,7 +18,7 @@ Host-specific rules for the Python binding. Shared behavior lives in [CONTRACTS.
 - A handle whose tree is gone raises `StaleTreeError`, a `GalleyError` subclass with code `Status.ERROR_STALE_TREE`. It is distinct from use after close, which stays `ValueError`.
 - Every refusal raises; no session-door read answers `None` or `0` for one. `Session.root_node()` returning `None` is the only "nothing here" answer, and `Session.node_count()` / `Session.snapshot()` with nothing published raise `StaleTreeError`.
 - There is no validity probe: a real read is the answer, and it raises.
-- An operation that takes a node refuses one from another session with `ValueError`, and one of a parse generation that is no longer live with `StaleTreeError`; a raw address is refused with `TypeError` instead, because it carries no generation.
+- An operation that takes a node refuses one from another session with `ValueError`, and one of a parse generation that is no longer live with `StaleTreeError` — on the hook door too, where the core does the check and no read answers `None` for a refusal; a raw address is refused with `TypeError` instead, because it carries no generation.
 - Every node a call takes must carry the same generation, so an operation mixing two trees is refused rather than silently acting on whichever node was admitted last.
 - Every named category the shared contracts define is an integer enum.
 

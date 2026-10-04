@@ -82,6 +82,36 @@ func reduction(_ unsafe.Pointer) {}
 //export reduction_Key
 func reduction_Key(_ unsafe.Pointer) {}
 
+// probeStaleReads reads a node of an earlier parse through the hook door
+// with every capability, returning each call's error.
+func probeStaleReads(door galley.HookDoor, node galley.Node) []error {
+	var errs []error
+	_, err := door.ChildCount(node)
+	errs = append(errs, err)
+	_, _, err = door.FirstChild(node)
+	errs = append(errs, err)
+	_, _, err = door.LastChild(node)
+	errs = append(errs, err)
+	_, _, err = door.NextSibling(node)
+	errs = append(errs, err)
+	_, _, err = door.PriorSibling(node)
+	errs = append(errs, err)
+	_, _, err = door.Parent(node)
+	errs = append(errs, err)
+	_, err = door.SymbolName(node)
+	errs = append(errs, err)
+	_, err = door.Text(node)
+	errs = append(errs, err)
+	_, _, err = door.Span(node)
+	errs = append(errs, err)
+	_, _, err = door.LineColumn(node)
+	errs = append(errs, err)
+	_, err = door.Children(node)
+	errs = append(errs, err)
+	_, _, err = door.Walk(node, false).Next()
+	return append(errs, err)
+}
+
 //export reduction_PairList
 func reduction_PairList(_ unsafe.Pointer) {}
 
@@ -104,8 +134,8 @@ func reduction_PairListTail(ptr unsafe.Pointer) {
 func hook_print(ptr unsafe.Pointer) {
 	args := galley.Args(ptr)
 	door := args.Door()
-	node, ok := args.CurrentNode()
-	if !ok {
+	node, ok, err := args.CurrentNode()
+	if err != nil || !ok {
 		return
 	}
 	line, column := posOf(door, node)
@@ -116,8 +146,8 @@ func hook_print(ptr unsafe.Pointer) {
 func reduction_Number(ptr unsafe.Pointer) {
 	args := galley.Args(ptr)
 	door := args.Door()
-	node, ok := args.CurrentNode()
-	if !ok {
+	node, ok, err := args.CurrentNode()
+	if err != nil || !ok {
 		return
 	}
 	line, column := posOf(door, node)
@@ -150,6 +180,12 @@ var (
 	// root through the session door mid-parse, which the core refuses.
 	sessionProbe *galley.Session
 	hookRootErr  error
+	// previousDocument is the Document node of the parse before, kept
+	// across parses by door_test.go's stale test; staleReads records what
+	// every hook-door read of it answered during the next parse.
+	previousDocument galley.Node
+	previousSeen     bool
+	staleReads       []error
 )
 
 func resetDoorRecording() {
@@ -160,14 +196,19 @@ func resetDoorRecording() {
 	hookWalkErr = nil
 	sessionProbe = nil
 	hookRootErr = nil
+	staleReads = nil
+	previousSeen = false
+	keptWalker, keptDoor, keptNode = nil, galley.HookDoor{}, galley.Node{}
+	keptInHookWalkErr, keptInHookCountErr = nil, nil
+	siblingParseErr, doorAfterSiblingErr = nil, nil
 }
 
 //export reduction_Pair
 func reduction_Pair(ptr unsafe.Pointer) {
 	args := galley.Args(ptr)
 	door := args.Door()
-	node, ok := args.CurrentNode()
-	if !ok {
+	node, ok, err := args.CurrentNode()
+	if err != nil || !ok {
 		return
 	}
 	line, column := posOf(door, node)
@@ -192,18 +233,37 @@ func reduction_Pair(ptr unsafe.Pointer) {
 func reduction_Document(ptr unsafe.Pointer) {
 	args := galley.Args(ptr)
 	door := args.Door()
-	node, ok := args.CurrentNode()
-	if !ok {
+	node, ok, err := args.CurrentNode()
+	if err != nil || !ok {
 		return
 	}
 	if sessionProbe != nil {
 		_, _, hookRootErr = sessionProbe.RootNode()
 	}
+	if previousSeen {
+		staleReads = probeStaleReads(door, previousDocument)
+	}
+	previousDocument, previousSeen = node, true
 	count, total := countPairs(door, node)
 	emit(fmt.Sprintf("Document %d pairs, sum=%d\n", count, total))
 	if firstPairSeen {
 		laterHookSharesDoor = firstPairDoor == door
 		laterHookChildCount = childCountOf(firstPairDoor, firstPairNode)
+	}
+	// door_test.go's kept door: the door and a walker made from it, kept past
+	// the parse. Inside this hook, both still work.
+	// The kept walker is not stepped here: its first step is the first call
+	// after the parse, the one a door that read the dead parse would answer.
+	keptWalker, keptDoor, keptNode = door.Walk(node, false), door, node
+	_, _, keptInHookWalkErr = door.Walk(node, false).Next()
+	_, keptInHookCountErr = keptDoor.ChildCount(node)
+	// door_test.go's sibling parse: another session parses to the end inside
+	// this hook, and this parse's door must still work afterwards. The
+	// sibling is cleared first, so its own hooks do not parse again.
+	if sibling := siblingSession; sibling != nil {
+		siblingSession = nil
+		_, siblingParseErr = sibling.Parse([]byte("omega:7"))
+		_, doorAfterSiblingErr = door.ChildCount(node)
 	}
 	// walk_test.go's hook walk: over this parse's in-flight tree, stepped
 	// through the parse's own door.
@@ -220,3 +280,21 @@ func reduction_Document(ptr unsafe.Pointer) {
 		hookWalkVisits = append(hookWalkVisits, step)
 	}
 }
+
+// A door and a walker a hook keeps (door_test.go), with the errors their calls
+// answered inside that hook.
+var (
+	keptWalker         *galley.Walker
+	keptDoor           galley.HookDoor
+	keptNode           galley.Node
+	keptInHookWalkErr  error
+	keptInHookCountErr error
+)
+
+// door_test.go's sibling parse: the session parsed inside a hook, and what
+// that parse and this parse's door answered afterwards.
+var (
+	siblingSession      *galley.Session
+	siblingParseErr     error
+	doorAfterSiblingErr error
+)

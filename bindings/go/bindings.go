@@ -11,3 +11,10 @@ import _ "embed"
 //
 //go:embed assets/wrapper.go.tmpl
 var WrapperTemplate string
+
+// WrapperPreamble is the C the generated cgo preamble carries after the
+// includes: one dispatch function per node capability, so the choice between
+// the session family and its hook twin is written once.
+//
+//go:embed assets/dispatch.h
+var WrapperPreamble string

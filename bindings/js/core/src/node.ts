@@ -3,38 +3,32 @@ import type { Status } from "./constants.ts";
 import { decodeUtf8 } from "./text.ts";
 
 /**
- * One of the two doors over node storage, as the address-level crossing a
- * `Session` call makes: the session door (`galley_node_*`, refused by the
- * core while a parse runs) or the hook door of one hook dispatch
- * (`galley_hook_*` over the parse's native door). The session picks the door
- * per call; a `Node` stores neither.
+ * A door over node storage, as the address-level crossing a `Session` call
+ * makes: the session door (`galley_node_*`, refused by the core while a
+ * parse runs) or the hook door of the running parse (`galley_hook_*` over
+ * its native door). The two differ only in the handle they are opened on:
+ * one implementation serves both, and the core checks the generation inside
+ * every call on either. The session picks the door per call; a `Node`
+ * stores neither.
  * @internal
  */
 export interface NodeDoor {
-  /**
-   * The generation of the running parse on the hook door, which takes no
-   * generation of its own and so has the session check a node against it;
-   * null on the session door, where every crossing hands the core the
-   * node's own generation and the core owns the comparison.
-   */
-  readonly parseGeneration: number | null;
   /*
    * Every crossing takes the generation of the tree its node belongs to,
-   * right before the address, as the core's session door does. The hook
-   * door ignores it: its node was already admitted against `parseGeneration`.
+   * right before the address. A refusal throws; nothing answers null.
    */
-  /** Direct child count, or a status when the core refuses. */
-  childCount(generation: number, address: bigint): number | Status;
+  /** Direct child count; a refusal throws. */
+  childCount(generation: number, address: bigint): number;
   /** One link, or {@link INVALID_NODE} when it does not exist. */
   firstChild(generation: number, address: bigint): bigint;
   lastChild(generation: number, address: bigint): bigint;
   nextSibling(generation: number, address: bigint): bigint;
   priorSibling(generation: number, address: bigint): bigint;
   parent(generation: number, address: bigint): bigint;
-  text(generation: number, address: bigint): Uint8Array | null;
-  symbolNameBytes(generation: number, address: bigint): Uint8Array | null;
-  span(generation: number, address: bigint): [bigint, bigint] | null;
-  lineColumn(generation: number, address: bigint): [number, number] | null;
+  text(generation: number, address: bigint): Uint8Array;
+  symbolNameBytes(generation: number, address: bigint): Uint8Array;
+  span(generation: number, address: bigint): [bigint, bigint];
+  lineColumn(generation: number, address: bigint): [number, number];
   /** The raw variable index, or null when the node has no variable. */
   variableIndex(generation: number, address: bigint): number | null;
   /**
@@ -72,9 +66,9 @@ const NODE_CONSTRUCTION_TOKEN: symbol = Symbol("galley.Node.construction");
  * when the call is made (the parse's hook door from inside a hook of its
  * running parse, the post-parse door everywhere else) and gates it: a
  * closed session throws `SessionClosedError`, and a generation that is gone
- * throws `StaleTreeError` — the core owns that check on the post-parse
- * door, so this handle carries the generation every read hands back and the
- * session keeps no cached copy of it. Nodes handed out by the hooks of a
+ * throws `StaleTreeError` — the core owns that check on both doors, so
+ * this handle carries the generation every read hands back and the session
+ * keeps no cached copy of it. Nodes handed out by the hooks of a
  * parse that publishes its tree stay valid until the session parses again;
  * nodes of a failed parse are gone.
  *
@@ -147,30 +141,28 @@ export class Node {
     return this.#session.children(this);
   }
 
-  /** Text bytes of this node, or null for invalid node. */
-  text(): Uint8Array | null {
+  /** Text bytes of this node. A refused node throws. */
+  text(): Uint8Array {
     return this.#session.text(this);
   }
 
-  /** Symbol name bytes as string, or null for invalid node. Terminal-only nodes → "". */
-  symbolName(): string | null {
-    const bytes = this.symbolNameBytes();
-    if (bytes === null) return null;
-    return decodeUtf8(bytes);
+  /** Symbol name as a string; terminal-only nodes → "". A refused node throws. */
+  symbolName(): string {
+    return decodeUtf8(this.symbolNameBytes());
   }
 
-  /** Raw symbol name bytes (Uint8Array) or null. */
-  symbolNameBytes(): Uint8Array | null {
+  /** Raw symbol name bytes (Uint8Array). A refused node throws. */
+  symbolNameBytes(): Uint8Array {
     return this.#session.symbolNameBytes(this);
   }
 
-  /** (start, length) byte span, or null. */
-  span(): [bigint, bigint] | null {
+  /** (start, length) byte span. A refused node throws. */
+  span(): [bigint, bigint] {
     return this.#session.span(this);
   }
 
-  /** 1-based (line, column) of first byte, or null. */
-  lineColumn(): [number, number] | null {
+  /** 1-based (line, column) of first byte. A refused node throws. */
+  lineColumn(): [number, number] {
     return this.#session.lineColumn(this);
   }
 

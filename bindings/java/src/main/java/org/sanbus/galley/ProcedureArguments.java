@@ -24,13 +24,16 @@ public final class ProcedureArguments {
     private final Session session;
     /** The running parse's hook door for this dispatch, or null when its generation could not be read. */
     private final NodeDoor door;
+    /** The running parse's core generation: the stamp of the nodes this hook produces, never compared. */
+    private final long generation;
     private boolean expired;
 
-    ProcedureArguments(MemorySegment argsSegment, GalleyLibrary lib, Session session, NodeDoor door) {
+    ProcedureArguments(MemorySegment argsSegment, GalleyLibrary lib, Session session, NodeDoor door, long generation) {
         this.argsSegment = argsSegment;
         this.lib = lib;
         this.session = session;
         this.door = door;
+        this.generation = generation;
     }
 
     /** Dispatcher hook: the native arguments no longer exist past this call. */
@@ -63,12 +66,18 @@ public final class ProcedureArguments {
     public Node currentNode() {
         long address = lib.galley_procedure_current_node(live());
         if (address == Galley.INVALID_NODE) return null;
-        return new Node(session, address, requireDoor().generation());
+        requireDoor();
+        return new Node(session, address, generation);
     }
 
     public void setCurrentNode(Node node) {
         MemorySegment args = live();
-        lib.galley_procedure_set_current_node(args, node == null ? Galley.INVALID_NODE : session.address(node, requireDoor()));
+        if (node == null) {
+            succeeded(lib.galley_procedure_set_current_node(args, 0, Galley.INVALID_NODE));
+            return;
+        }
+        long address = session.address(node);
+        succeeded(lib.galley_procedure_set_current_node(args, node.generation(), address));
     }
 
     public long dropSelf() {

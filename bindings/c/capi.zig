@@ -10,10 +10,11 @@
 //! Sessions own their IO backend and allocator (the C allocator) and are not
 //! thread-safe: use one session per thread, or guard it externally. Node
 //! addresses, text pointers, and diagnostics remain valid until the next
-//! parse on the same session or session destruction. Every session-door call
-//! that reads or edits nodes carries the parse generation it addresses
-//! (`galley_root_node` reports the published one), and one gate refuses a
-//! generation that is not live, so a node of a dead parse is never read.
+//! parse on the same session or session destruction. Every call that reads or
+//! edits nodes, on either door, carries the parse generation it addresses
+//! (`galley_root_node` and `galley_hook_generation` report it), and one gate
+//! refuses a generation that is not live, so a node of a dead parse is never
+//! read.
 //!
 //! Scope notes: semantic payloads are unavailable, procedure hooks and
 //! error-message hooks are compiled into the library from the consumer's
@@ -268,12 +269,12 @@ const Embedded = struct {
 // Every node, tree, and diagnostic operation has exactly one core that both
 // export families call. The parse-time door (`hookDoor`) is the live
 // context of one parse, handed out by `galley_procedure_door`: no lock, no
-// session, no generation check — unshared by construction and valid until
-// that parse ends, across every hook of it. Per-hook state (current node,
-// rule, drop/replace channel) stays on the arguments, which die with their
-// hook. The post-parse door (`sessionDoor`) resolves session state of the
-// last successful parse; the caller must hold the matching guard first, and
-// the door itself locks nothing.
+// session — unshared by construction and valid until that parse ends, across
+// every hook of it. Per-hook state (current node, rule, drop/replace
+// channel) stays on the arguments, which die with their hook. The post-parse
+// door (`sessionDoor`) resolves session state of the last successful parse
+// under the matching guard. Calls that read or edit nodes enter either door
+// through `gate`, which compares the caller's generation once.
 // ---------------------------------------------------------------------------
 
 const Door = struct {
@@ -349,8 +350,20 @@ fn sessionDoor(embedded: *Embedded) Door {
     };
 }
 
+/// Which door a call enters through: the session (post-parse; guard first)
+/// or one parse's hook door (live; unshared by construction).
+const DoorKind = enum { session, hook };
+
+/// What a call is opened on: the session handle or the parse's hook door.
+fn DoorHandle(comptime kind: DoorKind) type {
+    return switch (kind) {
+        .session => ?*GalleySession,
+        .hook => ?*anyopaque,
+    };
+}
+
 /// Which guard a session-door call needs: a node read takes the shared
-/// door, a tree edit the exclusive one.
+/// door, a tree edit the exclusive one. The hook door takes none.
 const Tier = enum { read, edit };
 
 fn guardType(comptime tier: Tier) type {
@@ -360,34 +373,62 @@ fn guardType(comptime tier: Tier) type {
     };
 }
 
-/// The gate's failure set: a session error, plus `StaleTree` for the two
-/// ways the tree a call addresses can be gone.
-const GateError = root.SessionError || error{StaleTree};
+/// A call's way in: the door plus the guard that keeps it stable, released
+/// by `deinit`. The hook door's guard is empty.
+fn Entry(comptime kind: DoorKind, comptime tier: Tier) type {
+    return struct {
+        door: Door,
+        guard: switch (kind) {
+            .session => guardType(tier),
+            .hook => void,
+        },
 
-/// The single generation gate of the post-parse door: the one place the
-/// core compares a caller's generation against the session's live tree.
-/// `readCurrent` / `editCurrent` already refuse a session a parse holds and a
-/// published result no longer live; on top of that, every call that reads or
-/// edits nodes passes the generation its tree carries, so an address from a
-/// dead parse is refused here instead of aliasing whichever node holds that
-/// index in the current storage. A missing published result and a mismatch
-/// are one failure — the tree the caller addressed is gone — reported as
-/// `galley_error_stale_tree`.
+        fn deinit(self: *@This()) void {
+            if (comptime kind == .session) self.guard.deinit();
+        }
+    };
+}
+
+/// The gate's failure set: a session error, plus `StaleTree` for the two
+/// ways the tree a call addresses can be gone, plus `NullArgument` for a
+/// null session or hook door.
+const GateError = root.SessionError || error{ StaleTree, NullArgument };
+
+/// The single generation gate: the one place the core compares a caller's
+/// generation against the tree a door serves, for both doors. The session
+/// door's tree is the published one (`readCurrent` / `editCurrent` already
+/// refuse a session a parse holds and a published result no longer live);
+/// the hook door's is the parse that owns the door. A missing published
+/// result and a mismatch are one failure — the tree the caller addressed is
+/// gone — reported as `galley_error_stale_tree`, so an address from a dead
+/// parse is refused here instead of aliasing whichever node holds that index
+/// in the current storage. Generation 0 is never live.
 ///
 /// This runs in every build: it is the lifetime contract memory-safe hosts
 /// rely on, not a misuse check, and it costs one integer comparison on a
 /// path the parser never takes.
-fn gate(comptime tier: Tier, embedded: *Embedded, generation: u64) GateError!guardType(tier) {
-    var guard: guardType(tier) = switch (tier) {
-        .read => embedded.session.readCurrent() catch |err| return gateStatusError(err),
-        .edit => embedded.session.editCurrent() catch |err| return gateStatusError(err),
+fn gate(comptime kind: DoorKind, comptime tier: Tier, handle: DoorHandle(kind), generation: u64) GateError!Entry(kind, tier) {
+    var entry: Entry(kind, tier) = undefined;
+    const live: u64 = switch (kind) {
+        .session => live: {
+            const embedded: *Embedded = @ptrCast(@alignCast(handle orelse return error.NullArgument));
+            entry.guard = switch (tier) {
+                .read => embedded.session.readCurrent() catch |err| return gateStatusError(err),
+                .edit => embedded.session.editCurrent() catch |err| return gateStatusError(err),
+            };
+            entry.door = sessionDoor(embedded);
+            break :live entry.guard.generation();
+        },
+        .hook => live: {
+            entry.door = hookDoor(handle) orelse return error.NullArgument;
+            break :live entry.door.input.context.generation;
+        },
     };
-    errdefer guard.deinit();
-    // Both tiers validated the published result against the session's own
-    // generation, and both guards report it, so this is the live tree's
-    // generation whichever door ran.
-    if (guard.generation() != generation) return error.StaleTree;
-    return guard;
+    if (live != generation) {
+        entry.deinit();
+        return error.StaleTree;
+    }
+    return entry;
 }
 
 /// Folds "no published result" and "the published result went stale" into
@@ -398,6 +439,74 @@ fn gateStatusError(err: root.SessionError) GateError {
         error.StaleParseResult, error.NoParseResult => error.StaleTree,
         else => err,
     };
+}
+
+/// The value shape behind the node count, the five links and the variable
+/// index, on either door: the gate, then a core that answers null for an
+/// address outside the live storage (`galley_error_invalid_node`). The value
+/// is non-negative, so it shares its return with the negative statuses; a
+/// link that does not exist is `GALLEY_INVALID_NODE`, a real answer.
+fn nodeValue(
+    comptime kind: DoorKind,
+    handle: DoorHandle(kind),
+    generation: u64,
+    address: GalleyNodeAddress,
+    comptime core: anytype,
+    extra: anytype,
+) i64 {
+    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
+    var entry = gate(kind, .read, handle, generation) catch |err| return statusForError(err);
+    defer entry.deinit();
+    const value = @call(.auto, core, .{ &entry.door, address } ++ extra) orelse return galley_error_invalid_node;
+    return @intCast(value);
+}
+
+/// The read shape behind the byte reads (symbol name, text), the pair reads
+/// (span, line and column) and the snapshot, on either door. In order: the
+/// answer of a build without AST construction (`no_ast`), the out-parameters
+/// the call requires (`required`: indexes into `arguments`, null is
+/// `galley_error_null_argument`), the gate, then a core that takes the door
+/// and `arguments` (the address and the out-parameters, or the snapshot's
+/// columns) and returns a status or count. Argument errors come before the
+/// gate, so a stale or contended call with a null output still reports the
+/// null.
+fn nodeRead(
+    comptime kind: DoorKind,
+    handle: DoorHandle(kind),
+    generation: u64,
+    comptime no_ast: i64,
+    comptime required: []const usize,
+    comptime core: anytype,
+    arguments: anytype,
+) i64 {
+    if (comptime !parser.is_ast_enabled) return no_ast;
+    inline for (required) |index| {
+        if (arguments[index] == null) return galley_error_null_argument;
+    }
+    var entry = gate(kind, .read, handle, generation) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return @call(.auto, core, .{&entry.door} ++ arguments);
+}
+
+/// The edit shape behind every `galley_tree_*` / `galley_hook_tree_*` call:
+/// the build without AST construction (`galley_error_internal`), the required
+/// out-parameters, the gate (the exclusive tier on the session door), then
+/// the edit core over `arguments`.
+fn treeEdit(
+    comptime kind: DoorKind,
+    handle: DoorHandle(kind),
+    generation: u64,
+    comptime required: []const usize,
+    comptime core: anytype,
+    arguments: anytype,
+) i64 {
+    if (comptime !parser.is_ast_enabled) return galley_error_internal;
+    inline for (required) |index| {
+        if (arguments[index] == null) return galley_error_null_argument;
+    }
+    var entry = gate(kind, .edit, handle, generation) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return @call(.auto, core, .{&entry.door} ++ arguments);
 }
 
 // --- node reads ----------------------------------------------------------
@@ -439,7 +548,6 @@ fn nodeSymbolNameCore(
     out_len: ?*usize,
 ) i64 {
     if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
-    if (out_data == null or out_len == null) return galley_error_null_argument;
     const node = door.nodeAt(address) orelse return galley_error_invalid_node;
     if (node.variable == root.data_structures.Node.invalid_variable) {
         out_data.?.* = @ptrCast("");
@@ -459,7 +567,6 @@ fn nodeTextCore(
     out_len: ?*usize,
 ) i64 {
     if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
-    if (out_data == null or out_len == null) return galley_error_null_argument;
     const node = door.nodeAt(address) orelse return galley_error_invalid_node;
     const slice = door.nodeText(node) orelse return galley_error_internal;
     out_data.?.* = slice.ptr;
@@ -474,7 +581,6 @@ fn nodeSpanCore(
     out_len: ?*u64,
 ) i64 {
     if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
-    if (out_start == null or out_len == null) return galley_error_null_argument;
     const node = door.nodeAt(address) orelse return galley_error_invalid_node;
     out_start.?.* = node.text_start;
     out_len.?.* = node.text_length;
@@ -490,7 +596,6 @@ fn nodeLineColumnCore(
     out_column: ?*u32,
 ) i64 {
     if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
-    if (out_line == null or out_column == null) return galley_error_null_argument;
     const node = door.nodeAt(address) orelse return galley_error_invalid_node;
     const input = door.inputBytes();
     if (node.text_start > input.len) return galley_error_internal;
@@ -560,7 +665,6 @@ fn treeInsertAfterCore(door: *const Door, target: GalleyNodeAddress, first_node:
 
 fn treeRemoveSiblingsCore(door: *const Door, node: GalleyNodeAddress, count: usize, out_head: ?*GalleyNodeAddress) i64 {
     if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    if (out_head == null) return galley_error_null_argument;
     const node_ptr = door.livePointer(node) orelse return galley_error_invalid_node;
     // Host-supplied counts must never read out of bounds: this range check runs in every build.
     if (root.data_structures.Node.removalFault(door.node_allocator, node_ptr, null, count) != null) return galley_error_invalid_node;
@@ -575,7 +679,6 @@ fn treeRemoveSiblingsCore(door: *const Door, node: GalleyNodeAddress, count: usi
 
 fn treeCleanChildrenCore(door: *const Door, node: GalleyNodeAddress, out_head: ?*GalleyNodeAddress) i64 {
     if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    if (out_head == null) return galley_error_null_argument;
     const node_ptr = door.livePointer(node) orelse return galley_error_invalid_node;
     const head = root.data_structures.Node.cleanChildren(node_ptr, door.node_allocator);
     if (head == root.data_structures.Node.invalid_pointer) {
@@ -609,7 +712,6 @@ fn treeRemoveChildrenAtCore(
     out_head: ?*GalleyNodeAddress,
 ) i64 {
     if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    if (out_head == null) return galley_error_null_argument;
     const parent_ptr = door.livePointer(parent) orelse return galley_error_invalid_node;
     // Host-supplied indexes and counts must never read out of bounds: this range check runs in every build.
     if (root.data_structures.Node.removalFault(door.node_allocator, parent_ptr, index, count) != null) return galley_error_invalid_node;
@@ -980,6 +1082,7 @@ fn statusForError(err: anyerror) i64 {
         // A walk cursor or session-door call whose tree is gone (reparsed,
         // failed, or never published).
         error.StaleTree => galley_error_stale_tree,
+        error.NullArgument => galley_error_null_argument,
         // A cursor that cannot be trusted (unknown state or option bits,
         // root/current outside the node storage) or a walk position that
         // left the walked subtree: either way there is no live node to step
@@ -1048,6 +1151,10 @@ export fn galley_parse(session_ptr: ?*GalleySession, data: ?[*]const u8, len: us
     return finishParse(embedded, &lease, embedded.session.owned_input orelse bytes);
 }
 
+fn nodeCountCore(door: *const Door) i64 {
+    return @intCast(door.node_allocator.counter);
+}
+
 /// Returns the number of AST nodes allocated by the published parse (0 for a
 /// parser built without AST construction), or a negative status.
 /// `generation` must be the generation `galley_root_node` reported for that
@@ -1057,11 +1164,7 @@ export fn galley_node_count(
     session_ptr: ?*GalleySession,
     generation: u64,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return 0;
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    var guard = gate(.read, embedded, generation) catch |err| return statusForError(err);
-    defer guard.deinit();
-    return @intCast(embedded.session.node_allocator.counter);
+    return nodeRead(.session, session_ptr, generation, 0, &.{}, nodeCountCore, .{});
 }
 
 /// Writes the root node of the published tree and the parse generation every
@@ -1103,92 +1206,87 @@ export fn galley_node_child_count(
     generation: u64,
     address: GalleyNodeAddress,
 ) i64 {
-    return sessionNodeValue(session_ptr, generation, address, nodeChildCountCore, .{});
+    return nodeValue(.session, session_ptr, generation, address, nodeChildCountCore, .{});
 }
 
-/// Hook-time door: `galley_node_child_count` over the live parse's node
-/// storage, reached through the parse's hook door. No lock; valid until the
-/// parse that produced the door ends.
-export fn galley_hook_node_child_count(hook_door: ?*anyopaque, address: GalleyNodeAddress) u32 {
-    const door = hookDoor(hook_door) orelse return 0;
-    return nodeChildCountCore(&door, address) orelse 0;
+/// Hook-time twin of `galley_node_child_count`: same returns, same refusals,
+/// over the parse that handed out `hook_door`.
+export fn galley_hook_node_child_count(
+    hook_door: ?*anyopaque,
+    generation: u64,
+    address: GalleyNodeAddress,
+) i64 {
+    return nodeValue(.hook, hook_door, generation, address, nodeChildCountCore, .{});
 }
 
 /// Returns the first child's address, or `GALLEY_INVALID_NODE` when the link
-/// does not exist — a leaf really has no first child. A link that does not
-/// exist is a non-negative answer; an address outside the live tree's storage
-/// is `galley_error_invalid_node`, and a `generation` from another parse is
-/// `galley_error_stale_tree` (negative statuses).
+/// does not exist — a leaf really has no first child.
+/// A link that does not exist is a non-negative answer; an address
+/// outside the live tree's storage is `galley_error_invalid_node`, and a
+/// `generation` from another parse is `galley_error_stale_tree` (negative
+/// statuses).
 export fn galley_node_first_child(
     session_ptr: ?*GalleySession,
     generation: u64,
     address: GalleyNodeAddress,
 ) i64 {
-    return sessionNodeValue(session_ptr, generation, address, nodeLinkCore, .{NodeLink.first_child});
+    return nodeValue(.session, session_ptr, generation, address, nodeLinkCore, .{NodeLink.first_child});
 }
 
-/// The one session-door shape behind the node count, the five links and the
-/// variable index: the gate, then a core that answers null for an address
-/// outside the live tree's storage (`galley_error_invalid_node`). The value
-/// is non-negative, so it shares its return with the negative statuses; a
-/// link that does not exist is `GALLEY_INVALID_NODE`, a real answer.
-fn sessionNodeValue(
-    session_ptr: ?*GalleySession,
+/// Hook-time twin of `galley_node_first_child`: same returns, same refusals, over the
+/// parse that handed out `hook_door`.
+export fn galley_hook_node_first_child(
+    hook_door: ?*anyopaque,
     generation: u64,
     address: GalleyNodeAddress,
-    comptime core: anytype,
-    extra: anytype,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    var guard = gate(.read, embedded, generation) catch |err| return statusForError(err);
-    defer guard.deinit();
-    const value = @call(.auto, core, .{ &sessionDoor(embedded), address } ++ extra) orelse return galley_error_invalid_node;
-    return @intCast(value);
+    return nodeValue(.hook, hook_door, generation, address, nodeLinkCore, .{NodeLink.first_child});
 }
 
-/// Hook-time door: `galley_node_first_child` over the live parse's node
-/// storage, reached through the parse's hook door. No lock; valid until the
-/// parse that produced the door ends.
-export fn galley_hook_node_first_child(hook_door: ?*anyopaque, address: GalleyNodeAddress) GalleyNodeAddress {
-    const door = hookDoor(hook_door) orelse return galley_invalid_node;
-    return nodeLinkCore(&door, address, .first_child) orelse galley_invalid_node;
-}
-
-/// Returns the next sibling's address, or `GALLEY_INVALID_NODE` when there is
-/// none. Same contract as
-/// `galley_node_first_child`.
+/// Returns the next sibling's address, or `GALLEY_INVALID_NODE` when there is none.
+/// A link that does not exist is a non-negative answer; an address
+/// outside the live tree's storage is `galley_error_invalid_node`, and a
+/// `generation` from another parse is `galley_error_stale_tree` (negative
+/// statuses).
 export fn galley_node_next_sibling(
     session_ptr: ?*GalleySession,
     generation: u64,
     address: GalleyNodeAddress,
 ) i64 {
-    return sessionNodeValue(session_ptr, generation, address, nodeLinkCore, .{NodeLink.next});
+    return nodeValue(.session, session_ptr, generation, address, nodeLinkCore, .{NodeLink.next});
 }
 
-/// Hook-time door: `galley_node_next_sibling` over the live parse's node
-/// storage, reached through the parse's hook door. No lock; valid until the
-/// parse that produced the door ends.
-export fn galley_hook_node_next_sibling(hook_door: ?*anyopaque, address: GalleyNodeAddress) GalleyNodeAddress {
-    const door = hookDoor(hook_door) orelse return galley_invalid_node;
-    return nodeLinkCore(&door, address, .next) orelse galley_invalid_node;
+/// Hook-time twin of `galley_node_next_sibling`: same returns, same refusals, over the
+/// parse that handed out `hook_door`.
+export fn galley_hook_node_next_sibling(
+    hook_door: ?*anyopaque,
+    generation: u64,
+    address: GalleyNodeAddress,
+) i64 {
+    return nodeValue(.hook, hook_door, generation, address, nodeLinkCore, .{NodeLink.next});
 }
 
-/// Returns the parent's address, or `GALLEY_INVALID_NODE` for the root. Same contract as `galley_node_first_child`.
+/// Returns the parent's address, or `GALLEY_INVALID_NODE` for the root.
+/// A link that does not exist is a non-negative answer; an address
+/// outside the live tree's storage is `galley_error_invalid_node`, and a
+/// `generation` from another parse is `galley_error_stale_tree` (negative
+/// statuses).
 export fn galley_node_parent(
     session_ptr: ?*GalleySession,
     generation: u64,
     address: GalleyNodeAddress,
 ) i64 {
-    return sessionNodeValue(session_ptr, generation, address, nodeLinkCore, .{NodeLink.parent});
+    return nodeValue(.session, session_ptr, generation, address, nodeLinkCore, .{NodeLink.parent});
 }
 
-/// Hook-time door: `galley_node_parent` over the live parse's node storage,
-/// reached through the parse's hook door. No lock; valid until the parse that
-/// produced the door ends.
-export fn galley_hook_node_parent(hook_door: ?*anyopaque, address: GalleyNodeAddress) GalleyNodeAddress {
-    const door = hookDoor(hook_door) orelse return galley_invalid_node;
-    return nodeLinkCore(&door, address, .parent) orelse galley_invalid_node;
+/// Hook-time twin of `galley_node_parent`: same returns, same refusals, over the
+/// parse that handed out `hook_door`.
+export fn galley_hook_node_parent(
+    hook_door: ?*anyopaque,
+    generation: u64,
+    address: GalleyNodeAddress,
+) i64 {
+    return nodeValue(.hook, hook_door, generation, address, nodeLinkCore, .{NodeLink.parent});
 }
 
 /// Writes the grammar symbol name of a node (for example `"ObjectMembers"`)
@@ -1203,27 +1301,19 @@ export fn galley_node_symbol_name(
     out_data: ?*[*]const u8,
     out_len: ?*usize,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    if (out_data == null or out_len == null) return galley_error_null_argument;
-    var guard = gate(.read, embedded, generation) catch |err| return statusForError(err);
-    defer guard.deinit();
-    return nodeSymbolNameCore(&sessionDoor(embedded), address, out_data, out_len);
+    return nodeRead(.session, session_ptr, generation, galley_error_invalid_node, &.{ 1, 2 }, nodeSymbolNameCore, .{ address, out_data, out_len });
 }
 
-/// Hook-time door: `galley_node_symbol_name` over the live parse, reached
-/// through the parse's hook door. No lock; valid until the parse that
-/// produced the door ends.
+/// Hook-time twin of `galley_node_symbol_name`: same out-parameters and refusals, over the
+/// parse that handed out `hook_door`.
 export fn galley_hook_node_symbol_name(
     hook_door: ?*anyopaque,
+    generation: u64,
     address: GalleyNodeAddress,
     out_data: ?*[*]const u8,
     out_len: ?*usize,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
-    if (out_data == null or out_len == null) return galley_error_null_argument;
-    return nodeSymbolNameCore(&door, address, out_data, out_len);
+    return nodeRead(.hook, hook_door, generation, galley_error_invalid_node, &.{ 1, 2 }, nodeSymbolNameCore, .{ address, out_data, out_len });
 }
 
 /// Writes the source text matched by a node into `out_data`/`out_len`. The
@@ -1238,27 +1328,21 @@ export fn galley_node_text(
     out_data: ?*[*]const u8,
     out_len: ?*usize,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    if (out_data == null or out_len == null) return galley_error_null_argument;
-    var guard = gate(.read, embedded, generation) catch |err| return statusForError(err);
-    defer guard.deinit();
-    return nodeTextCore(&sessionDoor(embedded), address, out_data, out_len);
+    return nodeRead(.session, session_ptr, generation, galley_error_invalid_node, &.{ 1, 2 }, nodeTextCore, .{ address, out_data, out_len });
 }
 
-/// Hook-time door: `galley_node_text` over the live parse's input, reached
-/// through the parse's hook door. The pointer references the in-flight
-/// parse's input buffer and is valid until the calling hook returns.
+/// Hook-time twin of `galley_node_text`: same out-parameters and refusals,
+/// over the parse that handed out `hook_door`. The pointer references the
+/// in-flight parse's input buffer and is valid until the calling hook
+/// returns.
 export fn galley_hook_node_text(
     hook_door: ?*anyopaque,
+    generation: u64,
     address: GalleyNodeAddress,
     out_data: ?*[*]const u8,
     out_len: ?*usize,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
-    if (out_data == null or out_len == null) return galley_error_null_argument;
-    return nodeTextCore(&door, address, out_data, out_len);
+    return nodeRead(.hook, hook_door, generation, galley_error_invalid_node, &.{ 1, 2 }, nodeTextCore, .{ address, out_data, out_len });
 }
 
 /// Writes the retained input of the most recent successful parse into
@@ -1296,18 +1380,21 @@ export fn galley_hook_last_input(
 /// `galley_walk_next` for the field contract.
 pub const GalleyWalkCursor = root.data_structures.tree_walker.Cursor;
 
-/// The hook door for a walk step, next to the session door's `gate`: the
-/// parse that handed out the door is the only tree the step may walk, so a
-/// cursor stamped with any other generation is stale — the tree it addresses
-/// is not this parse's — and reports null, surfaced as
-/// `galley_error_stale_tree`, before any link is read. The `hookDoor` unwrap
-/// cannot fail here: the caller already held the context.
-fn doorForHookGeneration(
-    context: *root.data_structures.Context,
-    expected_generation: u64,
-) ?Door {
-    if (context.generation != expected_generation) return null;
-    return hookDoor(context);
+/// The walk-step shape behind both doors: the finished-walk shortcut, then
+/// the gate on the cursor's generation, then one step over the door's node
+/// storage.
+fn walkNext(comptime kind: DoorKind, handle: DoorHandle(kind), cursor_ptr: ?*GalleyWalkCursor) i64 {
+    const cursor = cursor_ptr orelse return galley_error_null_argument;
+    // A finished walker stays finished: done reports 0 before any session
+    // or generation check, so hosts see the end of the walk rather than a
+    // stale or closed-session error.
+    if (cursor.state == tree_walker.state_done) return 0;
+    if (handle == null) return galley_error_null_argument;
+    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
+    var entry = gate(kind, .read, handle, cursor.generation) catch |err| return statusForError(err);
+    defer entry.deinit();
+    const yielded = tree_walker.walkNext(entry.door.node_allocator, cursor) catch |err| return statusForError(err);
+    return if (yielded) 1 else 0;
 }
 
 /// Advances `cursor` to the next node of its subtree in pre-order, writing
@@ -1340,35 +1427,16 @@ fn doorForHookGeneration(
 /// inside the walk's root (removed, or moved elsewhere) raises invalid
 /// node.
 export fn galley_walk_next(session_ptr: ?*GalleySession, cursor_ptr: ?*GalleyWalkCursor) i64 {
-    const cursor = cursor_ptr orelse return galley_error_null_argument;
-    // A finished walker stays finished: done reports 0 before any session
-    // or generation check, so hosts see the end of the walk rather than a
-    // stale or closed-session error.
-    if (cursor.state == tree_walker.state_done) return 0;
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
-    var guard = gate(.read, embedded, cursor.generation) catch |err| return statusForError(err);
-    defer guard.deinit();
-    const yielded = tree_walker.walkNext(sessionDoor(embedded).node_allocator, cursor) catch |err| return statusForError(err);
-    return if (yielded) 1 else 0;
+    return walkNext(.session, session_ptr, cursor_ptr);
 }
 
-/// Hook-time twin of `galley_walk_next`: steps `cursor` over the in-flight
-/// parse's tree, reached through the parse's hook door. No lock; the door is
-/// valid until the calling hook returns. Returns the same statuses as
-/// `galley_walk_next`, with `galley_error_stale_tree` when the cursor's
-/// `generation` is not this parse's (read it once with
-/// `galley_hook_generation` when the walk starts).
+/// Hook-time twin of `galley_walk_next`: steps `cursor` over the tree of the
+/// parse that handed out `hook_door`, with the same statuses. The cursor's
+/// `generation` is checked against that parse's (read it once with
+/// `galley_hook_generation` when the walk starts); a cursor of another
+/// generation is `galley_error_stale_tree`.
 export fn galley_hook_walk_next(hook_door: ?*anyopaque, cursor_ptr: ?*GalleyWalkCursor) i64 {
-    const cursor = cursor_ptr orelse return galley_error_null_argument;
-    // A finished walker stays finished, before any door or generation
-    // check — see `galley_walk_next`.
-    if (cursor.state == tree_walker.state_done) return 0;
-    const context: *root.data_structures.Context = @ptrCast(@alignCast(hook_door orelse return galley_error_null_argument));
-    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
-    const door = doorForHookGeneration(context, cursor.generation) orelse return galley_error_stale_tree;
-    const yielded = tree_walker.walkNext(door.node_allocator, cursor) catch |err| return statusForError(err);
-    return if (yielded) 1 else 0;
+    return walkNext(.hook, hook_door, cursor_ptr);
 }
 
 /// Returns nonzero when the previous parse produced a diagnostic. Refuses
@@ -1819,27 +1887,19 @@ export fn galley_node_line_column(
     out_line: ?*u32,
     out_column: ?*u32,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    if (out_line == null or out_column == null) return galley_error_null_argument;
-    var guard = gate(.read, embedded, generation) catch |err| return statusForError(err);
-    defer guard.deinit();
-    return nodeLineColumnCore(&sessionDoor(embedded), address, out_line, out_column);
+    return nodeRead(.session, session_ptr, generation, galley_error_invalid_node, &.{ 1, 2 }, nodeLineColumnCore, .{ address, out_line, out_column });
 }
 
-/// Hook-time door: `galley_node_line_column` over the live parse's input,
-/// reached through the parse's hook door. No lock; valid until the parse that
-/// produced the door ends.
+/// Hook-time twin of `galley_node_line_column`: same out-parameters and refusals, over the
+/// parse that handed out `hook_door`.
 export fn galley_hook_node_line_column(
     hook_door: ?*anyopaque,
+    generation: u64,
     address: GalleyNodeAddress,
     out_line: ?*u32,
     out_column: ?*u32,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
-    if (out_line == null or out_column == null) return galley_error_null_argument;
-    return nodeLineColumnCore(&door, address, out_line, out_column);
+    return nodeRead(.hook, hook_door, generation, galley_error_invalid_node, &.{ 1, 2 }, nodeLineColumnCore, .{ address, out_line, out_column });
 }
 
 /// Parses the file at `path`. Returns the number of bytes parsed on success
@@ -1917,75 +1977,77 @@ export fn galley_node_span(
     out_start: ?*u64,
     out_len: ?*u64,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    if (out_start == null or out_len == null) return galley_error_null_argument;
-    var guard = gate(.read, embedded, generation) catch |err| return statusForError(err);
-    defer guard.deinit();
-    return nodeSpanCore(&sessionDoor(embedded), address, out_start, out_len);
+    return nodeRead(.session, session_ptr, generation, galley_error_invalid_node, &.{ 1, 2 }, nodeSpanCore, .{ address, out_start, out_len });
 }
 
-/// Hook-time door: `galley_node_span` over the live parse's node storage,
-/// reached through the parse's hook door. No lock; valid until the parse that
-/// produced the door ends.
+/// Hook-time twin of `galley_node_span`: same out-parameters and refusals, over the
+/// parse that handed out `hook_door`.
 export fn galley_hook_node_span(
     hook_door: ?*anyopaque,
+    generation: u64,
     address: GalleyNodeAddress,
     out_start: ?*u64,
     out_len: ?*u64,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
-    if (out_start == null or out_len == null) return galley_error_null_argument;
-    return nodeSpanCore(&door, address, out_start, out_len);
+    return nodeRead(.hook, hook_door, generation, galley_error_invalid_node, &.{ 1, 2 }, nodeSpanCore, .{ address, out_start, out_len });
 }
 
-/// Returns the last child's address, or `GALLEY_INVALID_NODE` when there is
-/// none. Same contract as `galley_node_first_child`.
+/// Returns the last child's address, or `GALLEY_INVALID_NODE` when there is none.
+/// A link that does not exist is a non-negative answer; an address
+/// outside the live tree's storage is `galley_error_invalid_node`, and a
+/// `generation` from another parse is `galley_error_stale_tree` (negative
+/// statuses).
 export fn galley_node_last_child(
     session_ptr: ?*GalleySession,
     generation: u64,
     address: GalleyNodeAddress,
 ) i64 {
-    return sessionNodeValue(session_ptr, generation, address, nodeLinkCore, .{NodeLink.last_child});
+    return nodeValue(.session, session_ptr, generation, address, nodeLinkCore, .{NodeLink.last_child});
 }
 
-/// Hook-time door: `galley_node_last_child` over the live parse's node
-/// storage, reached through the parse's hook door. No lock; valid until the
-/// parse that produced the door ends.
-export fn galley_hook_node_last_child(hook_door: ?*anyopaque, address: GalleyNodeAddress) GalleyNodeAddress {
-    const door = hookDoor(hook_door) orelse return galley_invalid_node;
-    return nodeLinkCore(&door, address, .last_child) orelse galley_invalid_node;
+/// Hook-time twin of `galley_node_last_child`: same returns, same refusals, over the
+/// parse that handed out `hook_door`.
+export fn galley_hook_node_last_child(
+    hook_door: ?*anyopaque,
+    generation: u64,
+    address: GalleyNodeAddress,
+) i64 {
+    return nodeValue(.hook, hook_door, generation, address, nodeLinkCore, .{NodeLink.last_child});
 }
 
-/// Returns the previous sibling's address, or `GALLEY_INVALID_NODE` when there
-/// is none. Same contract as
-/// `galley_node_first_child`.
+/// Returns the previous sibling's address, or `GALLEY_INVALID_NODE` when there is none.
+/// A link that does not exist is a non-negative answer; an address
+/// outside the live tree's storage is `galley_error_invalid_node`, and a
+/// `generation` from another parse is `galley_error_stale_tree` (negative
+/// statuses).
 export fn galley_node_prior_sibling(
     session_ptr: ?*GalleySession,
     generation: u64,
     address: GalleyNodeAddress,
 ) i64 {
-    return sessionNodeValue(session_ptr, generation, address, nodeLinkCore, .{NodeLink.prior});
+    return nodeValue(.session, session_ptr, generation, address, nodeLinkCore, .{NodeLink.prior});
 }
 
-/// Hook-time door: `galley_node_prior_sibling` over the live parse's node
-/// storage, reached through the parse's hook door. No lock; valid until the
-/// parse that produced the door ends.
-export fn galley_hook_node_prior_sibling(hook_door: ?*anyopaque, address: GalleyNodeAddress) GalleyNodeAddress {
-    const door = hookDoor(hook_door) orelse return galley_invalid_node;
-    return nodeLinkCore(&door, address, .prior) orelse galley_invalid_node;
+/// Hook-time twin of `galley_node_prior_sibling`: same returns, same refusals, over the
+/// parse that handed out `hook_door`.
+export fn galley_hook_node_prior_sibling(
+    hook_door: ?*anyopaque,
+    generation: u64,
+    address: GalleyNodeAddress,
+) i64 {
+    return nodeValue(.hook, hook_door, generation, address, nodeLinkCore, .{NodeLink.prior});
 }
 
 // ---------------------------------------------------------------------------
 // Tree editing. Chains passed to these functions must be detached orphans
 // (no parent, no prior). Addresses are stable, so edits never invalidate
-// other node addresses. Post-parse edits cross the generation gate on its
-// exclusive tier: `galley_error_session_in_use` while a parse is in flight,
-// `galley_error_stale_tree` for a generation that is not the published
-// tree's. Both nodes of an edit that takes two must belong to that tree: an
-// address carries no generation, so the host guarantees it. Hook-time edits
-// use the `galley_hook_tree_*` twin over the live parse instead.
+// other node addresses. Every edit crosses the generation gate on its
+// exclusive tier: `galley_error_session_in_use` while a parse is in flight
+// (session door only), `galley_error_stale_tree` for a generation that is
+// not the door's live tree's — the published tree's on the session door, the
+// running parse's on the `galley_hook_tree_*` twin. Both nodes of an edit
+// that takes two must belong to that tree: an address carries no generation,
+// so the host guarantees it.
 // ---------------------------------------------------------------------------
 
 /// Appends `first_node` (and any chain attached via its next links) as the
@@ -1997,24 +2059,18 @@ export fn galley_tree_append_children(
     parent: GalleyNodeAddress,
     first_node: GalleyNodeAddress,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    var guard = gate(.edit, embedded, generation) catch |err| return statusForError(err);
-    defer guard.deinit();
-    return treeAppendChildrenCore(&sessionDoor(embedded), parent, first_node);
+    return treeEdit(.session, session_ptr, generation, &.{}, treeAppendChildrenCore, .{ parent, first_node });
 }
 
-/// Hook-time door: `galley_tree_append_children` over the live parse's node
-/// storage, reached through the parse's hook door. No lock; valid until the
-/// parse that produced the door ends.
+/// Hook-time twin of `galley_tree_append_children`: same parameters and refusals, over the
+/// parse that handed out `hook_door`.
 export fn galley_hook_tree_append_children(
     hook_door: ?*anyopaque,
+    generation: u64,
     parent: GalleyNodeAddress,
     first_node: GalleyNodeAddress,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
-    return treeAppendChildrenCore(&door, parent, first_node);
+    return treeEdit(.hook, hook_door, generation, &.{}, treeAppendChildrenCore, .{ parent, first_node });
 }
 
 /// Inserts `first_node` (and its chain) immediately before `target` among
@@ -2025,24 +2081,18 @@ export fn galley_tree_insert_before(
     target: GalleyNodeAddress,
     first_node: GalleyNodeAddress,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    var guard = gate(.edit, embedded, generation) catch |err| return statusForError(err);
-    defer guard.deinit();
-    return treeInsertBeforeCore(&sessionDoor(embedded), target, first_node);
+    return treeEdit(.session, session_ptr, generation, &.{}, treeInsertBeforeCore, .{ target, first_node });
 }
 
-/// Hook-time door: `galley_tree_insert_before` over the live parse's node
-/// storage, reached through the parse's hook door. No lock; valid until the
-/// parse that produced the door ends.
+/// Hook-time twin of `galley_tree_insert_before`: same parameters and refusals, over the
+/// parse that handed out `hook_door`.
 export fn galley_hook_tree_insert_before(
     hook_door: ?*anyopaque,
+    generation: u64,
     target: GalleyNodeAddress,
     first_node: GalleyNodeAddress,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
-    return treeInsertBeforeCore(&door, target, first_node);
+    return treeEdit(.hook, hook_door, generation, &.{}, treeInsertBeforeCore, .{ target, first_node });
 }
 
 /// Inserts `first_node` (and its chain) immediately after `target` among its
@@ -2053,24 +2103,18 @@ export fn galley_tree_insert_after(
     target: GalleyNodeAddress,
     first_node: GalleyNodeAddress,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    var guard = gate(.edit, embedded, generation) catch |err| return statusForError(err);
-    defer guard.deinit();
-    return treeInsertAfterCore(&sessionDoor(embedded), target, first_node);
+    return treeEdit(.session, session_ptr, generation, &.{}, treeInsertAfterCore, .{ target, first_node });
 }
 
-/// Hook-time door: `galley_tree_insert_after` over the live parse's node
-/// storage, reached through the parse's hook door. No lock; valid until the
-/// parse that produced the door ends.
+/// Hook-time twin of `galley_tree_insert_after`: same parameters and refusals, over the
+/// parse that handed out `hook_door`.
 export fn galley_hook_tree_insert_after(
     hook_door: ?*anyopaque,
+    generation: u64,
     target: GalleyNodeAddress,
     first_node: GalleyNodeAddress,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
-    return treeInsertAfterCore(&door, target, first_node);
+    return treeEdit(.hook, hook_door, generation, &.{}, treeInsertAfterCore, .{ target, first_node });
 }
 
 /// Removes `count` consecutive siblings starting at `node`, detaching them
@@ -2088,27 +2132,19 @@ export fn galley_tree_remove_siblings(
     count: usize,
     out_head: ?*GalleyNodeAddress,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    if (out_head == null) return galley_error_null_argument;
-    var guard = gate(.edit, embedded, generation) catch |err| return statusForError(err);
-    defer guard.deinit();
-    return treeRemoveSiblingsCore(&sessionDoor(embedded), node, count, out_head);
+    return treeEdit(.session, session_ptr, generation, &.{2}, treeRemoveSiblingsCore, .{ node, count, out_head });
 }
 
-/// Hook-time door: `galley_tree_remove_siblings` over the live parse's node
-/// storage, reached through the parse's hook door. No lock; valid until the
-/// parse that produced the door ends.
+/// Hook-time twin of `galley_tree_remove_siblings`: same parameters and refusals, over the
+/// parse that handed out `hook_door`.
 export fn galley_hook_tree_remove_siblings(
     hook_door: ?*anyopaque,
+    generation: u64,
     node: GalleyNodeAddress,
     count: usize,
     out_head: ?*GalleyNodeAddress,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
-    if (out_head == null) return galley_error_null_argument;
-    return treeRemoveSiblingsCore(&door, node, count, out_head);
+    return treeEdit(.hook, hook_door, generation, &.{2}, treeRemoveSiblingsCore, .{ node, count, out_head });
 }
 
 /// Detaches `node` itself from its parent and siblings.
@@ -2121,15 +2157,15 @@ export fn galley_tree_remove_self(
     return galley_tree_remove_siblings(session_ptr, generation, node, 1, out_head);
 }
 
-/// Hook-time door: `galley_tree_remove_self` over the live parse, reached
-/// through the parse's hook door. No lock; valid until the parse that
-/// produced the door ends.
+/// Hook-time twin of `galley_tree_remove_self`: same parameters and refusals,
+/// over the parse that handed out `hook_door`.
 export fn galley_hook_tree_remove_self(
     hook_door: ?*anyopaque,
+    generation: u64,
     node: GalleyNodeAddress,
     out_head: ?*GalleyNodeAddress,
 ) i64 {
-    return galley_hook_tree_remove_siblings(hook_door, node, 1, out_head);
+    return galley_hook_tree_remove_siblings(hook_door, generation, node, 1, out_head);
 }
 
 /// Detaches all children of `node`, writing the detached chain head to
@@ -2141,26 +2177,18 @@ export fn galley_tree_clean_children(
     node: GalleyNodeAddress,
     out_head: ?*GalleyNodeAddress,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    if (out_head == null) return galley_error_null_argument;
-    var guard = gate(.edit, embedded, generation) catch |err| return statusForError(err);
-    defer guard.deinit();
-    return treeCleanChildrenCore(&sessionDoor(embedded), node, out_head);
+    return treeEdit(.session, session_ptr, generation, &.{1}, treeCleanChildrenCore, .{ node, out_head });
 }
 
-/// Hook-time door: `galley_tree_clean_children` over the live parse's node
-/// storage, reached through the parse's hook door. No lock; valid until the
-/// parse that produced the door ends.
+/// Hook-time twin of `galley_tree_clean_children`: same parameters and refusals, over the
+/// parse that handed out `hook_door`.
 export fn galley_hook_tree_clean_children(
     hook_door: ?*anyopaque,
+    generation: u64,
     node: GalleyNodeAddress,
     out_head: ?*GalleyNodeAddress,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
-    if (out_head == null) return galley_error_null_argument;
-    return treeCleanChildrenCore(&door, node, out_head);
+    return treeEdit(.hook, hook_door, generation, &.{1}, treeCleanChildrenCore, .{ node, out_head });
 }
 
 // ---------------------------------------------------------------------------
@@ -2706,16 +2734,17 @@ export fn galley_node_variable_index(
     generation: u64,
     address: GalleyNodeAddress,
 ) i64 {
-    return sessionNodeValue(session_ptr, generation, address, nodeVariableIndexCore, .{});
+    return nodeValue(.session, session_ptr, generation, address, nodeVariableIndexCore, .{});
 }
 
-/// Hook-time door: `galley_node_variable_index` over the live parse's node
-/// storage, reached through the parse's hook door. No lock; valid until the
-/// parse that produced the door ends.
-export fn galley_hook_node_variable_index(hook_door: ?*anyopaque, address: GalleyNodeAddress) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
-    return nodeVariableIndexCore(&door, address) orelse galley_error_invalid_node;
+/// Hook-time twin of `galley_node_variable_index`: same returns, same
+/// refusals, over the parse that handed out `hook_door`.
+export fn galley_hook_node_variable_index(
+    hook_door: ?*anyopaque,
+    generation: u64,
+    address: GalleyNodeAddress,
+) i64 {
+    return nodeValue(.hook, hook_door, generation, address, nodeVariableIndexCore, .{});
 }
 
 /// Bulk-reads the published tree into caller-owned flat arrays in a single
@@ -2741,18 +2770,15 @@ export fn galley_tree_snapshot(
     out_is_semantic_error: ?[*]i32,
     capacity: u64,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    if (comptime !parser.is_ast_enabled) return 0;
-    var guard = gate(.read, embedded, generation) catch |err| return statusForError(err);
-    defer guard.deinit();
-    return treeSnapshotCore(&sessionDoor(embedded), out_parent, out_first_child, out_next, out_child_count, out_variable, out_span_start, out_span_len, out_is_semantic_error, capacity);
+    if (session_ptr == null) return galley_error_null_argument;
+    return nodeRead(.session, session_ptr, generation, 0, &.{}, treeSnapshotCore, .{ out_parent, out_first_child, out_next, out_child_count, out_variable, out_span_start, out_span_len, out_is_semantic_error, capacity });
 }
 
-/// Hook-time door: `galley_tree_snapshot` over the live parse's node storage,
-/// reached through the parse's hook door. No lock; valid until the parse that
-/// produced the door ends.
+/// Hook-time twin of `galley_tree_snapshot`: same columns and refusals, over
+/// the parse that handed out `hook_door`.
 export fn galley_hook_tree_snapshot(
     hook_door: ?*anyopaque,
+    generation: u64,
     out_parent: ?[*]GalleyNodeAddress,
     out_first_child: ?[*]GalleyNodeAddress,
     out_next: ?[*]GalleyNodeAddress,
@@ -2763,9 +2789,7 @@ export fn galley_hook_tree_snapshot(
     out_is_semantic_error: ?[*]i32,
     capacity: u64,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return 0;
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
-    return treeSnapshotCore(&door, out_parent, out_first_child, out_next, out_child_count, out_variable, out_span_start, out_span_len, out_is_semantic_error, capacity);
+    return nodeRead(.hook, hook_door, generation, 0, &.{}, treeSnapshotCore, .{ out_parent, out_first_child, out_next, out_child_count, out_variable, out_span_start, out_span_len, out_is_semantic_error, capacity });
 }
 
 /// Inserts `first_node` (and its chain) into the children of `parent` at
@@ -2781,25 +2805,19 @@ export fn galley_tree_insert_children_at(
     index: usize,
     first_node: GalleyNodeAddress,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    var guard = gate(.edit, embedded, generation) catch |err| return statusForError(err);
-    defer guard.deinit();
-    return treeInsertChildrenAtCore(&sessionDoor(embedded), parent, index, first_node);
+    return treeEdit(.session, session_ptr, generation, &.{}, treeInsertChildrenAtCore, .{ parent, index, first_node });
 }
 
-/// Hook-time door: `galley_tree_insert_children_at` over the live parse's
-/// node storage, reached through the parse's hook door. No lock; valid until
-/// the parse that produced the door ends.
+/// Hook-time twin of `galley_tree_insert_children_at`: same parameters and refusals, over the
+/// parse that handed out `hook_door`.
 export fn galley_hook_tree_insert_children_at(
     hook_door: ?*anyopaque,
+    generation: u64,
     parent: GalleyNodeAddress,
     index: usize,
     first_node: GalleyNodeAddress,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
-    return treeInsertChildrenAtCore(&door, parent, index, first_node);
+    return treeEdit(.hook, hook_door, generation, &.{}, treeInsertChildrenAtCore, .{ parent, index, first_node });
 }
 
 /// Removes `count` consecutive children of `parent` starting at child
@@ -2815,28 +2833,20 @@ export fn galley_tree_remove_children_at(
     count: usize,
     out_head: ?*GalleyNodeAddress,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    if (out_head == null) return galley_error_null_argument;
-    var guard = gate(.edit, embedded, generation) catch |err| return statusForError(err);
-    defer guard.deinit();
-    return treeRemoveChildrenAtCore(&sessionDoor(embedded), parent, index, count, out_head);
+    return treeEdit(.session, session_ptr, generation, &.{3}, treeRemoveChildrenAtCore, .{ parent, index, count, out_head });
 }
 
-/// Hook-time door: `galley_tree_remove_children_at` over the live parse's
-/// node storage, reached through the parse's hook door. No lock; valid until
-/// the parse that produced the door ends.
+/// Hook-time twin of `galley_tree_remove_children_at`: same parameters and refusals, over the
+/// parse that handed out `hook_door`.
 export fn galley_hook_tree_remove_children_at(
     hook_door: ?*anyopaque,
+    generation: u64,
     parent: GalleyNodeAddress,
     index: usize,
     count: usize,
     out_head: ?*GalleyNodeAddress,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
-    if (out_head == null) return galley_error_null_argument;
-    return treeRemoveChildrenAtCore(&door, parent, index, count, out_head);
+    return treeEdit(.hook, hook_door, generation, &.{3}, treeRemoveChildrenAtCore, .{ parent, index, count, out_head });
 }
 
 /// Preallocates node storage for at least `capacity` nodes, avoiding
@@ -3001,6 +3011,18 @@ export fn galley_procedure_door(args: ?*anyopaque) ?*anyopaque {
     return procedure_arguments.context;
 }
 
+/// Returns the session whose parse is calling this hook, or null for null
+/// `args`. A host that keeps per-session state outside the core (the Go
+/// binding's door lifetime) finds it from a hook's arguments through this.
+export fn galley_procedure_session(args: ?*anyopaque) ?*GalleySession {
+    const procedure_arguments = procedureArguments(args) orelse return null;
+    // The parent pointers are only as aligned as the fields they come from
+    // (2 on wasm32), but the session really is an aligned `Embedded`.
+    const session: *root.Session = @alignCast(@fieldParentPtr("runtime_context", procedure_arguments.context.runtime()));
+    const embedded: *Embedded = @alignCast(@fieldParentPtr("session", session));
+    return @ptrCast(embedded);
+}
+
 /// Writes the parse generation of the parse that owns `hook_door` to
 /// `out_generation`: the generation of every node its hooks see, and of the
 /// tree it publishes if it succeeds (`galley_root_node` reports it afterwards).
@@ -3020,17 +3042,32 @@ export fn galley_procedure_current_node(args: ?*anyopaque) GalleyNodeAddress {
     return @intCast(addr);
 }
 
-/// Sets the current node, or clears it when `node` is `GALLEY_INVALID_NODE`.
-/// Does not bounds-check: an out-of-range address is undefined behavior in
-/// subsequent tree helpers, matching Zig `at()`.
-export fn galley_procedure_set_current_node(args: ?*anyopaque, node: GalleyNodeAddress) void {
-    const procedure_arguments = procedureArguments(args) orelse return;
-    if (comptime !parser.is_ast_enabled) return;
+/// The body behind `galley_procedure_set_current_node`, run through the hook
+/// door's gate: the node must be a live node of this parse's storage.
+fn setCurrentNodeCore(
+    door: *const Door,
+    procedure_arguments: *root.data_structures.ProcedureArguments,
+    node: GalleyNodeAddress,
+) i64 {
+    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
+    procedure_arguments.node_address = door.livePointer(node) orelse return galley_error_invalid_node;
+    return galley_ok;
+}
+
+/// Sets the current node of this hook to `node`, a node of the parse that
+/// owns `args`, or clears it when `node` is `GALLEY_INVALID_NODE` (which
+/// needs no generation). The node goes through the hook door's gate like any
+/// other: `galley_error_stale_tree` when `generation` is not this parse's
+/// (generation 0 never is), `galley_error_invalid_node` for an address
+/// outside the parse's node storage, `galley_error_null_argument` for null
+/// `args`. A refused call leaves the current node as it was.
+export fn galley_procedure_set_current_node(args: ?*anyopaque, generation: u64, node: GalleyNodeAddress) i64 {
+    const procedure_arguments = procedureArguments(args) orelse return galley_error_null_argument;
     if (node == galley_invalid_node) {
-        procedure_arguments.node_address = null;
-    } else {
-        procedure_arguments.node_address = @intCast(node);
+        if (comptime parser.is_ast_enabled) procedure_arguments.node_address = null;
+        return galley_ok;
     }
+    return nodeRead(.hook, procedure_arguments.context, generation, galley_error_invalid_node, &.{}, setCurrentNodeCore, .{ procedure_arguments, node });
 }
 
 export fn galley_procedure_rule_present(args: ?*anyopaque) i32 {

@@ -8,18 +8,22 @@
  * galley_diagnostic_*) take a session handle and refuse with
  * galley_error_session_in_use while a parse is in flight; parse-time hook
  * code passes the parse's door (galley_procedure_door) to the galley_hook_*
- * twins, which take no lock. Concurrent use of one session is refused, not
+ * twins, which take no lock. The twins take the same arguments and answer the
+ * same statuses as the session calls, apart from the handle (and no
+ * galley_error_session_in_use: the door is unshared); the diagnostics twins
+ * take no generation. Concurrent use of one session is refused, not
  * serialized: a second caller gets galley_error_session_in_use, so hosts
  * coordinate sharing themselves; independent sessions on independent
  * threads still need no shared state.
  *
- * A node on the session door is identified by the parse generation it
- * belongs to as well as its address, and every call that reads or edits one
- * takes that generation and returns a status: the core refuses a generation
- * that is not the published tree's (galley_error_stale_tree), so a node of a
- * dead parse is never read, whatever the caller believes about the session.
- * Read the generation once with galley_root_node and keep passing each
- * node's own. The check is one integer comparison and runs in every build.
+ * A node is identified by the parse generation it belongs to as well as its
+ * address, and every call that reads or edits one, on either door, takes
+ * that generation and returns a status: the core refuses a generation that
+ * is not the live tree's (galley_error_stale_tree), so a node of a dead
+ * parse is never read, whatever the caller believes about the session. Read
+ * the generation once with galley_root_node (session door) or
+ * galley_hook_generation (hook door) and keep passing each node's own.
+ * The check is one integer comparison and runs in every build.
  *
  * Node addresses, text pointers, and diagnostic strings remain valid until
  * the next parse on the same session or session destruction.
@@ -79,12 +83,13 @@ enum {
      * parse is in flight (hook code must use the galley_hook_* door). */
     galley_error_session_in_use           = -13,
     /* A node, tree edit, snapshot, or walk cursor carries a generation that
-     * is not the session's live tree's: the session parsed again, the last
-     * parse failed and published nothing, or nothing was ever published.
-     * Session-door calls pass the generation they address; every such
-     * generation check runs in every build, because it is a lifetime
-     * contract, not a misuse check. Re-read the tree with galley_root_node
-     * and use its nodes. */
+     * is not the door's live tree's. On the session door: the session parsed
+     * again, the last parse failed and published nothing, or nothing was ever
+     * published; re-read the tree with galley_root_node and use its nodes. On
+     * the hook door (galley_hook_*, galley_procedure_set_current_node): the
+     * generation is not the running parse's (galley_hook_generation). Calls
+     * on both doors pass the generation they address; the check runs in every
+     * build, because it is a lifetime contract, not a misuse check. */
     galley_error_stale_tree               = -14,
 };
 
@@ -365,8 +370,10 @@ _Static_assert(sizeof(GalleyWalkCursor) == 40, "GalleyWalkCursor must be 40 byte
 long long galley_walk_next(GalleySession *session, GalleyWalkCursor *cursor);
 
 /* Hook-time twin of galley_walk_next over the in-flight parse's tree,
- * reached through the parse's hook door. Same statuses; the cursor's
- * generation must be this parse's (galley_hook_generation). */
+ * reached through the parse's hook door. Same statuses, except that the
+ * door is unshared by construction, so it never answers
+ * galley_error_session_in_use; the cursor's generation must be this parse's
+ * (galley_hook_generation), else galley_error_stale_tree. */
 long long galley_hook_walk_next(GalleyHookDoor *door, GalleyWalkCursor *cursor);
 
 /* Writes the byte offset and length of a node's matched source span into
@@ -699,6 +706,12 @@ long long galley_recorded_recovery_occurrence(GalleySession *session, unsigned l
  * galley_procedure_drop_self. */
 GalleyHookDoor *galley_procedure_door(void *args);
 
+/* Returns the session whose parse is calling the hook that received args, or
+ * NULL for NULL args. A host that tracks per-session state of its own (the Go
+ * binding ends its hook doors' lifetime with it) finds that state from a
+ * hook's arguments through this. */
+GalleySession *galley_procedure_session(void *args);
+
 /* Writes the parse generation of the parse that owns door to out_generation:
  * the generation of every node its hooks see, and of the tree it publishes
  * if it succeeds (galley_root_node reports it afterwards).
@@ -706,7 +719,16 @@ GalleyHookDoor *galley_procedure_door(void *args);
  * galley_error_null_argument for a NULL door or output. */
 long long galley_hook_generation(GalleyHookDoor *door, unsigned long long *out_generation);
 unsigned long long galley_procedure_current_node(void *args);
-void galley_procedure_set_current_node(void *args, unsigned long long node);
+/* Sets the hook's current node to a node of the parse that owns args, or clears
+ * it with GALLEY_INVALID_NODE (no generation check). The node goes through the
+ * hook door's check: galley_error_stale_tree for a generation that is not
+ * that parse's (0 never is), galley_error_invalid_node for an address outside
+ * its node storage, galley_error_null_argument for NULL args. A refused call
+ * leaves the current node as it was. In a build without AST construction there
+ * is no current node: clearing succeeds and any other node is
+ * galley_error_invalid_node. */
+long long galley_procedure_set_current_node(void *args, unsigned long long generation,
+                                            GalleyNodeAddress node);
 int galley_procedure_rule_present(void *args);
 long long galley_procedure_rule_header(void *args);
 long long galley_procedure_rule_rhs_index(void *args);
@@ -724,10 +746,12 @@ long long galley_procedure_report_semantic_error(void *args, const char *message
 
 /* ---------------------------------------------------------------------------
  * Parse-time hook door: the same node/tree/diagnostic cores as above, reached
- * through the door of the parse instead of a session handle. The current
- * parse owns the session exclusively, so these take no lock — unshared by
- * construction. A door is the same pointer for every hook of one parse and
- * dies when that parse ends: keep it for the parse, drop it after. Text and
+ * through the door of the parse instead of a session handle, with the same
+ * parameters, returns and generation check as the session twins. The
+ * current parse owns the session exclusively, so these take no lock —
+ * unshared by construction. A door is the same pointer for every hook of
+ * one parse and dies when that parse ends: keep it for the parse, drop it
+ * after. Text and
  * input pointers are the exception and are valid only until the hook that
  * made the call returns; diagnostic strings stay valid until the next parse.
  * Post-parse code uses the galley_node_* / galley_tree_* /
@@ -735,48 +759,56 @@ long long galley_procedure_report_semantic_error(void *args, const char *message
  * with galley_error_session_in_use.
  * ------------------------------------------------------------------------- */
 
-/* Node reads. Unshared by construction, so these take no generation: the
- * door exists only while its parse runs, and every node it can address is
- * that parse's. */
-unsigned int galley_hook_node_child_count(GalleyHookDoor *door, GalleyNodeAddress node);
-GalleyNodeAddress galley_hook_node_first_child(GalleyHookDoor *door, GalleyNodeAddress node);
-GalleyNodeAddress galley_hook_node_last_child(GalleyHookDoor *door, GalleyNodeAddress node);
-GalleyNodeAddress galley_hook_node_next_sibling(GalleyHookDoor *door, GalleyNodeAddress node);
-GalleyNodeAddress galley_hook_node_prior_sibling(GalleyHookDoor *door, GalleyNodeAddress node);
-GalleyNodeAddress galley_hook_node_parent(GalleyHookDoor *door, GalleyNodeAddress node);
-long long galley_hook_node_symbol_name(GalleyHookDoor *door, GalleyNodeAddress node,
+/* Node reads and tree edits: the same parameters and returns as the session
+ * twin of the same name, with the door in place of the session — so a call
+ * site can switch twins by changing its first argument. Each takes the
+ * node's generation and checks it first: galley_error_stale_tree unless it
+ * is the generation of the parse that owns the door (generation 0 is never
+ * live), galley_error_invalid_node for an address outside that parse's node
+ * storage, galley_error_null_argument for a NULL door or output. The door is
+ * unshared by construction, so there is no lock and no session-in-use
+ * refusal. Read the generation once with galley_hook_generation. Links and
+ * counts return a value >= 0 (GALLEY_INVALID_NODE for a missing link) or a
+ * negative status; GALLEY_NO_VARIABLE is a variable index answer. */
+long long galley_hook_node_child_count(GalleyHookDoor *door, unsigned long long generation, GalleyNodeAddress node);
+long long galley_hook_node_first_child(GalleyHookDoor *door, unsigned long long generation, GalleyNodeAddress node);
+long long galley_hook_node_last_child(GalleyHookDoor *door, unsigned long long generation, GalleyNodeAddress node);
+long long galley_hook_node_next_sibling(GalleyHookDoor *door, unsigned long long generation, GalleyNodeAddress node);
+long long galley_hook_node_prior_sibling(GalleyHookDoor *door, unsigned long long generation, GalleyNodeAddress node);
+long long galley_hook_node_parent(GalleyHookDoor *door, unsigned long long generation, GalleyNodeAddress node);
+long long galley_hook_node_symbol_name(GalleyHookDoor *door, unsigned long long generation, GalleyNodeAddress node,
                                         const char **out_data, size_t *out_len);
-long long galley_hook_node_text(GalleyHookDoor *door, GalleyNodeAddress node,
+/* Text pointers reference the in-flight parse's input and are valid only
+ * until the hook that made the call returns. */
+long long galley_hook_node_text(GalleyHookDoor *door, unsigned long long generation, GalleyNodeAddress node,
                                 const char **out_data, size_t *out_len);
-long long galley_hook_node_span(GalleyHookDoor *door, GalleyNodeAddress node,
+long long galley_hook_node_span(GalleyHookDoor *door, unsigned long long generation, GalleyNodeAddress node,
                                 unsigned long long *out_start, unsigned long long *out_len);
-long long galley_hook_node_line_column(GalleyHookDoor *door, GalleyNodeAddress node,
+long long galley_hook_node_line_column(GalleyHookDoor *door, unsigned long long generation, GalleyNodeAddress node,
                                        unsigned int *out_line, unsigned int *out_column);
-/* The raw variable index, GALLEY_NO_VARIABLE when the node has none, or a
- * negative status for an address outside the parse's storage. */
-long long galley_hook_node_variable_index(GalleyHookDoor *door, GalleyNodeAddress node);
+long long galley_hook_node_variable_index(GalleyHookDoor *door, unsigned long long generation, GalleyNodeAddress node);
 long long galley_hook_last_input(GalleyHookDoor *door, const char **out_data, size_t *out_len);
 
 /* Tree edits; same contracts as the galley_tree_* door (detached-orphan
  * chains, stable addresses). */
-long long galley_hook_tree_append_children(GalleyHookDoor *door,
+long long galley_hook_tree_append_children(GalleyHookDoor *door, unsigned long long generation,
                                            GalleyNodeAddress parent, GalleyNodeAddress first_node);
-long long galley_hook_tree_insert_before(GalleyHookDoor *door,
+long long galley_hook_tree_insert_before(GalleyHookDoor *door, unsigned long long generation,
                                          GalleyNodeAddress target, GalleyNodeAddress first_node);
-long long galley_hook_tree_insert_after(GalleyHookDoor *door,
+long long galley_hook_tree_insert_after(GalleyHookDoor *door, unsigned long long generation,
                                         GalleyNodeAddress target, GalleyNodeAddress first_node);
-long long galley_hook_tree_remove_siblings(GalleyHookDoor *door, GalleyNodeAddress node,
-                                           size_t count, GalleyNodeAddress *out_head);
-long long galley_hook_tree_remove_self(GalleyHookDoor *door, GalleyNodeAddress node,
-                                       GalleyNodeAddress *out_head);
-long long galley_hook_tree_clean_children(GalleyHookDoor *door, GalleyNodeAddress node,
-                                          GalleyNodeAddress *out_head);
-long long galley_hook_tree_insert_children_at(GalleyHookDoor *door, GalleyNodeAddress parent,
-                                              size_t index, GalleyNodeAddress first_node);
-long long galley_hook_tree_remove_children_at(GalleyHookDoor *door, GalleyNodeAddress parent,
-                                              size_t index, size_t count,
+long long galley_hook_tree_remove_siblings(GalleyHookDoor *door, unsigned long long generation,
+                                           GalleyNodeAddress node, size_t count, GalleyNodeAddress *out_head);
+long long galley_hook_tree_remove_self(GalleyHookDoor *door, unsigned long long generation,
+                                       GalleyNodeAddress node, GalleyNodeAddress *out_head);
+long long galley_hook_tree_clean_children(GalleyHookDoor *door, unsigned long long generation,
+                                          GalleyNodeAddress node, GalleyNodeAddress *out_head);
+long long galley_hook_tree_insert_children_at(GalleyHookDoor *door, unsigned long long generation,
+                                              GalleyNodeAddress parent, size_t index, GalleyNodeAddress first_node);
+long long galley_hook_tree_remove_children_at(GalleyHookDoor *door, unsigned long long generation,
+                                              GalleyNodeAddress parent, size_t index, size_t count,
                                               GalleyNodeAddress *out_head);
-long long galley_hook_tree_snapshot(GalleyHookDoor *door,
+long long galley_hook_tree_snapshot(GalleyHookDoor *door, unsigned long long generation,
                                     GalleyNodeAddress *out_parent,
                                     GalleyNodeAddress *out_first_child,
                                     GalleyNodeAddress *out_next,

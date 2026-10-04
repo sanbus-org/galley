@@ -190,6 +190,74 @@ export async function runGenerationScenarios({ test, assert, newParser, SessionC
     }
   });
 
+  await test("the hook door refuses a node of an earlier parse on every capability", async () => {
+    // The core checks the generation inside every hook-door call: a node of
+    // the previous parse raises the one stale-tree error on a read, a link,
+    // a count, an edit and a walk step — nothing answers null — while a node
+    // of the running parse still reads and edits.
+    const parser = await newParser();
+    const s = await parser.openSession();
+    try {
+      s.parse("alpha:12,beta:3");
+      const previous = s.rootNode();
+      const previousChild = s.firstChild(previous);
+      const outcomes = [];
+      const live = [];
+      s.installProcedure("reduction_Pair", (args) => {
+        const current = args.currentNode();
+        for (const call of [
+          () => s.text(previous),
+          () => s.symbolName(previous),
+          () => s.span(previous),
+          () => s.lineColumn(previous),
+          () => s.variableIndex(previous),
+          () => s.firstChild(previous),
+          () => s.lastChild(previous),
+          () => s.nextSibling(previous),
+          () => s.priorSibling(previous),
+          () => s.parent(previous),
+          () => s.childCount(previous),
+          () => [...previous.walk()],
+          () => s.appendChildren(previous, current),
+          () => s.appendChildren(current, previous),
+          // Both nodes of the previous parse: the host's own mixed-generation
+          // check passes, so the core's decides.
+          () => s.appendChildren(previous, previousChild),
+          () => s.insertBefore(previous, previousChild),
+          () => s.insertAfter(previous, previousChild),
+          () => s.insertChildrenAt(previous, 0, previousChild),
+          () => s.removeSiblings(previous, 1),
+          () => s.removeChildrenAt(previous, 0, 1),
+          () => s.cleanChildren(previous),
+          () => s.removeSelf(previous),
+          () => args.setCurrentNode(previous),
+        ]) {
+          try {
+            call();
+            outcomes.push("answered");
+          } catch (error) {
+            outcomes.push(error instanceof StaleTreeError ? "stale" : String(error));
+          }
+        }
+        if (args.currentNode() !== current) outcomes.push("a refused set changed the current node");
+        args.setCurrentNode(current);
+        if (args.currentNode() !== current) outcomes.push("current node not set");
+        live.push(decode(s.text(current)));
+        const detached = s.cleanChildren(current);
+        if (detached !== null) s.appendChildren(current, detached);
+      });
+      try {
+        s.parse("alpha:12,beta:3");
+      } finally {
+        s.clearProcedures();
+      }
+      assert.deepEqual(outcomes, Array(23 * 2).fill("stale"));
+      assert.deepEqual(live, ["alpha:12", "beta:3"]);
+    } finally {
+      s.close();
+    }
+  });
+
   await test("a walk inside a hook equals the post-parse walk", async () => {
     // A walk created and stepped inside a hook goes through the parse's
     // own door over the in-flight tree; replayed after the parse

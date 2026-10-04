@@ -12,16 +12,50 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import process from "node:process";
 import { dlopen, FFIType, ptr, toArrayBuffer, CString } from "bun:ffi";
-import type { FfiPort, Handle, DispatchHandler, SessionCOptions, SnapshotColumns } from "@sanbus/galley-core";
+import type { FfiPort, NodeFamily, Handle, DispatchHandler, SessionCOptions, SnapshotColumns } from "@sanbus/galley-core";
 import { GalleyError, INVALID_NODE, NATIVE_LITTLE_ENDIAN, NO_VARIABLE, Status } from "@sanbus/galley-core";
-import { linkOrStatus, resolveArtifactFile, resolveAdapterArtifact, artifactFileName, canonicalResolvePath, SHARED_NATIVE_LIBRARY_BASE } from "@sanbus/galley-core/internal";
+import { resolveArtifactFile, resolveAdapterArtifact, artifactFileName, canonicalResolvePath, SHARED_NATIVE_LIBRARY_BASE } from "@sanbus/galley-core/internal";
 import { installDispatch } from "./dispatch.ts";
 
 /** Native handles are addresses; 0 is null. */
 type NativeHandle = number;
 
 /** Callable view of the native symbols (see `BASE_SYMBOLS` below). */
-interface GalleySymbols {
+/**
+ * The node, tree and walk calls both doors expose, keyed by the C name after
+ * `galley_`. Each is declared once here and once in `DOOR_SYMBOLS`, and bound
+ * twice: `galley_<name>` over a session handle and `galley_hook_<name>` over
+ * a parse's door, with identical signatures.
+ */
+interface DoorCalls {
+  node_child_count(handle: NativeHandle, generation: number, node: bigint): number;
+  node_first_child(handle: NativeHandle, generation: number, node: bigint): number | bigint;
+  node_last_child(handle: NativeHandle, generation: number, node: bigint): number | bigint;
+  node_next_sibling(handle: NativeHandle, generation: number, node: bigint): number | bigint;
+  node_prior_sibling(handle: NativeHandle, generation: number, node: bigint): number | bigint;
+  node_parent(handle: NativeHandle, generation: number, node: bigint): number | bigint;
+  node_span(handle: NativeHandle, generation: number, node: bigint, outStart: number, outLen: number): bigint;
+  node_symbol_name(handle: NativeHandle, generation: number, node: bigint, outData: number, outLen: number): bigint;
+  node_variable_index(handle: NativeHandle, generation: number, node: bigint): bigint;
+  node_text(handle: NativeHandle, generation: number, node: bigint, outData: number, outLen: number): bigint;
+  node_line_column(handle: NativeHandle, generation: number, node: bigint, outLine: number, outCol: number): bigint;
+  walk_next(handle: NativeHandle, cursor: number): bigint;
+  tree_append_children(handle: NativeHandle, generation: number, parent: bigint, first: bigint): bigint;
+  tree_insert_before(handle: NativeHandle, generation: number, target: bigint, first: bigint): bigint;
+  tree_insert_after(handle: NativeHandle, generation: number, target: bigint, first: bigint): bigint;
+  tree_remove_siblings(handle: NativeHandle, generation: number, node: bigint, count: bigint, outHead: number): bigint;
+  tree_remove_self(handle: NativeHandle, generation: number, node: bigint, outHead: number): bigint;
+  tree_clean_children(handle: NativeHandle, generation: number, node: bigint, outHead: number): bigint;
+  tree_insert_children_at(handle: NativeHandle, generation: number, parent: bigint, index: bigint, first: bigint): bigint;
+  tree_remove_children_at(handle: NativeHandle, generation: number, parent: bigint, index: bigint, count: bigint, outHead: number): bigint;
+}
+
+/** `DoorCalls` under one door's C names: `galley_<name>` or `galley_hook_<name>`. */
+type DoorNames<Door extends "" | "hook_"> = {
+  [Name in keyof DoorCalls as `galley_${Door}${Name & string}`]: DoorCalls[Name];
+};
+
+interface GalleySymbols extends DoorNames<"">, DoorNames<"hook_"> {
   galley_version(): string;
   galley_parser_type(): bigint;
   galley_error_recovery_mode(): bigint;
@@ -51,12 +85,6 @@ interface GalleySymbols {
   galley_reserve_nodes(session: NativeHandle, capacity: bigint): bigint;
   galley_node_capacity(session: NativeHandle): bigint;
   galley_root_node(session: NativeHandle, outRoot: number, outGeneration: number): bigint;
-  galley_node_child_count(session: NativeHandle, generation: number, node: bigint): number;
-  galley_node_first_child(session: NativeHandle, generation: number, node: bigint): number | bigint;
-  galley_node_last_child(session: NativeHandle, generation: number, node: bigint): number | bigint;
-  galley_node_next_sibling(session: NativeHandle, generation: number, node: bigint): number | bigint;
-  galley_node_prior_sibling(session: NativeHandle, generation: number, node: bigint): number | bigint;
-  galley_node_parent(session: NativeHandle, generation: number, node: bigint): number | bigint;
   galley_tree_snapshot(
     session: NativeHandle,
     generation: number,
@@ -70,13 +98,6 @@ interface GalleySymbols {
     outIsSemanticError: number | null,
     capacity: bigint,
   ): bigint;
-  galley_walk_next(session: NativeHandle, cursor: number): bigint;
-  galley_hook_walk_next(door: NativeHandle, cursor: number): bigint;
-  galley_node_span(session: NativeHandle, generation: number, node: bigint, outStart: number, outLen: number): bigint;
-  galley_node_symbol_name(session: NativeHandle, generation: number, node: bigint, outData: number, outLen: number): bigint;
-  galley_node_variable_index(session: NativeHandle, generation: number, node: bigint): bigint;
-  galley_node_text(session: NativeHandle, generation: number, node: bigint, outData: number, outLen: number): bigint;
-  galley_node_line_column(session: NativeHandle, generation: number, node: bigint, outLine: number, outCol: number): bigint;
   galley_has_diagnostic(session: NativeHandle): number;
   galley_diagnostic_kind(session: NativeHandle): bigint;
   galley_diagnostic_message(session: NativeHandle, out: number): bigint;
@@ -115,17 +136,9 @@ interface GalleySymbols {
   galley_recorded_recovery_lhs_variable(session: NativeHandle, diagIndex: bigint, outData: number, outLen: number): bigint;
   galley_recorded_recovery_production(session: NativeHandle, diagIndex: bigint, outVar: number, outLen: number, outIdx: number): bigint;
   galley_recorded_recovery_occurrence(session: NativeHandle, diagIndex: bigint, outParent: number, outParentLen: number, outRhs: number, outSym: number, outVar: number, outVarLen: number): bigint;
-  galley_tree_append_children(session: NativeHandle, generation: number, parent: bigint, first: bigint): bigint;
-  galley_tree_insert_before(session: NativeHandle, generation: number, target: bigint, first: bigint): bigint;
-  galley_tree_insert_after(session: NativeHandle, generation: number, target: bigint, first: bigint): bigint;
-  galley_tree_remove_siblings(session: NativeHandle, generation: number, node: bigint, count: bigint, outHead: number): bigint;
-  galley_tree_remove_self(session: NativeHandle, generation: number, node: bigint, outHead: number): bigint;
-  galley_tree_clean_children(session: NativeHandle, generation: number, node: bigint, outHead: number): bigint;
-  galley_tree_insert_children_at(session: NativeHandle, generation: number, parent: bigint, index: bigint, first: bigint): bigint;
-  galley_tree_remove_children_at(session: NativeHandle, generation: number, parent: bigint, index: bigint, count: bigint, outHead: number): bigint;
   galley_procedure_current_node(args: NativeHandle): bigint;
   galley_procedure_door(args: NativeHandle): NativeHandle;
-  galley_procedure_set_current_node(args: NativeHandle, node: bigint): void;
+  galley_procedure_set_current_node(args: NativeHandle, generation: number, node: bigint): bigint;
   galley_procedure_drop_self(args: NativeHandle): bigint;
   galley_procedure_drop_children(args: NativeHandle): bigint;
   galley_procedure_drop_if_empty(args: NativeHandle): bigint;
@@ -134,25 +147,6 @@ interface GalleySymbols {
   galley_procedure_context_column(args: NativeHandle): number;
   galley_procedure_report_semantic_error(args: NativeHandle, message: number, messageLen: bigint): bigint;
   // hook door: parse-time node/tree accessors over the live parse
-  galley_hook_node_child_count(door: NativeHandle, node: bigint): number;
-  galley_hook_node_first_child(door: NativeHandle, node: bigint): bigint;
-  galley_hook_node_last_child(door: NativeHandle, node: bigint): bigint;
-  galley_hook_node_next_sibling(door: NativeHandle, node: bigint): bigint;
-  galley_hook_node_prior_sibling(door: NativeHandle, node: bigint): bigint;
-  galley_hook_node_parent(door: NativeHandle, node: bigint): bigint;
-  galley_hook_node_symbol_name(door: NativeHandle, node: bigint, outData: number, outLen: number): bigint;
-  galley_hook_node_text(door: NativeHandle, node: bigint, outData: number, outLen: number): bigint;
-  galley_hook_node_span(door: NativeHandle, node: bigint, outStart: number, outLen: number): bigint;
-  galley_hook_node_line_column(door: NativeHandle, node: bigint, outLine: number, outCol: number): bigint;
-  galley_hook_tree_append_children(door: NativeHandle, parent: bigint, first: bigint): bigint;
-  galley_hook_tree_clean_children(door: NativeHandle, node: bigint, outHead: number): bigint;
-  galley_hook_node_variable_index(door: NativeHandle, node: bigint): bigint;
-  galley_hook_tree_insert_before(door: NativeHandle, target: bigint, first: bigint): bigint;
-  galley_hook_tree_insert_after(door: NativeHandle, target: bigint, first: bigint): bigint;
-  galley_hook_tree_remove_siblings(door: NativeHandle, node: bigint, count: bigint, outHead: number): bigint;
-  galley_hook_tree_remove_self(door: NativeHandle, node: bigint, outHead: number): bigint;
-  galley_hook_tree_insert_children_at(door: NativeHandle, parent: bigint, index: bigint, first: bigint): bigint;
-  galley_hook_tree_remove_children_at(door: NativeHandle, parent: bigint, index: bigint, count: bigint, outHead: number): bigint;
   galley_hook_generation(door: NativeHandle, outGeneration: number): bigint;
   // host hooks (see galley_session_set_hooks in galley.h)
   galley_hooks_count(): bigint;
@@ -240,23 +234,10 @@ const BASE_SYMBOLS = {
   galley_reserve_nodes: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
   galley_node_capacity: { args: [FFIType.ptr], returns: FFIType.u64 },
   galley_root_node: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
-  galley_node_child_count: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64], returns: FFIType.i64_fast },
-  galley_node_first_child: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64], returns: FFIType.i64_fast },
-  galley_node_last_child: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64], returns: FFIType.i64_fast },
-  galley_node_next_sibling: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64], returns: FFIType.i64_fast },
-  galley_node_prior_sibling: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64], returns: FFIType.i64_fast },
-  galley_node_parent: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64], returns: FFIType.i64_fast },
   galley_tree_snapshot: {
     args: [FFIType.ptr, FFIType.u64_fast, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.u64],
     returns: FFIType.i64,
   },
-  galley_walk_next: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
-  galley_hook_walk_next: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
-  galley_node_span: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
-  galley_node_symbol_name: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
-  galley_node_variable_index: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64], returns: FFIType.i64 },
-  galley_node_text: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
-  galley_node_line_column: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   galley_has_diagnostic: { args: [FFIType.ptr], returns: FFIType.i32 },
   galley_diagnostic_kind: { args: [FFIType.ptr], returns: FFIType.i64 },
   galley_diagnostic_message: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
@@ -294,17 +275,9 @@ const BASE_SYMBOLS = {
   galley_recorded_recovery_lhs_variable: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   galley_recorded_recovery_production: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   galley_recorded_recovery_occurrence: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
-  galley_tree_append_children: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.u64], returns: FFIType.i64 },
-  galley_tree_insert_before: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.u64], returns: FFIType.i64 },
-  galley_tree_insert_after: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.u64], returns: FFIType.i64 },
-  galley_tree_remove_siblings: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.u64, FFIType.ptr], returns: FFIType.i64 },
-  galley_tree_remove_self: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.ptr], returns: FFIType.i64 },
-  galley_tree_clean_children: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.ptr], returns: FFIType.i64 },
-  galley_tree_insert_children_at: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.u64, FFIType.u64], returns: FFIType.i64 },
-  galley_tree_remove_children_at: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.u64, FFIType.u64, FFIType.ptr], returns: FFIType.i64 },
   galley_procedure_current_node: { args: [FFIType.ptr], returns: FFIType.u64 },
   galley_procedure_door: { args: [FFIType.ptr], returns: FFIType.ptr },
-  galley_procedure_set_current_node: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.void },
+  galley_procedure_set_current_node: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64], returns: FFIType.i64 },
   galley_procedure_drop_self: { args: [FFIType.ptr], returns: FFIType.i64 },
   galley_procedure_drop_children: { args: [FFIType.ptr], returns: FFIType.i64 },
   galley_procedure_drop_if_empty: { args: [FFIType.ptr], returns: FFIType.i64 },
@@ -312,27 +285,43 @@ const BASE_SYMBOLS = {
   galley_procedure_context_line: { args: [FFIType.ptr], returns: FFIType.u32 },
   galley_procedure_context_column: { args: [FFIType.ptr], returns: FFIType.u32 },
   galley_procedure_report_semantic_error: { args: [FFIType.ptr, FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
-  galley_hook_node_child_count: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.u32 },
-  galley_hook_node_first_child: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.u64 },
-  galley_hook_node_last_child: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.u64 },
-  galley_hook_node_next_sibling: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.u64 },
-  galley_hook_node_prior_sibling: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.u64 },
-  galley_hook_node_parent: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.u64 },
-  galley_hook_node_symbol_name: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
-  galley_hook_node_text: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
-  galley_hook_node_span: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
-  galley_hook_node_line_column: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
-  galley_hook_tree_append_children: { args: [FFIType.ptr, FFIType.u64, FFIType.u64], returns: FFIType.i64 },
-  galley_hook_tree_clean_children: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr], returns: FFIType.i64 },
-  galley_hook_node_variable_index: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
-  galley_hook_tree_insert_before: { args: [FFIType.ptr, FFIType.u64, FFIType.u64], returns: FFIType.i64 },
-  galley_hook_tree_insert_after: { args: [FFIType.ptr, FFIType.u64, FFIType.u64], returns: FFIType.i64 },
-  galley_hook_tree_remove_siblings: { args: [FFIType.ptr, FFIType.u64, FFIType.u64, FFIType.ptr], returns: FFIType.i64 },
-  galley_hook_tree_remove_self: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr], returns: FFIType.i64 },
-  galley_hook_tree_insert_children_at: { args: [FFIType.ptr, FFIType.u64, FFIType.u64, FFIType.u64], returns: FFIType.i64 },
-  galley_hook_tree_remove_children_at: { args: [FFIType.ptr, FFIType.u64, FFIType.u64, FFIType.u64, FFIType.ptr], returns: FFIType.i64 },
   galley_hook_generation: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
 } as const;
+
+/**
+ * The node, tree and walk symbols, declared once and opened under both
+ * prefixes (see `doorSymbols`). The generation is an `u64_fast` number, the
+ * node an exact `u64`.
+ */
+const DOOR_SYMBOLS = {
+  node_child_count: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64], returns: FFIType.i64_fast },
+  node_first_child: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64], returns: FFIType.i64 },
+  node_last_child: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64], returns: FFIType.i64 },
+  node_next_sibling: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64], returns: FFIType.i64 },
+  node_prior_sibling: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64], returns: FFIType.i64 },
+  node_parent: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64], returns: FFIType.i64 },
+  node_span: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
+  node_symbol_name: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
+  node_variable_index: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64], returns: FFIType.i64 },
+  node_text: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
+  node_line_column: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
+  walk_next: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
+  tree_append_children: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.u64], returns: FFIType.i64 },
+  tree_insert_before: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.u64], returns: FFIType.i64 },
+  tree_insert_after: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.u64], returns: FFIType.i64 },
+  tree_remove_siblings: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.u64, FFIType.ptr], returns: FFIType.i64 },
+  tree_remove_self: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.ptr], returns: FFIType.i64 },
+  tree_clean_children: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.ptr], returns: FFIType.i64 },
+  tree_insert_children_at: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.u64, FFIType.u64], returns: FFIType.i64 },
+  tree_remove_children_at: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.u64, FFIType.u64, FFIType.ptr], returns: FFIType.i64 },
+} as const satisfies Record<keyof DoorCalls, unknown>;
+
+/** `DOOR_SYMBOLS` under one door's C names: `galley_<name>` or `galley_hook_<name>`. */
+function doorSymbols(door: "" | "hook_") {
+  return Object.fromEntries(
+    Object.entries(DOOR_SYMBOLS).map(([name, symbol]) => [`galley_${door}${name}`, symbol]),
+  );
+}
 
 const HOOK_SYMBOLS = {
   galley_hooks_count: { args: [], returns: FFIType.u64 },
@@ -342,7 +331,7 @@ const HOOK_SYMBOLS = {
 } as const;
 
 function openNative(libPath: string): { symbols: GalleySymbols } {
-  return dlopen(libPath, { ...BASE_SYMBOLS, ...HOOK_SYMBOLS }) as unknown as { symbols: GalleySymbols };
+  return dlopen(libPath, { ...BASE_SYMBOLS, ...doorSymbols(""), ...doorSymbols("hook_"), ...HOOK_SYMBOLS }) as unknown as { symbols: GalleySymbols };
 }
 
 // --- read helpers ----------------------------------------------------------
@@ -372,6 +361,97 @@ function i64Out(): BigInt64Array {
 
 // --- FfiPort implementation ----------------------------------------------
 
+/**
+ * One door's node and tree calls, bound from the twin registrations:
+ * `galley_<name>` for the session door, `galley_hook_<name>` for the hook
+ * door. Each capability is written here once and used for both. A refusal is
+ * a negative status, which the core's door turns into the host's failure.
+ * `outWords` is the port's two out-value slots, shared by both families: a JS
+ * realm is single-threaded and no crossing re-enters JS.
+ */
+function bunFamily(native: GalleySymbols, door: "" | "hook_", outWords: BigUint64Array): NodeFamily {
+  const calls = native as unknown as Record<string, unknown>;
+  const bound = <Name extends keyof DoorCalls>(name: Name): DoorCalls[Name] =>
+    calls[`galley_${door}${name}`] as DoorCalls[Name];
+  const outHalves = new Uint32Array(outWords.buffer);
+  const childCount = bound("node_child_count");
+  const firstChild = bound("node_first_child");
+  const lastChild = bound("node_last_child");
+  const nextSibling = bound("node_next_sibling");
+  const priorSibling = bound("node_prior_sibling");
+  const parent = bound("node_parent");
+  const symbolName = bound("node_symbol_name");
+  const text = bound("node_text");
+  const span = bound("node_span");
+  const lineColumn = bound("node_line_column");
+  const variableIndex = bound("node_variable_index");
+  const walkNext = bound("walk_next");
+  const appendChildren = bound("tree_append_children");
+  const insertBefore = bound("tree_insert_before");
+  const insertAfter = bound("tree_insert_after");
+  const removeSiblings = bound("tree_remove_siblings");
+  const removeSelf = bound("tree_remove_self");
+  const cleanChildren = bound("tree_clean_children");
+  const insertChildrenAt = bound("tree_insert_children_at");
+  const removeChildrenAt = bound("tree_remove_children_at");
+  return {
+    childCount: (handle, generation, node) => childCount(handle as NativeHandle, generation, node),
+    firstChild: (handle, generation, node) => firstChild(handle as NativeHandle, generation, node),
+    lastChild: (handle, generation, node) => lastChild(handle as NativeHandle, generation, node),
+    nextSibling: (handle, generation, node) => nextSibling(handle as NativeHandle, generation, node),
+    priorSibling: (handle, generation, node) => priorSibling(handle as NativeHandle, generation, node),
+    parent: (handle, generation, node) => parent(handle as NativeHandle, generation, node),
+    nodeSymbolName: (handle, generation, node) => {
+      const status = symbolName(handle as NativeHandle, generation, node, ptr(outWords), ptr(outWords, 8));
+      return status < 0n ? Number(status) : readBytes(outWords[0], outWords[1]);
+    },
+    nodeText: (handle, generation, node) => {
+      const status = text(handle as NativeHandle, generation, node, ptr(outWords), ptr(outWords, 8));
+      return status < 0n ? Number(status) : readBytes(outWords[0], outWords[1]);
+    },
+    nodeSpan: (handle, generation, node) => {
+      const status = span(handle as NativeHandle, generation, node, ptr(outWords), ptr(outWords, 8));
+      return status < 0n ? Number(status) : [outWords[0], outWords[1]];
+    },
+    nodeLineColumn: (handle, generation, node) => {
+      const status = lineColumn(handle as NativeHandle, generation, node, ptr(outWords), ptr(outWords, 8));
+      return status < 0n ? Number(status) : [outHalves[0], outHalves[2]];
+    },
+    nodeVariableIndex: (handle, generation, node) => {
+      const index = variableIndex(handle as NativeHandle, generation, node);
+      return index === NO_VARIABLE ? null : Number(index);
+    },
+    walkNext: (handle, cursor) => Number(walkNext(handle as NativeHandle, ptr(cursor))),
+    treeAppendChildren: (handle, generation, parentNode, first) =>
+      Number(appendChildren(handle as NativeHandle, generation, parentNode, first)),
+    treeInsertBefore: (handle, generation, target, first) =>
+      Number(insertBefore(handle as NativeHandle, generation, target, first)),
+    treeInsertAfter: (handle, generation, target, first) =>
+      Number(insertAfter(handle as NativeHandle, generation, target, first)),
+    treeRemoveSiblings: (handle, generation, node, count) => {
+      const status = removeSiblings(handle as NativeHandle, generation, node, BigInt(count), ptr(outWords));
+      return { status: Number(status), head: outWords[0] };
+    },
+    treeRemoveSelf: (handle, generation, node) => {
+      const status = removeSelf(handle as NativeHandle, generation, node, ptr(outWords));
+      return { status: Number(status), head: outWords[0] };
+    },
+    treeCleanChildren: (handle, generation, node) => {
+      const status = cleanChildren(handle as NativeHandle, generation, node, ptr(outWords));
+      return { status: Number(status), head: outWords[0] };
+    },
+    treeInsertChildrenAt: (handle, generation, parentNode, index, first) =>
+      Number(insertChildrenAt(handle as NativeHandle, generation, parentNode, BigInt(index), first)),
+    treeRemoveChildrenAt: (handle, generation, parentNode, index, count) => {
+      const status = removeChildrenAt(
+        handle as NativeHandle, generation, parentNode, BigInt(index), BigInt(count), ptr(outWords),
+      );
+      return { status: Number(status), head: outWords[0] };
+    },
+  };
+}
+
+
 export class BunPort implements FfiPort {
   hookDispatch: DispatchHandler | null = null;
   readonly native: GalleySymbols;
@@ -384,18 +464,22 @@ export class BunPort implements FfiPort {
    */
   dispatchPointer = 0;
   /**
-   * The out-value slots every session-door node crossing writes into: two
+   * The out-value slots every node crossing, on either door, writes into: two
    * 64-bit words, which the `Uint32Array` view reads as 32-bit values at
    * even indices. One pair per port is enough because a JS realm is
    * single-threaded and no node crossing re-enters JS; results are copied
    * out before the call returns, so nothing is allocated per call.
    */
   readonly #outWords = new BigUint64Array(2);
-  readonly #outHalves = new Uint32Array(this.#outWords.buffer);
+
+  readonly session: NodeFamily;
+  readonly hook: NodeFamily;
 
   constructor(native: GalleySymbols, libraryPath: string) {
     this.native = native;
     this.libraryPath = libraryPath;
+    this.session = bunFamily(native, "", this.#outWords);
+    this.hook = bunFamily(native, "hook_", this.#outWords);
   }
 
   setSessionHooks(session: Handle, hookHandle: number, enabled: Uint8Array): number {
@@ -569,30 +653,6 @@ export class BunPort implements FfiPort {
     return { status: Number(status), root: this.#outWords[0], generation: Number(this.#outWords[1]) };
   }
 
-  childCount(handle: Handle, generation: number, node: bigint): number {
-    return this.native.galley_node_child_count(handle as NativeHandle, generation, node);
-  }
-
-  firstChild(handle: Handle, generation: number, node: bigint): bigint | number {
-    return linkOrStatus(this.native.galley_node_first_child(handle as NativeHandle, generation, node));
-  }
-
-  lastChild(handle: Handle, generation: number, node: bigint): bigint | number {
-    return linkOrStatus(this.native.galley_node_last_child(handle as NativeHandle, generation, node));
-  }
-
-  nextSibling(handle: Handle, generation: number, node: bigint): bigint | number {
-    return linkOrStatus(this.native.galley_node_next_sibling(handle as NativeHandle, generation, node));
-  }
-
-  priorSibling(handle: Handle, generation: number, node: bigint): bigint | number {
-    return linkOrStatus(this.native.galley_node_prior_sibling(handle as NativeHandle, generation, node));
-  }
-
-  parent(handle: Handle, generation: number, node: bigint): bigint | number {
-    return linkOrStatus(this.native.galley_node_parent(handle as NativeHandle, generation, node));
-  }
-
   treeSnapshot(handle: Handle, generation: number): SnapshotColumns | number {
     for (let attempt = 0; attempt < 2; attempt++) {
       const count = this.nodeCount(handle, generation);
@@ -626,14 +686,6 @@ export class BunPort implements FfiPort {
   /** Native code reads and writes the cursor struct in the platform's order. */
   readonly walkCursorLittleEndian = NATIVE_LITTLE_ENDIAN;
 
-  walkNext(handle: Handle, cursor: ArrayBuffer): number {
-    return Number(this.native.galley_walk_next(handle as NativeHandle, ptr(cursor)));
-  }
-
-  hookWalkNext(door: Handle, cursor: ArrayBuffer): number {
-    return Number(this.native.galley_hook_walk_next(door as NativeHandle, ptr(cursor)));
-  }
-
   // -- node accessors -----------------------------------------------------
 
   #tryCopyBytes(fn: (outData: BigUint64Array, outLen: BigUint64Array) => bigint): Uint8Array | null {
@@ -658,35 +710,6 @@ export class BunPort implements FfiPort {
       decoder.decode(readBytes(outVariable[0], outVariableLen[0])),
       decoder.decode(readBytes(outMessage[0], outMessageLen[0])),
     ];
-  }
-
-  nodeSymbolName(handle: Handle, generation: number, node: bigint): Uint8Array | number {
-    const status = this.native.galley_node_symbol_name(handle as NativeHandle, generation, node, ptr(this.#outWords), ptr(this.#outWords, 8));
-    if (status < 0n) return Number(status);
-    return readBytes(this.#outWords[0], this.#outWords[1]);
-  }
-
-  nodeText(handle: Handle, generation: number, node: bigint): Uint8Array | number {
-    const status = this.native.galley_node_text(handle as NativeHandle, generation, node, ptr(this.#outWords), ptr(this.#outWords, 8));
-    if (status < 0n) return Number(status);
-    return readBytes(this.#outWords[0], this.#outWords[1]);
-  }
-
-  nodeSpan(handle: Handle, generation: number, node: bigint): [bigint, bigint] | number {
-    const status = this.native.galley_node_span(handle as NativeHandle, generation, node, ptr(this.#outWords), ptr(this.#outWords, 8));
-    if (status < 0n) return Number(status);
-    return [this.#outWords[0], this.#outWords[1]];
-  }
-
-  nodeLineColumn(handle: Handle, generation: number, node: bigint): [number, number] | number {
-    const status = this.native.galley_node_line_column(handle as NativeHandle, generation, node, ptr(this.#outWords), ptr(this.#outWords, 8));
-    if (status < 0n) return Number(status);
-    return [this.#outHalves[0], this.#outHalves[2]];
-  }
-
-  nodeVariableIndex(handle: Handle, generation: number, node: bigint): number | null {
-    const index = this.native.galley_node_variable_index(handle as NativeHandle, generation, node);
-    return index === NO_VARIABLE ? null : Number(index);
   }
 
   symbolNameAt(handle: Handle, index: number): Uint8Array | null {
@@ -949,61 +972,6 @@ export class BunPort implements FfiPort {
     ];
   }
 
-  // -- tree editing ----------------------------------------------------------
-
-  treeAppendChildren(handle: Handle, generation: number, parent: bigint, first: bigint): number {
-    return Number(this.native.galley_tree_append_children(handle as NativeHandle, generation, parent, first));
-  }
-
-  treeInsertBefore(handle: Handle, generation: number, target: bigint, first: bigint): number {
-    return Number(this.native.galley_tree_insert_before(handle as NativeHandle, generation, target, first));
-  }
-
-  treeInsertAfter(handle: Handle, generation: number, target: bigint, first: bigint): number {
-    return Number(this.native.galley_tree_insert_after(handle as NativeHandle, generation, target, first));
-  }
-
-  treeRemoveSiblings(
-    handle: Handle,
-    generation: number,
-    node: bigint,
-    count: number,
-  ): { status: number; head: bigint } {
-    const st = this.native.galley_tree_remove_siblings(handle as NativeHandle, generation, node, BigInt(count), ptr(this.#outWords));
-    return { status: Number(st), head: this.#outWords[0] };
-  }
-
-  treeRemoveSelf(handle: Handle, generation: number, node: bigint): { status: number; head: bigint } {
-    const st = this.native.galley_tree_remove_self(handle as NativeHandle, generation, node, ptr(this.#outWords));
-    return { status: Number(st), head: this.#outWords[0] };
-  }
-
-  treeCleanChildren(handle: Handle, generation: number, node: bigint): { status: number; head: bigint } {
-    const st = this.native.galley_tree_clean_children(handle as NativeHandle, generation, node, ptr(this.#outWords));
-    return { status: Number(st), head: this.#outWords[0] };
-  }
-
-  treeInsertChildrenAt(
-    handle: Handle,
-    generation: number,
-    parent: bigint,
-    index: number,
-    first: bigint,
-  ): number {
-    return Number(this.native.galley_tree_insert_children_at(handle as NativeHandle, generation, parent, BigInt(index), first));
-  }
-
-  treeRemoveChildrenAt(
-    handle: Handle,
-    generation: number,
-    parent: bigint,
-    index: number,
-    count: number,
-  ): { status: number; head: bigint } {
-    const st = this.native.galley_tree_remove_children_at(handle as NativeHandle, generation, parent, BigInt(index), BigInt(count), ptr(this.#outWords));
-    return { status: Number(st), head: this.#outWords[0] };
-  }
-
   // -- procedure hooks ----------------------------------------------------------
 
   procCurrentNode(args: Handle): bigint {
@@ -1014,8 +982,8 @@ export class BunPort implements FfiPort {
     return this.native.galley_procedure_door(args as NativeHandle);
   }
 
-  procSetCurrentNode(args: Handle, node: bigint): void {
-    this.native.galley_procedure_set_current_node(args as NativeHandle, node);
+  procSetCurrentNode(args: Handle, generation: number, node: bigint): number {
+    return Number(this.native.galley_procedure_set_current_node(args as NativeHandle, generation, node));
   }
 
   procDropSelf(args: Handle): number {
@@ -1048,111 +1016,10 @@ export class BunPort implements FfiPort {
     );
   }
 
-  // -- hook door: parse-time node/tree accessors --------------------------
-
-  hookNodeChildCount(door: Handle, node: bigint): number {
-    return this.native.galley_hook_node_child_count(door as NativeHandle, node);
-  }
-
-  hookNodeFirstChild(door: Handle, node: bigint): bigint {
-    return this.native.galley_hook_node_first_child(door as NativeHandle, node);
-  }
-
-  hookNodeLastChild(door: Handle, node: bigint): bigint {
-    return this.native.galley_hook_node_last_child(door as NativeHandle, node);
-  }
-
-  hookNodeNextSibling(door: Handle, node: bigint): bigint {
-    return this.native.galley_hook_node_next_sibling(door as NativeHandle, node);
-  }
-
-  hookNodePriorSibling(door: Handle, node: bigint): bigint {
-    return this.native.galley_hook_node_prior_sibling(door as NativeHandle, node);
-  }
-
-  hookNodeParent(door: Handle, node: bigint): bigint {
-    return this.native.galley_hook_node_parent(door as NativeHandle, node);
-  }
-
-  hookNodeSymbolName(door: Handle, node: bigint): Uint8Array | null {
-    const a = door as NativeHandle;
-    const outData = ptrOut64();
-    const outLen = ptrOut64();
-    if (this.native.galley_hook_node_symbol_name(a, node, ptr(outData), ptr(outLen)) < 0n) return null;
-    return readBytes(outData[0], outLen[0]);
-  }
-
-  hookNodeText(door: Handle, node: bigint): Uint8Array | null {
-    const a = door as NativeHandle;
-    const outData = ptrOut64();
-    const outLen = ptrOut64();
-    if (this.native.galley_hook_node_text(a, node, ptr(outData), ptr(outLen)) < 0n) return null;
-    return readBytes(outData[0], outLen[0]);
-  }
-
-  hookNodeSpan(door: Handle, node: bigint): [bigint, bigint] | null {
-    const outStart = ptrOut64();
-    const outLen = ptrOut64();
-    if (this.native.galley_hook_node_span(door as NativeHandle, node, ptr(outStart), ptr(outLen)) < 0n) return null;
-    return [outStart[0], outLen[0]];
-  }
-
-  hookNodeLineColumn(door: Handle, node: bigint): [number, number] | null {
-    const outLine = u32Out();
-    const outCol = u32Out();
-    if (this.native.galley_hook_node_line_column(door as NativeHandle, node, ptr(outLine), ptr(outCol)) < 0n) return null;
-    return [outLine[0], outCol[0]];
-  }
-
-  hookTreeAppendChildren(door: Handle, parent: bigint, first: bigint): number {
-    return Number(this.native.galley_hook_tree_append_children(door as NativeHandle, parent, first));
-  }
-
-  hookTreeCleanChildren(door: Handle, node: bigint): { status: number; head: bigint } {
-    const outHead = ptrOut64();
-    const st = this.native.galley_hook_tree_clean_children(door as NativeHandle, node, ptr(outHead));
-    return { status: Number(st), head: outHead[0] };
-  }
-
-  hookNodeVariableIndex(door: Handle, node: bigint): number | null {
-    const index = this.native.galley_hook_node_variable_index(door as NativeHandle, node);
-    return index < 0n || index === NO_VARIABLE ? null : Number(index);
-  }
-
-  hookTreeInsertBefore(door: Handle, target: bigint, first: bigint): number {
-    return Number(this.native.galley_hook_tree_insert_before(door as NativeHandle, target, first));
-  }
-
-  hookTreeInsertAfter(door: Handle, target: bigint, first: bigint): number {
-    return Number(this.native.galley_hook_tree_insert_after(door as NativeHandle, target, first));
-  }
-
-  hookTreeRemoveSiblings(door: Handle, node: bigint, count: number): { status: number; head: bigint } {
-    const outHead = ptrOut64();
-    const st = this.native.galley_hook_tree_remove_siblings(door as NativeHandle, node, BigInt(count), ptr(outHead));
-    return { status: Number(st), head: outHead[0] };
-  }
-
-  hookTreeRemoveSelf(door: Handle, node: bigint): { status: number; head: bigint } {
-    const outHead = ptrOut64();
-    const st = this.native.galley_hook_tree_remove_self(door as NativeHandle, node, ptr(outHead));
-    return { status: Number(st), head: outHead[0] };
-  }
-
-  hookTreeInsertChildrenAt(door: Handle, parent: bigint, index: number, first: bigint): number {
-    return Number(this.native.galley_hook_tree_insert_children_at(door as NativeHandle, parent, BigInt(index), first));
-  }
-
-  hookTreeRemoveChildrenAt(door: Handle, parent: bigint, index: number, count: number): { status: number; head: bigint } {
-    const outHead = ptrOut64();
-    const st = this.native.galley_hook_tree_remove_children_at(door as NativeHandle, parent, BigInt(index), BigInt(count), ptr(outHead));
-    return { status: Number(st), head: outHead[0] };
-  }
-
   hookGeneration(door: Handle): number {
     const outGeneration = ptrOut64();
     const status = this.native.galley_hook_generation(door as NativeHandle, ptr(outGeneration));
-    return status < 0n ? 0 : Number(outGeneration[0]);
+    return status < 0n ? Number(status) : Number(outGeneration[0]);
   }
 
 }

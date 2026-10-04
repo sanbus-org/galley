@@ -55,15 +55,14 @@ public final class Node implements Iterable<Node> {
 
     /**
      * Grammar name of this node's symbol, decoded as UTF-8 with replacement
-     * for malformed input. Null for invalid nodes. Token content stays raw
-     * bytes: use {@link #text} for that.
+     * for malformed input. A refused node throws, never answers null. Token
+     * content stays raw bytes: use {@link #text} for that.
      */
     public String symbolName() {
-        byte[] bytes = symbolNameBytes();
-        return bytes == null ? null : new String(bytes, StandardCharsets.UTF_8);
+        return new String(symbolNameBytes(), StandardCharsets.UTF_8);
     }
 
-    /** Raw bytes behind {@link #symbolName()}. Null for invalid nodes. */
+    /** Raw bytes behind {@link #symbolName()}. A refused node throws. */
     public byte[] symbolNameBytes() {
         return session.symbolNameBytes(this);
     }

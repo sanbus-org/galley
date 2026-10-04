@@ -361,7 +361,8 @@ pub struct NodeHandle {
 
 impl NodeHandle {
     /// Sentinel meaning "no node here". It belongs to no parse (generation
-    /// 0 is never live), so using it is a stale tree.
+    /// 0 is never live), so every read and edit of it is refused with
+    /// [`Error::StaleTree`].
     pub const INVALID: NodeHandle = NodeHandle {
         generation: 0,
         address: INVALID_ADDRESS,

@@ -158,6 +158,9 @@ session parses again. A node of a failed parse throws
 only inside a hook of that parse on the thread running it; from any other
 thread while the parse runs it throws a `GalleyException` with
 `ERROR_SESSION_IN_USE`, and a parse the core refuses invalidates nothing.
+Inside a hook the core checks every node's generation on that door too: a node
+of an earlier parse throws `StaleTreeException` on a read, a link, an edit or a
+walk step, never null.
 `Node.equals` compares session, parse generation, and address.
 
 Mechanically, the build links the generator's host shim (`host_procedures.zig`,
