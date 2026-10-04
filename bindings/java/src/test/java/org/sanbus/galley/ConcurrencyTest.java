@@ -24,24 +24,17 @@ import org.junit.jupiter.api.Test;
  * thread, so a hook routed to the wrong session, a gate set by a neighbour,
  * or a skipped hook shows up as a count mismatch.
  *
- * Needs both fixture libraries: GALLEY_LIBRARY_PATH (keyvalue grammar) and
- * GALLEY_SECOND_LIBRARY_PATH (second shared grammar).
+ * Needs both fixture libraries: test-fixture (keyvalue grammar) and
+ * test-fixture-second (second shared grammar), each located by the suite
+ * itself.
  */
 class ConcurrencyTest {
     private static final int ITEMS = 150;
     private static final int STRESS_ROUNDS = 200;
     private static final int BARRIER_TIMEOUT_SECONDS = 20;
 
-    private static String libraryPath(String environmentName) {
-        String value = System.getenv(environmentName);
-        if (value == null || value.isEmpty()) {
-            throw new IllegalStateException(environmentName + " must point at the fixture library");
-        }
-        return value;
-    }
-
-    private static Parser load(String environmentName) throws MissingArtifactException {
-        Parser parser = Galley.load(libraryPath(environmentName));
+    private static Parser load(String fixtureName) throws MissingArtifactException {
+        Parser parser = Galley.load(FixtureLibrary.path(fixtureName));
         parser.clearProcedures();
         return parser;
     }
@@ -140,8 +133,8 @@ class ConcurrencyTest {
 
     @Test
     void twoParsersTwoSessionsEachFourThreadsAtOnce() throws Exception {
-        Parser first = load("GALLEY_LIBRARY_PATH");
-        Parser second = load("GALLEY_SECOND_LIBRARY_PATH");
+        Parser first = load("test-fixture");
+        Parser second = load("test-fixture-second");
         assertNotSame(first, second);
         Worker[] workers = {
             new Worker(first, keyvalueInput(), "reduction_Pair", "hook_print"),

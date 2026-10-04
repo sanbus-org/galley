@@ -67,9 +67,8 @@ java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.
 java --enable-native-access=ALL-UNNAMED -cp bindings/java/out:examples/java/out com.example.Benchmark
 ```
 
-Pass the built file to `Galley.load`, or name it once with
-`GALLEY_LIBRARY_PATH` (or `-Dgalley.library.path`). Nothing is searched:
-a missing file throws `MissingArtifactException` (a `FileNotFoundException`
+Pass the built file to `Galley.load` as an explicit path. Nothing is
+searched: a missing file throws `MissingArtifactException` (a `FileNotFoundException`
 with the shared `galley:missing-artifact` code) naming the exact path plus
 the `GalleyBuild <language-dir>` build command.
 
@@ -322,18 +321,19 @@ root.appendChildren(head2);
 ## Module Queries
 
 ```java
-Galley.version();                         // String
-Galley.parserType();                       // ParserType (LL / LR / UNKNOWN)
-Galley.hasAst();                           // boolean
-Galley.hasProcedures();
-Galley.errorRecoveryMode();                // RecoveryMode (DISABLED / AUTOMATIC / EXPLICIT / UNKNOWN)
-Galley.statusString(StatusCode.ERROR_SYNTAX); // "syntax error" / null
-Galley.symbolCount();                      // long
-Galley.variableCount();
-session.symbolNameAt(0);                   // String / null
-session.symbolNameAtBytes(0);              // byte[] / null
+Parser parser = Galley.load(path);
+parser.version();                            // String
+parser.parserType();                         // ParserType (LL / LR / UNKNOWN)
+parser.hasAst();                             // boolean
+parser.hasProcedures();
+parser.errorRecoveryMode();                  // RecoveryMode (DISABLED / AUTOMATIC / EXPLICIT / UNKNOWN)
+parser.symbolCount();                        // long
+parser.variableCount();
+parser.statusString(StatusCode.ERROR_SYNTAX); // "syntax error" / null
+session.symbolNameAt(0);                     // String / null
+session.symbolNameAtBytes(0);                // byte[] / null
 session.symbolIsTerminal(0);
-session.variableNameAt(0);                 // String / null
+session.variableNameAt(0);                   // String / null
 ```
 
 ## Development builds

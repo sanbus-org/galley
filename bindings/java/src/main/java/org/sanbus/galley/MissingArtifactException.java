@@ -19,8 +19,7 @@ public class MissingArtifactException extends FileNotFoundException {
     private static String buildMessage(String detail) {
         return "galley: parser artifact not found: " + detail + ".\n"
                 + "Build it first: java --enable-native-access=ALL-UNNAMED -cp bindings/java/out"
-                + " org.sanbus.galley.build.GalleyBuild <language-dir>\n"
-                + "or set GALLEY_LIBRARY_PATH=/path/to/" + org.sanbus.galley.internal.GalleyLibraryLoader.libFileName();
+                + " org.sanbus.galley.build.GalleyBuild <language-dir>";
     }
 
     /**
@@ -29,7 +28,7 @@ public class MissingArtifactException extends FileNotFoundException {
      */
     public MissingArtifactException(String artifactPath) {
         super(buildMessage(artifactPath == null || artifactPath.isEmpty()
-                ? "no parser artifact given; pass a path to Galley.load or set GALLEY_LIBRARY_PATH"
+                ? "no parser artifact given; pass a path to Galley.load"
                 : "at " + artifactPath));
         this.artifactPath = artifactPath;
     }

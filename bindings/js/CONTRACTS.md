@@ -4,7 +4,6 @@ Host-specific rules for the JavaScript binding. Shared behavior lives in [CONTRA
 
 ## Loading and wiring
 
-- Everything artifact-shaped is asynchronous: a factory resolves a usable backend or rejects, so no unready session value can be observed.
 - Generated language entries export the `Session` value for namespace mirroring; adapter and universal entries expose it type-only and construct sessions exclusively from parsers.
 - The `galley` object loads explicit artifact files, raw module bytes, and fetched module URLs.
 - Byte and URL forms compile off the event loop through a shared module cache, so a source is never built twice.

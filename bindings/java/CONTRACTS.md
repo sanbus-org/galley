@@ -4,11 +4,8 @@ Host-specific rules for the Java binding. Shared behavior lives in [CONTRACTS.md
 
 ## Loading and wiring
 
-- Everything is synchronous.
-- `Galley.load` takes an explicit artifact path and returns the `Parser` for that file; the no-arg form resolves through `GALLEY_LIBRARY_PATH` / `galley.library.path`.
 - Parsers are cached by canonical artifact path for the process lifetime.
 - Sessions open from the `Parser` via `parser.openSession()`, with `SessionOptions` for the non-default shape.
-- `Parser` is not closeable: it owns no unloadable native state. `Session` is `AutoCloseable`; `Walker` owns no native resource and is never closed.
 - The `Parser` holds the artifact's default hooks and every `Session` owns its own copy, taken at open: both have `installProcedure` / `installProcedures` / `listProcedures` / `lookupProcedure` / `clearProcedures`.
 - Bulk installs take a `Map<String, hook>`; single installs take a name plus a hook. Hooks are `Consumer<ProcedureArguments>` or zero-arg `Runnable`.
 - The generated `Parser` per grammar wires bundled hooks inside its `load()` method from the `metadata.json` hook list.
@@ -24,7 +21,6 @@ Host-specific rules for the Java binding. Shared behavior lives in [CONTRACTS.md
 - Every refusal throws; no session-door read answers an empty value or zero for one. `Session.rootNode()` returning `null` is the only "nothing here" answer, and `nodeCount()` / `snapshot()` / `lastInput()` / `lastPosition()` with nothing published (before the first parse, or after a parse that published nothing) throw `StaleTreeException`.
 - There is no validity probe: whether a handle is usable is answered by a real read, which throws.
 - A `null` handle argument throws `NullPointerException`: it is a missing argument, not an empty answer.
-- Snake-case aliases (`has_ast()` and siblings) exist beside the camelCase queries; both spellings are documented API.
 
 ## Inputs and resources
 

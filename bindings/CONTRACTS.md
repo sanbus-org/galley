@@ -1,11 +1,11 @@
 # Binding contracts
 
-Rules every host binding follows. Grammar-level procedure semantics live in [procedures.md](../docs/procedures.md); this file covers loading, wiring, walking, failures, and repo conventions (the Builds and Examples sections constrain repo content, not runtime behavior). Cross-host values keep one meaning and take one shape per host: this file states what crosses, the language files (`bindings/<language>/CONTRACTS.md`) state how it is spelled, and a language file's spelling always wins where it differs.
+Rules every host binding follows. Grammar-level procedure semantics live in [procedures.md](../docs/procedures.md); this file covers loading, wiring, walking, failures, and repo conventions (the Builds and Examples sections constrain repo content, not runtime behavior). Cross-host values keep one meaning and take one shape per host: this file states what crosses, the binding contracts (`bindings/<language>/CONTRACTS.md`) state how it is spelled, and a binding contract's spelling always wins where it differs.
 
 ## Artifacts and loading
 
-- A load takes its artifact as an explicit argument; a language file that offers a defaulted form names what fills it.
-- A language's bundled hooks are wired automatically on the host's language-use path, named in each language file.
+- A load takes its artifact as an explicit argument.
+- A language's bundled hooks wire automatically when its package is loaded or imported.
 - The same source always yields the identical parser, and repeated loads of the same source share one default hook table.
 - A failed load hands out no parser and invalidates none already handed out; retrying after the cause is fixed is a fresh attempt.
 - A missing artifact reports the path and the exact build command, with a machine-readable code identical across hosts.
@@ -14,7 +14,7 @@ Rules every host binding follows. Grammar-level procedure semantics live in [pro
 Hosts that acquire native code at load time follow the load/open choreography:
 
 - Bare loads take an artifact and yield the parser without scanning for hook files; hooks arrive explicitly only.
-- Loading and opening are two steps: loading acquires the artifact and yields the parser — returns, or resolves where async — and sessions open from it, so hook installs fit between them.
+- Loading and opening are two steps: loading acquires the artifact and yields the parser, and sessions open from it, so hook installs fit between them.
 
 ## Hooks
 
@@ -45,7 +45,7 @@ Hosts that acquire native code at load time follow the load/open choreography:
 - Walkers yield named steps carrying the node, the depth, and the semantic-error and recovered flags; the first step is at depth zero. Python's steps are a read-only `WalkStep` type; Java and JavaScript yield their `WalkStep` values. Go yields the semantic-error flag only and has no recovered flag yet.
 - The recovered flag marks a node syntax-error recovery kept in place of damaged input; its span covers the input recovery skipped. Under LL parsing it is the damaged variable's own node, with the children parsed before the damage; under LR parsing, which builds no node before a rule completes, it is a placeholder with no children (and no variable under automatic recovery). Either way it sits where the damage was, as a child of the node covering it, so a walk that skips recovered subtrees yields only undamaged nodes. The damaged variable's hooks never ran, and the hooks of the nodes around it see it flagged.
 - A walk takes two skip options, one per flag: skipping semantic-error subtrees and skipping recovered subtrees. They are independent and combine; each prunes whole subtrees without yielding them. Go has the first only.
-- A walker owns no native resource: it is one host-side cursor, one native call per step, nothing to close. Abandoning a walker is free; sessions still release their resources explicitly, through the mechanism the language file names, and that closing stays idempotent.
+- A walker owns no native resource: it is one host-side cursor, one native call per step, nothing to close. Abandoning a walker is free; sessions still release their resources explicitly, through the mechanism the binding contract names, and that closing stays idempotent.
 - Pruning is host-side too: it changes the cursor's state without a native call, and skips the last yielded subtree.
 - Steps follow the live tree: `galley_tree_*` edits between steps are visible to later steps.
 - Where a host can name an invalid root, a walk from it hands back a walker whose first step fails with the host's stale-tree error. Python, Java, and JavaScript cannot: a node handle is never an invalid address.
@@ -58,19 +58,19 @@ Hosts that acquire native code at load time follow the load/open choreography:
 
 ## Names, values, and codes
 
-- Grammar names cross in one canonical form per host; each language file names that form and any raw-bytes form beside it.
+- Grammar names cross in one canonical form per host; each binding contract names that form and any raw-bytes form beside it.
 - A host that turns name bytes into text performs a UTF-8 charset decode, never an escape-unescape: it never throws and never modifies the raw bytes; hosts whose text type requires valid encoding replace with U+FFFD.
 - Token content is raw bytes in every host.
 - A node address crosses as a wide integer in every host.
-- Sequences, mappings, and the empty value take each host's idiomatic types; the language files name them.
+- Sequences, mappings, and the empty value take each host's idiomatic types; the binding contracts name them.
 - Status codes, parser families, recovery modes, diagnostic kinds, recovery targets, resume sides, and the invalid-node sentinel cross as named values in every host, never as bare integers.
 
 ## Failures
 
 - A failure signals to the caller as the host's failure type: a numeric code plus a frozen diagnostic snapshot, with its text fixed when the failure is created and structured detail in the snapshot.
 - Failures other than a missing artifact surface the underlying error unchanged.
-- Use after close signals a failure to the caller with an error idiomatic to the host, naming the closed object; the type each host uses is in its language file.
-- One stale-tree error per host, distinct from use after close, raised by every source that can find a handle's tree gone: the core's stale status on either door and a stale walk step. A refusal on the hook door raises exactly as on the session door; no hook read answers `None`/`null`/an empty value for a refusal. Each language file names the type.
+- Use after close signals a failure to the caller with an error idiomatic to the host, naming the closed object; the type each host uses is in its binding contract.
+- One stale-tree error per host, distinct from use after close, raised by every source that can find a handle's tree gone: the core's stale status on either door and a stale walk step. A refusal on the hook door raises exactly as on the session door; no hook read answers `None`/`null`/an empty value for a refusal. Each binding contract names the type.
 - Every refusal raises. A session-door read never answers an empty value or a zero for a refusal: `root_node()` returning the host empty value is the only "nothing here" answer, and `node_count` / `snapshot` / `last_input` / `last_position` with nothing published raise the stale-tree error. An empty value means really empty.
 
 ## Inputs and nodes
@@ -82,11 +82,11 @@ Hosts that acquire native code at load time follow the load/open choreography:
 - Hosts may narrow object identity to the live generation, as the JavaScript binding does: one object per (session, generation, address) while the generation is live, and a fresh handle after it is superseded — value identity itself is unchanged.
 - A node handle is bound to the core's parse generation it was created in: reading through it once that generation is no longer live signals a failure to the caller, never a stale read.
 - No public validity probe: whether a handle is usable is answered by a real read, which raises. Asking separately would only report what the next real call reports anyway.
-- Node keying in collections follows each host's default semantics; the language files spell it out.
+- Node keying in collections follows each host's default semantics; the binding contracts spell it out.
 - Tree edits cross the door chosen when they are made: the parse's hook door inside a hook dispatch on the dispatching thread, the post-parse door everywhere else, for session methods and node sugar alike.
 - Parsing copies the input into session ownership, so the caller may reuse or release its own buffer afterward.
 - Interior NUL bytes are data, not terminators.
-- File paths with interior NUL bytes are rejected loudly at the boundary instead of truncated; each language file names the failure its host signals to the caller.
+- File paths with interior NUL bytes are rejected loudly at the boundary instead of truncated; each binding contract names the failure its host signals to the caller.
 
 ## Builds
 

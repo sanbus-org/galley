@@ -32,12 +32,12 @@ import java.util.*;
  * procedures.c/procedures.cpp next to the grammar is a fatal build
  * error naming procedures.java as the host file to use instead.
  *
- * Environment overrides: ZIG_EXECUTABLE (default zig), GALLEY_LIBRARY_PATH,
+ * Environment overrides: ZIG_EXECUTABLE (default zig),
  *   GALLEY_CHECKOUT (required: existing Galley working tree).
  *
  * Generates parser (--emit-metadata --emit-host-procedures), builds shared library through generic
  * consumer build directly next to the grammar, so the consumer can name it
- * outright via Galley.load(path) or GALLEY_LIBRARY_PATH. To fetch
+ * outright via Galley.load(path). To fetch
  * a checkout for convenience, use examples/scripts/fetch-galley.sh — that
  * cache is an examples-only convenience, not part of the bindings.
  */
@@ -233,10 +233,6 @@ public final class GalleyBuild {
         }
         lines.add("        return parser;");
         lines.add("    }");
-        lines.add("");
-        lines.add("    public static org.sanbus.galley.Parser load() throws org.sanbus.galley.MissingArtifactException {");
-        lines.add("        return load(null);");
-        lines.add("    }");
         lines.add("}");
         try {
             Files.createDirectories(packageDir);
@@ -386,6 +382,6 @@ public final class GalleyBuild {
 
         Path dest = languageDir.resolve(libFileName(LIBRARY_NAME));
         if (!Files.exists(dest)) fatal("expected library not found at " + dest);
-        System.out.println("galley-bindings: built " + dest + "; import from " + languageDir + " (or set GALLEY_LIBRARY_PATH)");
+        System.out.println("galley-bindings: built " + dest + "; import from " + languageDir);
     }
 }

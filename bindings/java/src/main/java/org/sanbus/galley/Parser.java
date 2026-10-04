@@ -98,6 +98,14 @@ public final class Parser {
 
     public long variableCount() { return lib.galley_variable_count(); }
 
+    /** The library's text for a status code, or {@code null} when it names none. */
+    public String statusString(long status) { return lib.galley_status_string(status); }
+
+    public String statusString(StatusCode status) {
+        if (status == null) return null;
+        return lib.galley_status_string(status.getCode());
+    }
+
     /** Installs a default hook: reaches sessions opened after this call. */
     public void installProcedure(String name, Consumer<ProcedureArguments> hook) {
         HookNames.require(name, hook);
@@ -170,13 +178,6 @@ public final class Parser {
     }
 
     GalleyLibrary library() { return lib; }
-
-    String statusString(long status) { return lib.galley_status_string(status); }
-
-    String statusString(StatusCode status) {
-        if (status == null) return null;
-        return lib.galley_status_string(status.getCode());
-    }
 
     // Called by this parser's upcall stub on the parsing thread: routes the
     // hook to the session whose handle the library passed.

@@ -26,10 +26,6 @@ public final class Demo {
 
     // The one parser file this demo runs: explicit path, no searching.
     private static String libraryPath() {
-        String env = System.getenv("GALLEY_LIBRARY_PATH");
-        if (env != null && !env.isEmpty()) return env;
-        String prop = System.getProperty("galley.library.path");
-        if (prop != null && !prop.isEmpty()) return prop;
         return Paths.get(System.getProperty("user.dir", "."),
                 "examples", "java", "kv", GalleyLibraryLoader.libFileName()).toString();
     }

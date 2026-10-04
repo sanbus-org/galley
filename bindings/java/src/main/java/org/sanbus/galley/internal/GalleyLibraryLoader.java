@@ -10,9 +10,8 @@ import org.sanbus.galley.MissingArtifactException;
  * Loads the Galley shared library via Panama SymbolLookup, mirroring
  * bindings/js/node/src/ffi.ts. No JNA.
  *
- * One place, named up front: an explicit path or GALLEY_LIBRARY_PATH
- * (or the -Dgalley.library.path equivalent). Anything else is a loud
- * error, never a search.
+ * One place, named up front: the explicit path the caller gave. Anything
+ * else is a loud error, never a search.
  */
 public final class GalleyLibraryLoader {
 
@@ -34,19 +33,10 @@ public final class GalleyLibraryLoader {
      * @throws MissingArtifactException when no artifact is where it was told.
      */
     public static String findLibrary(String explicit) throws MissingArtifactException {
-        String chosen = (explicit != null && !explicit.isEmpty()) ? explicit : null;
-        if (chosen == null) {
-            String env = System.getenv("GALLEY_LIBRARY_PATH");
-            if (env != null && !env.isEmpty()) chosen = env;
-        }
-        if (chosen == null) {
-            String prop = System.getProperty("galley.library.path");
-            if (prop != null && !prop.isEmpty()) chosen = prop;
-        }
-        if (chosen == null) {
+        if (explicit == null || explicit.isEmpty()) {
             throw new MissingArtifactException(null);
         }
-        String absolute = Paths.get(chosen).toAbsolutePath().toString();
+        String absolute = Paths.get(explicit).toAbsolutePath().toString();
         if (!Files.exists(Paths.get(absolute))) {
             throw new MissingArtifactException(absolute);
         }
@@ -59,13 +49,5 @@ public final class GalleyLibraryLoader {
         } catch (IOException e) {
             return absolute;
         }
-    }
-
-    public static GalleyLibrary load(String explicitPath) throws MissingArtifactException {
-        return new GalleyLibrary(findLibrary(explicitPath));
-    }
-
-    public static GalleyLibrary load() throws MissingArtifactException {
-        return load(null);
     }
 }

@@ -6,7 +6,9 @@ import org.sanbus.galley.internal.GalleyLibrary;
 import org.sanbus.galley.internal.GalleyLibraryLoader;
 
 /**
- * Module-level queries mirroring galley.h.
+ * Loads parser artifacts and holds the shared sentinel constants.
+ * Module-level queries (version, parser type, counts, status text) are
+ * methods on the {@link Parser} a load returns.
  */
 public final class Galley {
     /** {@code GALLEY_INVALID_NODE}: no node at that position. Non-negative, like every address. */
@@ -23,9 +25,9 @@ public final class Galley {
      * Loads the parser artifact at {@code path} and returns the parser.
      * Parsers are cached by canonical artifact path for the process
      * lifetime: the same source always yields the identical object, and a
-     * failed load binds and caches nothing. A null path resolves through
-     * {@code GALLEY_LIBRARY_PATH} / {@code galley.library.path}, else a
-     * loud error naming the exact path. Bare loads wire no hooks.
+     * failed load binds and caches nothing. The artifact path is explicit:
+     * a null or empty one is a loud error, never a search. Bare loads wire
+     * no hooks.
      * Same-path loads serialize against each other; sessions opened from
      * the parser stay confined to one thread each, and sessions on different
      * threads parse concurrently (see {@link Parser}).
@@ -43,44 +45,4 @@ public final class Galley {
             return created;
         }
     }
-
-    /**
-     * Loads through {@code GALLEY_LIBRARY_PATH} / {@code galley.library.path}.
-     *
-     * @throws MissingArtifactException when no artifact is where it was told.
-     */
-    public static Parser load() throws MissingArtifactException { return load(null); }
-
-    public static String version() throws MissingArtifactException { return load().version(); }
-    public static String version(String libraryPath) throws MissingArtifactException { return load(libraryPath).version(); }
-
-    public static ParserType parserType() throws MissingArtifactException { return load().parserType(); }
-    public static ParserType parserType(String libraryPath) throws MissingArtifactException { return load(libraryPath).parserType(); }
-
-    public static RecoveryMode errorRecoveryMode() throws MissingArtifactException { return load().errorRecoveryMode(); }
-    public static RecoveryMode errorRecoveryMode(String libraryPath) throws MissingArtifactException { return load(libraryPath).errorRecoveryMode(); }
-
-    public static boolean hasAst() throws MissingArtifactException { return load().hasAst(); }
-    public static boolean hasAst(String libraryPath) throws MissingArtifactException { return load(libraryPath).hasAst(); }
-
-    public static boolean hasProcedures() throws MissingArtifactException { return load().hasProcedures(); }
-    public static boolean hasProcedures(String libraryPath) throws MissingArtifactException { return load(libraryPath).hasProcedures(); }
-
-    public static boolean allowsNoAstTreeProcedures() throws MissingArtifactException { return load().allowsNoAstTreeProcedures(); }
-    public static boolean sourceRetentionEnabled() throws MissingArtifactException { return load().sourceRetentionEnabled(); }
-    public static boolean hasPositionTracking() throws MissingArtifactException { return load().hasPositionTracking(); }
-    public static boolean hasInputStreaming() throws MissingArtifactException { return load().hasInputStreaming(); }
-    public static boolean usesVerbatim() throws MissingArtifactException { return load().usesVerbatim(); }
-    public static boolean stackOverflowRecoveryAvailable() throws MissingArtifactException { return load().stackOverflowRecoveryAvailable(); }
-
-    public static long symbolCount() throws MissingArtifactException { return load().symbolCount(); }
-    public static long variableCount() throws MissingArtifactException { return load().variableCount(); }
-
-    public static String statusString(long status) throws MissingArtifactException { return load().statusString(status); }
-    public static String statusString(StatusCode status) throws MissingArtifactException { return load().statusString(status); }
-
-    // Snake_case aliases of the camelCase queries; not unused duplicates.
-    public static boolean has_ast() throws MissingArtifactException { return hasAst(); }
-    public static boolean has_procedures() throws MissingArtifactException { return hasProcedures(); }
-    public static boolean has_position_tracking() throws MissingArtifactException { return hasPositionTracking(); }
 }

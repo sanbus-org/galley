@@ -18,10 +18,8 @@ into this directory with the stock builder class:
     GALLEY_CHECKOUT=<checkout> java --enable-native-access=ALL-UNNAMED \
       -cp bindings/java/out org.sanbus.galley.build.GalleyBuild bindings/java/test-fixture
 
-and the suite runs against it with (library suffix is platform-specific:
-`libgalley-java.so` on Linux, `libgalley-java.dylib` on macOS):
+and the suite runs against it, locating the built file itself:
 
-    GALLEY_LIBRARY_PATH=bindings/java/test-fixture/libgalley-java.so \
-      mvn -B -f bindings/java/pom.xml test
+    mvn -B -f bindings/java/pom.xml test
 
 Edit these sources and the Java suite picks the change up on its next run.

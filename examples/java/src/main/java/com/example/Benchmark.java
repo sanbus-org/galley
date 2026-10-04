@@ -39,10 +39,6 @@ public final class Benchmark {
 
     // The one parser file this benchmark runs: exact name, no searching.
     private static String benchmarkLibraryPath() {
-        String env = System.getenv("GALLEY_LIBRARY_PATH");
-        if (env != null && !env.isEmpty()) return env;
-        String prop = System.getProperty("galley.library.path");
-        if (prop != null && !prop.isEmpty()) return prop;
         return Paths.get(System.getProperty("user.dir", "."),
                 "examples", "java", "json", GalleyLibraryLoader.libFileName()).toString();
     }

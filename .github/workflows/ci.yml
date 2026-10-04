@@ -439,8 +439,6 @@ jobs:
         if: ${{ matrix.language == 'java' }}
         env:
           GALLEY_CHECKOUT: ${{ github.workspace }}
-          GALLEY_LIBRARY_PATH: ${{ github.workspace }}/bindings/java/test-fixture/libgalley-java.so
-          GALLEY_SECOND_LIBRARY_PATH: ${{ github.workspace }}/bindings/java/test-fixture-second/libgalley-java.so
         run: |
           javac --release 22 -d bindings/java/out $(find bindings/java/src/main/java -name "*.java")
           java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild bindings/java/test-fixture

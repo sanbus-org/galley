@@ -38,17 +38,13 @@ import java.util.function.Consumer;
  * (built on demand, never examples/):
  *   GALLEY_CHECKOUT=<checkout> java -cp bindings/java/out \
  *     org.sanbus.galley.build.GalleyBuild bindings/java/test-fixture
- * Point it at the file with GALLEY_LIBRARY_PATH (or -Dgalley.library.path);
- * a missing file is a loud error, never a search.
+ * The suite locates that file itself; a missing fixture is a loud error
+ * naming its path, never a search.
  */
 public class GalleyTest {
 
     private static String fixtureLibraryPath() {
-        String env = System.getenv("GALLEY_LIBRARY_PATH");
-        if (env != null && !env.isEmpty()) return env;
-        String prop = System.getProperty("galley.library.path");
-        if (prop != null && !prop.isEmpty()) return prop;
-        throw new IllegalStateException("GALLEY_LIBRARY_PATH (or galley.library.path) must point at the fixture library");
+        return FixtureLibrary.path("test-fixture");
     }
 
     private static Parser fixtureParser() {
@@ -74,24 +70,25 @@ public class GalleyTest {
 
     @Test
     void versionReturnsNonEmptyString() throws Exception {
-        String v = Galley.version();
+        String v = fixtureParser().version();
         assertNotNull(v);
         assertFalse(v.isEmpty());
     }
 
     @Test
     void parserMetadataFlagsAreConsistent() throws Exception {
-        assertEquals(ParserType.LL, Galley.parserType());
-        assertTrue(Galley.hasAst());
+        Parser parser = fixtureParser();
+        assertEquals(ParserType.LL, parser.parserType());
+        assertTrue(parser.hasAst());
         // boolean flags
-        assertNotNull(Galley.hasProcedures());
-        assertNotNull(Galley.allowsNoAstTreeProcedures());
-        assertNotNull(Galley.sourceRetentionEnabled());
-        assertNotNull(Galley.hasPositionTracking());
-        assertNotNull(Galley.hasInputStreaming());
-        assertNotNull(Galley.usesVerbatim());
-        assertNotNull(Galley.stackOverflowRecoveryAvailable());
-        RecoveryMode rm = Galley.errorRecoveryMode();
+        assertNotNull(parser.hasProcedures());
+        assertNotNull(parser.allowsNoAstTreeProcedures());
+        assertNotNull(parser.sourceRetentionEnabled());
+        assertNotNull(parser.hasPositionTracking());
+        assertNotNull(parser.hasInputStreaming());
+        assertNotNull(parser.usesVerbatim());
+        assertNotNull(parser.stackOverflowRecoveryAvailable());
+        RecoveryMode rm = parser.errorRecoveryMode();
         assertTrue(rm == RecoveryMode.DISABLED || rm == RecoveryMode.AUTOMATIC || rm == RecoveryMode.EXPLICIT);
         assertEquals(0, ParserType.LL.getCode());
         assertEquals(1, ParserType.LR.getCode());
@@ -101,11 +98,12 @@ public class GalleyTest {
 
     @Test
     void statusStringRendersKnownCodes() throws Exception {
-        String rendered = Galley.statusString(StatusCode.ERROR_SYNTAX);
+        Parser parser = fixtureParser();
+        String rendered = parser.statusString(StatusCode.ERROR_SYNTAX);
         assertNotNull(rendered);
         assertTrue(rendered.toLowerCase().contains("syntax"));
         assertEquals(StatusCode.UNKNOWN, StatusCode.fromCode(999999));
-        assertNull(Galley.statusString(StatusCode.fromCode(999999)));
+        assertNull(parser.statusString(StatusCode.fromCode(999999)));
     }
 
     @Test
@@ -465,7 +463,7 @@ public class GalleyTest {
             // the same address widened into a box, fails.
             Set<String> sanctioned = Set.of(
                     "org.sanbus.galley.DiagnosticKind#fromCode(long)",
-                    "org.sanbus.galley.Galley#statusString(long)",
+                    "org.sanbus.galley.Parser#statusString(long)",
                     "org.sanbus.galley.ParserType#fromCode(long)",
                     "org.sanbus.galley.RecoveryMode#fromCode(long)",
                     "org.sanbus.galley.RecoveryTarget#fromCode(long)",
@@ -1927,8 +1925,8 @@ public class GalleyTest {
 
         @Test
         void symbolAndVariableTables() throws Exception {
-            assertTrue(Galley.symbolCount() > 0);
-            assertTrue(Galley.variableCount() > 0);
+            assertTrue(parser.symbolCount() > 0);
+            assertTrue(parser.variableCount() > 0);
             String firstName = session.symbolNameAt(0);
             assertNotNull(firstName);
             assertFalse(firstName.isEmpty());
@@ -2257,7 +2255,6 @@ public class GalleyTest {
             try {
                 assertSame(first, Galley.load(path));
                 assertSame(first, Galley.load(Path.of(path).toRealPath().toString()));
-                assertSame(first, Galley.load());
                 Path dir = Files.createTempDirectory("galley-java-symlink");
                 Path link = dir.resolve("fixture-link");
                 Files.createSymbolicLink(link, Path.of(path));

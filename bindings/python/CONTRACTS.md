@@ -4,7 +4,6 @@ Host-specific rules for the Python binding. Shared behavior lives in [CONTRACTS.
 
 ## Loading and wiring
 
-- Everything is synchronous.
 - Importing a language package scans the sibling hook file and wires hooks at import time.
 - `galley.load` takes an explicit artifact path and returns the parser for that file; repeated loads of the same resolved path return that same parser, cached for the process lifetime.
 - The module-level `install_procedure` / `install_procedures` / `list_procedures` / `procedure_hook` / `clear_procedures` manage the artifact's defaults; every `Session` owns its hooks (a copy of the defaults at open) and has the same five methods.
