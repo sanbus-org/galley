@@ -128,13 +128,23 @@ the next parse on the same session; every accessor copies before
 returning, so Python-side values never dangle. `Node` methods raise
 `ValueError` after `session.close()` or exiting a `with` block. A node
 carries the core's parse generation and the core checks it on every call:
-after a re-parse, or after a failed parse, node methods, walkers, and
-snapshot nodes of the earlier parse raise `galley.StaleTreeError`, a
-`GalleyError` subclass with code `ERROR_STALE_TREE`. Until a successful
-parse, `session.node_count()` and `session.snapshot()` raise it too and
-`session.root_node()` returns `None`, the one "is there a tree here"
-probe; there is no validity probe. `last_input` keeps the last successful
-input.
+after a re-parse, node methods, walkers, and snapshot nodes of the earlier
+parse raise `galley.StaleTreeError`, a `GalleyError` subclass with code
+`ERROR_STALE_TREE`. Until a parse publishes, `session.node_count()`,
+`session.snapshot()`, `session.last_input()` and `session.last_position()`
+raise it too — before the first parse, and after a parse that published
+nothing — and `session.root_node()` returns `None`, the one "is there a tree
+here" probe; there is no validity probe.
+
+A parse that fails after running to its end publishes its tree like a
+success, and `parse()` still raises: one that recorded only semantic errors,
+and one whose syntax errors the parser recovered from. `session.root_node()`
+returns the tree, `last_input()` is that input, and the damaged regions are
+nodes flagged `is_recovered` on walk steps and the snapshot, spanning the
+input recovery skipped (the damaged variable's own node under LL, a
+childless placeholder under LR); a walk with `skip_recovered=True` yields only
+undamaged nodes. A parse the parser could not recover from, or that failed
+to read, publishes nothing.
 
 ## Procedures
 
@@ -172,8 +182,9 @@ def hook_print(args: ProcedureArguments) -> None:
 
 `ProcedureArguments` is valid only while its hook runs and raises `ValueError`
 afterwards. The nodes it yields belong to the parse: a hook may keep one for
-later hooks of the same parse, and, when the parse succeeds, for use after it
-until the session parses again. A node of a failed parse raises. A node reads
+later hooks of the same parse, and, when the parse publishes (a success, or
+a failure that ran to its end), for use after it until the session parses
+again. A node of a parse that published nothing raises. A node reads
 through the parse's hook door only inside a hook of that parse on the thread
 running it; from any other thread while the parse runs it raises `GalleyError`
 with `ERROR_SESSION_IN_USE`, and a parse the core refuses invalidates nothing.
@@ -230,8 +241,8 @@ payloads are unavailable through bindings.
 ## Tree Walking
 
 `node.walk()` returns a pre-order `Walker` over that node's subtree,
-yielding read-only `WalkStep` objects with `node`, `depth` and
-`is_semantic_error` attributes; the node itself is at depth 0 — the
+yielding read-only `WalkStep` objects with `node`, `depth`,
+`is_semantic_error` and `is_recovered` attributes; the node itself is at depth 0 — the
 shared runtime walker. The walker owns no native
 resource: no `close` and no context-manager block, and abandoning it is
 free — its next step raises the dead-generation error instead of reading
@@ -239,7 +250,8 @@ stale storage. `walk()` itself does not raise for a stale node; the first
 step does. `walker.skip_children()` prunes the last yielded
 node's children host-side, without a native call;
 `node.walk(skip_semantic_errors=True)` prunes
-subtrees rooted at semantic-error nodes. Steps follow the live links, so
+subtrees rooted at semantic-error nodes and `node.walk(skip_recovered=True)`
+those rooted at recovered nodes. Steps follow the live links, so
 edits between steps are visible, and a step whose position is no longer
 inside the walk's root (removed, or moved elsewhere) raises
 `GalleyError` with `ERROR_INVALID_NODE`:

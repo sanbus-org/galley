@@ -136,11 +136,7 @@ def main() -> int:
         except parser.GalleyError as error:
             print(f"file parse failed: {error} ({error.code})", file=sys.stderr)
             return 1
-        position = session.last_position()
-        if position is None:
-            print("expected a position after file parse", file=sys.stderr)
-            return 1
-        end_line, end_column = position
+        end_line, end_column = session.last_position()
         print(f"file parse: {parsed} bytes, ended at {end_line}:{end_column}")
 
         # Tree editing: detach the root's children, then reattach them.

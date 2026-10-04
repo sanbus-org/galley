@@ -67,6 +67,10 @@ pub const RuntimeContext = struct {
     explicit_recovery_position: ?usize = null,
     explicit_recovery_target_id: ?usize = null,
     pending_syntax_error_site: ?usize = null,
+    /// Automatic LR recovery's placeholders (`pendRecoveredNode`) that no
+    /// node has adopted yet, ordered by source position. Arena-backed:
+    /// reset at parse start.
+    recovered_pending: std.ArrayList(usize) = .empty,
     syntax_error_reporter: ?root.SyntaxErrorMessageReporter = null,
     /// Session-owned message override table, wired at parse start. Lookup
     /// happens only inside cold syntax-error paths.
@@ -578,6 +582,102 @@ pub const Context = struct {
             _ = self.head(u8, 0);
             self.releaseToken(1);
         }
+    }
+
+    /// Recovery's hand-back of the node a variable parser was building when
+    /// it recovered: flags it `is_recovered` and extends its span through
+    /// the input recovery skipped, then returns it for the caller to attach
+    /// like any finished child. Its children parsed so far stay linked. The
+    /// damaged variable's hooks never ran, and still do not. `invalid_pointer`
+    /// (a self-repeating parser that built no level yet) stays unattached.
+    pub fn keepRecoveredNode(self: *Self, address: data_structures.Node.Pointer) data_structures.Node.Pointer {
+        if (comptime !root.parser.is_ast_enabled) @compileError("keepRecoveredNode requires AST construction");
+        if (address == data_structures.Node.invalid_pointer) return address;
+        const node = self.node_allocator.at(address);
+        node.is_recovered = true;
+        node.text_length = self.currentTokenSourceOffset() - node.text_start;
+        return address;
+    }
+
+    /// Automatic LR recovery's record of the input it discarded: a flagged
+    /// placeholder node spanning [`start`, the current token). LR builds a
+    /// node only when a rule completes, so nothing exists yet to hold the
+    /// placeholder; it waits in `recovered_pending` until `adoptRecoveredNodes`
+    /// links it under the first node whose span covers it. A recovery that
+    /// discards input an earlier one skipped absorbs that placeholder, so the
+    /// pending spans never overlap. The placeholder carries no variable.
+    pub fn pendRecoveredNode(self: *Self, start: usize) !void {
+        if (comptime !root.parser.is_ast_enabled) @compileError("pendRecoveredNode requires AST construction");
+        const runtime_context = self.runtime();
+        const pending = &runtime_context.recovered_pending;
+        while (pending.items.len != 0 and self.node_allocator.at(pending.items[pending.items.len - 1]).text_start >= start) {
+            _ = pending.pop();
+        }
+        const address = try self.node_allocator.create(start, data_structures.Node.invalid_variable);
+        const node = self.node_allocator.at(address);
+        node.is_recovered = true;
+        node.text_length = self.currentTokenSourceOffset() - start;
+        try pending.append(runtime_context.arena_allocator, address);
+    }
+
+    pub inline fn hasPendingRecovered(self: *const Self) bool {
+        return self.runtimeConst().recovered_pending.items.len != 0;
+    }
+
+    /// Links the pending placeholders that start at or after `start` — the
+    /// ones inside the span of the node `parent`, which a reduce has just
+    /// built from children starting at `start` — into `parent`'s children, in
+    /// source order beside the children already there. Placeholders before
+    /// `start` stay pending for an outer node. With `start` 0 the parser has
+    /// accepted and `parent` is the root, which also grows to cover input
+    /// recovery discarded before its first symbol.
+    pub fn adoptRecoveredNodes(self: *Self, parent: data_structures.Node.Pointer, start: usize) void {
+        if (comptime !root.parser.is_ast_enabled) @compileError("adoptRecoveredNodes requires AST construction");
+        const Node = data_structures.Node;
+        const pending = &self.runtime().recovered_pending;
+        var first_adopted = pending.items.len;
+        while (first_adopted > 0 and self.node_allocator.at(pending.items[first_adopted - 1]).text_start >= start) first_adopted -= 1;
+        for (pending.items[first_adopted..]) |address| {
+            const placeholder = self.node_allocator.at(address);
+            var next_child = self.node_allocator.at(parent).first_child;
+            while (next_child != Node.invalid_pointer and self.node_allocator.at(next_child).text_start <= placeholder.text_start) {
+                next_child = self.node_allocator.at(next_child).next;
+            }
+            if (next_child == Node.invalid_pointer) {
+                Node.appendChildren(parent, self.node_allocator, address);
+            } else {
+                Node.insertBefore(next_child, self.node_allocator, address);
+            }
+            const node = self.node_allocator.at(parent);
+            if (placeholder.text_start < node.text_start) {
+                node.text_length += node.text_start - placeholder.text_start;
+                node.text_start = placeholder.text_start;
+            }
+        }
+        pending.shrinkRetainingCapacity(first_adopted);
+    }
+
+    /// `keepRecoveredNode` for a self-repeating parser's chain of levels:
+    /// every level from `inner` up to `outer` is cut short by the recovery,
+    /// so each gets its span through the skipped input, and the outermost
+    /// level, which the caller attaches, carries the mark.
+    pub fn keepRecoveredChain(
+        self: *Self,
+        outer: data_structures.Node.Pointer,
+        inner: data_structures.Node.Pointer,
+    ) data_structures.Node.Pointer {
+        if (comptime !root.parser.is_ast_enabled) @compileError("keepRecoveredChain requires AST construction");
+        if (outer == data_structures.Node.invalid_pointer) return outer;
+        const end = self.currentTokenSourceOffset();
+        var level = inner;
+        while (level != data_structures.Node.invalid_pointer) {
+            const node = self.node_allocator.at(level);
+            node.text_length = end - node.text_start;
+            if (level == outer) break;
+            level = node.parent;
+        }
+        self.node_allocator.at(outer).is_recovered = true;
+        return outer;
     }
 
     /// Captures raw source bytes from the current source position through the

@@ -178,12 +178,7 @@ async function main(): Promise<number> {
       console.error(`file parse failed: ${err} (${galleyErr.code})`);
       return 1;
     }
-    const pos = session.lastPosition();
-    if (!pos) {
-      console.error("expected a position after file parse");
-      return 1;
-    }
-    const [endLine, endColumn] = pos;
+    const [endLine, endColumn] = session.lastPosition();
     console.log(`file parse: ${parsed} bytes, ended at ${endLine}:${endColumn}`);
 
     // Tree editing: detach the root's children, then reattach them.

@@ -63,7 +63,16 @@ typedef unsigned long long GalleyNodeAddress;
 
 /* Status codes returned by galley_parse_sentinel, galley_parse, and the
  * accessor functions. Non-negative values are success and (for parse)
- * carry the number of bytes parsed; negative values are errors. */
+ * carry the number of bytes parsed; negative values are errors.
+ *
+ * A parse that reports galley_error_syntax or galley_error_semantic may still
+ * have published its tree: one that ran to its end with recorded errors
+ * (syntax errors the parser recovered from, or only semantic errors) serves
+ * that tree through galley_root_node, with the damaged regions flagged as
+ * recovered nodes (see GalleyWalkCursor), exactly like a successful parse.
+ * Every other failure — an error the parser could not recover from, an
+ * indentation or read error, stack overflow, out of memory — publishes
+ * nothing. galley_root_node is the probe. */
 enum {
     galley_ok                             = 0,
     galley_error_null_argument            = -1,
@@ -85,7 +94,9 @@ enum {
     /* A node, tree edit, snapshot, or walk cursor carries a generation that
      * is not the door's live tree's. On the session door: the session parsed
      * again, the last parse failed and published nothing, or nothing was ever
-     * published; re-read the tree with galley_root_node and use its nodes. On
+     * published; re-read the tree with galley_root_node and use its nodes.
+     * galley_last_input and galley_last_position follow the published tree the
+     * same way. On
      * the hook door (galley_hook_*, galley_procedure_set_current_node): the
      * generation is not the running parse's (galley_hook_generation). Calls
      * on both doors pass the generation they address; the check runs in every
@@ -220,10 +231,13 @@ long long galley_parse(GalleySession *session, const char *data, size_t len);
  * file access failures report galley_error_io. */
 long long galley_parse_file(GalleySession *session, const char *path);
 
-/* Writes the end position (1-based line and column) of the most recent
- * successful parse; writes zeros when the parser was built without
- * position tracking. This one and galley_last_input take no generation: they
- * answer about the parse the session last ran, not about a node. */
+/* Writes the end position (1-based line and column) of the published parse;
+ * writes zeros when the parser was built without position tracking. This one
+ * and galley_last_input take no generation: they answer about the published
+ * parse, not about a node, and refuse with galley_error_stale_tree whenever
+ * nothing is published (before the first parse, after a parse that published
+ * nothing, or once a later parse has begun) and with
+ * galley_error_session_in_use while a parse is in flight. */
 long long galley_last_position(GalleySession *session,
                                unsigned int *out_line, unsigned int *out_column);
 
@@ -263,14 +277,16 @@ long long galley_reserve_nodes(GalleySession *session, unsigned long long capaci
 /* Returns the current node storage capacity in nodes. */
 unsigned long long galley_node_capacity(GalleySession *session);
 
-/* Writes the root node of the most recent successful parse to *out_root and
+/* Writes the root node of the published parse (the most recent success, or
+ * failure that ran to its end with recorded errors) to *out_root and
  * the parse generation every node of that tree carries to *out_generation,
  * under one guard, so a caller never pairs a root with another parse's
  * generation. This is the only source of the published generation and the
  * one "is there a tree here" probe:
  *
- *   - nothing published (no parse has succeeded, a later parse has begun,
- *     or the parser was built without AST construction): galley_ok with
+ *   - nothing published (no parse has published, a later parse has begun, a
+ *     failed parse published nothing, or the parser was built without AST
+ *     construction): galley_ok with
  *     GALLEY_INVALID_NODE and 0 written. Real generations start at 1, so 0
  *     never matches a live tree.
  *   - a parse in flight: galley_error_session_in_use, nothing meaningful
@@ -321,8 +337,8 @@ typedef struct GalleyWalkCursor {
     unsigned long long current;      /* last yielded node */
     unsigned int depth;              /* depth of current below root */
     unsigned short state;            /* GALLEY_WALK_STATE_* */
-    unsigned char options;           /* GALLEY_WALK_SKIP_SEMANTIC_ERRORS */
-    unsigned char is_semantic_error; /* 1 while current carries a semantic error */
+    unsigned char options;           /* GALLEY_WALK_SKIP_* bits */
+    unsigned char flags;             /* GALLEY_WALK_FLAG_* bits of current */
     unsigned long long structure_version; /* stamped per step; re-verifies the
                                              position after structure edits */
 } GalleyWalkCursor;
@@ -336,11 +352,25 @@ enum {
     GALLEY_WALK_STATE_DONE                 = 3
 };
 
-/* Cursor option bit 0: prune subtrees rooted at semantic-error nodes
- * without yielding them. Any other bit is rejected with
- * galley_error_invalid_node. */
+/* Cursor option bits: GALLEY_WALK_SKIP_SEMANTIC_ERRORS prunes subtrees rooted
+ * at semantic-error nodes without yielding them, GALLEY_WALK_SKIP_RECOVERED
+ * those rooted at recovered nodes (the nodes syntax-error recovery kept in
+ * place of damaged input), so a walk with both yields only undamaged,
+ * valid nodes. Any other bit is rejected with galley_error_invalid_node. */
 enum {
-    GALLEY_WALK_SKIP_SEMANTIC_ERRORS = 1
+    GALLEY_WALK_SKIP_SEMANTIC_ERRORS = 1,
+    GALLEY_WALK_SKIP_RECOVERED       = 2
+};
+
+/* Flag bits galley_walk_next records in the cursor for the node it yielded:
+ * a hook reported a semantic error on it, or it is a recovered node. A
+ * recovered node spans the input recovery skipped: the damaged variable's own
+ * node under LL parsing (with the children parsed before the damage), and a
+ * placeholder under LR parsing, which builds no node before a rule completes
+ * (it carries no children, and no variable under automatic recovery). */
+enum {
+    GALLEY_WALK_FLAG_SEMANTIC_ERROR = 1,
+    GALLEY_WALK_FLAG_RECOVERED      = 2
 };
 
 #if defined(__cplusplus)
@@ -350,7 +380,7 @@ _Static_assert(sizeof(GalleyWalkCursor) == 40, "GalleyWalkCursor must be 40 byte
 #endif
 
 /* Advances cursor to the next node of its subtree in pre-order, writing the
- * position into the cursor (current/depth/state/is_semantic_error/
+ * position into the cursor (current/depth/state/flags/
  * structure_version). Returns 1 when a node was yielded, 0 when the walk is
  * done — a done cursor keeps returning 0 before any session or generation
  * check — or a negative status:
@@ -411,9 +441,10 @@ long long galley_node_variable_index(GalleySession *session, unsigned long long 
  * child, out_next the next sibling, out_child_count the direct child
  * count, out_variable the variable index (GALLEY_NO_VARIABLE when the node has none),
  * out_span_start/out_span_len the source span, out_is_semantic_error 1
- * where the node carries a semantic error (the flag galley_walk_next
- * records in the cursor), else 0. Together parent, first_child, and next
- * describe the whole tree without further calls. */
+ * where the node carries a semantic error and out_is_recovered 1 where it is
+ * a recovered node (the flags galley_walk_next records in the cursor), else
+ * 0. Together parent, first_child, and next describe the whole tree without
+ * further calls. */
 long long galley_tree_snapshot(GalleySession *session,
                                unsigned long long generation,
                                GalleyNodeAddress *out_parent,
@@ -424,6 +455,7 @@ long long galley_tree_snapshot(GalleySession *session,
                                unsigned long long *out_span_start,
                                unsigned long long *out_span_len,
                                int *out_is_semantic_error,
+                               int *out_is_recovered,
                                unsigned long long capacity);
 
 /* Writes the source text matched by a node into *out_data / *out_len. The
@@ -435,12 +467,14 @@ long long galley_node_text(GalleySession *session, unsigned long long generation
                            GalleyNodeAddress node,
                            const char **out_data, size_t *out_len);
 
-/* Writes the retained input of the most recent parse into *out_data /
+/* Writes the retained input of the published parse into *out_data /
  * *out_len: exactly the parsed bytes (no sentinel or padding) — the buffer
  * that snapshot spans and node texts index. Same lifetime as
- * galley_node_text. Empty (length 0) before the first parse.
- * During an in-progress parse (procedure hooks) it references the live
- * input of that parse. */
+ * galley_node_text. Follows the published tree like galley_last_position:
+ * galley_error_stale_tree whenever nothing is published (before the first
+ * parse included), galley_error_session_in_use while a parse is in flight.
+ * Inside a hook use galley_hook_last_input for the live input of the
+ * in-progress parse. */
 long long galley_last_input(GalleySession *session,
                             const char **out_data, size_t *out_len);
 
@@ -817,6 +851,7 @@ long long galley_hook_tree_snapshot(GalleyHookDoor *door, unsigned long long gen
                                     unsigned long long *out_span_start,
                                     unsigned long long *out_span_len,
                                     int *out_is_semantic_error,
+                                    int *out_is_recovered,
                                     unsigned long long capacity);
 
 /* Current-diagnostic reads of the in-flight parse (recorded-*

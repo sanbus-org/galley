@@ -232,12 +232,16 @@ class Node:
         """Last child, or ``None`` when leaf."""
         ...
 
-    def walk(self, *, skip_semantic_errors: bool = False) -> Walker:
+    def walk(
+        self, *, skip_semantic_errors: bool = False, skip_recovered: bool = False
+    ) -> Walker:
         """Pre-order walker over this node's subtree, this node included at
         depth 0.
 
         Pass ``skip_semantic_errors`` to prune subtrees rooted at
-        semantic-error nodes. ``walk()`` itself only refuses a closed
+        semantic-error nodes and ``skip_recovered`` to prune those rooted at
+        nodes syntax-error recovery kept in place of damaged input; with both
+        the walk yields only undamaged, valid nodes. ``walk()`` itself only refuses a closed
         session (``ValueError``); a node whose tree is gone is refused by the
         core at the walker's first step, which raises ``StaleTreeError``.
         """
@@ -308,6 +312,10 @@ class Snapshot:
     is_semantic_error: tuple[bool, ...]
     """The semantic-error flag a walk step carries, per node."""
 
+    is_recovered: tuple[bool, ...]
+    """The recovered flag a walk step carries, per node: ``True`` for a node
+    syntax-error recovery kept in place of damaged input."""
+
     def node(self, index: int) -> Node | None:
         """Node at ``index`` for this snapshot's parse, or ``None`` for
         ``INVALID_NODE``.
@@ -335,6 +343,12 @@ class WalkStep:
     @property
     def is_semantic_error(self) -> bool:
         """Whether the visited node is flagged as a semantic error."""
+        ...
+
+    @property
+    def is_recovered(self) -> bool:
+        """Whether the visited node is one syntax-error recovery kept in place
+        of damaged input; its span covers the input recovery skipped."""
         ...
 
 class Walker(Iterator[WalkStep]):
@@ -497,8 +511,9 @@ class Session:
         """Flat bulk read of the published tree: a ``Snapshot`` with ``count``
         and one tuple per node address for ``parent``, ``first_child``,
         ``next``, ``child_count``, ``variable``, ``span_start``,
-        ``span_len`` and ``is_semantic_error`` (booleans, the flag a walk
-        step carries). Missing links and variables are ``None``.
+        ``span_len``, ``is_semantic_error`` and ``is_recovered`` (booleans,
+        the flags a walk step carries). Missing links and variables are
+        ``None``.
 
         Raises ``StaleTreeError`` when nothing is published, and
         ``GalleyError`` (``ERROR_SESSION_IN_USE``) while a parse runs.
@@ -506,7 +521,14 @@ class Session:
         ...
 
     def last_input(self) -> bytes:
-        """Retained input of the most recent parse as bytes: the buffer that snapshot spans index. Empty before the first parse."""
+        """Retained input of the published parse as bytes: the buffer that
+        snapshot spans index.
+
+        Follows the published tree like every node read: raises
+        ``StaleTreeError`` whenever nothing is published (before the first
+        parse included), and ``GalleyError`` (``ERROR_SESSION_IN_USE``) while
+        a parse runs.
+        """
         ...
 
     def node_count(self) -> int:
@@ -570,8 +592,12 @@ class Session:
         """Variable table index, or ``None`` when the node has no variable."""
         ...
 
-    def last_position(self) -> tuple[int, int] | None:
-        """1-based ``(line, column)`` just past the last parsed byte, or ``None``."""
+    def last_position(self) -> tuple[int, int]:
+        """1-based ``(line, column)`` just past the last parsed byte (zeros when
+        the parser was built without position tracking).
+
+        Raises like ``last_input`` when nothing is published.
+        """
         ...
 
     def has_diagnostic(self) -> bool:

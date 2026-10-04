@@ -181,11 +181,15 @@ and the core refuses one that is not the published tree's: a re-parse makes
 them throw `StaleTreeError` (`GalleyError`, code `Status.ErrorStaleTree`)
 rather than read stale storage. After `close()` or on exiting a `using` block
 they throw `SessionClosedError` instead — a different failure, which never
-stands in for the other. A failed parse counts: nothing is published, so
-every session-door read, `nodeCount()`, and `snapshot()` throw
-`StaleTreeError` until a successful parse, while `lastInput()` keeps the last
-successful input. `rootNode()` is the one "is there a tree here" probe: it
-returns `null` when nothing is published. There is no validity probe — a real
+stands in for the other. A parse that fails after running to its end —
+semantic errors only, or syntax errors the parser recovered from — publishes
+its tree like a success and `parse()` still throws: `rootNode()` returns the
+tree, `lastInput()` is that input, and the damaged regions are nodes with
+`isRecovered` on walk steps and the snapshot. A parse that publishes nothing
+counts: every session-door read, `nodeCount()`, `snapshot()`, `lastInput()`
+and `lastPosition()` throw `StaleTreeError` until a parse publishes, and so
+they do before the first parse. `rootNode()` is the one "is there a tree
+here" probe: it returns `null` when nothing is published. There is no validity probe — a real
 read is the answer, and it raises.
 
 ## Procedures
@@ -234,8 +238,9 @@ export function hook_print(args: ProcedureArguments): void {
 
 `ProcedureArguments` is valid only while its hook runs and throws afterwards.
 The nodes it yields belong to the parse: a hook may keep one for later hooks
-of the same parse and, when the parse succeeds, for use after it until the
-session parses again. A node of a failed parse throws `StaleTreeError`. A
+of the same parse and, when the parse publishes (a success, or a failure that
+ran to its end), for use after it until the session parses again. A node of a
+parse that published nothing throws `StaleTreeError`. A
 parse the core refuses (a hook parsing its own session throws a `GalleyError`
 with status `-13`) invalidates nothing. Inside a hook the core checks every
 node's generation on the hook door too: a node of an earlier parse throws
@@ -318,13 +323,15 @@ snapshot carries `kind === Kind.Semantic` and a `semantic` pair of
 ## Tree Walking
 
 `node.walk()` returns a pre-order `Walker` over that node's subtree,
-yielding one `{ node, depth, isSemanticError }` per step with the node
+yielding one `{ node, depth, isSemanticError, isRecovered }` per step with the node
 itself at depth 0 — the shared runtime walker. The walker is iterable and
 owns no native resource: no `close` and no `using`; a step after the
 session reparses raises `StaleTreeError` and one after it closes raises
 `SessionClosedError`, instead of either reading stale storage. `skipChildren()`
 prunes the last yielded node's children host-side, without a native call.
-Pass `true` to `walk` to prune semantic-error subtrees. Steps follow the live
+Pass `true` to `walk` to prune semantic-error subtrees, and a second `true`
+(`walk(false, true)`) to prune the recovered ones — the nodes syntax-error
+recovery kept in place of damaged input. Steps follow the live
 links, so edits between steps are visible, and a step whose position is
 no longer inside the walk's root (removed, or moved elsewhere) throws a
 `GalleyError` with `Status.ErrorInvalidNode`:

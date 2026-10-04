@@ -172,23 +172,34 @@ class SessionTests(unittest.TestCase):
         self.session.close()
         _restore_procedures(self.saved_procedures)
 
+    def assert_nothing_published(self, session: grammar.Session) -> None:
+        # Root is the one "nothing here" probe and answers None; every other
+        # session-door read, the input and the position included, refuses.
+        # No call answers 0, empty or None for a refusal.
+        self.assertIsNone(session.root_node())
+        for read in (
+            session.node_count,
+            session.snapshot,
+            session.last_input,
+            session.last_position,
+        ):
+            with self.assertRaises(grammar.StaleTreeError):
+                read()
+
     def test_nothing_published_refuses_instead_of_answering(self) -> None:
-        # Before any parse there is no tree: root is the one "nothing here"
-        # probe and answers None, and every other session-door read refuses.
-        # No call answers 0 or None for a refusal.
-        self.assertIsNone(self.session.root_node())
-        with self.assertRaises(grammar.StaleTreeError):
-            self.session.node_count()
-        with self.assertRaises(grammar.StaleTreeError):
-            self.session.snapshot()
-        # And after a failed parse, which publishes nothing.
-        with self.assertRaises(grammar.GalleyError):
-            self.session.parse("alpha:")
-        self.assertIsNone(self.session.root_node())
-        with self.assertRaises(grammar.StaleTreeError):
-            self.session.node_count()
-        with self.assertRaises(grammar.StaleTreeError):
-            self.session.snapshot()
+        # Before any parse there is no tree.
+        self.assert_nothing_published(self.session)
+        # And after a failed parse that publishes nothing: one error is the
+        # limit, so the parser raises instead of recovering.
+        strict = grammar.Session(max_errors=1)
+        try:
+            strict.parse("alpha:12")
+            self.assertEqual(strict.last_input(), b"alpha:12")
+            with self.assertRaises(grammar.GalleyError):
+                strict.parse("alpha:")
+            self.assert_nothing_published(strict)
+        finally:
+            strict.close()
 
     def test_use_after_close_is_not_a_stale_tree(self) -> None:
         # A closed session has its own error: the stale-tree error means the
@@ -1705,7 +1716,7 @@ class GenerationTests(unittest.TestCase):
         self.assertEqual(hash(found), hash(first))
         self.assertEqual({found: "session"}[first], "session")
 
-    def test_hook_node_of_a_failed_parse_is_refused_afterwards(self) -> None:
+    def test_hook_node_of_a_parse_that_publishes_nothing_is_refused_afterwards(self) -> None:
         stashed: list[grammar.Node] = []
 
         def reduction_Number(args: grammar.ProcedureArguments) -> None:
@@ -1713,15 +1724,41 @@ class GenerationTests(unittest.TestCase):
             assert node is not None
             stashed.append(node)
 
+        # One error is the limit, so the failing parse raises instead of
+        # recovering and publishes nothing: its nodes die with it.
+        strict = grammar.Session(max_errors=1)
+        try:
+            strict.install_procedure("reduction_Number", reduction_Number)
+            with self.assertRaises(grammar.GalleyError):
+                strict.parse("alpha:12,beta:")
+            self.assertGreaterEqual(len(stashed), 1)
+            with self.assertRaises(grammar.StaleTreeError):
+                stashed[0].text()
+            with self.assertRaises(grammar.StaleTreeError):
+                strict.text(stashed[0])
+            strict.clear_procedures()
+            strict.parse("alpha:12,beta:3")
+            with self.assertRaises(grammar.StaleTreeError):
+                stashed[0].text()
+        finally:
+            strict.close()
+
+    def test_hook_node_of_a_published_failure_lives_until_the_next_parse(self) -> None:
+        stashed: list[grammar.Node] = []
+
+        def reduction_Number(args: grammar.ProcedureArguments) -> None:
+            node = args.current_node()
+            assert node is not None
+            stashed.append(node)
+
+        # The parser recovers from the missing Number, so the failure
+        # publishes its tree and the nodes its hooks saw stay valid.
         self.session.install_procedure("reduction_Number", reduction_Number)
         with self.assertRaises(grammar.GalleyError):
             self.session.parse("alpha:12,beta:")
-        self.assertGreaterEqual(len(stashed), 1)
-        with self.assertRaises(grammar.StaleTreeError):
-            stashed[0].text()
-        with self.assertRaises(grammar.StaleTreeError):
-            self.session.text(stashed[0])
         self.session.clear_procedures()
+        self.assertGreaterEqual(len(stashed), 1)
+        self.assertEqual(stashed[0].text(), b"12")
         self.session.parse("alpha:12,beta:3")
         with self.assertRaises(grammar.StaleTreeError):
             stashed[0].text()
@@ -2486,6 +2523,131 @@ class BuildOptimizeTests(unittest.TestCase):
         self.assertIn(
             "-Doptimize=Debug", self.consumer_build_arguments(["--optimize", "Debug"])
         )
+
+
+class PublishedFailureTests(unittest.TestCase):
+    """A parse that fails after running to its end publishes its tree.
+
+    Semantic errors mark nodes, recovered syntax errors leave flagged nodes
+    over the damaged input, and ``parse`` still raises. A parse the parser
+    cannot recover from publishes nothing.
+    """
+
+    # Recovery skips `x,beta:` to resynchronize, then `2`: two recovered nodes.
+    RECOVERED = "alpha:x,beta:2"
+    # Parses, but a hook reports one semantic error on the Number `2000`.
+    SEMANTIC = "alpha:1,beta:2000"
+
+    def setUp(self) -> None:
+        if not grammar.has_ast():
+            self.skipTest("no AST build")
+        self.session = grammar.Session(max_errors=10)
+
+    def tearDown(self) -> None:
+        self.session.close()
+
+    def steps(self, **options: bool) -> list[tuple[str, int, int, Any]]:
+        root = self.session.root_node()
+        assert root is not None
+        return [
+            (
+                step.node.symbol_name().decode(),
+                *step.node.span(),
+                step,
+            )
+            for step in root.walk(**options)
+        ]
+
+    def test_semantic_only_failure_publishes_its_tree(self) -> None:
+        with self.assertRaises(grammar.GalleyError) as raised:
+            self.session.parse(self.SEMANTIC)
+        self.assertEqual(raised.exception.code, grammar.Status.ERROR_SEMANTIC)
+
+        full = self.steps()
+        marked = [entry for entry in full if entry[3].is_semantic_error]
+        self.assertEqual(len(marked), 1)
+        self.assertEqual(marked[0][:3], ("Number", 13, 4))
+        self.assertFalse(any(entry[3].is_recovered for entry in full))
+
+        pruned = self.steps(skip_semantic_errors=True)
+        self.assertLess(len(pruned), len(full))
+        self.assertFalse(any(entry[3].is_semantic_error for entry in pruned))
+        # Nothing is recovered, so skipping recovered nodes changes nothing.
+        self.assertEqual(len(self.steps(skip_recovered=True)), len(full))
+
+        snapshot = self.session.snapshot()
+        self.assertEqual(sum(snapshot.is_semantic_error), 1)
+        self.assertFalse(any(snapshot.is_recovered))
+        self.assertEqual(self.session.last_input(), self.SEMANTIC.encode())
+        self.assertEqual(self.session.last_position(), (1, len(self.SEMANTIC) + 2))
+
+        # The next parse retires the errored tree's nodes.
+        stale = self.session.root_node()
+        assert stale is not None
+        self.session.parse("alpha:12,beta:3")
+        with self.assertRaises(grammar.StaleTreeError):
+            stale.text()
+
+    def test_recovered_syntax_error_publishes_its_tree(self) -> None:
+        with self.assertRaises(grammar.GalleyError) as raised:
+            self.session.parse(self.RECOVERED)
+        self.assertEqual(raised.exception.code, grammar.Status.ERROR_SYNTAX)
+
+        full = self.steps()
+        recovered = [entry for entry in full if entry[3].is_recovered]
+        self.assertEqual(len(recovered), 2)
+        self.assertFalse(any(entry[3].is_semantic_error for entry in full))
+        # The damaged Number covers the input recovery skipped: `x,beta:`.
+        self.assertEqual(recovered[0][:3], ("Number", 6, 7))
+
+        # Skipping them leaves only undamaged nodes, none inside the damage.
+        undamaged = self.steps(skip_recovered=True)
+        self.assertEqual(len(undamaged), len(full) - 2)
+        for _, start, _, step in undamaged:
+            self.assertFalse(step.is_recovered)
+            self.assertTrue(start < 6 or start >= 13)
+
+        # The snapshot column reads what the walk reports, node for node.
+        snapshot = self.session.snapshot()
+        flagged = [i for i, flag in enumerate(snapshot.is_recovered) if flag]
+        self.assertEqual(
+            flagged, [entry[3].node.address for entry in full if entry[3].is_recovered]
+        )
+
+        self.assertEqual(self.session.last_input(), self.RECOVERED.encode())
+        self.assertIsNotNone(self.session.last_position())
+
+        stale = self.session.root_node()
+        assert stale is not None
+        self.session.parse("alpha:12,beta:3")
+        with self.assertRaises(grammar.StaleTreeError):
+            stale.text()
+
+    def test_unrecovered_syntax_error_publishes_nothing(self) -> None:
+        # One error is the limit, so the parser raises instead of recovering.
+        strict = grammar.Session(max_errors=1)
+        try:
+            with self.assertRaises(grammar.GalleyError):
+                strict.parse(self.RECOVERED)
+            self.assertIsNone(strict.root_node())
+            for read in (strict.last_input, strict.last_position, strict.node_count):
+                with self.assertRaises(grammar.StaleTreeError):
+                    read()
+        finally:
+            strict.close()
+
+    def test_last_input_and_position_refuse_before_any_parse(self) -> None:
+        for read in (self.session.last_input, self.session.last_position):
+            with self.assertRaises(grammar.StaleTreeError):
+                read()
+
+    def test_a_failure_without_a_root_still_publishes_its_input(self) -> None:
+        # Recovery skips all of the input before the grammar's first symbol:
+        # the parse publishes, but there is no tree to hold a root.
+        with self.assertRaises(grammar.GalleyError):
+            self.session.parse("?")
+        self.assertIsNone(self.session.root_node())
+        self.assertEqual(self.session.last_input(), b"?")
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ import java.util.NoSuchElementException;
 import java.util.Objects;
 
 /**
- * Pre-order tree walker over the last successful parse, yielding one
+ * Pre-order tree walker over the published parse, yielding one
  * {@link WalkStep} per node with the walk's root at depth 0. Created by
  * {@link Node#walk}.
  *
@@ -28,15 +28,21 @@ import java.util.Objects;
  * or closes throws instead of reading stale storage.
  */
 public final class Walker implements Iterator<Walker.WalkStep>, Iterable<Walker.WalkStep> {
-    /** One pre-order step: the node, its depth, and its semantic-error flag. */
+    /**
+     * One pre-order step: the node, its depth, its semantic-error flag, and
+     * whether it is a node syntax-error recovery kept in place of damaged
+     * input (its span covers the input recovery skipped).
+     */
     public static final class WalkStep {
         public final Node node;
         public final int depth;
         public final boolean isSemanticError;
-        public WalkStep(Node node, int depth, boolean isSemanticError) {
+        public final boolean isRecovered;
+        public WalkStep(Node node, int depth, boolean isSemanticError, boolean isRecovered) {
             this.node = node;
             this.depth = depth;
             this.isSemanticError = isSemanticError;
+            this.isRecovered = isRecovered;
         }
     }
 
@@ -48,7 +54,7 @@ public final class Walker implements Iterator<Walker.WalkStep>, Iterable<Walker.
     private WalkStep next;
     private boolean done;
 
-    Walker(Session session, long root, long generation, boolean skipSemanticErrors) {
+    Walker(Session session, long root, long generation, boolean skipSemanticErrors, boolean skipRecovered) {
         this.session = Objects.requireNonNull(session, "session");
         this.generation = generation;
         this.arena = Arena.ofAuto();
@@ -59,7 +65,8 @@ public final class Walker implements Iterator<Walker.WalkStep>, Iterable<Walker.
         cursor.set(ValueLayout.JAVA_INT, WalkCursor.DEPTH_OFFSET, 0);
         cursor.set(ValueLayout.JAVA_SHORT, WalkCursor.STATE_OFFSET, WalkCursor.STATE_NOT_STARTED);
         cursor.set(ValueLayout.JAVA_BYTE, WalkCursor.OPTIONS_OFFSET,
-                (byte) (skipSemanticErrors ? WalkCursor.OPTION_SKIP_SEMANTIC_ERRORS : 0));
+                (byte) ((skipSemanticErrors ? WalkCursor.OPTION_SKIP_SEMANTIC_ERRORS : 0)
+                        | (skipRecovered ? WalkCursor.OPTION_SKIP_RECOVERED : 0)));
         cursor.set(ValueLayout.JAVA_BYTE, WalkCursor.FLAG_OFFSET, (byte) 0);
         cursor.set(ValueLayout.JAVA_LONG, WalkCursor.STRUCTURE_VERSION_OFFSET, 0L);
     }

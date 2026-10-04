@@ -195,10 +195,12 @@ const Generator = struct {
             \\            return root.ParseError.SyntaxError;
             \\        }
             \\    } else {
+            \\        // A parse that gave up (the stack unwound to state 0 without
+            \\        // accepting) has no tree to publish. One that accepted with
+            \\        // recorded errors is published by the session, which reports them.
             \\        if (result.is_recovery or !result.is_accept) {
             \\            return root.ParseError.SyntaxError;
             \\        }
-            \\        if (context.hasSyntaxErrors()) return root.ParseError.SyntaxError;
             \\    }
             \\    // Bounds check so the stack reads below never peek an empty stack.
             \\    // Only configurations that read the stack are gated; no-AST/
@@ -208,7 +210,7 @@ const Generator = struct {
             \\            return root.ParseError.SyntaxError;
             \\        }
             \\    }
-            \\    if (context.verbosityLevel() > 0) {
+            \\    if (context.verbosityLevel() > 0 and !context.hasSyntaxErrors()) {
             \\        std.log.info("The input file was parsed successfully!", .{});
             \\    }
             \\
@@ -219,6 +221,13 @@ const Generator = struct {
             \\            null)
             \\    else
             \\        null;
+            \\    // Input automatic recovery discarded before the first symbol belongs to
+            \\    // the root.
+            \\    if (comptime is_ast_enabled and error_recovery_mode == .automatic) {
+            \\        if (ast_root) |root_address| {
+            \\            if (context.hasPendingRecovered()) context.adoptRecoveredNodes(root_address, 0);
+            \\        }
+            \\    }
             \\    const semantic_root =
             \\        if (comptime !is_ast_enabled and are_procedures_enabled)
             \\            (if (stack.storage.items[stack.storage.items.len - 1].node) |node| node.payload else null)
@@ -229,7 +238,7 @@ const Generator = struct {
         );
         try writer.writeAll(
             \\    return .{
-            \\        .parsed_bytes = context.pos() - if (comptime config.indentation_syntax) 1 else 0,
+            \\        .parsed_bytes = context.pos() -| (if (comptime config.indentation_syntax) 1 else 0),
             \\        .line = context.line,
             \\        .column = context.column,
             \\        .ast_root = ast_root,
@@ -545,6 +554,9 @@ const Generator = struct {
                         }
                     }
                     try writer.print("{s}context.node_allocator.at(parent_address).text_length = {s} - start_pos;\n", .{ indent, if (self.occurrenceIsVerbatim(occurrence)) "verbatim_end" else "context.currentTokenSourceOffset()" });
+                    if (self.options.with_error_recovery and !self.uses_explicit_recovery) {
+                        try writer.print("{s}if (context.hasPendingRecovered()) context.adoptRecoveredNodes(parent_address, start_pos);\n", .{indent});
+                    }
                     if (self.options.with_procedures) try self.emitProcedureBlock(writer, rule_index, rule.header, occurrence, "parent_address", indent);
                     const stack_value = if (self.options.with_procedures) "args.node_address orelse data_structures.Node.invalid_pointer" else "parent_address";
                     try writer.print("{s}try stack.append(.{{ .start_pos = start_pos, .node = {s} }});\n", .{ indent, stack_value });
@@ -779,6 +791,7 @@ const Generator = struct {
             \\    variable: u16,
             \\    unwind_count: usize,
             \\) !?ExplicitRecoveryResult {
+            \\    const damaged_from = context.currentTokenSourceOffset();
             \\    if (!try context.tryExplicitRecovery(scope.id, scope.target, scope.points)) return null;
         );
         // Whether the explicit-recovery unwind tracks captured positions
@@ -790,12 +803,24 @@ const Generator = struct {
             "is_ast_enabled or are_procedures_enabled";
         try writer.print("    if (comptime {s}) {{\n", .{unwind_condition});
         try writer.writeAll(
-            \\        var start_pos = context.currentTokenSourceOffset();
+            \\        // The stand-in entry covers everything the recovery discarded: the
+            \\        // entries it unwound and the input it skipped.
+            \\        var start_pos = damaged_from;
             \\        for (0..unwind_count) |_| {
             \\            const discarded = stack.pop() orelse unreachable;
             \\            start_pos = discarded.start_pos;
             \\        }
-            \\        try stack.append(.{ .start_pos = start_pos });
+            \\        // With AST construction a flagged node of the damaged variable
+            \\        // fills that slot, so the reduce above links it as a child.
+            \\        if (comptime is_ast_enabled) {
+            \\            if (ast_enabled[symbol_by_variable[variable]]) {
+            \\                const address = try context.node_allocator.create(start_pos, variable);
+            \\                const node = context.node_allocator.at(address);
+            \\                node.is_recovered = true;
+            \\                node.text_length = context.currentTokenSourceOffset() - start_pos;
+            \\                try stack.append(.{ .start_pos = start_pos, .node = address });
+            \\            } else try stack.append(.{ .start_pos = start_pos });
+            \\        } else try stack.append(.{ .start_pos = start_pos });
             \\    } else {
             \\        // Address-take silencer: sibling gated branches of other
             \\        // functions may use the stack; a plain discard would read
@@ -1526,12 +1551,21 @@ const Generator = struct {
         try writer.writeAll("    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;\n");
         if (spec.recoverable) {
             try writer.print("    if (try lrRecoveryOffset(context, lr_recovery_candidates_{d}, if (report_syntax_error) 1 else 0)) |recovery_offset| {{\n", .{spec.state_index});
+            // The discarded input becomes a placeholder node, held until a
+            // reduce builds a node over it.
+            if (self.options.with_ast) try writer.writeAll("        const skipped_from = context.currentTokenSourceOffset();\n");
             try writer.writeAll("        context.skipRecoveryInput(recovery_offset);\n");
+            if (self.options.with_ast) try writer.writeAll("        if (recovery_offset != 0) try context.pendRecoveredNode(skipped_from);\n");
             try writer.writeAll("        return true;\n");
             try writer.writeAll("    }\n");
             try writer.writeAll("    if (context.head(u8, 0) == 0) return root.ParseError.SyntaxError;\n");
             if ((self.options.with_ast or self.options.with_procedures or self.uses_verbatim) and spec.state_index != 0) {
-                try writer.writeAll("    _ = stack.pop() orelse unreachable;\n");
+                // A popped entry's subtree stays unreachable; its input is
+                // recorded as discarded.
+                try writer.writeAll(if (self.options.with_ast)
+                    "    const discarded = stack.pop() orelse unreachable;\n    try context.pendRecoveredNode(discarded.start_pos);\n"
+                else
+                    "    _ = stack.pop() orelse unreachable;\n");
             }
             try writer.writeAll("    return false;\n");
         } else {

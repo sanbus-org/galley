@@ -311,7 +311,7 @@ typedef long long (*fn_galley_tree_insert_children_at_t)(void *handle, unsigned 
 typedef long long (*fn_galley_tree_remove_children_at_t)(void *handle, unsigned long long generation, GalleyNodeAddress parent, size_t index, size_t count, GalleyNodeAddress *out_head);
 typedef long long (*fn_galley_tree_remove_self_t)(void *handle, unsigned long long generation, GalleyNodeAddress node, GalleyNodeAddress *out_head);
 typedef long long (*fn_galley_tree_remove_siblings_t)(void *handle, unsigned long long generation, GalleyNodeAddress node, size_t count, GalleyNodeAddress *out_head);
-typedef long long (*fn_galley_tree_snapshot_t)(GalleySession *session, unsigned long long generation, GalleyNodeAddress *out_parent, GalleyNodeAddress *out_first_child, GalleyNodeAddress *out_next, unsigned int *out_child_count, long long *out_variable, unsigned long long *out_span_start, unsigned long long *out_span_len, int *out_is_semantic_error, unsigned long long capacity);
+typedef long long (*fn_galley_tree_snapshot_t)(GalleySession *session, unsigned long long generation, GalleyNodeAddress *out_parent, GalleyNodeAddress *out_first_child, GalleyNodeAddress *out_next, unsigned int *out_child_count, long long *out_variable, unsigned long long *out_span_start, unsigned long long *out_span_len, int *out_is_semantic_error, int *out_is_recovered, unsigned long long capacity);
 typedef int (*fn_galley_uses_verbatim_t)(void);
 typedef unsigned long long (*fn_galley_variable_count_t)(void);
 typedef long long (*fn_galley_variable_name_t)(GalleySession *session, unsigned long long index, const char **out_data, size_t *out_len);
@@ -1212,7 +1212,7 @@ static napi_value method_galley_last_input(napi_env env, Lib *lib, size_t argc,
   const char *data = NULL;
   size_t len = 0;
   long long status = ((fn_galley_last_input_t)lib->fn[SLOT_galley_last_input])(session, &data, &len);
-  return out_bytes(env, status, data, len);
+  return status_or_value(env, status, out_bytes(env, status, data, len));
 }
 
 static napi_value method_galley_last_position(napi_env env, Lib *lib, size_t argc,
@@ -1222,7 +1222,7 @@ static napi_value method_galley_last_position(napi_env env, Lib *lib, size_t arg
   unsigned int line = 0;
   unsigned int column = 0;
   long long status = ((fn_galley_last_position_t)lib->fn[SLOT_galley_last_position])(session, &line, &column);
-  return pair_u32_or_null(env, status, line, column);
+  return status_or_value(env, status, pair_u32_or_null(env, status, line, column));
 }
 
 #define DEFINE_NODE_SPAN(cfn) \
@@ -1299,7 +1299,7 @@ static napi_value method_galley_tree_snapshot(napi_env env, Lib *lib, size_t arg
                                                  napi_value *argv) {
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
-  if (argc < 11) {
+  if (argc < 12) {
     napi_throw_type_error(env, NULL, "expected generation, snapshot columns and capacity");
     return NULL;
   }
@@ -1313,6 +1313,7 @@ static napi_value method_galley_tree_snapshot(napi_env env, Lib *lib, size_t arg
   void *span_start = NULL;
   void *span_len = NULL;
   void *is_semantic_error = NULL;
+  void *is_recovered = NULL;
   if (!typed_column(env, argv[2], napi_biguint64_array, &parent)) return NULL;
   if (!typed_column(env, argv[3], napi_biguint64_array, &first_child)) return NULL;
   if (!typed_column(env, argv[4], napi_biguint64_array, &next)) return NULL;
@@ -1321,13 +1322,14 @@ static napi_value method_galley_tree_snapshot(napi_env env, Lib *lib, size_t arg
   if (!typed_column(env, argv[7], napi_biguint64_array, &span_start)) return NULL;
   if (!typed_column(env, argv[8], napi_biguint64_array, &span_len)) return NULL;
   if (!typed_column(env, argv[9], napi_int32_array, &is_semantic_error)) return NULL;
+  if (!typed_column(env, argv[10], napi_int32_array, &is_recovered)) return NULL;
   uint64_t capacity = 0;
-  if (!get_u64(env, argv[10], &capacity)) return NULL;
+  if (!get_u64(env, argv[11], &capacity)) return NULL;
   long long status = ((fn_galley_tree_snapshot_t)lib->fn[SLOT_galley_tree_snapshot])(
       session, generation, (GalleyNodeAddress *)parent, (GalleyNodeAddress *)first_child,
       (GalleyNodeAddress *)next, (unsigned int *)child_count, (long long *)variable,
       (unsigned long long *)span_start, (unsigned long long *)span_len,
-      (int *)is_semantic_error, (unsigned long long)capacity);
+      (int *)is_semantic_error, (int *)is_recovered, (unsigned long long)capacity);
   return make_number(env, status);
 }
 

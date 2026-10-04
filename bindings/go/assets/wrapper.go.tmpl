@@ -272,9 +272,11 @@ type ParseInfo struct {
 	EndLine, EndColumn uint32
 }
 
-// Info returns a summary of the most recent successful parse. The second
-// result is false when AST construction is disabled; a non-nil error is the
-// core's refusal of the root read, such as ErrSessionInUse while a parse runs.
+// Info returns a summary of the published parse. The second result is false
+// when AST construction is disabled; a non-nil error is the core's refusal of
+// a read, such as ErrSessionInUse while a parse runs, or ErrStaleTree when
+// nothing is published (before the first parse, or after one that published
+// nothing).
 func (s *Session) Info() (ParseInfo, bool, error) {
 	if !HasAST() {
 		return ParseInfo{}, false, nil
@@ -286,7 +288,9 @@ func (s *Session) Info() (ParseInfo, bool, error) {
 	}
 	info.Root, info.RootValid = root, ok
 	var line, column C.uint
-	C.galley_last_position(s.ptr, &line, &column)
+	if status := C.galley_last_position(s.ptr, &line, &column); status < 0 {
+		return ParseInfo{}, false, Error(int32(status))
+	}
 	info.EndLine, info.EndColumn = uint32(line), uint32(column)
 	return info, true, nil
 }
@@ -506,7 +510,7 @@ func oneLink(node Node, answer C.longlong) (Node, bool, error) {
 	return found, ok, nil
 }
 
-// Snapshot holds the most recent successful parse as flat slices: one
+// Snapshot holds the published parse as flat slices: one
 // entry per node address. Missing links read as InvalidNode.Index(), missing
 // variables as -1, and spans index LastInput. Node turns an address of these
 // columns into a handle of the parse they describe.
@@ -582,6 +586,7 @@ func (s *Session) Snapshot() (Snapshot, error) {
 		spanStart,
 		spanLen,
 		nil,
+		nil,
 		C.ulonglong(count),
 	)
 	if total < 0 {
@@ -599,15 +604,17 @@ func (s *Session) Snapshot() (Snapshot, error) {
 	return snap, nil
 }
 
-// LastInput returns the retained input of the most recent parse: the
-// buffer snapshot spans index. Empty before the first parse.
-func (s *Session) LastInput() []byte {
+// LastInput returns the retained input of the published parse: the buffer
+// snapshot spans index. It follows the published tree like every node read:
+// ErrStaleTree whenever nothing is published (before the first parse
+// included), ErrSessionInUse while a parse runs.
+func (s *Session) LastInput() ([]byte, error) {
 	var data *C.char
 	var length C.size_t
-	if C.galley_last_input(s.ptr, &data, &length) != 0 {
-		return nil
+	if status := C.galley_last_input(s.ptr, &data, &length); status < 0 {
+		return nil, Error(int32(status))
 	}
-	return C.GoBytes(unsafe.Pointer(data), C.int(length))
+	return C.GoBytes(unsafe.Pointer(data), C.int(length)), nil
 }
 
 // Children returns the direct children of a node in document order.
@@ -622,7 +629,7 @@ type WalkStep struct {
 	IsSemanticError bool
 }
 
-// Walker is a pre-order tree walker over the last successful parse. It owns
+// Walker is a pre-order tree walker over the published parse. It owns
 // no native resource: the cursor is the whole walker, so abandoning it is
 // free and there is nothing to close. A walker left behind by a later
 // parse answers ErrStaleTree at its next step instead of reading stale
@@ -685,7 +692,7 @@ func (w *Walker) Next() (WalkStep, bool, error) {
 	return WalkStep{
 		Node:            Node{generation: uint64(w.cursor.generation), address: uint64(w.cursor.current)},
 		Depth:           uint32(w.cursor.depth),
-		IsSemanticError: w.cursor.is_semantic_error != 0,
+		IsSemanticError: w.cursor.flags&C.GALLEY_WALK_FLAG_SEMANTIC_ERROR != 0,
 	}, true, nil
 }
 

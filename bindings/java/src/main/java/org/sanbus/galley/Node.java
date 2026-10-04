@@ -109,8 +109,11 @@ public final class Node implements Iterable<Node> {
 
     /**
      * Pre-order walker over the subtree rooted at this node, this node
-     * included at depth 0. Pass true to prune subtrees rooted at
-     * semantic-error nodes. The walker owns no native resource: abandoning
+     * included at depth 0. Pass true for {@code skipSemanticErrors} to prune
+     * subtrees rooted at semantic-error nodes, and for {@code skipRecovered}
+     * to prune those rooted at nodes syntax-error recovery kept in place of
+     * damaged input; with both the walk yields only undamaged, valid nodes.
+     * The walker owns no native resource: abandoning
      * it is free, and parsing again with one open succeeds — its next step
      * throws instead. Each step picks its door like any node call, so a
      * walk created inside a hook of a running parse walks that parse's
@@ -125,8 +128,8 @@ public final class Node implements Iterable<Node> {
      *
      * @throws StaleTreeException inside a hook, if this node is not of the running parse
      */
-    public Walker walk(boolean skipSemanticErrors) {
-        return session.startWalk(this, skipSemanticErrors);
+    public Walker walk(boolean skipSemanticErrors, boolean skipRecovered) {
+        return session.startWalk(this, skipSemanticErrors, skipRecovered);
     }
 
     public Node cleanChildren() {

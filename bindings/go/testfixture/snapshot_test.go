@@ -122,18 +122,21 @@ func TestSnapshotMatchesPerNodeAccessors(t *testing.T) {
 		}
 	}
 	// Spans index LastInput.
-	if input := session.LastInput(); !bytes.Equal(input, []byte("alpha:12,beta:3")) {
-		t.Fatalf("last input %q", input)
+	if input, err := session.LastInput(); err != nil || !bytes.Equal(input, []byte("alpha:12,beta:3")) {
+		t.Fatalf("last input %q, %v", input, err)
 	}
 }
 
-// A failed parse resets node storage behind the last successful result:
-// Snapshot must answer ErrStaleTree through the gate — even at count 0,
-// where NodeCount() reports the natural zero — instead of an empty
-// success, and the retained input must survive until a successful
-// re-parse reopens the door.
-func TestSnapshotAfterFailedParseRefuses(t *testing.T) {
-	session, err := galley.New()
+// A parse that publishes nothing resets node storage behind the last
+// successful result: Snapshot must answer ErrStaleTree through the gate —
+// even at count 0, where NodeCount() reports the natural zero — instead of
+// an empty success, and LastInput follows the published tree, so it is
+// refused too until a successful re-parse reopens the door. One error is the
+// limit, so the failing parse raises instead of recovering.
+func TestSnapshotAfterAParseThatPublishesNothingRefuses(t *testing.T) {
+	options := galley.DefaultOptions()
+	options.MaxErrors = 1
+	session, err := galley.WithOptions(options)
 	if err != nil {
 		t.Fatalf("session: %v", err)
 	}
@@ -148,8 +151,8 @@ func TestSnapshotAfterFailedParseRefuses(t *testing.T) {
 	if _, err := session.Parse([]byte("gamma:")); err == nil {
 		t.Fatal("expected a syntax error for gamma:")
 	}
-	if input := session.LastInput(); !bytes.Equal(input, []byte("alpha:12,beta:3")) {
-		t.Fatalf("last input %q, want the last successful parse", input)
+	if input, err := session.LastInput(); err != galley.ErrStaleTree || input != nil {
+		t.Fatalf("last input = (%q, %v), want (nil, ErrStaleTree)", input, err)
 	}
 	if snap, err := session.Snapshot(); err != galley.ErrStaleTree || snap.Count != 0 {
 		t.Fatalf("snapshot after failed parse = (count %d, %v), want count 0 and ErrStaleTree", snap.Count, err)

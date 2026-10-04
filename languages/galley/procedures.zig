@@ -77,6 +77,9 @@ pub fn reduction(args: *ProcedureArguments) void {
 pub fn reduction_Start(args: *ProcedureArguments) !void {
     if (args.node_address) |node_address| {
         updateTextLength(args.context, node_address);
+        // Recovered syntax errors leave flagged nodes of damaged input in the
+        // tree; such a grammar has no model, and the parse reports the errors.
+        if (args.context.hasSyntaxErrors()) return;
         const grammar = try grammarFromAst(args, node_address);
         const node = args.context.node_allocator.at(node_address);
         if (comptime root.parser.are_procedures_enabled)

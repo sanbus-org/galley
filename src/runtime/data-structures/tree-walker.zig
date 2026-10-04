@@ -28,7 +28,8 @@ pub const Cursor = extern struct {
     depth: u32,
     state: u16,
     options: u8,
-    is_semantic_error: u8,
+    /// `flag_*` bits of `current`; meaningful in the yielded states only.
+    flags: u8,
     /// `node_allocator.structure_version` as of the last successful step.
     /// When a later step sees a different value, a parent link was re-pointed
     /// or cleared underneath the walk and the position is re-verified before
@@ -45,6 +46,10 @@ pub const state_yielded: u16 = 1;
 pub const state_yielded_skip_children: u16 = 2;
 pub const state_done: u16 = 3;
 pub const option_skip_semantic_errors: u8 = 1;
+pub const option_skip_recovered: u8 = 2;
+pub const option_mask: u8 = option_skip_semantic_errors | option_skip_recovered;
+pub const flag_semantic_error: u8 = 1;
+pub const flag_recovered: u8 = 2;
 
 pub const WalkError = error{ InvalidCursor, WalkPositionDetached };
 
@@ -62,7 +67,7 @@ pub fn walkNext(node_allocator: Node.NodeAllocator, cursor: *Cursor) WalkError!b
     }
     const node_count: u64 = node_allocator.counter;
     if (cursor.state > state_done) return error.InvalidCursor;
-    if (cursor.options & ~option_skip_semantic_errors != 0) return error.InvalidCursor;
+    if (cursor.options & ~option_mask != 0) return error.InvalidCursor;
     if (cursor.root >= node_count) return error.InvalidCursor;
     const has_current = cursor.state == state_yielded or cursor.state == state_yielded_skip_children;
     if (has_current) {
@@ -88,21 +93,23 @@ pub fn walkNext(node_allocator: Node.NodeAllocator, cursor: *Cursor) WalkError!b
         else => unreachable, // validated above
     };
     const skip_semantic_errors = cursor.options & option_skip_semantic_errors != 0;
+    const skip_recovered = cursor.options & option_skip_recovered != 0;
     while (candidate) |position| {
         const node = node_allocator.at(position.address);
-        if (skip_semantic_errors and node.is_semantic_error) {
+        if ((skip_semantic_errors and node.is_semantic_error) or (skip_recovered and node.is_recovered)) {
             candidate = try advance(node_allocator, root_address, position.address, position.depth);
             continue;
         }
         cursor.current = position.address;
         cursor.depth = position.depth;
         cursor.state = state_yielded;
-        cursor.is_semantic_error = @intFromBool(node.is_semantic_error);
+        cursor.flags = (if (node.is_semantic_error) flag_semantic_error else 0) |
+            (if (node.is_recovered) flag_recovered else 0);
         cursor.structure_version = node_allocator.structure_version;
         return true;
     }
     cursor.state = state_done;
-    cursor.is_semantic_error = 0;
+    cursor.flags = 0;
     cursor.structure_version = node_allocator.structure_version;
     return false;
 }
@@ -168,6 +175,7 @@ pub const TreeWalker = struct {
         address: Node.Pointer,
         depth: u32,
         is_semantic_error: bool,
+        is_recovered: bool,
     };
 
     pub const Options = struct {
@@ -175,6 +183,9 @@ pub const TreeWalker = struct {
         /// without yielding them, so validation and aggregation passes skip
         /// invalid parts without checking flags themselves.
         skip_semantic_error_subtrees: bool = false,
+        /// The same pruning for nodes syntax-error recovery kept in place of
+        /// damaged input: the walk then yields only undamaged nodes.
+        skip_recovered_subtrees: bool = false,
     };
 
     node_allocator: Node.NodeAllocator,
@@ -192,8 +203,9 @@ pub const TreeWalker = struct {
                 .current = 0,
                 .depth = 0,
                 .state = state_not_started,
-                .options = if (options.skip_semantic_error_subtrees) option_skip_semantic_errors else 0,
-                .is_semantic_error = 0,
+                .options = (if (options.skip_semantic_error_subtrees) option_skip_semantic_errors else 0) |
+                    (if (options.skip_recovered_subtrees) option_skip_recovered else 0),
+                .flags = 0,
                 .structure_version = 0,
             },
         };
@@ -208,7 +220,8 @@ pub const TreeWalker = struct {
         return .{
             .address = @intCast(self.cursor.current),
             .depth = self.cursor.depth,
-            .is_semantic_error = self.cursor.is_semantic_error != 0,
+            .is_semantic_error = self.cursor.flags & flag_semantic_error != 0,
+            .is_recovered = self.cursor.flags & flag_recovered != 0,
         };
     }
 

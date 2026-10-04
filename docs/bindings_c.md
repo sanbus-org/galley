@@ -312,7 +312,10 @@ between steps are visible, and a detached step repeats that failure rather
 than yielding anything past the detachment. Skipping is host-side —
 write `cursor.state = GALLEY_WALK_STATE_YIELDED_SKIP_CHILDREN` and the next
 step continues with the next sibling — and `GALLEY_WALK_SKIP_SEMANTIC_ERRORS`
-in `cursor.options` prunes subtrees rooted at semantic-error nodes.
+and `GALLEY_WALK_SKIP_RECOVERED` in `cursor.options` prune subtrees rooted at
+semantic-error nodes and at recovered nodes. After each step `cursor.flags`
+carries `GALLEY_WALK_FLAG_SEMANTIC_ERROR` and `GALLEY_WALK_FLAG_RECOVERED` for
+the yielded node.
 `galley_hook_walk_next(door, &cursor)` is the same walk through the hook
 door, for stepping inside a running parse's hook (stamp `generation` with
 `galley_hook_generation`; a cursor of another generation is
@@ -324,26 +327,45 @@ door, for stepping inside a running parse's hook (stamp `generation` with
 `galley_node_variable_index` complete the read surface. `galley_tree_snapshot`
 reads the same columns for every node in one call into caller-owned flat
 arrays (parent, first child, next sibling, child count, variable index,
-span start, span length, semantic-error flag); it returns the node count
-and writes up to `capacity` entries, so size with `galley_node_count`
-first and pass null for columns you do not need. Spans index the retained
-input, readable in one call with `galley_last_input`.
+span start, span length, semantic-error flag, recovered flag); it returns the
+node count and writes up to `capacity` entries, so size with
+`galley_node_count` first and pass null for columns you do not need. Spans
+index the retained input, readable in one call with `galley_last_input`.
 
-Node reads belong to the last successful parse. Every session-door node
+### Failed parses that publish
+
+A parse that fails after running to its end publishes its tree: one that
+only recorded semantic errors (`galley_error_semantic`) and one whose syntax
+errors the parser recovered from (`galley_error_syntax`) both leave the tree
+readable through `galley_root_node`, exactly as a success does, with the
+failure's status as the parse's return value. The damaged regions are flagged
+recovered nodes (`GALLEY_WALK_FLAG_RECOVERED`, snapshot column
+`out_is_recovered`): under LL parsing the damaged variable's own node, with
+the children parsed before the damage, and under LR parsing a placeholder
+with no children — each spanning the input recovery skipped, attached where
+the damage was. Walk with `GALLEY_WALK_SKIP_RECOVERED` to see only the
+undamaged nodes. A parse the parser could not recover from, or that failed to
+read, publishes nothing, and `galley_root_node` reports it; a published
+failure may also have no root (recovery skipped everything before the first
+symbol), reported as `GALLEY_INVALID_NODE` with a nonzero generation.
+
+Node reads belong to the published parse. Every session-door node
 and tree call takes the generation of the tree it addresses right after the
 session, which `galley_root_node` reports together with the root (`0` when
 nothing is published), and returns a `long long`. Calls with one result
 (`galley_node_count`, `galley_node_child_count`, the five links,
 `galley_node_variable_index`) return it directly: a value `>= 0` is the
 answer and a negative value is the status; calls with several results keep
-out-parameters. Once a later parse — successful or failed — has retired that
+out-parameters. Once a later parse — published or not — has retired that
 generation, every such call answers `galley_error_stale_tree`, and a parse in
 flight answers `galley_error_session_in_use`. A missing link is the
 non-negative `GALLEY_INVALID_NODE` (`INT64_MAX`) and a node without a
 variable is `GALLEY_NO_VARIABLE` (also `INT64_MAX`, in `galley_node_variable_index`
 and the snapshot's variable column): every address and both sentinels are
-non-negative, so only statuses are negative. `galley_last_input` is unaffected: it keeps
-the last successful input throughout.
+non-negative, so only statuses are negative. `galley_last_input` and
+`galley_last_position` follow the published tree like every node read: they
+answer `galley_error_stale_tree` whenever nothing is published — before the
+first parse included — and `galley_error_session_in_use` mid-parse.
 
 ### Editing the Tree
 

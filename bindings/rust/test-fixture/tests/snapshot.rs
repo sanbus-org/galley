@@ -1,5 +1,5 @@
 //! Snapshot parity: `Session::snapshot` matches the per-node accessors.
-use galley::{Error, NodeHandle, Session};
+use galley::{Error, NodeHandle, Session, SessionOptions};
 
 fn opt_addr(node: Result<Option<NodeHandle>, Error>) -> u64 {
     node.expect("link")
@@ -80,29 +80,36 @@ fn snapshot_matches_per_node_accessors() {
         stack.extend(chain.iter().rev());
     }
     let walked: Vec<u64> = session
-        .walk(root, false)
+        .walk(root, false, false)
         .map(|step| step.expect("walk step").node.index())
         .collect();
     assert_eq!(preorder, walked);
     // Spans index last_input.
-    assert_eq!(session.last_input(), b"alpha:12,beta:3");
+    let input = session.last_input().expect("last input");
+    assert_eq!(input, b"alpha:12,beta:3");
     let root_span = session.span(root).expect("root span");
     assert_eq!(
-        &session.last_input()[root_span.0 as usize..(root_span.0 + root_span.1) as usize],
+        &input[root_span.0 as usize..(root_span.0 + root_span.1) as usize],
         b"alpha:12,beta:3"
     );
 }
 
 #[test]
-fn snapshot_after_failed_parse_refuses() {
-    let mut session = Session::new().expect("session");
+fn snapshot_after_a_parse_that_publishes_nothing_refuses() {
+    // One error is the limit, so the failing parse raises instead of
+    // recovering and publishes nothing.
+    let mut session = Session::with_options(SessionOptions {
+        max_errors: 1,
+        ..SessionOptions::default()
+    })
+    .expect("session");
     session.parse_sentinel("alpha:12,beta:3").expect("parse");
     session
         .parse_sentinel("gamma:")
         .expect_err("gamma: is a syntax error");
-    // The failed parse reset node storage behind the last successful
-    // result; the retained input survives it.
-    assert_eq!(session.last_input(), b"alpha:12,beta:3");
+    // The failed parse retired the tree behind the last successful result,
+    // and the input with it: both follow the published tree.
+    assert_eq!(session.last_input(), Err(Error::StaleTree));
     assert!(matches!(session.snapshot(), Err(Error::StaleTree)));
     assert!(matches!(session.node_count(), Err(Error::StaleTree)));
     assert_eq!(session.root_node(), Ok(None));

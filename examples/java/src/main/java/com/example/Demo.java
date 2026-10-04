@@ -168,11 +168,6 @@ public final class Demo {
                 return;
             }
             int[] pos = session.lastPosition();
-            if (pos == null) {
-                System.err.println("expected a position after file parse");
-                System.exit(1);
-                return;
-            }
             System.out.println("file parse: " + parsed + " bytes, ended at " + pos[0] + ":" + pos[1]);
 
             // Tree editing

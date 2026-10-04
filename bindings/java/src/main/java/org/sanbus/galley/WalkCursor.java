@@ -9,7 +9,7 @@ import java.lang.foreign.ValueLayout;
  * {@link Session#walkerStep} (read-back) share. 40 bytes, offsets as
  * longs, 8-byte aligned:
  * generation u64 @0, root u64 @8, current u64 @16, depth u32 @24,
- * state u16 @28, options u8 @30, is_semantic_error u8 @31, and
+ * state u16 @28, options u8 @30, flags u8 @31, and
  * structure_version u64 @32 — stamped by the core on every step, never
  * read host-side.
  */
@@ -31,6 +31,9 @@ final class WalkCursor {
     static final short STATE_YIELDED_SKIP_CHILDREN = 2;
     static final short STATE_DONE = 3;
     static final byte OPTION_SKIP_SEMANTIC_ERRORS = 1;
+    static final byte OPTION_SKIP_RECOVERED = 2;
+    static final byte FLAG_SEMANTIC_ERROR = 1;
+    static final byte FLAG_RECOVERED = 2;
 
     /** The node of a completed step: its address in the parse storage. */
     static long current(MemorySegment cursor) {
@@ -44,7 +47,12 @@ final class WalkCursor {
 
     /** The semantic-error flag of a completed step. */
     static boolean isSemanticError(MemorySegment cursor) {
-        return cursor.get(ValueLayout.JAVA_BYTE, FLAG_OFFSET) != 0;
+        return (cursor.get(ValueLayout.JAVA_BYTE, FLAG_OFFSET) & FLAG_SEMANTIC_ERROR) != 0;
+    }
+
+    /** The recovered flag of a completed step. */
+    static boolean isRecovered(MemorySegment cursor) {
+        return (cursor.get(ValueLayout.JAVA_BYTE, FLAG_OFFSET) & FLAG_RECOVERED) != 0;
     }
 
     private WalkCursor() {}

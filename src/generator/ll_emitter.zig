@@ -145,18 +145,16 @@ const Generator = struct {
                 \\    };
             );
         }
-        try writer.writeByte('\n');
-        try writer.writeAll("if (comptime is_error_recovery_enabled) {\n    if (context.hasSyntaxErrors()) return root.ParseError.SyntaxError;\n}\n");
         try writer.writeAll(
             \\
-            \\    if (context.verbosityLevel() > 0) {
+            \\    if (context.verbosityLevel() > 0 and !context.hasSyntaxErrors()) {
             \\        std.log.info("The input file was parsed successfully!", .{});
             \\    }
             \\
         );
         try writer.writeAll(
             \\    return .{
-            \\        .parsed_bytes = context.pos() - 1,
+            \\        .parsed_bytes = context.pos() -| 1,
             \\        .line = context.line,
             \\        .column = context.column,
             \\        .ast_root = root_reduction.ast_root,
@@ -522,7 +520,7 @@ const Generator = struct {
             }
             if (self.uses_explicit_recovery) try writer.writeAll(", occurrence_recovery");
             if (explicit_recovery) {
-                try self.emitExplicitRuleCatch(writer, rule, variable, skip_ast_construction, "");
+                try self.emitExplicitRuleCatch(writer, rule, variable, skip_ast_construction, "", null);
             } else {
                 try writer.writeByte(')');
             }
@@ -593,7 +591,7 @@ const Generator = struct {
                 try writer.writeAll(", occurrence_recovery");
             }
             if (explicit_recovery) {
-                try self.emitExplicitRuleCatch(writer, rule, variable, skip_ast_construction, "");
+                try self.emitExplicitRuleCatch(writer, rule, variable, skip_ast_construction, "", "repeating_node_address");
             } else {
                 try writer.writeByte(')');
             }
@@ -665,7 +663,7 @@ const Generator = struct {
             if (self.has_occurrence_procedures) try writer.writeAll(", null");
             if (self.uses_explicit_recovery) try writer.writeAll(", occurrence_recovery");
             if (explicit_recovery) {
-                try self.emitExplicitRuleCatch(writer, rule, variable, skip_ast_construction, "");
+                try self.emitExplicitRuleCatch(writer, rule, variable, skip_ast_construction, "", null);
             } else {
                 try writer.writeByte(')');
             }
@@ -949,29 +947,27 @@ const Generator = struct {
         spec: SyntaxErrorHandlerSpec,
         indent: []const u8,
     ) !void {
-        if (self.uses_explicit_recovery) {
-            try writer.print("{s}return {s}(context, occurrence_recovery);\n", .{ indent, spec.name });
+        const arguments = if (self.uses_explicit_recovery) "context, occurrence_recovery" else "context";
+        // A handler that returns recovered; one that cannot recover throws.
+        // The node the parser was building outlives the recovery. The text
+        // does not depend on whether recovery is enabled, so those
+        // configurations keep sharing one body.
+        if (self.options.with_ast and self.symbolReturnsNode(spec.symbol_index, spec.skip_ast_construction)) {
+            try writer.print("{s}_ = try {s}({s});\n", .{ indent, spec.name, arguments });
+            try writer.print("{s}return {s};\n", .{ indent, recoveredNodeExpression(null) });
             return;
         }
-        if (!self.options.with_error_recovery) {
-            try writer.print("{s}return {s}(context);\n", .{ indent, spec.name });
-            return;
-        }
-        try self.emitSyntaxErrorHandlerReturn(writer, spec.symbol_index, spec.skip_ast_construction, spec.name, indent);
+        try writer.print("{s}return {s}({s});\n", .{ indent, spec.name, arguments });
     }
 
-    fn emitSyntaxErrorHandlerReturn(
-        self: *Generator,
-        writer: *std.Io.Writer,
-        symbol_index: usize,
-        skip_ast_construction: bool,
-        handler_name: []const u8,
-        indent: []const u8,
-    ) !void {
-        _ = self;
-        _ = symbol_index;
-        _ = skip_ast_construction;
-        try writer.print("{s}return {s}(context);\n", .{ indent, handler_name });
+    /// What a parser hands its caller after recovering, with AST
+    /// construction: the node it was building, flagged and spanning the
+    /// skipped input. `inner_level` names the current level of a
+    /// self-repeating parser's chain, whose outer levels the recovery also
+    /// cuts short.
+    fn recoveredNodeExpression(inner_level: ?[]const u8) []const u8 {
+        if (inner_level != null) return "context.keepRecoveredChain(node_address, repeating_node_address)";
+        return "context.keepRecoveredNode(node_address)";
     }
 
     const SyntaxErrorHandlerBody = struct {
@@ -1116,21 +1112,26 @@ const Generator = struct {
                     skip_ast_construction,
                     child_index,
                 );
+                // The root is taken as soon as its parse returns, ahead of
+                // the symbols after it (the end of the input): a recovered
+                // error there still publishes the tree that was parsed.
+                if (captures_root and child_index == 0) try self.emitRootCapture(writer, indent);
             }
         }
 
-        if (captures_root) {
-            if (self.options.with_ast) {
-                try writer.print("{s}if (root_node != data_structures.Node.invalid_pointer) {{\n{s}    root_reduction.ast_root = root_node;\n", .{ indent, indent });
-                if (self.options.with_procedures) {
-                    try writer.print("{s}    root_reduction.semantic_root = context.node_allocator.at(root_node).payload;\n", .{indent});
-                }
-                try writer.print("{s}}}\n", .{indent});
-            } else {
-                try writer.print("{s}if (root_node) |node| root_reduction.semantic_root = node.payload;\n", .{indent});
-            }
-        }
         try self.emitRuleFinalize(writer, rule_index, parent_variable, indent, skip_ast_construction);
+    }
+
+    fn emitRootCapture(self: *Generator, writer: *std.Io.Writer, indent: []const u8) !void {
+        if (self.options.with_ast) {
+            try writer.print("{s}if (root_node != data_structures.Node.invalid_pointer) {{\n{s}    root_reduction.ast_root = root_node;\n", .{ indent, indent });
+            if (self.options.with_procedures) {
+                try writer.print("{s}    root_reduction.semantic_root = context.node_allocator.at(root_node).payload;\n", .{indent});
+            }
+            try writer.print("{s}}}\n", .{indent});
+        } else {
+            try writer.print("{s}if (root_node) |node| root_reduction.semantic_root = node.payload;\n", .{indent});
+        }
     }
 
     fn emitRuleFinalize(self: *Generator, writer: *std.Io.Writer, rule_index: usize, parent_variable: usize, indent: []const u8, skip_ast_construction: bool) !void {
@@ -1171,6 +1172,10 @@ const Generator = struct {
         const name = try self.parserName(symbol_index);
         const child = self.symbols.items[symbol_index];
         const explicit_recovery = self.uses_explicit_recovery;
+        const inner_level: ?[]const u8 = if (parent_address) |address|
+            (if (std.mem.eql(u8, address, "repeating_node_address")) address else null)
+        else
+            null;
         const verbatim = rule.rhs_annotations.items[child_index].verbatim;
         self.verbatim_literal = rule.rhs_annotations.items[child_index].verbatim_literal;
         self.verbatim_consume = rule.rhs_annotations.items[child_index].verbatim_consume;
@@ -1201,7 +1206,7 @@ const Generator = struct {
                     try writer.print("{s}{{\n{s}    {s} child_node = {s}parse_{s}(context", .{ indent, indent, if (verbatim) "var" else "const", if (explicit_recovery) "" else "try ", call_name });
                     try self.emitChildOccurrenceArgument(writer, rule, child_index, child_returns_node);
                     if (explicit_recovery) {
-                        try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent);
+                        try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent, inner_level);
                     } else {
                         try writer.writeByte(')');
                     }
@@ -1223,7 +1228,7 @@ const Generator = struct {
                 try writer.print("{s}{{\n{s}    const child_node = {s}parse_{s}(context", .{ indent, indent, if (explicit_recovery) "" else "try ", call_name });
                 try self.emitChildOccurrenceArgument(writer, rule, child_index, child_returns_node);
                 if (explicit_recovery) {
-                    try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent);
+                    try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent, inner_level);
                 } else {
                     try writer.writeByte(')');
                 }
@@ -1248,7 +1253,7 @@ const Generator = struct {
                 try writer.print("{s}_ = {s}parse_{s}{s}(context", .{ indent, if (explicit_recovery) "" else "try ", call_name, if (child_skips_ast_construction) "_" else "" });
                 try self.emitChildOccurrenceArgument(writer, rule, child_index, false);
                 if (explicit_recovery) {
-                    try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent);
+                    try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent, inner_level);
                 } else {
                     try writer.writeByte(')');
                 }
@@ -1259,7 +1264,7 @@ const Generator = struct {
             try writer.print("{s}{s} = {s}parse_{s}(context", .{ indent, parent_address orelse "_", if (explicit_recovery) "" else "try ", call_name });
             try self.emitChildOccurrenceArgument(writer, rule, child_index, true);
             if (explicit_recovery) {
-                try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent);
+                try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent, inner_level);
             } else {
                 try writer.writeByte(')');
             }
@@ -1276,7 +1281,7 @@ const Generator = struct {
             try writer.print("{s}_ = {s}parse_{s}{s}(context", .{ indent, if (explicit_recovery) "" else "try ", call_name, if (child_skips_ast_construction) "_" else "" });
             try self.emitChildOccurrenceArgument(writer, rule, child_index, false);
             if (explicit_recovery) {
-                try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent);
+                try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent, inner_level);
             } else {
                 try writer.writeByte(')');
             }
@@ -1449,13 +1454,16 @@ const Generator = struct {
         }
     }
 
-    fn emitExplicitRuleCatch(self: *Generator, writer: *std.Io.Writer, rule: Rule, parent_variable: usize, skip_ast_construction: bool, indent: []const u8) !void {
+    fn emitExplicitRuleCatch(self: *Generator, writer: *std.Io.Writer, rule: Rule, parent_variable: usize, skip_ast_construction: bool, indent: []const u8, inner_level: ?[]const u8) !void {
         const rule_index = self.ruleIndex(rule);
         try writer.writeAll(") catch |err| switch (err) {\n");
         try writer.print("{s}        error.ExplicitSyntaxRecovery => {{\n", .{indent});
         try writer.print("{s}            if (try llTryRecoveryRule_{d}(context, occurrence_recovery)) {{\n", .{ indent, rule_index });
         if (self.symbolReturnsNode(parent_variable, skip_ast_construction)) {
-            try writer.print("{s}                return {s};\n", .{ indent, self.missingNode() });
+            try writer.print("{s}                return {s};\n", .{
+                indent,
+                if (self.options.with_ast) recoveredNodeExpression(inner_level) else self.missingNode(),
+            });
         } else {
             try writer.print("{s}                return;\n", .{indent});
         }

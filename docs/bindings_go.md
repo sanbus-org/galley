@@ -179,7 +179,7 @@ snapshot carries `Kind == DiagnosticKindSemantic` and a `Semantic`
 
 ## Tree Walking
 
-`Session.Walk` returns a pre-order `Walker` over the last successful parse,
+`Session.Walk` returns a pre-order `Walker` over the published parse,
 yielding one `WalkStep{Node, Depth, IsSemanticError}` per step with the root
 at depth 0 — the shared runtime walker, so order and depths match every
 other binding. The walker owns no native resource: there is nothing to
@@ -224,10 +224,16 @@ parsed, err := session.ParseSentinel("alpha:12,beta:3")
 Sessions own their IO backend and allocator and are not safe for
 concurrent use — keep one per goroutine or guard it externally. Node
 handles, text slices, and diagnostics remain valid until the next parse on
-the same session or `Close`. A failed parse counts as a later parse:
-nothing is published, so `Snapshot()`, `NodeCount()`, and every node read
-return `ErrStaleTree` until a successful parse, while `LastInput()` keeps
-the last successful input. `RootNode()` is the one "is there a tree here"
+the same session or `Close`. A parse that fails after running to its end —
+semantic errors only, or syntax errors the parser recovered from — publishes
+its tree like a success, `Parse` still returning the failure, and
+`LastInput()` is that input; the damaged regions are nodes spanning the input
+recovery skipped (`WalkStep.IsSemanticError` flags semantic errors; the
+recovered flag and the snapshot's flag columns are not in Go yet). A failed
+parse that publishes nothing counts as a later parse: `Snapshot()`,
+`NodeCount()`, `LastInput()`, `Info()`, and every node read return
+`ErrStaleTree` until a parse publishes, and so do they before the first parse.
+`RootNode()` is the one "is there a tree here"
 probe: it answers `(root, true, nil)` for a published tree, `(_, false, nil)`
 when nothing is published, and an error when the core refuses
 (`ErrSessionInUse` while a parse runs). There is no validity

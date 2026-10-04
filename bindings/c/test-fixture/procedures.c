@@ -229,7 +229,7 @@ static void probe_calls(void *args, GalleyHookDoor *door, unsigned long long gen
     out[i++] = galley_hook_tree_insert_children_at(door, generation, node, 0, node);
     out[i++] = galley_hook_tree_remove_children_at(door, generation, node, 0, 1, &head);
     out[i++] = galley_procedure_set_current_node(args, generation, other);
-    out[i++] = galley_hook_tree_snapshot(door, generation, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0);
+    out[i++] = galley_hook_tree_snapshot(door, generation, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0);
 }
 
 static void probe_hook_refusals(void *args, GalleyHookDoor *door, unsigned long long generation,

@@ -189,8 +189,11 @@ export class Node {
 
   /**
    * Pre-order walker over the subtree rooted at this node, this node
-   * included at depth 0. Pass true to prune subtrees rooted at
-   * semantic-error nodes. The walker owns no native resource: abandoning
+   * included at depth 0. Pass true for `skipSemanticErrors` to prune
+   * subtrees rooted at semantic-error nodes, and for `skipRecovered` to
+   * prune those rooted at nodes syntax-error recovery kept in place of
+   * damaged input; with both the walk yields only undamaged, valid nodes.
+   * The walker owns no native resource: abandoning
    * it is free, and parsing again with one open succeeds — its next step
    * throws a `StaleTreeError` instead. Each step picks its door like
    * any node call, so a walk created inside a hook of a running parse
@@ -199,8 +202,8 @@ export class Node {
    * inside the walk's root (removed, or moved elsewhere) throws an
    * `invalid node` error.
    */
-  walk(skipSemanticErrors = false): Walker {
-    return walkStart(this.#session, this, skipSemanticErrors);
+  walk(skipSemanticErrors = false, skipRecovered = false): Walker {
+    return walkStart(this.#session, this, skipSemanticErrors, skipRecovered);
   }
 
   cleanChildren(): Node | null {
@@ -248,13 +251,15 @@ export class Node {
  * Held here so `node.ts` imports only types from `session.ts`: a value import
  * back would make the module graph cyclic.
  */
-let walkStart: (session: Session, root: Node, skipSemanticErrors: boolean) => Walker;
+let walkStart: (session: Session, root: Node, skipSemanticErrors: boolean, skipRecovered: boolean) => Walker;
 
 /**
  * Installs the walk-start path behind `Node.walk`. Internal: only `Session`
  * calls it, and no package entry point re-exports it.
  */
-export function installWalkStart(start: (session: Session, root: Node, skipSemanticErrors: boolean) => Walker): void {
+export function installWalkStart(
+  start: (session: Session, root: Node, skipSemanticErrors: boolean, skipRecovered: boolean) => Walker,
+): void {
   walkStart = start;
 }
 

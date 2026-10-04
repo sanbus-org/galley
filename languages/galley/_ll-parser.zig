@@ -1576,7 +1576,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_Rules(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_52(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -1623,7 +1623,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_0(context, occurrence_recovery);
+            _ = try ll_syntax_error_0(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -1652,7 +1653,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_Rules(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_52(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -1670,7 +1671,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_0(context, occurrence_recovery);
+            _ = try ll_syntax_error_0(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -1812,7 +1814,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_Comment(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_45(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -1826,7 +1828,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_OptionalNewLineMany(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_45(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -1840,7 +1842,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_Rule(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_45(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -1854,7 +1856,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_RulesTail(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_45(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -1901,7 +1903,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_1(context, occurrence_recovery);
+            _ = try ll_syntax_error_1(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -1930,7 +1933,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_Comment(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_45(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -1944,7 +1947,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_OptionalNewLineMany(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_45(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -1958,7 +1961,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_Rule(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_45(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -1972,7 +1975,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_RulesTail(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_45(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -1990,7 +1993,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_1(context, occurrence_recovery);
+            _ = try ll_syntax_error_1(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -2216,7 +2220,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     const child_node = parse_CommentLine(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_18(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -2233,7 +2237,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     const exit_node = parse_Comment(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_18(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -2332,7 +2336,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     const child_node = parse_CommentLine(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_18(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -2349,7 +2353,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     const exit_node = parse_Comment(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_18(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -2583,7 +2587,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_CommentLine(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_18(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -2597,7 +2601,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_Comment_0_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_18(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -2644,7 +2648,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_2(context, occurrence_recovery);
+            _ = try ll_syntax_error_2(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -2685,7 +2690,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_CommentLine(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_18(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -2699,7 +2704,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_Comment_0_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_18(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -2717,7 +2722,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_2(context, occurrence_recovery);
+            _ = try ll_syntax_error_2(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -2938,7 +2944,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     const child_node = parse_NewLine(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_33(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -2955,7 +2961,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     const exit_node = parse_OptionalNewLineMany(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_33(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -3053,7 +3059,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     const child_node = parse_NewLine(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_33(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -3070,7 +3076,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     const exit_node = parse_OptionalNewLineMany(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_33(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -3261,7 +3267,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_NewLine(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_33(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -3275,7 +3281,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_OptionalNewLineMany_0_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_33(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -3363,7 +3369,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_3(context, occurrence_recovery);
+            _ = try ll_syntax_error_3(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -3392,7 +3399,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_NewLine(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_33(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -3406,7 +3413,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_OptionalNewLineMany_0_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_33(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -3436,7 +3443,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_3(context, occurrence_recovery);
+            _ = try ll_syntax_error_3(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -3647,7 +3655,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_VariableSymbol(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_44(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -3661,7 +3669,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_AnnotationTail(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_44(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -3675,7 +3683,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_NewLine(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_44(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -3689,7 +3697,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_RightHandSides(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_44(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -3736,7 +3744,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_4(context, occurrence_recovery);
+            _ = try ll_syntax_error_4(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -3766,7 +3775,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_VariableSymbol(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_44(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -3780,7 +3789,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_AnnotationTail(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_44(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -3794,7 +3803,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_NewLine(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_44(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -3808,7 +3817,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_RightHandSides(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_44(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -3826,7 +3835,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_4(context, occurrence_recovery);
+            _ = try ll_syntax_error_4(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -4054,7 +4064,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     const child_node = parse_Rule(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_47(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -4071,7 +4081,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     const exit_node = parse_RulesTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_47(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -4170,7 +4180,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     const child_node = parse_Rule(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_47(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -4187,7 +4197,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     const exit_node = parse_RulesTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_47(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -4391,7 +4401,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     const child_node = parse_NewLine(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_48(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -4408,7 +4418,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     const exit_node = parse_RulesTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_48(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -4506,7 +4516,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     const child_node = parse_NewLine(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_48(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -4523,7 +4533,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     const exit_node = parse_RulesTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_48(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -4755,7 +4765,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_NewLine(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_48(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -4769,7 +4779,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_RulesTail_0_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_48(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -4824,7 +4834,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_Rule(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_47(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -4838,7 +4848,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_RulesTail_1_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_47(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -4885,7 +4895,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_5(context, occurrence_recovery);
+            _ = try ll_syntax_error_5(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -4926,7 +4937,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_NewLine(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_48(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -4940,7 +4951,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_RulesTail_0_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_48(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -4966,7 +4977,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_Rule(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_47(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -4980,7 +4991,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_RulesTail_1_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_47(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -4998,7 +5009,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_5(context, occurrence_recovery);
+            _ = try ll_syntax_error_5(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -5301,7 +5313,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_new_line(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_31(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -5315,7 +5327,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_Comment(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_31(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -5362,7 +5374,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_6(context, occurrence_recovery);
+            _ = try ll_syntax_error_6(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -5390,7 +5403,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_new_line(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_31(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -5400,7 +5413,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_Comment(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_31(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -5447,7 +5460,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_6(context, occurrence_recovery);
+            _ = try ll_syntax_error_6(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -5476,7 +5490,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_new_line(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_31(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -5490,7 +5504,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_Comment(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_31(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -5508,7 +5522,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_6(context, occurrence_recovery);
+            _ = try ll_syntax_error_6(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -5536,7 +5551,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_new_line(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_31(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -5546,7 +5561,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_Comment(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_31(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -5564,7 +5579,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_6(context, occurrence_recovery);
+            _ = try ll_syntax_error_6(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -5810,7 +5826,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_UppercaseId(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_61(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -5865,7 +5881,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_62(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -5879,7 +5895,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_UppercaseId(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_62(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -5926,7 +5942,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_7(context, occurrence_recovery);
+            _ = try ll_syntax_error_7(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -5956,7 +5973,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_UppercaseId(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_61(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -6010,7 +6027,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_62(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -6020,7 +6037,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_UppercaseId(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_62(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -6067,7 +6084,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_7(context, occurrence_recovery);
+            _ = try ll_syntax_error_7(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -6097,7 +6115,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_UppercaseId(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_61(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -6123,7 +6141,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_62(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -6137,7 +6155,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_UppercaseId(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_62(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -6155,7 +6173,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_7(context, occurrence_recovery);
+            _ = try ll_syntax_error_7(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -6185,7 +6204,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_UppercaseId(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_61(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -6210,7 +6229,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_62(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -6220,7 +6239,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_UppercaseId(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_62(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -6238,7 +6257,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_7(context, occurrence_recovery);
+            _ = try ll_syntax_error_7(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -6616,7 +6636,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_terminal__x64(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -6630,7 +6650,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_Annotation(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -6647,7 +6667,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_AnnotationTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -6745,7 +6765,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 _ = parse_terminal__x64(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -6755,7 +6775,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_Annotation(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -6772,7 +6792,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_AnnotationTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -6871,7 +6891,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_terminal__x64(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -6885,7 +6905,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_Annotation(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -6902,7 +6922,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_AnnotationTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -6961,7 +6981,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 _ = parse_terminal__x64(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -6971,7 +6991,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_Annotation(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -6988,7 +7008,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_AnnotationTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -7352,7 +7372,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x64(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -7366,7 +7386,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_Annotation(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -7380,7 +7400,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_AnnotationTail_0_2(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -7427,7 +7447,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_8(context, occurrence_recovery);
+            _ = try ll_syntax_error_8(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -7496,7 +7517,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x64(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -7506,7 +7527,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_Annotation(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -7520,7 +7541,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_AnnotationTail_0_2(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -7567,7 +7588,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_8(context, occurrence_recovery);
+            _ = try ll_syntax_error_8(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -7608,7 +7630,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x64(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -7622,7 +7644,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_Annotation(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -7636,7 +7658,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_AnnotationTail_0_2(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -7654,7 +7676,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_8(context, occurrence_recovery);
+            _ = try ll_syntax_error_8(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -7694,7 +7717,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x64(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -7704,7 +7727,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_Annotation(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -7718,7 +7741,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_AnnotationTail_0_2(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -7736,7 +7759,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_8(context, occurrence_recovery);
+            _ = try ll_syntax_error_8(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -8098,7 +8122,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_RightHandSideLine(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_41(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -8135,7 +8159,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                         const child_node = parse_RightHandSides(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_43(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -8148,7 +8172,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 },
                 else => {
                     @branchHint(.unlikely);
-                    return ll_syntax_error_79(context, occurrence_recovery);
+                    _ = try ll_syntax_error_79(context, occurrence_recovery);
+                    return context.keepRecoveredNode(node_address);
                 },
             }            context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
             var args = data_structures.ProcedureArguments{
@@ -8187,7 +8212,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_9(context, occurrence_recovery);
+            _ = try ll_syntax_error_9(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -8217,7 +8243,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_RightHandSideLine(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_41(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -8254,7 +8280,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                         const child_node = parse_RightHandSides(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_43(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -8267,7 +8293,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 },
                 else => {
                     @branchHint(.unlikely);
-                    return ll_syntax_error_79(context, occurrence_recovery);
+                    _ = try ll_syntax_error_79(context, occurrence_recovery);
+                    return context.keepRecoveredNode(node_address);
                 },
             }            context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
             if (comptime builtin.mode == .Debug) {
@@ -8277,7 +8304,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_9(context, occurrence_recovery);
+            _ = try ll_syntax_error_9(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -8502,7 +8530,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x124(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_40(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -8516,7 +8544,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_AnnotationTail(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_40(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -8530,7 +8558,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_RightHandSide(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_40(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -8544,7 +8572,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_NewLine(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_40(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -8591,7 +8619,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_10(context, occurrence_recovery);
+            _ = try ll_syntax_error_10(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -8620,7 +8649,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x124(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_40(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -8630,7 +8659,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_AnnotationTail(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_40(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -8644,7 +8673,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_RightHandSide(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_40(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -8658,7 +8687,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_NewLine(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_40(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -8705,7 +8734,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_10(context, occurrence_recovery);
+            _ = try ll_syntax_error_10(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -8735,7 +8765,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x124(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_40(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -8749,7 +8779,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_AnnotationTail(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_40(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -8763,7 +8793,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_RightHandSide(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_40(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -8777,7 +8807,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_NewLine(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_40(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -8795,7 +8825,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_10(context, occurrence_recovery);
+            _ = try ll_syntax_error_10(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -8824,7 +8855,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x124(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_40(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -8834,7 +8865,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_AnnotationTail(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_40(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -8848,7 +8879,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_RightHandSide(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_40(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -8862,7 +8893,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_NewLine(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_40(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -8880,7 +8911,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_10(context, occurrence_recovery);
+            _ = try ll_syntax_error_10(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -9200,7 +9232,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_11(context, occurrence_recovery);
+            _ = try ll_syntax_error_11(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -9258,7 +9291,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_11(context, occurrence_recovery);
+            _ = try ll_syntax_error_11(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -9341,7 +9375,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_generative_terminal_space(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -9355,7 +9389,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_Symbol(context, &ExplicitRecoveryScope{ .id = 208, .target = .{ .occurrence = .{ .parent_variable = "RightHandSide", .rhs_index = 0, .symbol_index = 1, .variable = "Symbol" } }, .points = &[_]root.SyntaxRecoveryPoint{.{ .terminal = "\n", .@"resume" = .before }} }) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -9369,7 +9403,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_AnnotationTail(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -9386,7 +9420,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_RightHandSide(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -9484,7 +9518,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 _ = parse_generative_terminal_space(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -9494,7 +9528,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_Symbol(context, &ExplicitRecoveryScope{ .id = 208, .target = .{ .occurrence = .{ .parent_variable = "RightHandSide", .rhs_index = 0, .symbol_index = 1, .variable = "Symbol" } }, .points = &[_]root.SyntaxRecoveryPoint{.{ .terminal = "\n", .@"resume" = .before }} }) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -9508,7 +9542,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_AnnotationTail(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -9525,7 +9559,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_RightHandSide(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -9624,7 +9658,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_generative_terminal_space(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -9638,7 +9672,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_Symbol(context, &ExplicitRecoveryScope{ .id = 208, .target = .{ .occurrence = .{ .parent_variable = "RightHandSide", .rhs_index = 0, .symbol_index = 1, .variable = "Symbol" } }, .points = &[_]root.SyntaxRecoveryPoint{.{ .terminal = "\n", .@"resume" = .before }} }) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -9652,7 +9686,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_AnnotationTail(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -9669,7 +9703,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_RightHandSide(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -9728,7 +9762,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 _ = parse_generative_terminal_space(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -9738,7 +9772,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_Symbol(context, &ExplicitRecoveryScope{ .id = 208, .target = .{ .occurrence = .{ .parent_variable = "RightHandSide", .rhs_index = 0, .symbol_index = 1, .variable = "Symbol" } }, .points = &[_]root.SyntaxRecoveryPoint{.{ .terminal = "\n", .@"resume" = .before }} }) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -9752,7 +9786,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_AnnotationTail(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -9769,7 +9803,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_RightHandSide(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -10172,7 +10206,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_space(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -10186,7 +10220,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_Symbol(context, &ExplicitRecoveryScope{ .id = 208, .target = .{ .occurrence = .{ .parent_variable = "RightHandSide", .rhs_index = 0, .symbol_index = 1, .variable = "Symbol" } }, .points = &[_]root.SyntaxRecoveryPoint{.{ .terminal = "\n", .@"resume" = .before }} }) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -10200,7 +10234,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_AnnotationTail(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -10214,7 +10248,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_RightHandSide_0_3(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -10261,7 +10295,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_12(context, occurrence_recovery);
+            _ = try ll_syntax_error_12(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -10330,7 +10365,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_space(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -10340,7 +10375,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_Symbol(context, &ExplicitRecoveryScope{ .id = 208, .target = .{ .occurrence = .{ .parent_variable = "RightHandSide", .rhs_index = 0, .symbol_index = 1, .variable = "Symbol" } }, .points = &[_]root.SyntaxRecoveryPoint{.{ .terminal = "\n", .@"resume" = .before }} }) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -10354,7 +10389,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_AnnotationTail(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -10368,7 +10403,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_RightHandSide_0_3(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -10415,7 +10450,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_12(context, occurrence_recovery);
+            _ = try ll_syntax_error_12(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -10456,7 +10492,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_space(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -10470,7 +10506,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_Symbol(context, &ExplicitRecoveryScope{ .id = 208, .target = .{ .occurrence = .{ .parent_variable = "RightHandSide", .rhs_index = 0, .symbol_index = 1, .variable = "Symbol" } }, .points = &[_]root.SyntaxRecoveryPoint{.{ .terminal = "\n", .@"resume" = .before }} }) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -10484,7 +10520,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_AnnotationTail(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -10498,7 +10534,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_RightHandSide_0_3(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -10516,7 +10552,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_12(context, occurrence_recovery);
+            _ = try ll_syntax_error_12(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -10556,7 +10593,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_space(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -10566,7 +10603,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_Symbol(context, &ExplicitRecoveryScope{ .id = 208, .target = .{ .occurrence = .{ .parent_variable = "RightHandSide", .rhs_index = 0, .symbol_index = 1, .variable = "Symbol" } }, .points = &[_]root.SyntaxRecoveryPoint{.{ .terminal = "\n", .@"resume" = .before }} }) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -10580,7 +10617,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_AnnotationTail(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -10594,7 +10631,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_RightHandSide_0_3(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -10612,7 +10649,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_12(context, occurrence_recovery);
+            _ = try ll_syntax_error_12(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -11006,7 +11044,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_13(context, occurrence_recovery);
+            _ = try ll_syntax_error_13(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -11064,7 +11103,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_13(context, occurrence_recovery);
+            _ = try ll_syntax_error_13(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -11136,7 +11176,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_54(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -11191,7 +11231,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_VariableSymbol(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_53(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -11248,7 +11288,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                         const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_54(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -11295,7 +11335,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     }                },
                 else => {
                     @branchHint(.unlikely);
-                    return ll_syntax_error_14(context, occurrence_recovery);
+                    _ = try ll_syntax_error_14(context, occurrence_recovery);
+                    return context.keepRecoveredNode(node_address);
                 },
             }
         },
@@ -11309,7 +11350,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_GenerativeTerminalSymbol(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_55(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -11356,7 +11397,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_15(context, occurrence_recovery);
+            _ = try ll_syntax_error_15(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -11386,7 +11428,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_54(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -11412,7 +11454,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_VariableSymbol(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_53(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -11440,7 +11482,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                         const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_54(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -11458,7 +11500,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     }                },
                 else => {
                     @branchHint(.unlikely);
-                    return ll_syntax_error_14(context, occurrence_recovery);
+                    _ = try ll_syntax_error_14(context, occurrence_recovery);
+                    return context.keepRecoveredNode(node_address);
                 },
             }
         },
@@ -11472,7 +11515,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_GenerativeTerminalSymbol(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_55(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -11490,7 +11533,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_15(context, occurrence_recovery);
+            _ = try ll_syntax_error_15(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -11858,7 +11902,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_59(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -11872,7 +11916,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_SimpleStringContent(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_59(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -11886,7 +11930,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_59(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -11943,7 +11987,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         const child_node = parse_RawString(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_58(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -11990,13 +12034,15 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     }                },
                 else => {
                     @branchHint(.unlikely);
-                    return ll_syntax_error_16(context, occurrence_recovery);
+                    _ = try ll_syntax_error_16(context, occurrence_recovery);
+                    return context.keepRecoveredNode(node_address);
                 },
             }
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_17(context, occurrence_recovery);
+            _ = try ll_syntax_error_17(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -12025,7 +12071,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_59(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -12035,7 +12081,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_SimpleStringContent(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_59(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -12048,7 +12094,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_59(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -12101,7 +12147,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         const child_node = parse_RawString(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_58(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -12148,13 +12194,15 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     }                },
                 else => {
                     @branchHint(.unlikely);
-                    return ll_syntax_error_16(context, occurrence_recovery);
+                    _ = try ll_syntax_error_16(context, occurrence_recovery);
+                    return context.keepRecoveredNode(node_address);
                 },
             }
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_17(context, occurrence_recovery);
+            _ = try ll_syntax_error_17(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -12184,7 +12232,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_59(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -12198,7 +12246,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_SimpleStringContent(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_59(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -12212,7 +12260,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_59(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -12240,7 +12288,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         const child_node = parse_RawString(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_58(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -12258,13 +12306,15 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     }                },
                 else => {
                     @branchHint(.unlikely);
-                    return ll_syntax_error_16(context, occurrence_recovery);
+                    _ = try ll_syntax_error_16(context, occurrence_recovery);
+                    return context.keepRecoveredNode(node_address);
                 },
             }
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_17(context, occurrence_recovery);
+            _ = try ll_syntax_error_17(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -12293,7 +12343,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_59(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -12303,7 +12353,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_SimpleStringContent(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_59(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -12316,7 +12366,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_59(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -12340,7 +12390,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         const child_node = parse_RawString(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_58(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -12358,13 +12408,15 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     }                },
                 else => {
                     @branchHint(.unlikely);
-                    return ll_syntax_error_16(context, occurrence_recovery);
+                    _ = try ll_syntax_error_16(context, occurrence_recovery);
+                    return context.keepRecoveredNode(node_address);
                 },
             }
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_17(context, occurrence_recovery);
+            _ = try ll_syntax_error_17(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -12788,7 +12840,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_LowercaseId(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_25(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -12802,7 +12854,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_GenerativeTerminalExceptions(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_25(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -12849,7 +12901,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_18(context, occurrence_recovery);
+            _ = try ll_syntax_error_18(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -12879,7 +12932,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_LowercaseId(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_25(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -12893,7 +12946,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_GenerativeTerminalExceptions(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_25(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -12911,7 +12964,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_18(context, occurrence_recovery);
+            _ = try ll_syntax_error_18(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -13080,7 +13134,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_uppercase_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_60(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -13094,7 +13148,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_IdTail(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_60(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -13141,7 +13195,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_19(context, occurrence_recovery);
+            _ = try ll_syntax_error_19(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -13170,7 +13225,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_uppercase_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_60(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -13180,7 +13235,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_IdTail(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_60(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -13227,7 +13282,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_19(context, occurrence_recovery);
+            _ = try ll_syntax_error_19(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -13257,7 +13313,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_uppercase_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_60(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -13271,7 +13327,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_IdTail(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_60(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -13289,7 +13345,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_19(context, occurrence_recovery);
+            _ = try ll_syntax_error_19(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -13318,7 +13375,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_uppercase_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_60(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -13328,7 +13385,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_IdTail(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_60(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -13346,7 +13403,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_19(context, occurrence_recovery);
+            _ = try ll_syntax_error_19(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -13588,7 +13646,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_20(context, occurrence_recovery);
+            _ = try ll_syntax_error_20(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -13646,7 +13705,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_20(context, occurrence_recovery);
+            _ = try ll_syntax_error_20(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -13709,7 +13769,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x92_x92_x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_36(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -13724,7 +13784,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_RawIndicator(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_36(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -13743,7 +13803,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_36(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -13790,7 +13850,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_21(context, occurrence_recovery);
+            _ = try ll_syntax_error_21(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -13810,7 +13871,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x92_x92_x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_36(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -13821,7 +13882,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_RawIndicator(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_36(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -13839,7 +13900,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_36(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -13882,7 +13943,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_21(context, occurrence_recovery);
+            _ = try ll_syntax_error_21(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -13903,7 +13965,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x92_x92_x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_36(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -13918,7 +13980,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_RawIndicator(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_36(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -13937,7 +13999,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_36(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -13955,7 +14017,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_21(context, occurrence_recovery);
+            _ = try ll_syntax_error_21(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -13975,7 +14038,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x92_x92_x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_36(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -13986,7 +14049,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_RawIndicator(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_36(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -14004,7 +14067,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_36(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -14018,7 +14081,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_21(context, occurrence_recovery);
+            _ = try ll_syntax_error_21(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -14277,7 +14341,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_22(context, occurrence_recovery);
+            _ = try ll_syntax_error_22(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -14335,7 +14400,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_22(context, occurrence_recovery);
+            _ = try ll_syntax_error_22(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -14417,7 +14483,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_50(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -14434,7 +14500,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_SimpleStringContent(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_50(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -14531,7 +14597,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 _ = parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_50(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -14544,7 +14610,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_SimpleStringContent(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_50(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -14642,7 +14708,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_50(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -14659,7 +14725,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_SimpleStringContent(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_50(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -14717,7 +14783,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 _ = parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_50(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -14730,7 +14796,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_SimpleStringContent(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_50(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -15022,7 +15088,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 _ = parse__Utf8Scalar_(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_51(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -15035,7 +15101,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     const exit_node = parse_SimpleStringContent(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_51(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -15133,7 +15199,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 _ = parse__Utf8Scalar_(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_51(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -15146,7 +15212,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     const exit_node = parse_SimpleStringContent(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_51(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -15333,7 +15399,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_50(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -15347,7 +15413,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_SimpleStringContent_0_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_50(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -15442,7 +15508,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse__Utf8Scalar_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_51(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -15452,7 +15518,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_SimpleStringContent_1_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_51(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -15499,7 +15565,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_23(context, occurrence_recovery);
+            _ = try ll_syntax_error_23(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -15527,7 +15594,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_50(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -15537,7 +15604,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_SimpleStringContent_0_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_50(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -15632,7 +15699,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse__Utf8Scalar_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_51(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -15642,7 +15709,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_SimpleStringContent_1_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_51(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -15689,7 +15756,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_23(context, occurrence_recovery);
+            _ = try ll_syntax_error_23(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -15718,7 +15786,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_50(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -15732,7 +15800,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_SimpleStringContent_0_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_50(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -15769,7 +15837,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse__Utf8Scalar_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_51(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -15779,7 +15847,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_SimpleStringContent_1_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_51(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -15797,7 +15865,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_23(context, occurrence_recovery);
+            _ = try ll_syntax_error_23(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -15825,7 +15894,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_50(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -15835,7 +15904,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_SimpleStringContent_0_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_50(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -15872,7 +15941,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse__Utf8Scalar_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_51(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -15882,7 +15951,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_SimpleStringContent_1_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_51(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -15900,7 +15969,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_23(context, occurrence_recovery);
+            _ = try ll_syntax_error_23(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -16352,7 +16422,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_24(context, occurrence_recovery);
+            _ = try ll_syntax_error_24(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -16392,7 +16463,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_24(context, occurrence_recovery);
+            _ = try ll_syntax_error_24(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -16455,7 +16527,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_35(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -16502,7 +16574,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_25(context, occurrence_recovery);
+            _ = try ll_syntax_error_25(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -16531,7 +16604,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_35(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -16574,7 +16647,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_25(context, occurrence_recovery);
+            _ = try ll_syntax_error_25(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -16604,7 +16678,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_35(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -16622,7 +16696,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_25(context, occurrence_recovery);
+            _ = try ll_syntax_error_25(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -16651,7 +16726,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_35(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -16665,7 +16740,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_25(context, occurrence_recovery);
+            _ = try ll_syntax_error_25(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -16867,7 +16943,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_26(context, occurrence_recovery);
+            _ = try ll_syntax_error_26(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -16925,7 +17002,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_26(context, occurrence_recovery);
+            _ = try ll_syntax_error_26(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -16997,7 +17075,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_lowercase_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_30(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -17011,7 +17089,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_IdTail(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_30(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -17058,7 +17136,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_27(context, occurrence_recovery);
+            _ = try ll_syntax_error_27(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -17087,7 +17166,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_lowercase_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_30(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -17097,7 +17176,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_IdTail(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_30(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -17144,7 +17223,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_27(context, occurrence_recovery);
+            _ = try ll_syntax_error_27(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -17174,7 +17254,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_lowercase_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_30(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -17188,7 +17268,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_IdTail(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_30(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -17206,7 +17286,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_27(context, occurrence_recovery);
+            _ = try ll_syntax_error_27(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -17235,7 +17316,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_lowercase_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_30(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -17245,7 +17326,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_IdTail(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_30(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -17263,7 +17344,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_27(context, occurrence_recovery);
+            _ = try ll_syntax_error_27(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -17523,7 +17605,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_terminal__x94(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_24(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -17537,7 +17619,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_24(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -17554,7 +17636,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_GenerativeTerminalExceptions(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_24(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -17652,7 +17734,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 _ = parse_terminal__x94(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_24(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -17662,7 +17744,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_24(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -17679,7 +17761,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_GenerativeTerminalExceptions(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_24(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -17778,7 +17860,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_terminal__x94(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_24(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -17792,7 +17874,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_24(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -17809,7 +17891,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_GenerativeTerminalExceptions(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_24(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -17868,7 +17950,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 _ = parse_terminal__x94(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_24(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -17878,7 +17960,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_24(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -17895,7 +17977,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_GenerativeTerminalExceptions(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_24(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -18259,7 +18341,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x94(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_24(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -18273,7 +18355,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_24(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -18287,7 +18369,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_GenerativeTerminalExceptions_0_2(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_24(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -18334,7 +18416,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_28(context, occurrence_recovery);
+            _ = try ll_syntax_error_28(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -18403,7 +18486,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x94(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_24(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -18413,7 +18496,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_24(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -18427,7 +18510,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_GenerativeTerminalExceptions_0_2(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_24(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -18474,7 +18557,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_28(context, occurrence_recovery);
+            _ = try ll_syntax_error_28(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -18515,7 +18599,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x94(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_24(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -18529,7 +18613,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_24(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -18543,7 +18627,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_GenerativeTerminalExceptions_0_2(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_24(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -18561,7 +18645,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_28(context, occurrence_recovery);
+            _ = try ll_syntax_error_28(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -18601,7 +18686,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x94(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_24(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -18611,7 +18696,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_24(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -18625,7 +18710,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_GenerativeTerminalExceptions_0_2(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_24(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -18643,7 +18728,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_28(context, occurrence_recovery);
+            _ = try ll_syntax_error_28(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -18998,7 +19084,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_29(context, occurrence_recovery);
+            _ = try ll_syntax_error_29(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -19056,7 +19143,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_29(context, occurrence_recovery);
+            _ = try ll_syntax_error_29(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -19121,7 +19209,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_30(context, occurrence_recovery);
+            _ = try ll_syntax_error_30(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -19179,7 +19268,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_30(context, occurrence_recovery);
+            _ = try ll_syntax_error_30(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -19251,7 +19341,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x33(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_1(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -19265,7 +19355,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_RecoveryPoint(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_1(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -19320,7 +19410,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x62(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_2(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -19334,7 +19424,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_VerbatimMarker(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_2(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -19389,7 +19479,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_Procedure(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_0(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -19436,7 +19526,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_31(context, occurrence_recovery);
+            _ = try ll_syntax_error_31(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -19465,7 +19556,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x33(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_1(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -19475,7 +19566,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_RecoveryPoint(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_1(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -19529,7 +19620,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x62(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_2(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -19539,7 +19630,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_VerbatimMarker(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_2(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -19594,7 +19685,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_Procedure(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_0(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -19641,7 +19732,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_31(context, occurrence_recovery);
+            _ = try ll_syntax_error_31(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -19671,7 +19763,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x33(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_1(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -19685,7 +19777,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_RecoveryPoint(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_1(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -19711,7 +19803,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x62(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_2(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -19725,7 +19817,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_VerbatimMarker(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_2(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -19751,7 +19843,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_Procedure(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_0(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -19769,7 +19861,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_31(context, occurrence_recovery);
+            _ = try ll_syntax_error_31(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -19798,7 +19891,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x33(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_1(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -19808,7 +19901,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_RecoveryPoint(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_1(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -19833,7 +19926,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x62(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_2(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -19843,7 +19936,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_VerbatimMarker(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_2(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -19869,7 +19962,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_Procedure(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_0(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -19887,7 +19980,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_31(context, occurrence_recovery);
+            _ = try ll_syntax_error_31(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -20405,7 +20499,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_CamelCaseId(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_34(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -20452,7 +20546,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_32(context, occurrence_recovery);
+            _ = try ll_syntax_error_32(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -20482,7 +20577,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_CamelCaseId(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_34(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -20500,7 +20595,8 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_32(context, occurrence_recovery);
+            _ = try ll_syntax_error_32(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -20638,7 +20734,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_33(context, occurrence_recovery);
+            _ = try ll_syntax_error_33(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -20696,7 +20793,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_33(context, occurrence_recovery);
+            _ = try ll_syntax_error_33(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -20768,7 +20866,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_TerminalAndCursor(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_37(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -20825,7 +20923,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                         const child_node = parse_TerminalAndCursor(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_37(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -20872,13 +20970,15 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     }                },
                 else => {
                     @branchHint(.unlikely);
-                    return ll_syntax_error_34(context, occurrence_recovery);
+                    _ = try ll_syntax_error_34(context, occurrence_recovery);
+                    return context.keepRecoveredNode(node_address);
                 },
             }
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_35(context, occurrence_recovery);
+            _ = try ll_syntax_error_35(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -20908,7 +21008,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const child_node = parse_TerminalAndCursor(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_37(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -20936,7 +21036,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                         const child_node = parse_TerminalAndCursor(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_37(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -20954,13 +21054,15 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     }                },
                 else => {
                     @branchHint(.unlikely);
-                    return ll_syntax_error_34(context, occurrence_recovery);
+                    _ = try ll_syntax_error_34(context, occurrence_recovery);
+                    return context.keepRecoveredNode(node_address);
                 },
             }
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_35(context, occurrence_recovery);
+            _ = try ll_syntax_error_35(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -21183,7 +21285,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_36(context, occurrence_recovery);
+            _ = try ll_syntax_error_36(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -21241,7 +21344,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_36(context, occurrence_recovery);
+            _ = try ll_syntax_error_36(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -21313,7 +21417,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_TerminalAndCursor(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_64(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -21368,7 +21472,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x62(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_63(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -21425,7 +21529,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         const child_node = parse_TerminalAndCursor(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_64(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -21472,13 +21576,15 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     }                },
                 else => {
                     @branchHint(.unlikely);
-                    return ll_syntax_error_37(context, occurrence_recovery);
+                    _ = try ll_syntax_error_37(context, occurrence_recovery);
+                    return context.keepRecoveredNode(node_address);
                 },
             }
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_38(context, occurrence_recovery);
+            _ = try ll_syntax_error_38(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -21508,7 +21614,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_TerminalAndCursor(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_64(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -21562,7 +21668,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x62(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_63(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -21615,7 +21721,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         const child_node = parse_TerminalAndCursor(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_64(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -21662,13 +21768,15 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     }                },
                 else => {
                     @branchHint(.unlikely);
-                    return ll_syntax_error_37(context, occurrence_recovery);
+                    _ = try ll_syntax_error_37(context, occurrence_recovery);
+                    return context.keepRecoveredNode(node_address);
                 },
             }
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_38(context, occurrence_recovery);
+            _ = try ll_syntax_error_38(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -21698,7 +21806,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_TerminalAndCursor(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_64(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -21724,7 +21832,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x62(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_63(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -21752,7 +21860,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         const child_node = parse_TerminalAndCursor(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_64(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -21770,13 +21878,15 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     }                },
                 else => {
                     @branchHint(.unlikely);
-                    return ll_syntax_error_37(context, occurrence_recovery);
+                    _ = try ll_syntax_error_37(context, occurrence_recovery);
+                    return context.keepRecoveredNode(node_address);
                 },
             }
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_38(context, occurrence_recovery);
+            _ = try ll_syntax_error_38(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -21806,7 +21916,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_TerminalAndCursor(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_64(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -21831,7 +21941,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x62(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_63(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -21855,7 +21965,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         const child_node = parse_TerminalAndCursor(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_64(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -21873,13 +21983,15 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     }                },
                 else => {
                     @branchHint(.unlikely);
-                    return ll_syntax_error_37(context, occurrence_recovery);
+                    _ = try ll_syntax_error_37(context, occurrence_recovery);
+                    return context.keepRecoveredNode(node_address);
                 },
             }
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_38(context, occurrence_recovery);
+            _ = try ll_syntax_error_38(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -22348,7 +22460,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_lowercase_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_13(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -22362,7 +22474,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_CamelCaseIdTail(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_13(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -22409,7 +22521,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_39(context, occurrence_recovery);
+            _ = try ll_syntax_error_39(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -22438,7 +22551,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_lowercase_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_13(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -22448,7 +22561,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_CamelCaseIdTail(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_13(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -22495,7 +22608,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_39(context, occurrence_recovery);
+            _ = try ll_syntax_error_39(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -22525,7 +22639,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_lowercase_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_13(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -22539,7 +22653,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_CamelCaseIdTail(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_13(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -22557,7 +22671,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_39(context, occurrence_recovery);
+            _ = try ll_syntax_error_39(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -22586,7 +22701,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_lowercase_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_13(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -22596,7 +22711,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_CamelCaseIdTail(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_13(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -22614,7 +22729,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_39(context, occurrence_recovery);
+            _ = try ll_syntax_error_39(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -22863,7 +22979,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_56(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -22877,7 +22993,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x94(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_56(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -22934,7 +23050,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_56(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -22948,7 +23064,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         const child_node = parse_terminal__x94(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_56(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -22995,7 +23111,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     }                },
                 else => {
                     @branchHint(.unlikely);
-                    return ll_syntax_error_40(context, occurrence_recovery);
+                    _ = try ll_syntax_error_40(context, occurrence_recovery);
+                    return context.keepRecoveredNode(node_address);
                 },
             }
         },
@@ -23009,7 +23126,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x94(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_57(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -23023,7 +23140,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_57(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -23070,7 +23187,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_41(context, occurrence_recovery);
+            _ = try ll_syntax_error_41(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -23100,7 +23218,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_56(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -23113,7 +23231,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x94(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_56(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -23166,7 +23284,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_56(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -23179,7 +23297,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     _ = parse_terminal__x94(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_56(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -23222,7 +23340,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     }                },
                 else => {
                     @branchHint(.unlikely);
-                    return ll_syntax_error_40(context, occurrence_recovery);
+                    _ = try ll_syntax_error_40(context, occurrence_recovery);
+                    return context.keepRecoveredNode(node_address);
                 },
             }
         },
@@ -23235,7 +23354,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x94(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_57(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -23245,7 +23364,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_57(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -23292,7 +23411,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_41(context, occurrence_recovery);
+            _ = try ll_syntax_error_41(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -23322,7 +23442,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_56(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -23336,7 +23456,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x94(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_56(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -23364,7 +23484,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_56(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -23378,7 +23498,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         const child_node = parse_terminal__x94(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_56(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -23396,7 +23516,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     }                },
                 else => {
                     @branchHint(.unlikely);
-                    return ll_syntax_error_40(context, occurrence_recovery);
+                    _ = try ll_syntax_error_40(context, occurrence_recovery);
+                    return context.keepRecoveredNode(node_address);
                 },
             }
         },
@@ -23410,7 +23531,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x94(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_57(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -23424,7 +23545,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_57(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -23442,7 +23563,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_41(context, occurrence_recovery);
+            _ = try ll_syntax_error_41(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -23472,7 +23594,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_56(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -23485,7 +23607,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x94(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_56(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -23509,7 +23631,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_56(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -23522,7 +23644,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     _ = parse_terminal__x94(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_56(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -23536,7 +23658,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     }                },
                 else => {
                     @branchHint(.unlikely);
-                    return ll_syntax_error_40(context, occurrence_recovery);
+                    _ = try ll_syntax_error_40(context, occurrence_recovery);
+                    return context.keepRecoveredNode(node_address);
                 },
             }
         },
@@ -23549,7 +23672,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x94(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_57(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -23559,7 +23682,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_57(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -23577,7 +23700,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_41(context, occurrence_recovery);
+            _ = try ll_syntax_error_41(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -24144,7 +24268,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_42(context, occurrence_recovery);
+            _ = try ll_syntax_error_42(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -24200,7 +24325,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_42(context, occurrence_recovery);
+            _ = try ll_syntax_error_42(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -24696,7 +24822,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_47(context, occurrence_recovery);
+            _ = try ll_syntax_error_47(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -24754,7 +24881,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_47(context, occurrence_recovery);
+            _ = try ll_syntax_error_47(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -24819,7 +24947,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_48(context, occurrence_recovery);
+            _ = try ll_syntax_error_48(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -24877,7 +25006,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_48(context, occurrence_recovery);
+            _ = try ll_syntax_error_48(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -24942,7 +25072,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_49(context, occurrence_recovery);
+            _ = try ll_syntax_error_49(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -25000,7 +25131,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_49(context, occurrence_recovery);
+            _ = try ll_syntax_error_49(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -25065,7 +25197,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_50(context, occurrence_recovery);
+            _ = try ll_syntax_error_50(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -25123,7 +25256,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_50(context, occurrence_recovery);
+            _ = try ll_syntax_error_50(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -25188,7 +25322,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_51(context, occurrence_recovery);
+            _ = try ll_syntax_error_51(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -25246,7 +25381,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_51(context, occurrence_recovery);
+            _ = try ll_syntax_error_51(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -25311,7 +25447,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_52(context, occurrence_recovery);
+            _ = try ll_syntax_error_52(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -25369,7 +25506,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_52(context, occurrence_recovery);
+            _ = try ll_syntax_error_52(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -25434,7 +25572,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_53(context, occurrence_recovery);
+            _ = try ll_syntax_error_53(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -25492,7 +25631,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_53(context, occurrence_recovery);
+            _ = try ll_syntax_error_53(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -25557,7 +25697,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_54(context, occurrence_recovery);
+            _ = try ll_syntax_error_54(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -25615,7 +25756,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_54(context, occurrence_recovery);
+            _ = try ll_syntax_error_54(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -25680,7 +25822,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_55(context, occurrence_recovery);
+            _ = try ll_syntax_error_55(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -25738,7 +25881,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_55(context, occurrence_recovery);
+            _ = try ll_syntax_error_55(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -25803,7 +25947,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_56(context, occurrence_recovery);
+            _ = try ll_syntax_error_56(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -25861,7 +26006,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_56(context, occurrence_recovery);
+            _ = try ll_syntax_error_56(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -25926,7 +26072,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_57(context, occurrence_recovery);
+            _ = try ll_syntax_error_57(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -25984,7 +26131,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_57(context, occurrence_recovery);
+            _ = try ll_syntax_error_57(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -26049,7 +26197,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_58(context, occurrence_recovery);
+            _ = try ll_syntax_error_58(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -26107,7 +26256,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_58(context, occurrence_recovery);
+            _ = try ll_syntax_error_58(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -26179,7 +26329,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x92x01(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_20(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -26234,7 +26384,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x92x02(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_21(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -26281,7 +26431,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_59(context, occurrence_recovery);
+            _ = try ll_syntax_error_59(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -26310,7 +26461,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x92x01(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_20(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -26360,7 +26511,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x92x02(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_21(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -26403,7 +26554,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_59(context, occurrence_recovery);
+            _ = try ll_syntax_error_59(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -26433,7 +26585,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x92x01(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_20(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -26459,7 +26611,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x92x02(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_21(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -26477,7 +26629,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_59(context, occurrence_recovery);
+            _ = try ll_syntax_error_59(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -26506,7 +26659,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x92x01(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_20(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -26527,7 +26680,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x92x02(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_21(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -26541,7 +26694,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_59(context, occurrence_recovery);
+            _ = try ll_syntax_error_59(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -26854,7 +27008,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_60(context, occurrence_recovery);
+            _ = try ll_syntax_error_60(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -26912,7 +27067,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_60(context, occurrence_recovery);
+            _ = try ll_syntax_error_60(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -26977,7 +27133,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_61(context, occurrence_recovery);
+            _ = try ll_syntax_error_61(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -27035,7 +27192,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_61(context, occurrence_recovery);
+            _ = try ll_syntax_error_61(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -27107,7 +27265,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_ControlCharacter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_5(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -27138,7 +27296,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         const child_node = parse_AnyContent(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_8(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -27151,7 +27309,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 },
                 else => {
                     @branchHint(.unlikely);
-                    return ll_syntax_error_80(context, occurrence_recovery);
+                    _ = try ll_syntax_error_80(context, occurrence_recovery);
+                    return context.keepRecoveredNode(node_address);
                 },
             }            context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
             var args = data_structures.ProcedureArguments{
@@ -27198,7 +27357,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_character_x94_x34_x92_x92n_x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_6(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -27229,7 +27388,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         const child_node = parse_AnyContent(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_10(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -27242,7 +27401,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 },
                 else => {
                     @branchHint(.unlikely);
-                    return ll_syntax_error_81(context, occurrence_recovery);
+                    _ = try ll_syntax_error_81(context, occurrence_recovery);
+                    return context.keepRecoveredNode(node_address);
                 },
             }            context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
             var args = data_structures.ProcedureArguments{
@@ -27281,7 +27441,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_62(context, occurrence_recovery);
+            _ = try ll_syntax_error_62(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -27311,7 +27472,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_ControlCharacter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_5(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -27342,7 +27503,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         const child_node = parse_AnyContent(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_8(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -27355,7 +27516,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 },
                 else => {
                     @branchHint(.unlikely);
-                    return ll_syntax_error_80(context, occurrence_recovery);
+                    _ = try ll_syntax_error_80(context, occurrence_recovery);
+                    return context.keepRecoveredNode(node_address);
                 },
             }            context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
             var args = data_structures.ProcedureArguments{
@@ -27401,7 +27563,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_character_x94_x34_x92_x92n_x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_6(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -27428,7 +27590,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         const child_node = parse_AnyContent(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_10(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -27441,7 +27603,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 },
                 else => {
                     @branchHint(.unlikely);
-                    return ll_syntax_error_81(context, occurrence_recovery);
+                    _ = try ll_syntax_error_81(context, occurrence_recovery);
+                    return context.keepRecoveredNode(node_address);
                 },
             }            context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
             var args = data_structures.ProcedureArguments{
@@ -27480,7 +27643,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_62(context, occurrence_recovery);
+            _ = try ll_syntax_error_62(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -27510,7 +27674,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_ControlCharacter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_5(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -27541,7 +27705,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         const child_node = parse_AnyContent(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_8(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -27554,7 +27718,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 },
                 else => {
                     @branchHint(.unlikely);
-                    return ll_syntax_error_80(context, occurrence_recovery);
+                    _ = try ll_syntax_error_80(context, occurrence_recovery);
+                    return context.keepRecoveredNode(node_address);
                 },
             }            context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
             if (comptime builtin.mode == .Debug) {
@@ -27572,7 +27737,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_character_x94_x34_x92_x92n_x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_6(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -27603,7 +27768,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         const child_node = parse_AnyContent(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_10(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -27616,7 +27781,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 },
                 else => {
                     @branchHint(.unlikely);
-                    return ll_syntax_error_81(context, occurrence_recovery);
+                    _ = try ll_syntax_error_81(context, occurrence_recovery);
+                    return context.keepRecoveredNode(node_address);
                 },
             }            context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
             if (comptime builtin.mode == .Debug) {
@@ -27626,7 +27792,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_62(context, occurrence_recovery);
+            _ = try ll_syntax_error_62(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -27656,7 +27823,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_ControlCharacter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_5(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -27687,7 +27854,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         const child_node = parse_AnyContent(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_8(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -27700,7 +27867,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 },
                 else => {
                     @branchHint(.unlikely);
-                    return ll_syntax_error_80(context, occurrence_recovery);
+                    _ = try ll_syntax_error_80(context, occurrence_recovery);
+                    return context.keepRecoveredNode(node_address);
                 },
             }            context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
             if (comptime builtin.mode == .Debug) {
@@ -27717,7 +27885,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_character_x94_x34_x92_x92n_x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_6(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -27744,7 +27912,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         const child_node = parse_AnyContent(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
                                 if (try llTryRecoveryRule_10(context, occurrence_recovery)) {
-                                    return data_structures.invalid_variable_node;
+                                    return context.keepRecoveredNode(node_address);
                                 }
                                 return err;
                             },
@@ -27757,7 +27925,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 },
                 else => {
                     @branchHint(.unlikely);
-                    return ll_syntax_error_81(context, occurrence_recovery);
+                    _ = try ll_syntax_error_81(context, occurrence_recovery);
+                    return context.keepRecoveredNode(node_address);
                 },
             }            context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
             if (comptime builtin.mode == .Debug) {
@@ -27767,7 +27936,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_62(context, occurrence_recovery);
+            _ = try ll_syntax_error_62(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -28298,7 +28468,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_63(context, occurrence_recovery);
+            _ = try ll_syntax_error_63(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -28356,7 +28527,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_63(context, occurrence_recovery);
+            _ = try ll_syntax_error_63(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -28439,7 +28611,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_terminal__(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_27(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -28456,7 +28628,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_IdTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_27(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -28554,7 +28726,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 _ = parse_terminal__(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_27(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -28567,7 +28739,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_IdTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_27(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -28666,7 +28838,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_terminal__(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_27(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -28683,7 +28855,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_IdTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_27(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -28742,7 +28914,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 _ = parse_terminal__(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_27(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -28755,7 +28927,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_IdTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_27(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -29051,7 +29223,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_generative_terminal_letter(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_28(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -29068,7 +29240,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_IdTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_28(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -29166,7 +29338,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 _ = parse_generative_terminal_letter(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_28(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -29179,7 +29351,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_IdTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_28(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -29278,7 +29450,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_generative_terminal_letter(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_28(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -29295,7 +29467,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_IdTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_28(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -29354,7 +29526,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 _ = parse_generative_terminal_letter(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_28(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -29367,7 +29539,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_IdTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_28(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -29663,7 +29835,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_generative_terminal_digit(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_29(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -29680,7 +29852,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_IdTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_29(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -29778,7 +29950,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 _ = parse_generative_terminal_digit(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_29(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -29791,7 +29963,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_IdTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_29(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -29890,7 +30062,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_generative_terminal_digit(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_29(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -29907,7 +30079,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_IdTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_29(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -29966,7 +30138,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 _ = parse_generative_terminal_digit(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_29(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -29979,7 +30151,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_IdTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_29(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -30304,7 +30476,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_digit(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_29(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -30318,7 +30490,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_IdTail_1_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_29(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -30373,7 +30545,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_28(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -30387,7 +30559,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_IdTail_0_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_28(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -30442,7 +30614,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_27(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -30456,7 +30628,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_IdTail_2_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_27(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -30503,7 +30675,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_64(context, occurrence_recovery);
+            _ = try ll_syntax_error_64(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -30572,7 +30745,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_digit(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_29(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -30582,7 +30755,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_IdTail_1_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_29(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -30636,7 +30809,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_28(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -30646,7 +30819,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_IdTail_0_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_28(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -30700,7 +30873,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_27(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -30710,7 +30883,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_IdTail_2_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_27(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -30757,7 +30930,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_64(context, occurrence_recovery);
+            _ = try ll_syntax_error_64(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -30798,7 +30972,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_digit(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_29(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -30812,7 +30986,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_IdTail_1_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_29(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -30838,7 +31012,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_28(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -30852,7 +31026,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_IdTail_0_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_28(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -30878,7 +31052,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_27(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -30892,7 +31066,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_IdTail_2_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_27(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -30910,7 +31084,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_64(context, occurrence_recovery);
+            _ = try ll_syntax_error_64(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -30950,7 +31125,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_digit(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_29(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -30960,7 +31135,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_IdTail_1_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_29(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -30985,7 +31160,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_28(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -30995,7 +31170,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_IdTail_0_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_28(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -31020,7 +31195,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_27(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -31030,7 +31205,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_IdTail_2_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_27(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -31048,7 +31223,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_64(context, occurrence_recovery);
+            _ = try ll_syntax_error_64(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -31666,7 +31842,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_65(context, occurrence_recovery);
+            _ = try ll_syntax_error_65(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -31724,7 +31901,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_65(context, occurrence_recovery);
+            _ = try ll_syntax_error_65(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -31789,7 +31967,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_66(context, occurrence_recovery);
+            _ = try ll_syntax_error_66(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -31847,7 +32026,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_66(context, occurrence_recovery);
+            _ = try ll_syntax_error_66(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -31912,7 +32092,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_67(context, occurrence_recovery);
+            _ = try ll_syntax_error_67(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -31970,7 +32151,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_67(context, occurrence_recovery);
+            _ = try ll_syntax_error_67(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -32035,7 +32217,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_68(context, occurrence_recovery);
+            _ = try ll_syntax_error_68(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -32093,7 +32276,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_68(context, occurrence_recovery);
+            _ = try ll_syntax_error_68(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -32176,7 +32360,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_generative_terminal_letter(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_15(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -32193,7 +32377,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_CamelCaseIdTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_15(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -32291,7 +32475,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 _ = parse_generative_terminal_letter(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_15(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -32304,7 +32488,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_CamelCaseIdTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_15(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -32403,7 +32587,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_generative_terminal_letter(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_15(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -32420,7 +32604,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_CamelCaseIdTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_15(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -32479,7 +32663,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 _ = parse_generative_terminal_letter(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_15(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -32492,7 +32676,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_CamelCaseIdTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_15(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -32788,7 +32972,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_generative_terminal_digit(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_16(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -32805,7 +32989,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_CamelCaseIdTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_16(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -32903,7 +33087,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 _ = parse_generative_terminal_digit(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_16(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -32916,7 +33100,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_CamelCaseIdTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_16(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -33015,7 +33199,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     const child_node = parse_generative_terminal_digit(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_16(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -33032,7 +33216,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_CamelCaseIdTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_16(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -33091,7 +33275,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 _ = parse_generative_terminal_digit(context, null) catch |err| switch (err) {
                         error.ExplicitSyntaxRecovery => {
                             if (try llTryRecoveryRule_16(context, occurrence_recovery)) {
-                                return data_structures.invalid_variable_node;
+                                return context.keepRecoveredChain(node_address, repeating_node_address);
                             }
                             return err;
                         },
@@ -33104,7 +33288,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     const exit_node = parse_CamelCaseIdTail(context, occurrence_recovery) catch |err| switch (err) {
         error.ExplicitSyntaxRecovery => {
             if (try llTryRecoveryRule_16(context, occurrence_recovery)) {
-                return data_structures.invalid_variable_node;
+                return context.keepRecoveredChain(node_address, repeating_node_address);
             }
             return err;
         },
@@ -33429,7 +33613,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_digit(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_16(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -33443,7 +33627,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_CamelCaseIdTail_1_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_16(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -33498,7 +33682,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_15(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -33512,7 +33696,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_CamelCaseIdTail_0_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_15(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -33559,7 +33743,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_69(context, occurrence_recovery);
+            _ = try ll_syntax_error_69(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -33628,7 +33813,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_digit(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_16(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -33638,7 +33823,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_CamelCaseIdTail_1_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_16(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -33692,7 +33877,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_15(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -33702,7 +33887,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_CamelCaseIdTail_0_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_15(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -33749,7 +33934,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_69(context, occurrence_recovery);
+            _ = try ll_syntax_error_69(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -33790,7 +33976,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_digit(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_16(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -33804,7 +33990,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_CamelCaseIdTail_1_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_16(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -33830,7 +34016,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_15(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -33844,7 +34030,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_CamelCaseIdTail_0_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_15(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -33862,7 +34048,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_69(context, occurrence_recovery);
+            _ = try ll_syntax_error_69(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -33902,7 +34089,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_digit(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_16(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -33912,7 +34099,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_CamelCaseIdTail_1_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_16(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -33937,7 +34124,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_15(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -33947,7 +34134,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_CamelCaseIdTail_0_1(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_15(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -33965,7 +34152,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_69(context, occurrence_recovery);
+            _ = try ll_syntax_error_69(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -34431,7 +34619,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_70(context, occurrence_recovery);
+            _ = try ll_syntax_error_70(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -34487,7 +34676,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_70(context, occurrence_recovery);
+            _ = try ll_syntax_error_70(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -34558,7 +34748,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_block_start(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_12(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -34572,7 +34762,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_Comment(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_12(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -34619,7 +34809,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_71(context, occurrence_recovery);
+            _ = try ll_syntax_error_71(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -34648,7 +34839,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_block_start(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_12(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -34658,7 +34849,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_Comment(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_12(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -34705,7 +34896,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_71(context, occurrence_recovery);
+            _ = try ll_syntax_error_71(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -34735,7 +34927,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_block_start(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_12(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -34749,7 +34941,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_Comment(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_12(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -34767,7 +34959,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_71(context, occurrence_recovery);
+            _ = try ll_syntax_error_71(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -34796,7 +34989,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_block_start(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_12(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -34806,7 +34999,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_Comment(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_12(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -34824,7 +35017,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_71(context, occurrence_recovery);
+            _ = try ll_syntax_error_71(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -35066,7 +35260,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_72(context, occurrence_recovery);
+            _ = try ll_syntax_error_72(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -35124,7 +35319,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_72(context, occurrence_recovery);
+            _ = try ll_syntax_error_72(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -35196,7 +35392,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_block_end(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_11(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -35210,7 +35406,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_Comment(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_11(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -35257,7 +35453,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_73(context, occurrence_recovery);
+            _ = try ll_syntax_error_73(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -35286,7 +35483,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_block_end(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_11(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -35296,7 +35493,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_Comment(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_11(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -35343,7 +35540,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_73(context, occurrence_recovery);
+            _ = try ll_syntax_error_73(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -35373,7 +35571,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_block_end(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_11(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -35387,7 +35585,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_Comment(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_11(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -35405,7 +35603,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_73(context, occurrence_recovery);
+            _ = try ll_syntax_error_73(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -35434,7 +35633,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_block_end(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_11(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -35444,7 +35643,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_Comment(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_11(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -35462,7 +35661,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_73(context, occurrence_recovery);
+            _ = try ll_syntax_error_73(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -35704,7 +35904,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_74(context, occurrence_recovery);
+            _ = try ll_syntax_error_74(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -35762,7 +35963,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_74(context, occurrence_recovery);
+            _ = try ll_syntax_error_74(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -35834,7 +36036,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x35(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_19(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -35852,7 +36054,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_new_line(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_19(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -35899,7 +36101,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_75(context, occurrence_recovery);
+            _ = try ll_syntax_error_75(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -35928,7 +36131,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x35(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_19(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -35938,7 +36141,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_new_line(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_19(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -35981,7 +36184,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_75(context, occurrence_recovery);
+            _ = try ll_syntax_error_75(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -36011,7 +36215,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_terminal__x35(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_19(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -36029,7 +36233,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const child_node = parse_generative_terminal_new_line(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_19(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -36047,7 +36251,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_75(context, occurrence_recovery);
+            _ = try ll_syntax_error_75(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -36076,7 +36281,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_terminal__x35(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_19(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -36086,7 +36291,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             _ = parse_generative_terminal_new_line(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_19(context, occurrence_recovery)) {
-                            return data_structures.invalid_variable_node;
+                            return context.keepRecoveredNode(node_address);
                         }
                         return err;
                     },
@@ -36100,7 +36305,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }        },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_75(context, occurrence_recovery);
+            _ = try ll_syntax_error_75(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     return node_address;
@@ -36339,7 +36545,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_76(context, occurrence_recovery);
+            _ = try ll_syntax_error_76(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -36397,7 +36604,8 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         },
         else => {
             @branchHint(.unlikely);
-            return ll_syntax_error_76(context, occurrence_recovery);
+            _ = try ll_syntax_error_76(context, occurrence_recovery);
+            return context.keepRecoveredNode(node_address);
         },
     }
     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
@@ -36471,6 +36679,10 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     },
                     else => return err,
                 }; // child 0
+            if (root_node != data_structures.Node.invalid_pointer) {
+                root_reduction.ast_root = root_node;
+                root_reduction.semantic_root = context.node_allocator.at(root_node).payload;
+            }
             _ = parse_special_EOF(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_65(context, occurrence_recovery)) {
@@ -36480,10 +36692,6 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     },
                     else => return err,
                 }; // child 1
-            if (root_node != data_structures.Node.invalid_pointer) {
-                root_reduction.ast_root = root_node;
-                root_reduction.semantic_root = context.node_allocator.at(root_node).payload;
-            }
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _AugmentedStart <~ Start, '\\x00'\n", .{});
@@ -36522,6 +36730,9 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     },
                     else => return err,
                 }; // child 0
+            if (root_node != data_structures.Node.invalid_pointer) {
+                root_reduction.ast_root = root_node;
+            }
             _ = parse_special_EOF(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_65(context, occurrence_recovery)) {
@@ -36531,9 +36742,6 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     },
                     else => return err,
                 }; // child 1
-            if (root_node != data_structures.Node.invalid_pointer) {
-                root_reduction.ast_root = root_node;
-            }
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _AugmentedStart <~ Start, '\\x00'\n", .{});
@@ -36572,6 +36780,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     },
                     else => return err,
                 }; // child 0
+            if (root_node) |node| root_reduction.semantic_root = node.payload;
             _ = parse_special_EOF(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_65(context, occurrence_recovery)) {
@@ -36581,7 +36790,6 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     },
                     else => return err,
                 }; // child 1
-            if (root_node) |node| root_reduction.semantic_root = node.payload;
             if (comptime builtin.mode == .Debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _AugmentedStart <~ Start, '\\x00'\n", .{});
@@ -43763,15 +43971,11 @@ pub fn parseWithResult(context: *data_structures.Context) !root.ParseResult {
         },
         else => return err,
     };
-if (comptime is_error_recovery_enabled) {
-    if (context.hasSyntaxErrors()) return root.ParseError.SyntaxError;
-}
-
-    if (context.verbosityLevel() > 0) {
+    if (context.verbosityLevel() > 0 and !context.hasSyntaxErrors()) {
         std.log.info("The input file was parsed successfully!", .{});
     }
     return .{
-        .parsed_bytes = context.pos() - 1,
+        .parsed_bytes = context.pos() -| 1,
         .line = context.line,
         .column = context.column,
         .ast_root = root_reduction.ast_root,

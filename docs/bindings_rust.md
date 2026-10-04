@@ -85,9 +85,9 @@ snapshot carries `kind == DiagnosticKind::Semantic` and
 
 ## Tree Walking
 
-`Session::walk` returns a borrowing pre-order `Walker` over the last
-successful parse, yielding one `Result<WalkStep { node, depth,
-is_semantic_error }>` per node with the root at depth 0 — the shared
+`Session::walk` returns a borrowing pre-order `Walker` over the published
+parse, yielding one `Result<WalkStep { node, depth, is_semantic_error,
+is_recovered }>` per node with the root at depth 0 — the shared
 runtime walker, so order and depths match every other binding. The walker
 owns no native resource: one host-side cursor, nothing dropped, and its
 borrow of the session keeps a parse from starting mid-walk. A failed step
@@ -95,15 +95,21 @@ comes back as `Err(Error::InvalidNode)` — an invalid root, or a position
 no longer inside the walk's root (removed, or moved elsewhere) — and ends
 the iteration; steps otherwise follow the live links, so edits between
 steps are visible. `skip_children` prunes the last
-yielded node's children host-side; passing `true` prunes semantic-error
-subtrees. A failed parse counts as a later parse: nothing is published, so
-`Session::snapshot`, `Session::node_count`, and every node accessor return
-`Err(Error::StaleTree)` until a successful parse, while `last_input()` keeps
-the last successful input:
+yielded node's children host-side; the two booleans of `walk` prune
+semantic-error subtrees and recovered subtrees (the nodes syntax-error
+recovery kept in place of damaged input). A parse that fails after running to
+its end — semantic errors only, or syntax errors the parser recovered from —
+publishes its tree like a success, `parse` still returning the failure, and
+`last_input()` is that input; `TreeSnapshot` carries `is_recovered` beside
+`is_semantic_error`. A parse that publishes nothing counts as a later parse:
+`Session::snapshot`, `Session::node_count`, `Session::info`, `last_input()`
+and every node accessor return `Err(Error::StaleTree)` until a parse
+publishes, and so do they before the first parse. `last_input()` returns a
+`Result` for that reason, like every read:
 
 ```rust
 let root = session.root_node().expect("root read").expect("root");
-for step in session.walk(root, false) {
+for step in session.walk(root, false, false) {
     let step = step.expect("walk step");
     println!("{:width$}{:?}", "", step.node, width = step.depth as usize * 2);
 }

@@ -83,6 +83,7 @@ extern "C" {
         out_span_start: *mut u64,
         out_span_len: *mut u64,
         out_is_semantic_error: *mut i32,
+        out_is_recovered: *mut i32,
         capacity: u64,
     ) -> i64;
     fn galley_last_input(
@@ -380,13 +381,16 @@ pub struct WalkStep {
     pub node: NodeHandle,
     pub depth: u32,
     pub is_semantic_error: bool,
+    /// The node syntax-error recovery kept in place of damaged input; its
+    /// span covers the input recovery skipped.
+    pub is_recovered: bool,
 }
 
-/// Flat bulk read of the last successful parse (see
-/// [`Session::snapshot`]): one entry per node address. Missing links read
-/// as [`NodeHandle::INVALID`], missing variables as -1, spans index
-/// [`Session::last_input`], and `is_semantic_error` carries the flag
-/// [`WalkStep`] yields.
+/// Flat bulk read of the published parse (see [`Session::snapshot`]): one
+/// entry per node address. Missing links read as [`NodeHandle::INVALID`],
+/// missing variables as -1, spans index [`Session::last_input`], and
+/// `is_semantic_error` and `is_recovered` carry the flags [`WalkStep`]
+/// yields.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TreeSnapshot {
     /// The generation of the parse these columns describe; [`TreeSnapshot::node`]
@@ -401,6 +405,7 @@ pub struct TreeSnapshot {
     pub span_start: Vec<u64>,
     pub span_len: Vec<u64>,
     pub is_semantic_error: Vec<bool>,
+    pub is_recovered: Vec<bool>,
 }
 
 impl TreeSnapshot {
@@ -416,8 +421,8 @@ impl TreeSnapshot {
 
 /// The host-owned walk cursor, byte for byte `GalleyWalkCursor` from
 /// `galley.h`: generation u64, root u64, current u64, depth u32, state u16,
-/// options u8, is_semantic_error u8, structure_version u64 — 40 bytes with
-/// the header's layout. The core stamps `structure_version` on every step;
+/// options u8, flags u8, structure_version u64 — 40 bytes with the header's
+/// layout. The core stamps `structure_version` on every step;
 /// the host never reads it (zero-init here).
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -428,7 +433,7 @@ struct RawWalkCursor {
     depth: u32,
     state: u16,
     options: u8,
-    is_semantic_error: u8,
+    flags: u8,
     structure_version: u64,
 }
 
@@ -437,8 +442,11 @@ const _: () = assert!(std::mem::size_of::<RawWalkCursor>() == 40);
 const WALK_STATE_YIELDED: u16 = 1;
 const WALK_STATE_YIELDED_SKIP_CHILDREN: u16 = 2;
 const WALK_OPTION_SKIP_SEMANTIC_ERRORS: u8 = 1;
+const WALK_OPTION_SKIP_RECOVERED: u8 = 2;
+const WALK_FLAG_SEMANTIC_ERROR: u8 = 1;
+const WALK_FLAG_RECOVERED: u8 = 2;
 
-/// Borrowing pre-order walker over the last successful parse's tree. The
+/// Borrowing pre-order walker over the published parse's tree. The
 /// walker owns no native resource — one host-side cursor stamped with the
 /// session's published generation — so dropping it does nothing, and the
 /// session's borrow is all it holds: no parse can start while it is alive,
@@ -473,7 +481,8 @@ impl Iterator for Walker<'_> {
                     address: self.cursor.current,
                 },
                 depth: self.cursor.depth,
-                is_semantic_error: self.cursor.is_semantic_error != 0,
+                is_semantic_error: self.cursor.flags & WALK_FLAG_SEMANTIC_ERROR != 0,
+                is_recovered: self.cursor.flags & WALK_FLAG_RECOVERED != 0,
             })),
             status => {
                 self.finished = true;
@@ -506,7 +515,7 @@ pub struct Session {
 
 unsafe impl Send for Session {}
 
-/// Summary of one successful parse.
+/// Summary of the published parse.
 #[derive(Debug)]
 pub struct ParseInfo {
     pub root: Option<NodeHandle>,
@@ -610,9 +619,11 @@ impl Session {
         self.status_to_result(unsafe { galley_parse_file(self.inner, c_path.as_ptr()) })
     }
 
-    /// Summary of the most recent successful parse: `Ok(None)` when the
-    /// parser was built without AST construction, an error when the session
-    /// refuses the root read (a parse in flight).
+    /// Summary of the published parse: `Ok(None)` when the parser was built
+    /// without AST construction, an error when the session refuses a read —
+    /// [`Error::SessionInUse`] while a parse runs, [`Error::StaleTree`] when
+    /// nothing is published (before the first parse, or after one that
+    /// published nothing).
     pub fn info(&self) -> Result<Option<ParseInfo>, Error> {
         if !has_ast() {
             return Ok(None);
@@ -620,7 +631,10 @@ impl Session {
         let root = self.published()?.0;
         let mut line = 0u32;
         let mut column = 0u32;
-        unsafe { galley_last_position(self.inner, &mut line, &mut column) };
+        let status = unsafe { galley_last_position(self.inner, &mut line, &mut column) };
+        if status < 0 {
+            return Err(Error::from_status(status));
+        }
         Ok(Some(ParseInfo {
             root,
             end_position: Some((line, column)),
@@ -708,7 +722,7 @@ impl Session {
         Ok(if index == NO_VARIABLE { None } else { Some(index as i64) })
     }
 
-    /// Flat bulk read of the last successful parse in a single call: one
+    /// Flat bulk read of the published parse in a single call: one
     /// entry per node address. Walk `parent`/`first_child`/`next` directly
     /// instead of one call per node; `variable` holds -1 for nodes without
     /// a variable and spans index [`Session::last_input`].
@@ -732,6 +746,7 @@ impl Session {
         let mut span_start = vec![0u64; count];
         let mut span_len = vec![0u64; count];
         let mut is_semantic_error = vec![0i32; count];
+        let mut is_recovered = vec![0i32; count];
         let total = unsafe {
             galley_tree_snapshot(
                 self.inner,
@@ -744,6 +759,7 @@ impl Session {
                 span_start.as_mut_ptr(),
                 span_len.as_mut_ptr(),
                 is_semantic_error.as_mut_ptr(),
+                is_recovered.as_mut_ptr(),
                 count as u64,
             )
         };
@@ -770,18 +786,23 @@ impl Session {
                 .into_iter()
                 .map(|flag| flag != 0)
                 .collect(),
+            is_recovered: is_recovered.into_iter().map(|flag| flag != 0).collect(),
         })
     }
 
-    /// Retained input of the most recent parse: the buffer snapshot spans
-    /// index. Empty before the first parse.
-    pub fn last_input(&self) -> &[u8] {
+    /// Retained input of the published parse: the buffer snapshot spans
+    /// index. Follows the published tree like every node read: fails with
+    /// [`Error::StaleTree`] whenever nothing is published (before the first
+    /// parse included), and with [`Error::SessionInUse`] while a parse runs.
+    pub fn last_input(&self) -> Result<&[u8], Error> {
         unsafe {
             let mut data: *const c_char = std::ptr::null();
             let mut len = 0usize;
             let status = galley_last_input(self.inner, &mut data, &mut len);
-            assert_eq!(status, 0, "galley_last_input failed with status {status}");
-            std::slice::from_raw_parts(data as *const u8, len)
+            if status < 0 {
+                return Err(Error::from_status(status));
+            }
+            Ok(std::slice::from_raw_parts(data as *const u8, len))
         }
     }
 
@@ -792,7 +813,12 @@ impl Session {
     /// invalidate it mid-walk. An invalid root or a build without AST
     /// construction answers `Err(`[`Error::InvalidNode`]`)` at the first
     /// step.
-    pub fn walk(&self, root: NodeHandle, skip_semantic_errors: bool) -> Walker<'_> {
+    pub fn walk(
+        &self,
+        root: NodeHandle,
+        skip_semantic_errors: bool,
+        skip_recovered: bool,
+    ) -> Walker<'_> {
         // The walk is bound to the tree `root` came from: the cursor carries
         // the root's own generation, which the core checks at every step.
         Walker {
@@ -803,12 +829,16 @@ impl Session {
                 current: 0,
                 depth: 0,
                 state: 0,
-                options: if skip_semantic_errors {
+                options: (if skip_semantic_errors {
                     WALK_OPTION_SKIP_SEMANTIC_ERRORS
                 } else {
                     0
-                },
-                is_semantic_error: 0,
+                }) | (if skip_recovered {
+                    WALK_OPTION_SKIP_RECOVERED
+                } else {
+                    0
+                }),
+                flags: 0,
                 structure_version: 0,
             },
             finished: false,

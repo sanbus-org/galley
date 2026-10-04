@@ -21,6 +21,13 @@
 
 static const char *valid_sample = "alpha:12,beta:3";
 static const char *broken_sample = "alpha:";
+/* Garbage before any symbol: recovery skips it all, so the parse publishes,
+ * but there is no tree to hold a root. */
+static const char *rootless_sample = "?";
+/* Recovery skips `x,beta:` to resynchronize, then `2`: two recovered nodes. */
+static const char *recovered_sample = "alpha:x,beta:2";
+/* Parses, but a hook reports one semantic error on the Number `2000`. */
+static const char *semantic_sample = "alpha:1,beta:2000";
 static const char *multi_error_sample = "alpha:13x,beta:,gamma:q";
 
 static int failures = 0;
@@ -59,6 +66,15 @@ static int contains_case_insensitive(const char *haystack, const char *needle) {
 static GalleySession *make_session(void) {
     const GalleyCOptions options = {
         .max_errors = 10,
+    };
+    return galley_session_create_ex(&options);
+}
+
+/* One error is the limit: the parser raises at its first syntax error
+ * instead of recovering from it, so a failing parse publishes nothing. */
+static GalleySession *make_strict_session(void) {
+    const GalleyCOptions options = {
+        .max_errors = 1,
     };
     return galley_session_create_ex(&options);
 }
@@ -218,7 +234,7 @@ static void test_walker(void) {
     cursor.state = 99;
     CHECK(galley_walk_next(session, &cursor) == galley_error_invalid_node);
     cursor.state = GALLEY_WALK_STATE_NOT_STARTED;
-    cursor.options = 0x02;
+    cursor.options = 0x04;
     CHECK(galley_walk_next(session, &cursor) == galley_error_invalid_node);
     cursor.options = 0;
     cursor.root = count;
@@ -316,9 +332,10 @@ static void test_snapshot(void) {
     static unsigned int child_count[1024];
     static long long variable[1024];
     static int is_semantic_error[1024];
+    static int is_recovered[1024];
     CHECK(count < 1024);
     CHECK(galley_tree_snapshot(session, generation, parent, first_child, next, child_count,
-                                  variable, NULL, NULL, is_semantic_error,
+                                  variable, NULL, NULL, is_semantic_error, is_recovered,
                                   count) == (long long)count);
     CHECK(parent[root] == GALLEY_INVALID_NODE);
     /* Every address and both sentinels are non-negative: only statuses are
@@ -353,19 +370,22 @@ static void test_snapshot(void) {
     }
     CHECK(visited == 33);
     CHECK(child_sum == visited - 1);
-    /* The snapshot's semantic flag reads what each cursor step yields,
-     * node for node, over the same reachable set. */
+    /* The snapshot's flag columns read what each cursor step yields, node
+     * for node, over the same reachable set. */
     GalleyWalkCursor walk_cursor;
     memset(&walk_cursor, 0, sizeof walk_cursor);
     walk_cursor.generation = generation;
     walk_cursor.root = root;
     long long walk_status = 0;
     while ((walk_status = galley_walk_next(session, &walk_cursor)) == 1) {
-        CHECK(walk_cursor.is_semantic_error == is_semantic_error[walk_cursor.current]);
+        CHECK(((walk_cursor.flags & GALLEY_WALK_FLAG_SEMANTIC_ERROR) != 0) ==
+              (is_semantic_error[walk_cursor.current] != 0));
+        CHECK(((walk_cursor.flags & GALLEY_WALK_FLAG_RECOVERED) != 0) ==
+              (is_recovered[walk_cursor.current] != 0));
     }
     CHECK(walk_status == 0);
     CHECK(galley_tree_snapshot(NULL, generation, parent, first_child, next, child_count,
-                                  NULL, NULL, NULL, is_semantic_error,
+                                  NULL, NULL, NULL, is_semantic_error, is_recovered,
                                   count) == galley_error_null_argument);
     galley_session_destroy(session);
 }
@@ -512,7 +532,7 @@ static void check_every_call(GalleySession *session, unsigned long long generati
     CHECK(galley_node_text(session, generation, node, &data, &len) == status);
     CHECK(galley_node_line_column(session, generation, node, &line, &column) == status);
     CHECK(galley_tree_snapshot(session, generation, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-                               NULL, 0) == status);
+                               NULL, NULL, 0) == status);
     CHECK(galley_tree_append_children(session, generation, node, node) == status);
     CHECK(galley_tree_insert_before(session, generation, node, node) == status);
     CHECK(galley_tree_insert_after(session, generation, node, node) == status);
@@ -529,7 +549,7 @@ static void check_every_call(GalleySession *session, unsigned long long generati
  * later parse retired, the gate refuses with stale tree instead of answering.
  * No refusal is spelled as a value any more. */
 static void test_published_result_gate(void) {
-    GalleySession *session = make_session();
+    GalleySession *session = make_strict_session();
     const char *data = NULL;
     size_t len = 0;
     unsigned long long generation = 99, count = 99;
@@ -551,8 +571,9 @@ static void test_published_result_gate(void) {
     /* Generation 0 is never live, even with a tree published. */
     check_every_call(session, 0, first_root, galley_error_stale_tree);
 
-    /* A failed parse publishes nothing: the tree is gone and its generation
-     * is stale, and root says so. */
+    /* A parse that really throws (the parser may not recover from it)
+     * publishes nothing: the tree is gone and its generation is stale, and
+     * root says so. */
     CHECK(galley_parse_sentinel(session, broken_sample) < 0);
     CHECK(galley_root_node(session, &root, &generation) == galley_ok);
     CHECK(root == GALLEY_INVALID_NODE && generation == 0);
@@ -865,7 +886,7 @@ static void test_null_outputs_before_the_gate(void) {
         CHECK(galley_tree_remove_children_at(session, used, root, 0, 1, NULL) == galley_error_null_argument);
     }
     CHECK(galley_tree_remove_siblings(NULL, generation, root, 1, &head) == galley_error_null_argument);
-    CHECK(galley_tree_snapshot(session, stale, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0) ==
+    CHECK(galley_tree_snapshot(session, stale, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0) ==
           galley_error_stale_tree);
     galley_session_destroy(session);
 }
@@ -875,7 +896,7 @@ static void test_null_outputs_before_the_gate(void) {
  * and a failed parse publishes nothing. Mid-parse the session door refuses
  * even the probe. */
 static void test_generations(void) {
-    GalleySession *session = make_session();
+    GalleySession *session = make_strict_session();
     unsigned long long published = 99;
     GalleyNodeAddress root = 0;
     CHECK(galley_root_node(session, &root, &published) == galley_ok);
@@ -1202,6 +1223,236 @@ static void test_walk_semantic_skip_in_hook(void) {
     galley_session_destroy(session);
 }
 
+
+/* One walk step, remembered: what the host sees of a node. */
+typedef struct {
+    char symbol[32];
+    unsigned long long start;
+    unsigned long long length;
+    int flags;
+} Visit;
+
+/* Walks the published tree from its root with `options` and records every
+ * step; returns the number of steps. */
+static int collect_walk(GalleySession *session, unsigned char options, Visit *visits, int capacity) {
+    unsigned long long generation = 0;
+    GalleyNodeAddress root = GALLEY_INVALID_NODE;
+    GalleyWalkCursor cursor;
+    int count = 0;
+    CHECK(galley_root_node(session, &root, &generation) == galley_ok);
+    CHECK(root != GALLEY_INVALID_NODE);
+    memset(&cursor, 0, sizeof cursor);
+    cursor.generation = generation;
+    cursor.root = root;
+    cursor.options = options;
+    while (galley_walk_next(session, &cursor) == 1 && count < capacity) {
+        const char *name = NULL;
+        size_t name_length = 0;
+        Visit *visit = &visits[count++];
+        CHECK(galley_node_symbol_name(session, generation, cursor.current, &name,
+                                      &name_length) == galley_ok);
+        snprintf(visit->symbol, sizeof visit->symbol, "%.*s", (int)name_length, name);
+        CHECK(galley_node_span(session, generation, cursor.current, &visit->start,
+                               &visit->length) == galley_ok);
+        visit->flags = cursor.flags;
+    }
+    return count;
+}
+
+static int count_flagged(const Visit *visits, int count, int flag) {
+    int flagged = 0;
+    for (int i = 0; i < count; ++i) {
+        if (visits[i].flags & flag) ++flagged;
+    }
+    return flagged;
+}
+
+static const Visit *first_flagged(const Visit *visits, int count, int flag) {
+    for (int i = 0; i < count; ++i) {
+        if (visits[i].flags & flag) return &visits[i];
+    }
+    return NULL;
+}
+
+/* A parse that fails only with semantic errors parsed its input, so it
+ * publishes its tree: the status is still the failure, the walk reports the
+ * flagged node, the skip option prunes it, and last_input is that input. */
+static void test_semantic_only_failure_publishes(void) {
+    static Visit full[256], pruned[256];
+    GalleySession *session = make_session();
+    CHECK(galley_parse_sentinel(session, semantic_sample) == galley_error_semantic);
+
+    unsigned long long generation = 0;
+    GalleyNodeAddress root = GALLEY_INVALID_NODE;
+    CHECK(galley_root_node(session, &root, &generation) == galley_ok);
+    CHECK(root != GALLEY_INVALID_NODE && generation != 0);
+
+    int full_count = collect_walk(session, 0, full, 256);
+    CHECK(count_flagged(full, full_count, GALLEY_WALK_FLAG_SEMANTIC_ERROR) == 1);
+    CHECK(count_flagged(full, full_count, GALLEY_WALK_FLAG_RECOVERED) == 0);
+    const Visit *marked = first_flagged(full, full_count, GALLEY_WALK_FLAG_SEMANTIC_ERROR);
+    CHECK(marked != NULL && strcmp(marked->symbol, "Number") == 0);
+    CHECK(marked != NULL && marked->start == 13 && marked->length == 4);
+
+    int pruned_count = collect_walk(session, GALLEY_WALK_SKIP_SEMANTIC_ERRORS, pruned, 256);
+    CHECK(count_flagged(pruned, pruned_count, GALLEY_WALK_FLAG_SEMANTIC_ERROR) == 0);
+    CHECK(pruned_count < full_count);
+    /* Skipping the recovery flag changes nothing here: nothing is recovered. */
+    CHECK(collect_walk(session, GALLEY_WALK_SKIP_RECOVERED, pruned, 256) == full_count);
+
+    const char *input = NULL;
+    size_t input_length = 0;
+    CHECK(galley_last_input(session, &input, &input_length) == galley_ok);
+    CHECK(input_length == strlen(semantic_sample) && memcmp(input, semantic_sample, input_length) == 0);
+    unsigned int line = 0, column = 0;
+    CHECK(galley_last_position(session, &line, &column) == galley_ok);
+    CHECK(line == 1 && column == (unsigned int)strlen(semantic_sample) + 2);
+
+    /* The next parse retires the errored tree's nodes. */
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    const char *text = NULL;
+    size_t text_length = 0;
+    CHECK(galley_node_text(session, generation, root, &text, &text_length) == galley_error_stale_tree);
+    galley_session_destroy(session);
+}
+
+/* A syntax error the parser recovered from also publishes: the damaged
+ * regions are recovered nodes spanning the input recovery skipped, and
+ * skipping them leaves only undamaged nodes. */
+static void test_recovered_failure_publishes(void) {
+    static Visit full[256], pruned[256];
+    GalleySession *session = make_session();
+    CHECK(galley_parse_sentinel(session, recovered_sample) == galley_error_syntax);
+
+    unsigned long long generation = 0, count = 0;
+    GalleyNodeAddress root = GALLEY_INVALID_NODE;
+    CHECK(galley_root_node(session, &root, &generation) == galley_ok);
+    CHECK(root != GALLEY_INVALID_NODE && generation != 0);
+    count = value_of(galley_node_count(session, generation));
+    CHECK(count > 0);
+
+    int full_count = collect_walk(session, 0, full, 256);
+    CHECK(count_flagged(full, full_count, GALLEY_WALK_FLAG_SEMANTIC_ERROR) == 0);
+    CHECK(count_flagged(full, full_count, GALLEY_WALK_FLAG_RECOVERED) == 2);
+    const Visit *damaged = first_flagged(full, full_count, GALLEY_WALK_FLAG_RECOVERED);
+    /* The damaged Number covers the input recovery skipped: `x,beta:`. */
+    CHECK(damaged != NULL && strcmp(damaged->symbol, "Number") == 0);
+    CHECK(damaged != NULL && damaged->start == 6 && damaged->length == 7);
+
+    int pruned_count = collect_walk(session, GALLEY_WALK_SKIP_RECOVERED, pruned, 256);
+    CHECK(count_flagged(pruned, pruned_count, GALLEY_WALK_FLAG_RECOVERED) == 0);
+    CHECK(pruned_count == full_count - 2);
+    for (int i = 0; i < pruned_count; ++i) {
+        /* No undamaged node starts inside the damaged region. */
+        CHECK(damaged == NULL || pruned[i].start < damaged->start ||
+              pruned[i].start >= damaged->start + damaged->length);
+    }
+
+    /* The snapshot column reads what the walk reports, node for node. */
+    static GalleyNodeAddress parent[1024];
+    static int is_recovered[1024];
+    CHECK(count < 1024);
+    CHECK(galley_tree_snapshot(session, generation, parent, NULL, NULL, NULL, NULL, NULL, NULL,
+                               NULL, is_recovered, count) == (long long)count);
+    int flagged_in_snapshot = 0;
+    for (unsigned long long address = 0; address < count; ++address) {
+        if (is_recovered[address] && parent[address] != GALLEY_INVALID_NODE) ++flagged_in_snapshot;
+    }
+    CHECK(flagged_in_snapshot == 2);
+
+    const char *input = NULL;
+    size_t input_length = 0;
+    CHECK(galley_last_input(session, &input, &input_length) == galley_ok);
+    CHECK(input_length == strlen(recovered_sample) && memcmp(input, recovered_sample, input_length) == 0);
+    unsigned int line = 0, column = 0;
+    CHECK(galley_last_position(session, &line, &column) == galley_ok);
+
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    const char *text = NULL;
+    size_t text_length = 0;
+    CHECK(galley_node_text(session, generation, root, &text, &text_length) == galley_error_stale_tree);
+    CHECK(galley_tree_snapshot(session, generation, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+                               NULL, 0) == galley_error_stale_tree);
+    galley_session_destroy(session);
+}
+
+/* A parse the parser could not recover from publishes nothing: no root, no
+ * input, no position, and the nodes of the tree before it are stale. */
+static void test_unrecovered_failure_publishes_nothing(void) {
+    GalleySession *session = make_strict_session();
+    const char *input = NULL;
+    size_t input_length = 0;
+    unsigned int line = 0, column = 0;
+    unsigned long long generation = 99;
+    GalleyNodeAddress root = 0;
+
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    CHECK(galley_root_node(session, &root, &generation) == galley_ok);
+    const unsigned long long before = generation;
+    const GalleyNodeAddress before_root = root;
+    CHECK(before != 0 && before_root != GALLEY_INVALID_NODE);
+
+    CHECK(galley_parse_sentinel(session, broken_sample) == galley_error_syntax);
+    CHECK(galley_root_node(session, &root, &generation) == galley_ok);
+    CHECK(root == GALLEY_INVALID_NODE && generation == 0);
+    CHECK(galley_last_input(session, &input, &input_length) == galley_error_stale_tree);
+    CHECK(galley_last_position(session, &line, &column) == galley_error_stale_tree);
+    check_every_call(session, before, before_root, galley_error_stale_tree);
+    galley_session_destroy(session);
+}
+
+/* A failure can be published and still have no root: here recovery skipped
+ * the whole input before the grammar's first symbol. root_node answers "no
+ * tree" with the published generation, and the input is still served. */
+static void test_published_failure_without_a_root(void) {
+    GalleySession *session = make_session();
+    CHECK(galley_parse_sentinel(session, rootless_sample) == galley_error_syntax);
+    unsigned long long generation = 0;
+    GalleyNodeAddress root = 0;
+    CHECK(galley_root_node(session, &root, &generation) == galley_ok);
+    CHECK(root == GALLEY_INVALID_NODE && generation != 0);
+    const char *input = NULL;
+    size_t input_length = 0;
+    CHECK(galley_last_input(session, &input, &input_length) == galley_ok);
+    CHECK(input_length == strlen(rootless_sample) && memcmp(input, rootless_sample, input_length) == 0);
+    galley_session_destroy(session);
+}
+
+/* galley_last_input and galley_last_position follow the published tree: they
+ * refuse before the first parse, and again whenever a parse published
+ * nothing or a later parse has begun. */
+static void test_last_reads_follow_the_published_tree(void) {
+    GalleySession *session = make_session();
+    const char *input = NULL;
+    size_t input_length = 0;
+    unsigned int line = 0, column = 0;
+
+    CHECK(galley_last_input(session, &input, &input_length) == galley_error_stale_tree);
+    CHECK(galley_last_position(session, &line, &column) == galley_error_stale_tree);
+    CHECK(galley_last_input(NULL, &input, &input_length) == galley_error_null_argument);
+    CHECK(galley_last_input(session, NULL, &input_length) == galley_error_null_argument);
+    CHECK(galley_last_position(session, NULL, &column) == galley_error_null_argument);
+
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    CHECK(galley_last_input(session, &input, &input_length) == galley_ok);
+    CHECK(input_length == strlen(valid_sample) && memcmp(input, valid_sample, input_length) == 0);
+    CHECK(galley_last_position(session, &line, &column) == galley_ok);
+
+    /* A failure that publishes serves its own input, not the success before. */
+    CHECK(galley_parse_sentinel(session, broken_sample) == galley_error_syntax);
+    CHECK(galley_last_input(session, &input, &input_length) == galley_ok);
+    CHECK(input_length == strlen(broken_sample) && memcmp(input, broken_sample, input_length) == 0);
+
+    /* One that publishes nothing serves nothing: not the input before it. */
+    galley_session_destroy(session);
+    session = make_strict_session();
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    CHECK(galley_parse_sentinel(session, broken_sample) < 0);
+    CHECK(galley_last_input(session, &input, &input_length) == galley_error_stale_tree);
+    CHECK(galley_last_position(session, &line, &column) == galley_error_stale_tree);
+    galley_session_destroy(session);
+}
+
 int main(void) {
     test_version();
     test_metadata_flags();
@@ -1234,6 +1485,11 @@ int main(void) {
     test_walk_in_use();
     test_walk_in_hook();
     test_walk_semantic_skip_in_hook();
+    test_semantic_only_failure_publishes();
+    test_recovered_failure_publishes();
+    test_unrecovered_failure_publishes_nothing();
+    test_published_failure_without_a_root();
+    test_last_reads_follow_the_published_tree();
     printf("%d tests, %d failures\n", ran, failures);
     return failures == 0 ? 0 : 1;
 }

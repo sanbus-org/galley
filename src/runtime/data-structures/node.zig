@@ -46,6 +46,7 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
             .children_count = 0,
             .variable = NodeType.invalid_variable,
             .is_semantic_error = false,
+            .is_recovered = false,
             .payload = undefined,
         };
 
@@ -314,6 +315,7 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
             node.children_count = 0;
             node.variable = variable;
             node.is_semantic_error = false;
+            node.is_recovered = false;
             node.payload = .{};
 
             return address;
@@ -395,6 +397,12 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
         /// a semantic error on this node. Parents stay unmarked; use
         /// `hasSemanticErrorSubtree` to query a subtree.
         is_semantic_error: bool = false,
+        /// Set on the node syntax-error recovery keeps in place of a
+        /// subtree it could not parse: the damaged variable's own node under
+        /// LL, a placeholder over the discarded input under LR and explicit
+        /// recovery. Its span covers the input recovery skipped. Parents
+        /// stay unmarked; use `hasRecoveredSubtree` to query a subtree.
+        is_recovered: bool = false,
         payload: PayloadType,
 
         const Self = @This();
@@ -911,10 +919,24 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
             if (comptime !with_ast) {
                 @compileError("hasSemanticErrorSubtree requires AST construction; in no-AST mode check child is_semantic_error flags directly");
             }
+            return hasMarkedSubtree(self_address, node_allocator, "is_semantic_error");
+        }
+
+        /// `hasSemanticErrorSubtree` for the recovery mark: true when
+        /// `self_address` or any descendant is a node syntax-error recovery
+        /// kept in place of damaged input. AST mode only.
+        pub fn hasRecoveredSubtree(self_address: Pointer, node_allocator: NodeAllocator) bool {
+            if (comptime !with_ast) {
+                @compileError("hasRecoveredSubtree requires AST construction; in no-AST mode check child is_recovered flags directly");
+            }
+            return hasMarkedSubtree(self_address, node_allocator, "is_recovered");
+        }
+
+        fn hasMarkedSubtree(self_address: Pointer, node_allocator: NodeAllocator, comptime flag: []const u8) bool {
             var current = self_address;
             while (true) {
                 const node = node_allocator.at(current);
-                if (node.is_semantic_error) return true;
+                if (@field(node, flag)) return true;
                 if (node.first_child != invalid_pointer) {
                     current = node.first_child;
                     continue;
@@ -939,6 +961,13 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
 const TestPayload = root.data_structures.Payload;
 const TestNode = Node(TestPayload, true);
 const TestASTAllocator = ASTAllocator(TestPayload);
+
+test "the recovery mark fits the padding beside the semantic error flag" {
+    // Two words of text span, five links, then the count, variable and both
+    // flags packed into one word: a second flag must not grow the node.
+    const EmptyNode = Node(struct {}, true);
+    try std.testing.expectEqual(7 * @sizeOf(usize) + 8, @sizeOf(EmptyNode));
+}
 
 test "AST memory benchmark counts reachable nodes and allocator usage" {
     if (comptime !root.parser.is_ast_enabled or !root.ast_memory_benchmark_enabled) return;

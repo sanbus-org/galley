@@ -1220,7 +1220,10 @@ test "generateParserAlloc emits position-based LL recovery" {
     _ = try expectContains(output, "context.skipRecoveryInput(recovery_offset);");
     _ = try expectContains(output, "context.finishSyntaxRecovery();");
     _ = try expectContains(output, "if (report_syntax_error) 1 else 0");
-    _ = try expectContains(output, "if (context.hasSyntaxErrors()) return root.ParseError.SyntaxError;");
+    // The session publishes a parse that ran to its end with recorded
+    // errors; the parser keeps the damaged node instead of raising.
+    try expectNotContains(output, "if (context.hasSyntaxErrors()) return root.ParseError.SyntaxError;");
+    _ = try expectContains(output, "return context.keepRecoveredNode(node_address);");
     _ = try expectContains(output, "llRecoveryOffset(context, &[_][]const u8{\"a\"}, if (report_syntax_error) 1 else 0)");
 }
 
@@ -1245,7 +1248,12 @@ test "generateParserAlloc emits position-based LR recovery" {
     _ = try expectContains(output, "if (report_syntax_error) 1 else 0");
     _ = try expectContains(output, "context.skipRecoveryInput(recovery_offset);");
     _ = try expectContains(output, "_ = stack.pop() orelse unreachable;");
-    _ = try expectContains(output, "if (context.hasSyntaxErrors()) return root.ParseError.SyntaxError;");
+    // A parse that gave up still raises in the parser; one that accepted
+    // with recorded errors is published by the session.
+    _ = try expectContains(output, "if (result.is_recovery or !result.is_accept) {");
+    try expectNotContains(output, "if (context.hasSyntaxErrors()) return root.ParseError.SyntaxError;");
+    _ = try expectContains(output, "try context.pendRecoveredNode(");
+    _ = try expectContains(output, "context.adoptRecoveredNodes(parent_address, start_pos);");
     // Message resolution goes through the shared chain with the state hook
     // named first.
     const site = try expectContains(output, "root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{");

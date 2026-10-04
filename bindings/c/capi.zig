@@ -137,13 +137,15 @@ const Embedded = struct {
     /// window between a parse's start and its lease can serve a message
     /// from the parse before it.
     rendered_generation: usize = 0,
-    /// Input retained for the most recent successful parse; node text
-    /// offsets index it. Session-owned so the next parse — which reuses
-    /// the session's input buffer, success or failure — cannot destroy
-    /// the content spans still point at.
+    /// Input retained for the most recent published parse (a success, or a
+    /// failure that ran to its end); node text offsets index it.
+    /// Session-owned so the next parse — which reuses the session's input
+    /// buffer, published or not — cannot destroy the content spans still
+    /// point at.
     retained_input: []u8 = &.{},
-    /// What node offsets index outside hooks: the retained input of the
-    /// most recent successful parse.
+    /// What node offsets index outside hooks: the retained input of the most
+    /// recent published parse. Served only while that parse is the
+    /// session's published result (`galley_last_input`).
     last_input: []const u8 = &.{},
 
     const RenderingKind = enum { plain, ansi };
@@ -272,7 +274,7 @@ const Embedded = struct {
 // session — unshared by construction and valid until that parse ends, across
 // every hook of it. Per-hook state (current node, rule, drop/replace
 // channel) stays on the arguments, which die with their hook. The post-parse
-// door (`sessionDoor`) resolves session state of the last successful parse
+// door (`sessionDoor`) resolves session state of the published parse
 // under the matching guard. Calls that read or edit nodes enter either door
 // through `gate`, which compares the caller's generation once.
 // ---------------------------------------------------------------------------
@@ -283,7 +285,7 @@ const Door = struct {
     input: union(enum) {
         /// Parse-time: the live input of the in-flight parse.
         context: *root.data_structures.Context,
-        /// Post-parse: the retained input of the last successful parse.
+        /// Post-parse: the retained input of the published parse.
         retained: []const u8,
     },
 
@@ -734,6 +736,7 @@ fn treeSnapshotCore(
     out_span_start: ?[*]u64,
     out_span_len: ?[*]u64,
     out_is_semantic_error: ?[*]i32,
+    out_is_recovered: ?[*]i32,
     capacity: u64,
 ) i64 {
     if (comptime !parser.is_ast_enabled) return 0;
@@ -752,6 +755,7 @@ fn treeSnapshotCore(
         if (out_span_start) |starts| starts[index] = @intCast(node.text_start);
         if (out_span_len) |lens| lens[index] = @intCast(node.text_length);
         if (out_is_semantic_error) |flag| flag[index] = if (node.is_semantic_error) 1 else 0;
+        if (out_is_recovered) |flag| flag[index] = if (node.is_recovered) 1 else 0;
     }
     return @intCast(total);
 }
@@ -1099,10 +1103,19 @@ fn statusForError(err: anyerror) i64 {
 /// input swap — and the `owned_input` read behind `source` — run under the
 /// same exclusive hold that stamped the parse's generation, so an older
 /// result can never overwrite a newer one and no reader can observe the pair
-/// mid-swap.
+/// mid-swap. A parse that failed after publishing (recovered syntax errors,
+/// or only semantic errors) comes through here too: its tree is served with
+/// its input, and the failure's status is returned.
 fn finishParse(embedded: *Embedded, lease: *const root.ParseLease, source: []const u8) i64 {
     const result = lease.result;
-    const parsed: usize = @intCast(result.parsed_bytes);
+    // A parse that failed after publishing may have stopped short of the end
+    // of its input (recovery skipped to the end without consuming the final
+    // token), so its input is what the session was given, not what was
+    // consumed.
+    const parsed: usize = if (lease.failure != null)
+        lease.session.input_length orelse @intCast(result.parsed_bytes)
+    else
+        @intCast(result.parsed_bytes);
     // Retain exactly the parsed bytes in a session-owned buffer: the
     // session reuses its input buffer for the next parse (and callers
     // free theirs), so spans and galley_last_input must not alias
@@ -1112,8 +1125,8 @@ fn finishParse(embedded: *Embedded, lease: *const root.ParseLease, source: []con
     // carries sentinel and zero padding past the input; exposing exactly
     // parsed keeps node spans and galley_last_input in agreement with
     // the count parse reported.
-    // Only success paths reach here, so a failed parse can never
-    // destroy what the last successful parse retained.
+    // Only published parses reach here: one that publishes nothing never
+    // touches the retained side, which its older tree no longer needs anyway.
     const bounded = source[0..@min(parsed, source.len)];
     if (embedded.adoptSessionInput(source, bounded.len)) {
         // Ownership transferred (or the parse was empty); last_input is set.
@@ -1121,6 +1134,7 @@ fn finishParse(embedded: *Embedded, lease: *const root.ParseLease, source: []con
         embedded.last_input = embedded.retained_input[0..bounded.len]
     else
         embedded.last_input = bounded; // allocation failure: alias the live source as before
+    if (lease.failure) |failure| return statusForError(failure);
     return @intCast(result.parsed_bytes);
 }
 
@@ -1172,7 +1186,7 @@ export fn galley_node_count(
 /// one probe for "is there a tree here": both values are written under one
 /// guard, so a caller never pairs a root with another parse's generation.
 /// Returns `galley_ok` with `GALLEY_INVALID_NODE` and 0 when nothing is
-/// published (no parse has succeeded yet, a later parse has begun, or the
+/// published (no parse has published yet, a later parse has begun, or the
 /// parser was built without AST construction), and
 /// `galley_error_session_in_use` while a parse holds the session. Real
 /// generations start at 1, so a 0 never matches a live tree.
@@ -1345,10 +1359,12 @@ export fn galley_hook_node_text(
     return nodeRead(.hook, hook_door, generation, galley_error_invalid_node, &.{ 1, 2 }, nodeTextCore, .{ address, out_data, out_len });
 }
 
-/// Writes the retained input of the most recent successful parse into
-/// `out_data`/`out_len`: the buffer that snapshot spans and node texts
-/// index. Same lifetime as `galley_node_text`; empty before the first
-/// parse. Returns `galley_error_session_in_use` while a parse is in flight.
+/// Writes the retained input of the published parse into `out_data`/`out_len`:
+/// the buffer that snapshot spans and node texts index. Same lifetime as
+/// `galley_node_text`. Follows the published tree like every node read:
+/// `galley_error_stale_tree` whenever nothing is published — before the first
+/// parse, after a parse that published nothing, or once a later parse has
+/// begun — and `galley_error_session_in_use` while a parse is in flight.
 /// Hooks use `galley_hook_last_input` for the live input of their parse.
 export fn galley_last_input(
     session_ptr: ?*GalleySession,
@@ -1357,7 +1373,7 @@ export fn galley_last_input(
 ) i64 {
     const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_data == null or out_len == null) return galley_error_null_argument;
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
+    var guard = embedded.session.readCurrent() catch |err| return statusForError(gateStatusError(err));
     defer guard.deinit();
     return lastInputCore(&sessionDoor(embedded), out_data, out_len);
 }
@@ -1398,8 +1414,8 @@ fn walkNext(comptime kind: DoorKind, handle: DoorHandle(kind), cursor_ptr: ?*Gal
 }
 
 /// Advances `cursor` to the next node of its subtree in pre-order, writing
-/// the position back into the cursor (`current`, `depth`, `state`,
-/// `is_semantic_error`, `structure_version`). Returns 1 when a node was
+/// the position back into the cursor (`current`, `depth`, `state`, `flags`,
+/// `structure_version`). Returns 1 when a node was
 /// yielded, 0 when the walk is done (the cursor stays
 /// `GALLEY_WALK_STATE_DONE` and further steps keep returning 0, before any
 /// session or generation check), or a negative status:
@@ -1419,8 +1435,8 @@ fn walkNext(comptime kind: DoorKind, handle: DoorHandle(kind), cursor_ptr: ?*Gal
 /// zero it (state `GALLEY_WALK_STATE_NOT_STARTED`), set `root`
 /// (`galley_root_node` or any node), `generation`
 /// (`galley_root_node`) and `options`
-/// (`GALLEY_WALK_SKIP_SEMANTIC_ERRORS` to prune semantic-error subtrees),
-/// then step. Skipping a yielded node's children is host-side too: write
+/// (`GALLEY_WALK_SKIP_SEMANTIC_ERRORS` and `GALLEY_WALK_SKIP_RECOVERED` to
+/// prune semantic-error and recovered subtrees), then step. Skipping a yielded node's children is host-side too: write
 /// `state = GALLEY_WALK_STATE_YIELDED_SKIP_CHILDREN` and the next step
 /// continues with its next sibling. Node storage follows the live links, so
 /// edits between steps are visible; a step whose position is no longer
@@ -1921,9 +1937,11 @@ export fn galley_parse_file(session_ptr: ?*GalleySession, path: ?[*:0]const u8) 
     return finishParse(embedded, &lease, embedded.session.owned_input orelse &.{});
 }
 
-/// Writes the end position (1-based line and column) of the most recent
-/// successful parse, when the parser was built with position tracking.
-/// Otherwise writes zeros.
+/// Writes the end position (1-based line and column) of the published parse,
+/// when the parser was built with position tracking. Otherwise writes zeros.
+/// Follows the published tree like `galley_last_input`: refuses with
+/// `galley_error_stale_tree` whenever nothing is published, and with
+/// `galley_error_session_in_use` while a parse is in flight.
 export fn galley_last_position(
     session_ptr: ?*GalleySession,
     out_line: ?*u32,
@@ -1931,16 +1949,15 @@ export fn galley_last_position(
 ) i64 {
     const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_line == null or out_column == null) return galley_error_null_argument;
+    var guard = embedded.session.readCurrent() catch |err| return statusForError(gateStatusError(err));
+    defer guard.deinit();
     if (comptime !parser.is_position_tracking_enabled) {
         out_line.?.* = 0;
         out_column.?.* = 0;
         return galley_ok;
     }
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    const result = embedded.session.published_result orelse return galley_error_no_diagnostic;
-    out_line.?.* = result.line;
-    out_column.?.* = result.column;
+    out_line.?.* = guard.result.line;
+    out_column.?.* = guard.result.column;
     return galley_ok;
 }
 
@@ -2756,7 +2773,9 @@ export fn galley_hook_node_variable_index(
 /// `galley_root_node` reported: a caller whose parse ran in between gets
 /// `galley_error_stale_tree` instead of columns mixing two trees. The
 /// `out_is_semantic_error` column carries 1 where the node carries a semantic
-/// error, else 0 — the flag `galley_walk_next` records in the cursor.
+/// error, else 0, and `out_is_recovered` 1 where the node is one syntax-error
+/// recovery kept in place of damaged input — the flags `galley_walk_next`
+/// records in the cursor.
 export fn galley_tree_snapshot(
     session_ptr: ?*GalleySession,
     generation: u64,
@@ -2768,10 +2787,11 @@ export fn galley_tree_snapshot(
     out_span_start: ?[*]u64,
     out_span_len: ?[*]u64,
     out_is_semantic_error: ?[*]i32,
+    out_is_recovered: ?[*]i32,
     capacity: u64,
 ) i64 {
     if (session_ptr == null) return galley_error_null_argument;
-    return nodeRead(.session, session_ptr, generation, 0, &.{}, treeSnapshotCore, .{ out_parent, out_first_child, out_next, out_child_count, out_variable, out_span_start, out_span_len, out_is_semantic_error, capacity });
+    return nodeRead(.session, session_ptr, generation, 0, &.{}, treeSnapshotCore, .{ out_parent, out_first_child, out_next, out_child_count, out_variable, out_span_start, out_span_len, out_is_semantic_error, out_is_recovered, capacity });
 }
 
 /// Hook-time twin of `galley_tree_snapshot`: same columns and refusals, over
@@ -2787,9 +2807,10 @@ export fn galley_hook_tree_snapshot(
     out_span_start: ?[*]u64,
     out_span_len: ?[*]u64,
     out_is_semantic_error: ?[*]i32,
+    out_is_recovered: ?[*]i32,
     capacity: u64,
 ) i64 {
-    return nodeRead(.hook, hook_door, generation, 0, &.{}, treeSnapshotCore, .{ out_parent, out_first_child, out_next, out_child_count, out_variable, out_span_start, out_span_len, out_is_semantic_error, capacity });
+    return nodeRead(.hook, hook_door, generation, 0, &.{}, treeSnapshotCore, .{ out_parent, out_first_child, out_next, out_child_count, out_variable, out_span_start, out_span_len, out_is_semantic_error, out_is_recovered, capacity });
 }
 
 /// Inserts `first_node` (and its chain) into the children of `parent` at

@@ -95,6 +95,7 @@ interface GalleySymbols extends DoorNames<"">, DoorNames<"hook_"> {
     outSpanStart: FfiOut,
     outSpanLen: FfiOut,
     outIsSemanticError: FfiOut,
+    outIsRecovered: FfiOut,
     capacity: bigint,
   ): bigint;
   galley_has_diagnostic(session: Deno.PointerValue): number;
@@ -241,7 +242,7 @@ const BASE_SYMBOLS = {
   galley_node_capacity: { parameters: ["pointer"], result: "u64" },
   galley_root_node: { parameters: ["pointer", "buffer", "buffer"], result: "i64" },
   galley_tree_snapshot: {
-    parameters: ["pointer", "u64", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer", "u64"],
+    parameters: ["pointer", "u64", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer", "u64"],
     result: "i64",
   },
   galley_has_diagnostic: { parameters: ["pointer"], result: "i32" },
@@ -643,18 +644,20 @@ export class DenoPort implements FfiPort {
     return Number(this.native.galley_parse_file(handle as Deno.PointerValue, nul));
   }
 
-  lastPosition(handle: Handle): [number, number] | null {
+  lastPosition(handle: Handle): [number, number] | number {
     const outLine = u32Out();
     const outCol = u32Out();
-    if (this.native.galley_last_position(handle as Deno.PointerValue, outLine, outCol) < 0n) return null;
+    const status = this.native.galley_last_position(handle as Deno.PointerValue, outLine, outCol);
+    if (status < 0n) return Number(status);
     return [outLine[0], outCol[0]];
   }
 
-  lastInput(handle: Handle): Uint8Array | null {
+  lastInput(handle: Handle): Uint8Array | number {
     const h = handle as Deno.PointerValue;
     const outData = ptrOut();
     const outLen = lenOut();
-    if (this.native.galley_last_input(h, outData, outLen) < 0n) return null;
+    const status = this.native.galley_last_input(h, outData, outLen);
+    if (status < 0n) return Number(status);
     return readBytes(outData[0], outLen[0]);
   }
 
@@ -693,13 +696,14 @@ export class DenoPort implements FfiPort {
       const spanStart = new BigUint64Array(count);
       const spanLen = new BigUint64Array(count);
       const isSemanticError = new Int32Array(count);
+      const isRecovered = new Int32Array(count);
       const total = this.native.galley_tree_snapshot(
         handle as Deno.PointerValue, this.#generation.of(generation), parent, firstChild, next, childCount,
-        variable, spanStart, spanLen, isSemanticError, BigInt(count),
+        variable, spanStart, spanLen, isSemanticError, isRecovered, BigInt(count),
       );
       if (total < 0n) return Number(total);
       if (total === BigInt(count)) {
-        return { count, parent, firstChild, next, childCount, variable, spanStart, spanLen, isSemanticError };
+        return { count, parent, firstChild, next, childCount, variable, spanStart, spanLen, isSemanticError, isRecovered };
       }
     }
     throw new GalleyError("node count changed during galley_tree_snapshot", Status.ErrorInternal);

@@ -237,7 +237,7 @@ export class Session implements HookOwner {
     // `Node.walk` is the single way in. The door is hook-aware and throws
     // when the session is closed; the generation gate is the one every
     // node argument crosses.
-    installWalkStart((session, root, skipSemanticErrors) => {
+    installWalkStart((session, root, skipSemanticErrors, skipRecovered) => {
       session.#door(); // throws when the session is closed
       const address = session.admit(root);
       // The walk is bound to the tree the node came from: the cursor carries
@@ -250,6 +250,7 @@ export class Session implements HookOwner {
         address,
         generation,
         skipSemanticErrors,
+        skipRecovered,
         session.#port.walkCursorLittleEndian,
         (nodeAddress) => session.#nodeForGeneration(generation, nodeAddress),
       );
@@ -857,7 +858,9 @@ export class Session implements HookOwner {
    * for a refusal.
    * @internal
    */
-  walkStep(cursor: ArrayBuffer): { node: bigint; depth: number; isSemanticError: boolean } | null {
+  walkStep(
+    cursor: ArrayBuffer,
+  ): { node: bigint; depth: number; isSemanticError: boolean; isRecovered: boolean } | null {
     const status = this.#door().walkNext(cursor);
     this.#checkStatus(status);
     if (status === 0) return null;
@@ -866,7 +869,8 @@ export class Session implements HookOwner {
     return {
       node: view.getBigUint64(WALK_OFFSET_CURRENT, littleEndian),
       depth: view.getUint32(WALK_OFFSET_DEPTH, littleEndian),
-      isSemanticError: view.getUint8(WALK_OFFSET_FLAG) !== 0,
+      isSemanticError: (view.getUint8(WALK_OFFSET_FLAG) & WALK_FLAG_SEMANTIC_ERROR) !== 0,
+      isRecovered: (view.getUint8(WALK_OFFSET_FLAG) & WALK_FLAG_RECOVERED) !== 0,
     };
   }
 
@@ -899,18 +903,30 @@ export class Session implements HookOwner {
     return door.variableIndex(node.generation, this.admit(node));
   }
 
-  lastPosition(): [number, number] | null {
+  /**
+   * The `[line, column]` where the published parse ended (zeros when the
+   * parser was built without position tracking). Follows the published tree
+   * like every node read: throws `StaleTreeError` whenever nothing is
+   * published, before the first parse included.
+   */
+  lastPosition(): [number, number] {
     const h = this.#requireHandle();
-    return this.port.lastPosition(h);
+    const read = this.port.lastPosition(h);
+    if (typeof read === "number") throw this.errorFromStatus(read);
+    return read;
   }
 
   /**
-   * Retained input of the most recent successful parse as bytes: the
-   * buffer that snapshot spans index. Empty before the first parse.
+   * Retained input of the published parse as bytes: the buffer that
+   * snapshot spans index. Follows the published tree like every node read:
+   * throws `StaleTreeError` whenever nothing is published, before the first
+   * parse included.
    */
   lastInput(): Uint8Array {
     const h = this.#requireHandle();
-    return this.port.lastInput(h) ?? new Uint8Array(0);
+    const read = this.port.lastInput(h);
+    if (typeof read === "number") throw this.errorFromStatus(read);
+    return read;
   }
 
   hasDiagnostic(): boolean {
@@ -1192,11 +1208,16 @@ export interface WalkStep {
   node: Node;
   depth: number;
   isSemanticError: boolean;
+  /**
+   * The node syntax-error recovery kept in place of damaged input; its span
+   * covers the input recovery skipped.
+   */
+  isRecovered: boolean;
 }
 
 // The host-owned walk cursor, byte-for-byte `GalleyWalkCursor` from
 // galley.h: generation u64 @0, root u64 @8, current u64 @16, depth u32
-// @24, state u16 @28, options u8 @30, is_semantic_error u8 @31,
+// @24, state u16 @28, options u8 @30, flags u8 @31,
 // structure_version u64 @32 — 40 bytes in the port's byte order (the
 // last field is stamped by the core and never read host-side, so the
 // zeroed ArrayBuffer supplies it).
@@ -1224,6 +1245,9 @@ const WALK_STATE_NOT_STARTED = 0;
 const WALK_STATE_YIELDED = 1;
 const WALK_STATE_YIELDED_SKIP_CHILDREN = 2;
 const WALK_OPTION_SKIP_SEMANTIC_ERRORS = 1;
+const WALK_OPTION_SKIP_RECOVERED = 2;
+const WALK_FLAG_SEMANTIC_ERROR = 1;
+const WALK_FLAG_RECOVERED = 2;
 
 /**
  * Pre-order tree walker over a node's subtree, yielding one
@@ -1266,6 +1290,7 @@ export class Walker implements IterableIterator<WalkStep> {
     root: bigint,
     generation: number,
     skipSemanticErrors: boolean,
+    skipRecovered: boolean,
     littleEndian: boolean,
     intern: (address: bigint) => Node,
   ) {
@@ -1282,7 +1307,10 @@ export class Walker implements IterableIterator<WalkStep> {
     view.setBigUint64(WALK_OFFSET_CURRENT, 0n, littleEndian);
     view.setUint32(WALK_OFFSET_DEPTH, 0, littleEndian);
     view.setUint16(WALK_OFFSET_STATE, WALK_STATE_NOT_STARTED, littleEndian);
-    view.setUint8(WALK_OFFSET_OPTIONS, skipSemanticErrors ? WALK_OPTION_SKIP_SEMANTIC_ERRORS : 0);
+    view.setUint8(
+      WALK_OFFSET_OPTIONS,
+      (skipSemanticErrors ? WALK_OPTION_SKIP_SEMANTIC_ERRORS : 0) | (skipRecovered ? WALK_OPTION_SKIP_RECOVERED : 0),
+    );
     view.setUint8(WALK_OFFSET_FLAG, 0);
   }
 
@@ -1297,10 +1325,11 @@ export class Walker implements IterableIterator<WalkStep> {
     root: bigint,
     generation: number,
     skipSemanticErrors: boolean,
+    skipRecovered: boolean,
     littleEndian: boolean,
     intern: (address: bigint) => Node,
   ): Walker {
-    return new Walker(token, session, root, generation, skipSemanticErrors, littleEndian, intern);
+    return new Walker(token, session, root, generation, skipSemanticErrors, skipRecovered, littleEndian, intern);
   }
 
   /**
@@ -1322,6 +1351,7 @@ export class Walker implements IterableIterator<WalkStep> {
         node: this.#intern(step.node),
         depth: step.depth,
         isSemanticError: step.isSemanticError,
+        isRecovered: step.isRecovered,
       },
     };
   }

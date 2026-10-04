@@ -77,6 +77,34 @@ test "error nodes are marked and visible from the parent" {
     try std.testing.expect(parser.data_structures.Node.hasSemanticErrorSubtree(root, &session.node_allocator));
 }
 
+test "a semantic-only failure publishes its tree and hands back its lease" {
+    if (comptime !parser.parser.is_ast_enabled) return;
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer session.deinit();
+
+    var lease = try session.parseBytesLeased("bb", null);
+    try std.testing.expectEqual(@as(?parser.ParseFailure, error.SemanticError), lease.failure);
+    const tree_root = lease.result.ast_root orelse return error.MissingAstRoot;
+    // The lease holds the session until it is released.
+    try std.testing.expectError(error.SessionInUse, session.readCurrent());
+    lease.deinit();
+
+    var guard = try session.readCurrent();
+    defer guard.deinit();
+    try std.testing.expectEqual(@as(?usize, tree_root), guard.result.ast_root);
+    try std.testing.expect(parser.data_structures.Node.hasSemanticErrorSubtree(tree_root, &session.node_allocator));
+    try std.testing.expect(!parser.data_structures.Node.hasRecoveredSubtree(tree_root, &session.node_allocator));
+}
+
+test "a semantic-only failure without AST construction still publishes" {
+    if (comptime parser.parser.is_ast_enabled) return;
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer session.deinit();
+    try std.testing.expectError(parser.ParseError.SemanticError, session.parseBytes("bb", null));
+    var guard = try session.readCurrent();
+    guard.deinit();
+}
+
 test "clean tree carries no semantic error marks" {
     if (comptime !parser.parser.is_ast_enabled) return;
     var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, "aa", .{});

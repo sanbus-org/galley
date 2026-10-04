@@ -402,6 +402,7 @@ typedef struct {
     PyObject *node;
     unsigned long depth;
     int is_semantic_error;
+    int is_recovered;
 } WalkStepObject;
 
 static PyTypeObject Session_Type;
@@ -1204,6 +1205,7 @@ typedef struct SnapshotObject {
     PyObject *span_start;
     PyObject *span_len;
     PyObject *is_semantic_error;
+    PyObject *is_recovered;
 } SnapshotObject;
 
 static void Snapshot_dealloc(SnapshotObject *self)
@@ -1217,6 +1219,7 @@ static void Snapshot_dealloc(SnapshotObject *self)
     Py_XDECREF(self->span_start);
     Py_XDECREF(self->span_len);
     Py_XDECREF(self->is_semantic_error);
+    Py_XDECREF(self->is_recovered);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
@@ -1301,6 +1304,10 @@ static PyGetSetDef Snapshot_getset[] = {
                     "Span length per node."),
     SNAPSHOT_COLUMN("is_semantic_error", is_semantic_error,
                      "The semantic-error flag a walk step carries, per node."),
+    SNAPSHOT_COLUMN("is_recovered", is_recovered,
+                     "The recovered flag a walk step carries, per node: True "
+                     "for a node syntax-error recovery kept in place of "
+                     "damaged input."),
     {NULL, NULL, NULL, NULL, NULL}
 };
 
@@ -1320,11 +1327,12 @@ static PyTypeObject Snapshot_Type = {
 PyDoc_STRVAR(snapshot_doc,
 "snapshot()\n"
 "\n"
-"Returns the most recent successful parse as flat tuples in a single\n"
-"call: a Snapshot with ``count`` and one tuple per node address for\n"
+"Returns the published parse as flat tuples in a single call: a\n"
+"Snapshot with ``count`` and one tuple per node address for\n"
 "``parent``, ``first_child``, ``next``, ``child_count``, ``variable``,\n"
-"``span_start``, ``span_len`` and ``is_semantic_error`` (the flag\n"
-"a walk step carries). Missing links and variables are None. The columns\n"
+"``span_start``, ``span_len``, ``is_semantic_error`` and\n"
+"``is_recovered`` (the flags a walk step carries). Missing links and\n"
+"variables are None. Raises StaleTreeError when nothing is published. The columns\n"
 "are read-only; ``snapshot.node(index)`` is the one conversion from a\n"
 "column address back to a node, and only for the parse these columns\n"
 "describe.\n"
@@ -1344,6 +1352,7 @@ static PyObject *Session_snapshot(PyObject *self, PyObject *Py_UNUSED(ignored))
     unsigned long long *span_start = NULL;
     unsigned long long *span_len = NULL;
     int *is_semantic_error = NULL;
+    int *is_recovered = NULL;
     long long total;
     SnapshotObject *snapshot = NULL;
     unsigned long long generation;
@@ -1356,6 +1365,7 @@ static PyObject *Session_snapshot(PyObject *self, PyObject *Py_UNUSED(ignored))
     PyObject *t_span_start = NULL;
     PyObject *t_span_len = NULL;
     PyObject *t_semantic = NULL;
+    PyObject *t_recovered = NULL;
     unsigned long long i;
 
     if (session == NULL)
@@ -1380,17 +1390,19 @@ static PyObject *Session_snapshot(PyObject *self, PyObject *Py_UNUSED(ignored))
         span_start = PyMem_Malloc(count * sizeof(*span_start));
         span_len = PyMem_Malloc(count * sizeof(*span_len));
         is_semantic_error = PyMem_Malloc(count * sizeof(*is_semantic_error));
+        is_recovered = PyMem_Malloc(count * sizeof(*is_recovered));
         if (parent == NULL || first_child == NULL || next == NULL ||
             child_count == NULL || variable == NULL ||
             span_start == NULL || span_len == NULL ||
-            is_semantic_error == NULL) {
+            is_semantic_error == NULL || is_recovered == NULL) {
             PyErr_NoMemory();
             goto done;
         }
     }
     total = galley_tree_snapshot(session, generation, parent, first_child, next,
                                  child_count, variable, span_start,
-                                 span_len, is_semantic_error, count);
+                                 span_len, is_semantic_error, is_recovered,
+                                 count);
     if (total < 0) {
         set_error_from_status(total);
         goto done;
@@ -1408,9 +1420,11 @@ static PyObject *Session_snapshot(PyObject *self, PyObject *Py_UNUSED(ignored))
     t_span_start = PyTuple_New((Py_ssize_t)count);
     t_span_len = PyTuple_New((Py_ssize_t)count);
     t_semantic = PyTuple_New((Py_ssize_t)count);
+    t_recovered = PyTuple_New((Py_ssize_t)count);
     if (t_parent == NULL || t_first == NULL || t_next == NULL ||
         t_child_count == NULL || t_variable == NULL ||
-        t_span_start == NULL || t_span_len == NULL || t_semantic == NULL)
+        t_span_start == NULL || t_span_len == NULL || t_semantic == NULL ||
+        t_recovered == NULL)
         goto done;
     for (i = 0; i < count; ++i) {
         PyObject *item;
@@ -1441,6 +1455,9 @@ static PyObject *Session_snapshot(PyObject *self, PyObject *Py_UNUSED(ignored))
         item = PyBool_FromLong(is_semantic_error[i]);
         if (item == NULL) goto done;
         PyTuple_SET_ITEM(t_semantic, (Py_ssize_t)i, item);
+        item = PyBool_FromLong(is_recovered[i]);
+        if (item == NULL) goto done;
+        PyTuple_SET_ITEM(t_recovered, (Py_ssize_t)i, item);
     }
     snapshot = PyObject_New(SnapshotObject, &Snapshot_Type);
     if (snapshot == NULL)
@@ -1456,6 +1473,7 @@ static PyObject *Session_snapshot(PyObject *self, PyObject *Py_UNUSED(ignored))
     snapshot->span_start = t_span_start;
     snapshot->span_len = t_span_len;
     snapshot->is_semantic_error = t_semantic;
+    snapshot->is_recovered = t_recovered;
     t_parent = NULL;
     t_first = NULL;
     t_next = NULL;
@@ -1464,6 +1482,7 @@ static PyObject *Session_snapshot(PyObject *self, PyObject *Py_UNUSED(ignored))
     t_span_start = NULL;
     t_span_len = NULL;
     t_semantic = NULL;
+    t_recovered = NULL;
 done:
     Py_XDECREF(t_parent);
     Py_XDECREF(t_first);
@@ -1473,6 +1492,7 @@ done:
     Py_XDECREF(t_span_start);
     Py_XDECREF(t_span_len);
     Py_XDECREF(t_semantic);
+    Py_XDECREF(t_recovered);
     PyMem_Free(parent);
     PyMem_Free(first_child);
     PyMem_Free(next);
@@ -1481,6 +1501,7 @@ done:
     PyMem_Free(span_start);
     PyMem_Free(span_len);
     PyMem_Free(is_semantic_error);
+    PyMem_Free(is_recovered);
     return (PyObject *)snapshot;
 }
 
@@ -1510,8 +1531,11 @@ static PyObject *Session_text(PyObject *self, PyObject *node)
 PyDoc_STRVAR(last_input_doc,
 "last_input()\n"
 "\n"
-"Returns the retained input of the most recent parse as bytes: the\n"
-"buffer that snapshot spans index. Empty before the first parse.");
+"Returns the retained input of the published parse as bytes: the\n"
+"buffer that snapshot spans index. Follows the published tree like\n"
+"every node read: raises StaleTreeError whenever nothing is published\n"
+"(before the first parse included), and GalleyError with\n"
+"ERROR_SESSION_IN_USE while a parse holds the session.");
 
 static PyObject *Session_last_input(PyObject *self, PyObject *Py_UNUSED(ignored))
 {
@@ -1529,7 +1553,7 @@ static PyObject *Session_last_input(PyObject *self, PyObject *Py_UNUSED(ignored)
 PyDoc_STRVAR(span_doc,
 "span(node)\n"
 "\n"
-"Returns the (start, length) byte span a node matched in the most recent\n"
+"Returns the (start, length) byte span a node matched in the published\n"
 "parse's input. A refused node raises (StaleTreeError, or GalleyError\n"
 "for an invalid node).");
 
@@ -1564,9 +1588,9 @@ static PyObject *Session_variable_index(PyObject *self, PyObject *node)
 PyDoc_STRVAR(last_position_doc,
 "last_position()\n"
 "\n"
-"Returns the 1-based (line, column) where the most recent successful\n"
-"parse ended (zeros when the parser was built without position\n"
-"tracking).");
+"Returns the 1-based (line, column) where the published parse ended\n"
+"(zeros when the parser was built without position tracking). Raises\n"
+"like last_input() when nothing is published.");
 
 static PyObject *Session_last_position(PyObject *self, PyObject *Py_UNUSED(ignored))
 {
@@ -3099,13 +3123,15 @@ static PyObject *Node_append_children(NodeObject *self, PyObject *chain)
 }
 
 PyDoc_STRVAR(node_walk_doc,
-"walk(skip_semantic_errors=False)\n"
+"walk(skip_semantic_errors=False, skip_recovered=False)\n"
 "\n"
 "Returns a pre-order Walker over the subtree rooted at this node, the\n"
 "node itself at depth 0. Each iteration yields a WalkStep with ``node``,\n"
-"``depth`` (relative to this node) and ``is_semantic_error``. Pass a\n"
-"true ``skip_semantic_errors`` to prune subtrees rooted at\n"
-"semantic-error nodes.\n"
+"``depth`` (relative to this node), ``is_semantic_error`` and\n"
+"``is_recovered``. Pass a true ``skip_semantic_errors`` to prune subtrees\n"
+"rooted at semantic-error nodes, and a true ``skip_recovered`` to prune\n"
+"those rooted at nodes syntax-error recovery kept in place of damaged\n"
+"input; with both the walk yields only undamaged, valid nodes.\n"
 "\n"
 "The walker owns no native resource: abandoning it is free, and parsing\n"
 "again while one exists succeeds -- its next step raises StaleTreeError.\n"
@@ -3120,11 +3146,13 @@ PyDoc_STRVAR(node_walk_doc,
 static PyObject *Node_walk(NodeObject *self, PyObject *args, PyObject *keywords)
 {
     int skip = 0;
+    int skip_recovered = 0;
     WalkerObject *walker_obj;
     NodeCrossing cross;
-    static char *names[] = {"skip_semantic_errors", NULL};
+    static char *names[] = {"skip_semantic_errors", "skip_recovered", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, keywords, "|$p:walk", names, &skip))
+    if (!PyArg_ParseTupleAndKeywords(args, keywords, "|$pp:walk", names, &skip,
+                                     &skip_recovered))
         return NULL;
     /* Door choice and generation check like every other node call, so a
      * walk created inside a hook belongs to that parse and steps through
@@ -3144,8 +3172,9 @@ static PyObject *Node_walk(NodeObject *self, PyObject *args, PyObject *keywords)
         .current = 0,
         .depth = 0,
         .state = GALLEY_WALK_STATE_NOT_STARTED,
-        .options = (unsigned char)(skip ? GALLEY_WALK_SKIP_SEMANTIC_ERRORS : 0),
-        .is_semantic_error = 0,
+        .options = (unsigned char)((skip ? GALLEY_WALK_SKIP_SEMANTIC_ERRORS : 0) |
+                                   (skip_recovered ? GALLEY_WALK_SKIP_RECOVERED : 0)),
+        .flags = 0,
     };
     return (PyObject *)walker_obj;
 }
@@ -3286,6 +3315,12 @@ static PyObject *WalkStep_get_is_semantic_error(WalkStepObject *self,
     return PyBool_FromLong(self->is_semantic_error);
 }
 
+static PyObject *WalkStep_get_is_recovered(WalkStepObject *self,
+                                           void *Py_UNUSED(closure))
+{
+    return PyBool_FromLong(self->is_recovered);
+}
+
 static PyGetSetDef WalkStep_getset[] = {
     {"node", (getter)WalkStep_get_node, NULL,
      "The node this step visited.", NULL},
@@ -3293,6 +3328,9 @@ static PyGetSetDef WalkStep_getset[] = {
      "Depth below the walk's root node, which is at depth 0.", NULL},
     {"is_semantic_error", (getter)WalkStep_get_is_semantic_error, NULL,
      "True when the visited node is flagged as a semantic error.", NULL},
+    {"is_recovered", (getter)WalkStep_get_is_recovered, NULL,
+     "True when the visited node is one syntax-error recovery kept in place "
+     "of damaged input; its span covers the input recovery skipped.", NULL},
     {NULL, NULL, NULL, NULL, NULL}
 };
 
@@ -3303,8 +3341,9 @@ static PyTypeObject WalkStep_Type = {
     .tp_itemsize = 0,
     .tp_dealloc = (destructor)WalkStep_dealloc,
     .tp_flags = Py_TPFLAGS_DEFAULT,
-    .tp_doc = "One position of a walk: read-only node, depth and "
-              "is_semantic_error. Yielded by Walker, never constructed.",
+    .tp_doc = "One position of a walk: read-only node, depth, "
+              "is_semantic_error and is_recovered. Yielded by Walker, never "
+              "constructed.",
     .tp_getset = WalkStep_getset,
 };
 
@@ -3349,7 +3388,9 @@ static PyObject *Walker_iternext(WalkerObject *self)
     }
     step->node = (PyObject *)node_obj;
     step->depth = self->cursor.depth;
-    step->is_semantic_error = self->cursor.is_semantic_error != 0;
+    step->is_semantic_error =
+        (self->cursor.flags & GALLEY_WALK_FLAG_SEMANTIC_ERROR) != 0;
+    step->is_recovered = (self->cursor.flags & GALLEY_WALK_FLAG_RECOVERED) != 0;
     return (PyObject *)step;
 }
 

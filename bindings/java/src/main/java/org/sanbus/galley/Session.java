@@ -612,7 +612,7 @@ public final class Session implements AutoCloseable {
     /**
      * Flat bulk read of the published tree in a single call: one entry per
      * node address. Missing links read as {@link Galley#INVALID_NODE}, missing
-     * variables as -1, and spans index
+     * variables as -1, the flags as in {@link Walker.WalkStep}, and spans index
      * {@link #lastInput()}. Walk {@code parent}/{@code firstChild}/
      * {@code next} directly instead of one call per node;
      * {@link TreeSnapshot#node(long)} is the one conversion from a stored
@@ -636,8 +636,9 @@ public final class Session implements AutoCloseable {
             MemorySegment spanStart = arena.allocate(ValueLayout.JAVA_LONG, count);
             MemorySegment spanLen = arena.allocate(ValueLayout.JAVA_LONG, count);
             MemorySegment semantic = arena.allocate(ValueLayout.JAVA_INT, count);
+            MemorySegment recovered = arena.allocate(ValueLayout.JAVA_INT, count);
             long total = lib.galley_tree_snapshot(handle, generation, parent, firstChild, next,
-                    childCount, variable, spanStart, spanLen, semantic, count);
+                    childCount, variable, spanStart, spanLen, semantic, recovered, count);
             if (total < 0) throw errorFromStatus(total);
             if (total != count) throw new IllegalStateException("node count changed during snapshot");
             long[] parentArray = parent.toArray(ValueLayout.JAVA_LONG);
@@ -652,18 +653,23 @@ public final class Session implements AutoCloseable {
             long[] spanStartArray = spanStart.toArray(ValueLayout.JAVA_LONG);
             long[] spanLenArray = spanLen.toArray(ValueLayout.JAVA_LONG);
             boolean[] semanticArray = new boolean[(int) count];
+            boolean[] recoveredArray = new boolean[(int) count];
             for (int i = 0; i < semanticArray.length; i++) {
                 semanticArray[i] = semantic.get(ValueLayout.JAVA_INT, (long) i * Integer.BYTES) != 0;
+                recoveredArray[i] = recovered.get(ValueLayout.JAVA_INT, (long) i * Integer.BYTES) != 0;
             }
             return new TreeSnapshot(this, generation, count, parentArray,
                     firstChildArray, nextArray, childCountArray, variableArray,
-                    spanStartArray, spanLenArray, semanticArray);
+                    spanStartArray, spanLenArray, semanticArray, recoveredArray);
         }
     }
 
     /**
-     * Retained input of the most recent successful parse: the buffer
-     * snapshot spans index. Empty before the first parse.
+     * Retained input of the published parse: the buffer snapshot spans index.
+     * Follows the published tree like every node read.
+     *
+     * @throws StaleTreeException whenever nothing is published, before the
+     *         first parse included
      */
     public byte[] lastInput() {
         requireOpen();
@@ -685,9 +691,9 @@ public final class Session implements AutoCloseable {
      * node's own generation, and on the session door nothing asks the core
      * until the first step, which refuses a generation that is gone.
      */
-    Walker startWalk(Node node, boolean skipSemanticErrors) {
+    Walker startWalk(Node node, boolean skipSemanticErrors, boolean skipRecovered) {
         Crossing crossing = cross(node);
-        return new Walker(this, crossing.address(), crossing.generation(), skipSemanticErrors);
+        return new Walker(this, crossing.address(), crossing.generation(), skipSemanticErrors, skipRecovered);
     }
 
     /**
@@ -706,7 +712,8 @@ public final class Session implements AutoCloseable {
         return new Walker.WalkStep(
             new Node(this, WalkCursor.current(cursor), generation),
             WalkCursor.depth(cursor),
-            WalkCursor.isSemanticError(cursor));
+            WalkCursor.isSemanticError(cursor),
+            WalkCursor.isRecovered(cursor));
     }
 
     /**
@@ -745,13 +752,20 @@ public final class Session implements AutoCloseable {
         return crossing.door().variableIndex(crossing.generation(), crossing.address());
     }
 
+    /**
+     * The {line, column} where the published parse ended (zeros when the
+     * parser was built without position tracking). Follows the published
+     * tree like {@link #lastInput()}.
+     *
+     * @throws StaleTreeException whenever nothing is published, before the
+     *         first parse included
+     */
     public int[] lastPosition() {
         requireOpen();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outLine = arena.allocate(ValueLayout.JAVA_INT);
             MemorySegment outCol = arena.allocate(ValueLayout.JAVA_INT);
-            long st = lib.galley_last_position(handle, outLine, outCol);
-            if (st < 0) return null;
+            checkStatus(lib.galley_last_position(handle, outLine, outCol));
             return new int[]{outLine.get(ValueLayout.JAVA_INT, 0), outCol.get(ValueLayout.JAVA_INT, 0)};
         }
     }

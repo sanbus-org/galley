@@ -62,25 +62,25 @@ fn expectRecovery(
     }
 }
 
-fn astContainsVariable(
+fn findVariable(
     context: *parser.data_structures.Context,
     address: parser.data_structures.Node.Pointer,
     variable: []const u8,
-) bool {
-    if (address == parser.data_structures.Node.invalid_pointer) return false;
+) ?parser.data_structures.Node.Pointer {
+    if (address == parser.data_structures.Node.invalid_pointer) return null;
     const node = context.node_allocator.at(address);
     if (node.variable < parser.parser.variables.len and
         std.mem.eql(u8, parser.parser.variables[node.variable], variable))
     {
-        return true;
+        return address;
     }
     var child = node.first_child;
     while (child != parser.data_structures.Node.invalid_pointer) {
         const next = context.node_allocator.at(child).next;
-        if (astContainsVariable(context, child, variable)) return true;
+        if (findVariable(context, child, variable)) |found| return found;
         child = next;
     }
-    return false;
+    return null;
 }
 
 test "explicit recovery mode and occurrence consume" {
@@ -164,7 +164,7 @@ test "explicit recovery does not invent a synchronization terminal at EOF" {
     }
 }
 
-test "explicit recovery omits the damaged AST value and completes its parent" {
+test "explicit recovery keeps the damaged AST value as a flagged node and completes its parent" {
     parser.procedures.reset();
     const input: [:0]const u8 = "oaq;z";
     var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .syntax_error_reporter = &ignoreDiagnostic });
@@ -174,8 +174,19 @@ test "explicit recovery omits the damaged AST value and completes its parent" {
 
     const root_address = parser.procedures.capturedRoot();
     try std.testing.expect(root_address != parser.data_structures.Node.invalid_pointer);
-    try std.testing.expect(astContainsVariable(&context, root_address, "Occurrence"));
-    try std.testing.expect(!astContainsVariable(&context, root_address, "Damaged"));
+    const occurrence_address = findVariable(&context, root_address, "Occurrence") orelse return error.MissingOccurrence;
+
+    // The damaged `Damaged` is attached to its parent in place, flagged, and
+    // spans the input the recovery skipped: `q;`, resuming after the `;`.
+    const damaged_address = findVariable(&context, root_address, "Damaged") orelse return error.MissingDamagedNode;
+    const damaged = context.node_allocator.at(damaged_address);
+    try std.testing.expect(damaged.is_recovered);
+    try std.testing.expectEqual(@as(usize, 2), damaged.text_start);
+    try std.testing.expectEqual(@as(usize, 2), damaged.text_length);
+    try std.testing.expectEqual(occurrence_address, damaged.parent);
+    try std.testing.expectEqual(damaged_address, context.node_allocator.at(occurrence_address).first_child);
+    try std.testing.expect(!context.node_allocator.at(occurrence_address).is_recovered);
+    try std.testing.expect(parser.data_structures.Node.hasRecoveredSubtree(root_address, &session.node_allocator));
     try std.testing.expectEqual(@as(usize, 0), parser.procedures.marks());
 }
 

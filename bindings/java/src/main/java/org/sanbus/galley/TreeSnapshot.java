@@ -1,11 +1,12 @@
 package org.sanbus.galley;
 
 /**
- * Flat bulk read of the most recent successful parse (see
+ * Flat bulk read of the published parse (see
  * {@link Session#snapshot()}): one entry per node address. Missing links
  * read as {@link Galley#INVALID_NODE}, missing variables as {@code -1L},
  * spans index {@link Session#lastInput()}, and
- * {@code isSemanticError} carries the flag {@link Walker.WalkStep} yields.
+ * {@code isSemanticError} and {@code isRecovered} carry the flags
+ * {@link Walker.WalkStep} yields.
  *
  * <p>The columns are fixed at the parse they describe, and the snapshot
  * remembers that parse's generation: {@link #node(long)} is the one
@@ -24,11 +25,12 @@ public final class TreeSnapshot {
     private final long[] spanStart;
     private final long[] spanLen;
     private final boolean[] isSemanticError;
+    private final boolean[] isRecovered;
 
     /** One snapshot of {@code session}'s published tree in {@code generation}. */
     TreeSnapshot(Session session, long generation, long count, long[] parent,
             long[] firstChild, long[] next, int[] childCount, long[] variable,
-            long[] spanStart, long[] spanLen, boolean[] isSemanticError) {
+            long[] spanStart, long[] spanLen, boolean[] isSemanticError, boolean[] isRecovered) {
         this.session = session;
         this.generation = generation;
         this.count = count;
@@ -40,6 +42,7 @@ public final class TreeSnapshot {
         this.spanStart = spanStart;
         this.spanLen = spanLen;
         this.isSemanticError = isSemanticError;
+        this.isRecovered = isRecovered;
     }
 
     public long count() { return count; }
@@ -59,6 +62,8 @@ public final class TreeSnapshot {
     public long[] spanLen() { return spanLen; }
 
     public boolean[] isSemanticError() { return isSemanticError; }
+
+    public boolean[] isRecovered() { return isRecovered; }
 
     /**
      * The node at {@code address} for the parse these columns describe, or

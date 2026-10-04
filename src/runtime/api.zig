@@ -559,6 +559,10 @@ pub fn renderParseDiagnostic(allocator: std.mem.Allocator, diagnostic: ParseDiag
     return output.toOwnedSlice();
 }
 
+/// The errors a parse reports after publishing its tree: the parse ran to its
+/// end and its result carries recorded errors.
+pub const ParseFailure = error{ SyntaxError, SemanticError };
+
 /// The parse lease: the exclusive door held from parse acquisition until
 /// the caller has finished whatever must land together with the result.
 /// Every leased parse entry funnels through `Session.acquireParse`, which
@@ -567,10 +571,16 @@ pub fn renderParseDiagnostic(allocator: std.mem.Allocator, diagnostic: ParseDiag
 /// pairs the result with state of its own — the C ABI retains the parsed
 /// input — writes that state before `deinit`, so no reader observes the
 /// pair mid-swap and an older parse can never publish over a newer one.
+/// A parse that fails after publishing (`failure`) hands back its lease like
+/// a success, so that state is paired with the published failure too; a
+/// parse that publishes nothing returns its error instead and holds no lease.
 /// The caller must `deinit` the lease exactly once.
 pub const ParseLease = struct {
     session: *Session,
     result: ParseResult,
+    /// Set when the parse published its tree and still failed: syntax
+    /// errors the parser recovered from take precedence over semantic ones.
+    failure: ?ParseFailure = null,
 
     /// Single lease-release site: unlocks the write lease.
     pub fn deinit(self: *ParseLease) void {
@@ -594,10 +604,17 @@ pub const Session = struct {
     ast_preallocation_cap: if (parser.is_ast_enabled) usize else void,
     session_lock: SessionLock = .init,
     generation: usize = 0,
-    /// The result of the most recent successful parse, written only by
+    /// Byte length of the latest parse's input, when its entry point knows it
+    /// (null for streamed input of unknown length). A parse that fails after
+    /// publishing reports `parsed_bytes` as far as the parser consumed, which
+    /// can stop short of an input recovery skipped to the end of; hosts that
+    /// retain the input of a published failure retain this many bytes.
+    input_length: ?usize = null,
+    /// The result of the most recent published parse — a success, or a
+    /// failure that ran to its end with recorded errors — written only by
     /// `_parseContextUnlocked` under the exclusive lock and read only under
     /// a guard. It goes stale — never null again — the moment a later parse
-    /// (successful or failed) advances `generation`.
+    /// (published or not) advances `generation`.
     published_result: ?ParseResult = null,
     /// Host-owned pointer copied onto each parse `Context` (`Context.user_data`)
     /// for hooks written in Zig. A host shim build uses it as the dispatch
@@ -769,9 +786,10 @@ pub const Session = struct {
         return self.readGuard(.{ .given = result });
     }
 
-    /// Shared guard for the session's published result: the last successful
-    /// parse, refused as stale once any later parse has begun and as absent
-    /// before the first success.
+    /// Shared guard for the session's published result: the last parse that
+    /// published (a success, or a failure that ran to its end), refused as
+    /// stale once any later parse has begun and as absent before the first
+    /// publication.
     pub fn readCurrent(self: *Session) SessionError!SessionReadGuard {
         return self.readGuard(.published);
     }
@@ -917,17 +935,19 @@ pub const Session = struct {
     pub fn parseBytesLeased(self: *Session, input: []const u8, input_path: ?[]const u8) !ParseLease {
         try self.acquireParse();
         errdefer self.releaseParse();
-        const result = try self.parseBytesUnlocked(input, input_path);
-        return .{ .session = self, .result = result };
+        const completed = try self.parseBytesUnlocked(input, input_path);
+        return .{ .session = self, .result = completed.result, .failure = completed.failure };
     }
 
     pub fn parseBytes(self: *Session, input: []const u8, input_path: ?[]const u8) !ParseResult {
         var lease = try self.parseBytesLeased(input, input_path);
         defer lease.deinit();
+        if (lease.failure) |failure| return failure;
         return lease.result;
     }
 
-    fn parseBytesUnlocked(self: *Session, input: []const u8, input_path: ?[]const u8) !ParseResult {
+    fn parseBytesUnlocked(self: *Session, input: []const u8, input_path: ?[]const u8) !Completed {
+        self.input_length = input.len;
         try self.prepareASTCapacity(input.len);
         const padding = input_padding_size;
         const owned_input = try self.ensureOwnedInputCapacity(input.len + padding);
@@ -942,17 +962,19 @@ pub const Session = struct {
     pub fn parseSentinelBytesLeased(self: *Session, input: [:0]const u8, input_path: ?[]const u8) !ParseLease {
         try self.acquireParse();
         errdefer self.releaseParse();
-        const result = try self.parseSentinelBytesUnlocked(input, input_path);
-        return .{ .session = self, .result = result };
+        const completed = try self.parseSentinelBytesUnlocked(input, input_path);
+        return .{ .session = self, .result = completed.result, .failure = completed.failure };
     }
 
     pub fn parseSentinelBytes(self: *Session, input: [:0]const u8, input_path: ?[]const u8) !ParseResult {
         var lease = try self.parseSentinelBytesLeased(input, input_path);
         defer lease.deinit();
+        if (lease.failure) |failure| return failure;
         return lease.result;
     }
 
-    fn parseSentinelBytesUnlocked(self: *Session, input: [:0]const u8, input_path: ?[]const u8) !ParseResult {
+    fn parseSentinelBytesUnlocked(self: *Session, input: [:0]const u8, input_path: ?[]const u8) !Completed {
+        self.input_length = input.len;
         try self.prepareASTCapacity(input.len);
         // Retain a session-owned copy of the input (sentinel byte plus zero
         // padding). The caller's buffer may be freed as soon as this call
@@ -971,17 +993,19 @@ pub const Session = struct {
     pub fn parseFileLeased(self: *Session, file: std.Io.File, input_path: ?[]const u8) !ParseLease {
         try self.acquireParse();
         errdefer self.releaseParse();
-        const result = try self.parseFileUnlocked(file, input_path);
-        return .{ .session = self, .result = result };
+        const completed = try self.parseFileUnlocked(file, input_path);
+        return .{ .session = self, .result = completed.result, .failure = completed.failure };
     }
 
     pub fn parseFile(self: *Session, file: std.Io.File, input_path: ?[]const u8) !ParseResult {
         var lease = try self.parseFileLeased(file, input_path);
         defer lease.deinit();
+        if (lease.failure) |failure| return failure;
         return lease.result;
     }
 
-    fn parseFileUnlocked(self: *Session, file: std.Io.File, input_path: ?[]const u8) !ParseResult {
+    fn parseFileUnlocked(self: *Session, file: std.Io.File, input_path: ?[]const u8) !Completed {
+        self.input_length = null;
         if (comptime !input_streaming_enabled) {
             if (self.owned_input) |owned_input| {
                 self.allocator.free(owned_input);
@@ -994,6 +1018,7 @@ pub const Session = struct {
                 errdefer self.allocator.free(complete_input);
 
                 const input_length = complete_input.len;
+                self.input_length = input_length;
                 try self.prepareASTCapacity(input_length);
                 complete_input = try self.allocator.realloc(complete_input, input_length + input_padding_size);
                 @memset(complete_input[input_length..], 0);
@@ -1022,6 +1047,7 @@ pub const Session = struct {
                 return try self.parseBytesUnlocked(input, input_path);
             };
 
+            self.input_length = file_length;
             const input = try self.ensureOwnedInputCapacity(file_length + input_padding_size);
             @memset(input[file_length..], 0);
 
@@ -1055,10 +1081,24 @@ pub const Session = struct {
     pub fn _parseContext(self: *Session, context_value: *data_structures.Context) !ParseResult {
         try self.acquireParse();
         defer self.releaseParse();
-        return try self._parseContextUnlocked(context_value);
+        const completed = try self._parseContextUnlocked(context_value);
+        if (completed.failure) |failure| return failure;
+        return completed.result;
     }
 
-    fn _parseContextUnlocked(self: *Session, context_value: *data_structures.Context) !ParseResult {
+    /// A parse that ran to its end: the result it published, and the failure
+    /// it reports with that result when the parse recorded errors.
+    const Completed = struct { result: ParseResult, failure: ?ParseFailure };
+
+    /// The single publish gate. A parse that ran to its end publishes its
+    /// result — the tree is complete even when errors were recorded, since
+    /// recovery keeps the damaged region as flagged nodes — and then reports
+    /// the failure beside it: recovered syntax errors first, then semantic
+    /// ones. A parse that did not run to its end (a read or indentation
+    /// failure, an error the parser could not recover from, stack overflow,
+    /// out of memory) returns its error and publishes nothing, so its
+    /// generation is never live.
+    fn _parseContextUnlocked(self: *Session, context_value: *data_structures.Context) !Completed {
         context_value.runtime_context = &self.runtime_context;
         context_value.generation = self.generation;
 
@@ -1072,6 +1112,7 @@ pub const Session = struct {
         self.runtime_context.explicit_recovery_position = null;
         self.runtime_context.explicit_recovery_target_id = null;
         self.runtime_context.pending_syntax_error_site = null;
+        self.runtime_context.recovered_pending = .empty;
 
         try context_value.reset();
         self.active_context = context_value;
@@ -1097,19 +1138,17 @@ pub const Session = struct {
                 return error.IndentationError;
             }
         }
-        if (self.runtime_context.syntax_error_count != 0) {
-            @branchHint(.unlikely);
-            return error.SyntaxError;
-        }
-        if (self.runtime_context.semantic_error_count != 0) {
-            @branchHint(.unlikely);
-            return error.SemanticError;
-        }
         var session_result = parsed;
         session_result._session_generation = self.generation;
         session_result._session_identity = @ptrCast(self.reader_buffer.ptr);
         self.published_result = session_result;
-        return session_result;
+        const failure: ?ParseFailure = if (self.runtime_context.syntax_error_count != 0)
+            error.SyntaxError
+        else if (self.runtime_context.semantic_error_count != 0)
+            error.SemanticError
+        else
+            null;
+        return .{ .result = session_result, .failure = failure };
     }
 };
 

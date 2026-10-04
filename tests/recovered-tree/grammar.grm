@@ -1,0 +1,18 @@
+Document
+| Entry@!^";" Entries
+
+Entries
+| ";" Entry@!^";" Entries
+|
+
+Entry
+| Key "=" Value
+
+Key
+| "a"
+| "b"
+
+Value
+| "1"
+| "2"
+| "[" Value "]"

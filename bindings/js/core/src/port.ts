@@ -39,14 +39,15 @@ export interface SessionCOptions {
 }
 
 /**
- * Flat bulk read of the most recent successful parse, one slot per node
+ * Flat bulk read of the published parse, one slot per node
  * address. `parent` holds `INVALID_NODE` for the root, `firstChild`/`next`
  * hold `INVALID_NODE` where the link does not exist, `variable` holds the
  * core's `NO_VARIABLE` for nodes without a variable (the session's public
  * snapshot spells it -1), `spanStart`/`spanLen` are byte
- * offsets into the parsed input, and `isSemanticError` holds 1 where the
- * node carries a semantic error, 0 elsewhere — a walk step's flag as a
- * raw column. Parent, firstChild, and next alone
+ * offsets into the parsed input, and `isSemanticError` / `isRecovered` hold
+ * 1 where the node carries a semantic error / is a node syntax-error
+ * recovery kept in place of damaged input, 0 elsewhere — a walk step's flags
+ * as raw columns. Parent, firstChild, and next alone
  * describe the whole tree with no further calls.
  *
  * The port returns the columns alone; the session's public
@@ -63,6 +64,7 @@ export interface SnapshotColumns {
   spanStart: BigUint64Array;
   spanLen: BigUint64Array;
   isSemanticError: Int32Array;
+  isRecovered: Int32Array;
 }
 
 /**
@@ -176,14 +178,17 @@ export interface FfiPort {
   parse(handle: Handle, data: Uint8Array): number;
   /** Bytes parsed, or a negative status code. */
   parseFile(handle: Handle, path: string): number;
-  /** End position of the most recent successful parse; null on failure. */
-  lastPosition(handle: Handle): [number, number] | null;
   /**
-   * Retained input of the most recent successful parse: the buffer
-   * snapshot spans index. Empty before the first parse; null only on
-   * native failure.
+   * End position of the published parse, or the core's negative status when
+   * it refuses (nothing published, a parse in flight).
    */
-  lastInput(handle: Handle): Uint8Array | null;
+  lastPosition(handle: Handle): [number, number] | number;
+  /**
+   * Retained input of the published parse: the buffer snapshot spans index,
+   * or the core's negative status when it refuses (nothing published, a
+   * parse in flight).
+   */
+  lastInput(handle: Handle): Uint8Array | number;
 
   // -- arena and navigation ----------------------------------------------
   //

@@ -620,7 +620,7 @@ public class GalleyTest {
             List<long[]> expected = new ArrayList<>();
             collectRecursive(root, 0, expected);
             assertTrue(expected.size() > 1);
-            Walker walker = root.walk(false);
+            Walker walker = root.walk(false, false);
             assertNotNull(walker);
             List<long[]> walked = new ArrayList<>();
             List<Boolean> flags = new ArrayList<>();
@@ -640,7 +640,7 @@ public class GalleyTest {
             for (java.lang.reflect.Method method : Session.class.getDeclaredMethods()) {
                 assertNotEquals("walk", method.getName());
             }
-            assertDoesNotThrow(() -> Node.class.getMethod("walk", boolean.class));
+            assertDoesNotThrow(() -> Node.class.getMethod("walk", boolean.class, boolean.class));
         }
 
         @Test
@@ -656,7 +656,7 @@ public class GalleyTest {
             List<long[]> expected = new ArrayList<>();
             collectRecursive(pair, 0, expected);
             List<long[]> walked = new ArrayList<>();
-            for (Walker.WalkStep step : pair.walk(false)) {
+            for (Walker.WalkStep step : pair.walk(false, false)) {
                 walked.add(new long[]{step.node.getAddress(), step.depth});
             }
             assertTrue(expected.size() > 1);
@@ -667,7 +667,7 @@ public class GalleyTest {
             assertArrayEquals(new long[]{pair.getAddress(), 0}, walked.get(0));
             // A strict subtree: the full walk from the root visits more.
             int full = 0;
-            for (Walker.WalkStep ignored : root.walk(false)) full++;
+            for (Walker.WalkStep ignored : root.walk(false, false)) full++;
             assertTrue(walked.size() < full);
         }
 
@@ -721,7 +721,7 @@ public class GalleyTest {
                 assertEquals(chain.size(), snap.childCount()[(int) node]);
                 for (int k = chain.size() - 1; k >= 0; k--) stack.add(chain.get(k));
             }
-            Walker walker = root.walk(false);
+            Walker walker = root.walk(false, false);
             assertNotNull(walker);
             List<Long> walked = new ArrayList<>();
             for (Walker.WalkStep step : walker) walked.add(step.node.getAddress());
@@ -742,7 +742,7 @@ public class GalleyTest {
             session.parse("alpha:12,beta:3");
             Node root = session.rootNode();
             assertNotNull(root);
-            Walker walker = root.walk(false);
+            Walker walker = root.walk(false, false);
             assertNotNull(walker);
             assertTrue(walker.hasNext());
             Walker.WalkStep first = walker.next();
@@ -756,7 +756,7 @@ public class GalleyTest {
         void walkerStepAfterReparseThrows() {
             Node root = session.rootNode();
             assertNotNull(root);
-            Walker walker = root.walk(false);
+            Walker walker = root.walk(false, false);
             assertNotNull(walker);
             assertTrue(walker.hasNext());
             walker.next();
@@ -769,7 +769,7 @@ public class GalleyTest {
             assertThrows(StaleTreeException.class, walker::next);
             Node fresh = session.rootNode();
             assertNotNull(fresh);
-            Walker rewound = fresh.walk(false);
+            Walker rewound = fresh.walk(false, false);
             assertNotNull(rewound);
             assertTrue(rewound.hasNext());
         }
@@ -778,7 +778,7 @@ public class GalleyTest {
         void walkerStepAfterSessionCloseThrows() {
             Node root = session.rootNode();
             assertNotNull(root);
-            Walker walker = root.walk(false);
+            Walker walker = root.walk(false, false);
             assertNotNull(walker);
             assertTrue(walker.hasNext());
             walker.next();
@@ -792,7 +792,7 @@ public class GalleyTest {
         void parseWithAbandonedWalkerSucceeds() {
             Node root = session.rootNode();
             assertNotNull(root);
-            Walker walker = root.walk(false);
+            Walker walker = root.walk(false, false);
             assertNotNull(walker);
             // Parsing never throws merely because a walker is open; the
             // abandoned walker fails at its next step instead.
@@ -800,7 +800,7 @@ public class GalleyTest {
             assertThrows(StaleTreeException.class, walker::next);
             Node fresh = session.rootNode();
             assertNotNull(fresh);
-            Walker rewound = fresh.walk(false);
+            Walker rewound = fresh.walk(false, false);
             assertNotNull(rewound);
             int steps = 0;
             while (rewound.hasNext()) {
@@ -814,7 +814,7 @@ public class GalleyTest {
         void failedParseInvalidatesWalkers() {
             Node root = session.rootNode();
             assertNotNull(root);
-            Walker walker = root.walk(false);
+            Walker walker = root.walk(false, false);
             assertNotNull(walker);
             assertTrue(walker.hasNext());
             walker.next();
@@ -839,9 +839,9 @@ public class GalleyTest {
             session.installProcedure("reduction_Document", args -> {
                 Node node = args.currentNode();
                 assertNotNull(node);
-                for (Walker.WalkStep step : node.walk(false))
+                for (Walker.WalkStep step : node.walk(false, false))
                     full.add(new long[]{step.node.getAddress(), step.depth, step.isSemanticError ? 1 : 0});
-                for (Walker.WalkStep step : node.walk(true))
+                for (Walker.WalkStep step : node.walk(true, false))
                     pruned.add(new long[]{step.node.getAddress(), step.depth});
             });
             GalleyException ex = assertThrows(GalleyException.class,
@@ -863,7 +863,7 @@ public class GalleyTest {
             // thread mid-parse is refused as in use, never a silent stop.
             Node root = session.rootNode();
             assertNotNull(root);
-            Walker walker = root.walk(false);
+            Walker walker = root.walk(false, false);
             assertTrue(walker.hasNext());
             walker.next();
             CountDownLatch firstHookDone = new CountDownLatch(1);
@@ -896,7 +896,7 @@ public class GalleyTest {
         void walkStepAfterRemovingCurrentNodeThrows() {
             Node root = session.rootNode();
             assertNotNull(root);
-            Walker walker = root.walk(false);
+            Walker walker = root.walk(false, false);
             Node leaf = null;
             while (walker.hasNext()) {
                 Walker.WalkStep step = walker.next();
@@ -919,11 +919,11 @@ public class GalleyTest {
             Node root = session.rootNode();
             assertNotNull(root);
             List<long[]> baseline = new ArrayList<>();
-            for (Walker.WalkStep step : root.walk(false))
+            for (Walker.WalkStep step : root.walk(false, false))
                 baseline.add(new long[]{step.node.getAddress(), step.depth});
             assertTrue(baseline.size() > 1);
 
-            Walker walker = root.walk(false);
+            Walker walker = root.walk(false, false);
             Walker.WalkStep first = walker.next();
             assertEquals(root.getAddress(), first.node.getAddress());
             Node removed = session.firstChild(root);
@@ -947,7 +947,7 @@ public class GalleyTest {
             session.appendChildren(root, head);
             int restored = 0;
             boolean sawRemoved = false;
-            for (Walker.WalkStep step : root.walk(false)) {
+            for (Walker.WalkStep step : root.walk(false, false)) {
                 if (step.node.getAddress() == removed.getAddress()) sawRemoved = true;
                 restored++;
             }
@@ -1002,7 +1002,7 @@ public class GalleyTest {
             assertStale(() -> stale.appendChildren(staleChild));
             // A walk binds its cursor to this node's generation; the refusal
             // arrives at its first step, which is where the core checks.
-            assertStale(() -> stale.walk(false).next());
+            assertStale(() -> stale.walk(false, false).next());
             // Session crossings that take the handle throw too.
             assertStale(() -> session.text(stale));
             assertStale(() -> session.symbolName(stale));
@@ -1140,22 +1140,33 @@ public class GalleyTest {
             parser.clearProcedures();
         }
 
-        @Test
-        void rootIsTheProbeAndEverythingElseRefuses() {
-            // Before any parse there is no tree: root answers null, the one
-            // "nothing here" answer, and every other session-door read
-            // refuses rather than reporting a zero.
-            assertNull(session.rootNode());
-            assertThrows(StaleTreeException.class, session::nodeCount);
-            assertThrows(StaleTreeException.class, session::snapshot);
+        private void assertNothingPublished(Session target) {
+            // Root answers null, the one "nothing here" answer, and every
+            // other session-door read, the input and the position included,
+            // refuses rather than reporting a zero or an empty value.
+            assertNull(target.rootNode());
+            assertThrows(StaleTreeException.class, target::nodeCount);
+            assertThrows(StaleTreeException.class, target::snapshot);
+            assertThrows(StaleTreeException.class, target::lastInput);
+            assertThrows(StaleTreeException.class, target::lastPosition);
         }
 
         @Test
-        void aFailedParsePublishesNothing() {
-            assertThrows(GalleyException.class, () -> session.parse("alpha:"));
-            assertNull(session.rootNode());
-            assertThrows(StaleTreeException.class, session::nodeCount);
-            assertThrows(StaleTreeException.class, session::snapshot);
+        void rootIsTheProbeAndEverythingElseRefuses() {
+            // Before any parse there is no tree.
+            assertNothingPublished(session);
+        }
+
+        @Test
+        void aParseThatPublishesNothingRefusesEverything() {
+            // One error is the limit, so the parser raises instead of
+            // recovering and the failing parse publishes nothing.
+            try (Session strict = parser.openSession(SessionOptions.builder().maxErrors(1).build())) {
+                strict.parse("alpha:12");
+                assertArrayEquals("alpha:12".getBytes(StandardCharsets.UTF_8), strict.lastInput());
+                assertThrows(GalleyException.class, () -> strict.parse("alpha:"));
+                assertNothingPublished(strict);
+            }
         }
 
         @Test
@@ -1172,6 +1183,158 @@ public class GalleyTest {
                 assertFalse(closed instanceof StaleTreeException,
                         () -> "expected the closed-session error, got " + closed);
             }
+        }
+    }
+
+
+    /**
+     * A parse that fails after running to its end publishes its tree:
+     * semantic errors mark nodes, recovered syntax errors leave flagged nodes
+     * over the damaged input, and {@code parse} still throws. A parse the
+     * parser cannot recover from publishes nothing.
+     */
+    @Nested
+    class PublishedFailureTests {
+        /** Recovery skips {@code x,beta:} to resynchronize, then {@code 2}: two recovered nodes. */
+        static final String RECOVERED = "alpha:x,beta:2";
+        /** Parses, but a hook reports one semantic error on the Number {@code 2000}. */
+        static final String SEMANTIC = "alpha:1,beta:2000";
+
+        Session session;
+        Parser parser;
+
+        @BeforeEach
+        void setUp() {
+            parser = fixtureParser();
+            session = parser.openSession(SessionOptions.builder().maxErrors(10).build());
+        }
+
+        @AfterEach
+        void tearDown() {
+            session.close();
+            parser.clearProcedures();
+        }
+
+        private List<Walker.WalkStep> steps(boolean skipSemanticErrors, boolean skipRecovered) {
+            Node root = session.rootNode();
+            assertNotNull(root);
+            List<Walker.WalkStep> steps = new ArrayList<>();
+            for (Walker.WalkStep step : root.walk(skipSemanticErrors, skipRecovered)) steps.add(step);
+            return steps;
+        }
+
+        private String symbolOf(Walker.WalkStep step) {
+            return session.symbolName(step.node);
+        }
+
+        @Test
+        void aSemanticOnlyFailurePublishesItsTree() {
+            session.installProcedure("reduction_Number", args -> {
+                Node node = args.currentNode();
+                assertNotNull(node);
+                if (Integer.parseInt(new String(node.text(), StandardCharsets.UTF_8)) > 999) {
+                    args.reportSemanticError("value out of range");
+                }
+            });
+            GalleyException failure = assertThrows(GalleyException.class, () -> session.parse(SEMANTIC));
+            assertEquals(StatusCode.ERROR_SEMANTIC, failure.getCode());
+
+            List<Walker.WalkStep> full = steps(false, false);
+            List<Walker.WalkStep> marked = full.stream().filter(step -> step.isSemanticError).toList();
+            assertEquals(1, marked.size());
+            assertEquals("Number", symbolOf(marked.get(0)));
+            assertArrayEquals(new long[]{13, 4}, session.span(marked.get(0).node));
+            assertTrue(full.stream().noneMatch(step -> step.isRecovered));
+
+            List<Walker.WalkStep> pruned = steps(true, false);
+            assertTrue(pruned.size() < full.size());
+            assertTrue(pruned.stream().noneMatch(step -> step.isSemanticError));
+            // Nothing is recovered, so skipping recovered nodes changes nothing.
+            assertEquals(full.size(), steps(false, true).size());
+
+            TreeSnapshot snapshot = session.snapshot();
+            assertEquals(1, countTrue(snapshot.isSemanticError()));
+            assertEquals(0, countTrue(snapshot.isRecovered()));
+            assertArrayEquals(SEMANTIC.getBytes(StandardCharsets.UTF_8), session.lastInput());
+            assertEquals(SEMANTIC.length() + 2, session.lastPosition()[1]);
+
+            // The next parse retires the errored tree's nodes.
+            Node stale = session.rootNode();
+            assertNotNull(stale);
+            session.parse("alpha:12,beta:3");
+            assertThrows(StaleTreeException.class, stale::text);
+        }
+
+        @Test
+        void aRecoveredSyntaxErrorPublishesItsTree() {
+            GalleyException failure = assertThrows(GalleyException.class, () -> session.parse(RECOVERED));
+            assertEquals(StatusCode.ERROR_SYNTAX, failure.getCode());
+
+            List<Walker.WalkStep> full = steps(false, false);
+            List<Walker.WalkStep> recovered = full.stream().filter(step -> step.isRecovered).toList();
+            assertEquals(2, recovered.size());
+            assertTrue(full.stream().noneMatch(step -> step.isSemanticError));
+            // The damaged Number covers the input recovery skipped: x,beta:
+            assertEquals("Number", symbolOf(recovered.get(0)));
+            assertArrayEquals(new long[]{6, 7}, session.span(recovered.get(0).node));
+
+            // Skipping them leaves only undamaged nodes, none inside the damage.
+            List<Walker.WalkStep> undamaged = steps(false, true);
+            assertEquals(full.size() - 2, undamaged.size());
+            for (Walker.WalkStep step : undamaged) {
+                assertFalse(step.isRecovered);
+                long start = session.span(step.node)[0];
+                assertTrue(start < 6 || start >= 13);
+            }
+
+            // The snapshot column reads what the walk reports, node for node.
+            TreeSnapshot snapshot = session.snapshot();
+            List<Long> flagged = new ArrayList<>();
+            for (int i = 0; i < snapshot.isRecovered().length; i++) {
+                if (snapshot.isRecovered()[i]) flagged.add((long) i);
+            }
+            assertEquals(recovered.stream().map(step -> step.node.getAddress()).toList(), flagged);
+
+            assertArrayEquals(RECOVERED.getBytes(StandardCharsets.UTF_8), session.lastInput());
+            assertNotNull(session.lastPosition());
+
+            Node stale = session.rootNode();
+            assertNotNull(stale);
+            session.parse("alpha:12,beta:3");
+            assertThrows(StaleTreeException.class, stale::text);
+        }
+
+        @Test
+        void anUnrecoveredSyntaxErrorPublishesNothing() {
+            // One error is the limit, so the parser raises instead of recovering.
+            try (Session strict = parser.openSession(SessionOptions.builder().maxErrors(1).build())) {
+                assertThrows(GalleyException.class, () -> strict.parse(RECOVERED));
+                assertNull(strict.rootNode());
+                assertThrows(StaleTreeException.class, strict::lastInput);
+                assertThrows(StaleTreeException.class, strict::lastPosition);
+                assertThrows(StaleTreeException.class, strict::nodeCount);
+            }
+        }
+
+        @Test
+        void lastInputAndPositionRefuseBeforeAnyParse() {
+            assertThrows(StaleTreeException.class, session::lastInput);
+            assertThrows(StaleTreeException.class, session::lastPosition);
+        }
+
+        @Test
+        void aFailureWithoutARootStillPublishesItsInput() {
+            // Recovery skips all of the input before the grammar's first
+            // symbol: the parse publishes, but there is no tree to hold a root.
+            assertThrows(GalleyException.class, () -> session.parse("?"));
+            assertNull(session.rootNode());
+            assertArrayEquals("?".getBytes(StandardCharsets.UTF_8), session.lastInput());
+        }
+
+        private int countTrue(boolean[] flags) {
+            int count = 0;
+            for (boolean flag : flags) if (flag) count++;
+            return count;
         }
     }
 
@@ -1276,7 +1439,7 @@ public class GalleyTest {
             assertEquals("alpha:12", new String(session.text(first), StandardCharsets.UTF_8));
             assertEquals(first.childCount(), session.childCount(first));
             Node found = null;
-            Walker walker = session.rootNode().walk(false);
+            Walker walker = session.rootNode().walk(false, false);
             for (Walker.WalkStep step : walker) {
                 if (step.node.getAddress() == first.getAddress()) {
                     found = step.node;
@@ -1290,14 +1453,32 @@ public class GalleyTest {
         }
 
         @Test
-        void hookNodeOfAFailedParseIsRefusedAfterwards() {
+        void hookNodeOfAParseThatPublishesNothingIsRefusedAfterwards() {
+            // One error is the limit, so the failing parse raises instead of
+            // recovering and publishes nothing: its nodes die with it.
+            try (Session strict = parser.openSession(SessionOptions.builder().maxErrors(1).build())) {
+                List<Node> stashed = new ArrayList<>();
+                strict.installProcedure("reduction_Number", args -> stashed.add(args.currentNode()));
+                assertThrows(GalleyException.class, () -> strict.parse("alpha:12,beta:"));
+                assertFalse(stashed.isEmpty());
+                assertThrows(StaleTreeException.class, () -> stashed.get(0).text());
+                assertThrows(StaleTreeException.class, () -> strict.text(stashed.get(0)));
+                strict.clearProcedures();
+                strict.parse("alpha:12,beta:3");
+                assertThrows(StaleTreeException.class, () -> stashed.get(0).text());
+            }
+        }
+
+        @Test
+        void hookNodeOfAPublishedFailureLivesUntilTheNextParse() {
             List<Node> stashed = new ArrayList<>();
             session.installProcedure("reduction_Number", args -> stashed.add(args.currentNode()));
+            // The parser recovers from the missing Number, so the failure
+            // publishes its tree and the nodes its hooks saw stay valid.
             assertThrows(GalleyException.class, () -> session.parse("alpha:12,beta:"));
-            assertFalse(stashed.isEmpty());
-            assertThrows(StaleTreeException.class, () -> stashed.get(0).text());
-            assertThrows(StaleTreeException.class, () -> session.text(stashed.get(0)));
             session.clearProcedures();
+            assertFalse(stashed.isEmpty());
+            assertArrayEquals("12".getBytes(StandardCharsets.UTF_8), stashed.get(0).text());
             session.parse("alpha:12,beta:3");
             assertThrows(StaleTreeException.class, () -> stashed.get(0).text());
         }
@@ -1369,7 +1550,7 @@ public class GalleyTest {
                 assertNotNull(node);
                 hookRoots.add(node);
                 List<long[]> steps = new ArrayList<>();
-                for (Walker.WalkStep step : node.walk(false))
+                for (Walker.WalkStep step : node.walk(false, false))
                     steps.add(new long[]{step.node.getAddress(), step.depth});
                 recorded.add(steps);
             });
@@ -1378,7 +1559,7 @@ public class GalleyTest {
             assertFalse(recorded.isEmpty());
             for (int i = 0; i < hookRoots.size(); i++) {
                 List<long[]> replayed = new ArrayList<>();
-                for (Walker.WalkStep step : hookRoots.get(i).walk(false))
+                for (Walker.WalkStep step : hookRoots.get(i).walk(false, false))
                     replayed.add(new long[]{step.node.getAddress(), step.depth});
                 List<long[]> expected = recorded.get(i);
                 assertEquals(expected.size(), replayed.size());
@@ -1386,7 +1567,7 @@ public class GalleyTest {
                     assertArrayEquals(expected.get(k), replayed.get(k));
             }
             // walk() always hands back a walker, never null.
-            assertNotNull(session.rootNode().walk(false));
+            assertNotNull(session.rootNode().walk(false, false));
         }
 
         @Test
@@ -1563,7 +1744,7 @@ public class GalleyTest {
                     () -> session.priorSibling(root),
                     () -> session.parent(root),
                     () -> session.childCount(root),
-                    () -> root.walk(false).next(),
+                    () -> root.walk(false, false).next(),
                     () -> root.appendChildren(current),
                     () -> current.appendChildren(root),
                     // Both nodes of the previous parse: the host's own

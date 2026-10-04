@@ -96,6 +96,7 @@ interface GalleySymbols extends DoorNames<"">, DoorNames<"hook_"> {
     outSpanStart: number | null,
     outSpanLen: number | null,
     outIsSemanticError: number | null,
+    outIsRecovered: number | null,
     capacity: bigint,
   ): bigint;
   galley_has_diagnostic(session: NativeHandle): number;
@@ -235,7 +236,7 @@ const BASE_SYMBOLS = {
   galley_node_capacity: { args: [FFIType.ptr], returns: FFIType.u64 },
   galley_root_node: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   galley_tree_snapshot: {
-    args: [FFIType.ptr, FFIType.u64_fast, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.u64],
+    args: [FFIType.ptr, FFIType.u64_fast, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.u64],
     returns: FFIType.i64,
   },
   galley_has_diagnostic: { args: [FFIType.ptr], returns: FFIType.i32 },
@@ -618,18 +619,20 @@ export class BunPort implements FfiPort {
     return Number(this.native.galley_parse_file(handle as NativeHandle, ptr(nul)));
   }
 
-  lastPosition(handle: Handle): [number, number] | null {
+  lastPosition(handle: Handle): [number, number] | number {
     const outLine = u32Out();
     const outCol = u32Out();
-    if (this.native.galley_last_position(handle as NativeHandle, ptr(outLine), ptr(outCol)) < 0n) return null;
+    const status = this.native.galley_last_position(handle as NativeHandle, ptr(outLine), ptr(outCol));
+    if (status < 0n) return Number(status);
     return [outLine[0], outCol[0]];
   }
 
-  lastInput(handle: Handle): Uint8Array | null {
+  lastInput(handle: Handle): Uint8Array | number {
     const h = handle as NativeHandle;
     const outData = ptrOut64();
     const outLen = ptrOut64();
-    if (this.native.galley_last_input(h, ptr(outData), ptr(outLen)) < 0n) return null;
+    const status = this.native.galley_last_input(h, ptr(outData), ptr(outLen));
+    if (status < 0n) return Number(status);
     return readBytes(outData[0], outLen[0]);
   }
 
@@ -665,17 +668,18 @@ export class BunPort implements FfiPort {
       const spanStart = new BigUint64Array(count);
       const spanLen = new BigUint64Array(count);
       const isSemanticError = new Int32Array(count);
+      const isRecovered = new Int32Array(count);
       // A zero count (nothing parsed yet, or a stale last result) still
       // crosses so the gate can answer; bun:ffi cannot take a pointer to
       // empty memory, so empty columns pass as null.
       const column = (array: Parameters<typeof ptr>[0]) => (count > 0 ? ptr(array) : null);
       const total = this.native.galley_tree_snapshot(
         handle as NativeHandle, generation, column(parent), column(firstChild), column(next), column(childCount),
-        column(variable), column(spanStart), column(spanLen), column(isSemanticError), BigInt(count),
+        column(variable), column(spanStart), column(spanLen), column(isSemanticError), column(isRecovered), BigInt(count),
       );
       if (total < 0n) return Number(total);
       if (total === BigInt(count)) {
-        return { count, parent, firstChild, next, childCount, variable, spanStart, spanLen, isSemanticError };
+        return { count, parent, firstChild, next, childCount, variable, spanStart, spanLen, isSemanticError, isRecovered };
       }
     }
     throw new GalleyError("node count changed during galley_tree_snapshot", Status.ErrorInternal);

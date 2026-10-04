@@ -104,9 +104,11 @@ export async function runGenerationScenarios({ test, assert, newParser, SessionC
     }
   });
 
-  await test("a hook node of a failed parse is refused afterwards", async () => {
+  await test("a hook node of a parse that publishes nothing is refused afterwards", async () => {
     const parser = await newParser();
-    const s = await parser.openSession();
+    // One error is the limit, so the failing parse raises instead of
+    // recovering and publishes nothing: its nodes die with it.
+    const s = await parser.openSession({ maxErrors: 1 });
     try {
       const stashed = [];
       s.installProcedure("reduction_Number", (args) => {
@@ -117,6 +119,27 @@ export async function runGenerationScenarios({ test, assert, newParser, SessionC
       assert.throws(() => stashed[0].text(), StaleTreeError);
       assert.throws(() => s.text(stashed[0]), StaleTreeError);
       s.clearProcedures();
+      s.parse("alpha:12,beta:3");
+      assert.throws(() => stashed[0].text(), StaleTreeError);
+    } finally {
+      s.close();
+    }
+  });
+
+  await test("a hook node of a published failure lives until the next parse", async () => {
+    const parser = await newParser();
+    const s = await parser.openSession();
+    try {
+      const stashed = [];
+      s.installProcedure("reduction_Number", (args) => {
+        stashed.push(args.currentNode());
+      });
+      // The parser recovers from the missing Number, so the failure
+      // publishes its tree and the nodes its hooks saw stay valid.
+      assert.throws(() => s.parse("alpha:12,beta:"), GalleyError);
+      s.clearProcedures();
+      assert.ok(stashed.length >= 1);
+      assert.equal(decode(stashed[0].text()), "12");
       s.parse("alpha:12,beta:3");
       assert.throws(() => stashed[0].text(), StaleTreeError);
     } finally {
@@ -523,9 +546,11 @@ export async function runGenerationScenarios({ test, assert, newParser, SessionC
     }
   });
 
-  await test("a failed parse leaves every handle of the wiped tree dead", async () => {
+  await test("a parse that publishes nothing leaves every handle of the wiped tree dead", async () => {
     const parser = await newParser();
-    const s = await parser.openSession();
+    // One error is the limit, so the failing parse raises instead of
+    // recovering.
+    const s = await parser.openSession({ maxErrors: 1 });
     try {
       s.parse("alpha:12,beta:3");
       const root = s.rootNode();
@@ -583,23 +608,35 @@ export async function runGenerationScenarios({ test, assert, newParser, SessionC
 
   await test("nothing published refuses instead of answering", async () => {
     // Before any parse there is no tree: rootNode is the one "nothing here"
-    // probe and answers null, and every other session-door read raises the
-    // stale-tree error rather than reporting a zero.
+    // probe and answers null, and every other session-door read — the input
+    // and the position included — raises the stale-tree error rather than
+    // reporting a zero or an empty value.
     const parser = await newParser();
+    const assertNothingPublished = (s) => {
+      assert.equal(s.rootNode(), null);
+      assert.throws(() => s.nodeCount(), StaleTreeError);
+      assert.throws(() => s.snapshot(), StaleTreeError);
+      assert.throws(() => s.lastInput(), StaleTreeError);
+      assert.throws(() => s.lastPosition(), StaleTreeError);
+    };
     const s = await parser.openSession();
     try {
-      assert.equal(s.rootNode(), null);
-      assert.throws(() => s.nodeCount(), StaleTreeError);
-      assert.throws(() => s.snapshot(), StaleTreeError);
-      // A parse that publishes nothing leaves the same answer behind.
-      assert.throws(() => s.parse("alpha:"), GalleyError);
-      assert.equal(s.rootNode(), null);
-      assert.throws(() => s.nodeCount(), StaleTreeError);
-      assert.throws(() => s.snapshot(), StaleTreeError);
+      assertNothingPublished(s);
       s.parse("alpha:12");
       assert.ok(s.nodeCount() > 0);
     } finally {
       s.close();
+    }
+    // A parse that publishes nothing leaves the same answer behind: one
+    // error is the limit, so the parser raises instead of recovering.
+    const strict = await parser.openSession({ maxErrors: 1 });
+    try {
+      strict.parse("alpha:12");
+      assert.equal(decode(strict.lastInput()), "alpha:12");
+      assert.throws(() => strict.parse("alpha:"), GalleyError);
+      assertNothingPublished(strict);
+    } finally {
+      strict.close();
     }
   });
 

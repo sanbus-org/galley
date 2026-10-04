@@ -119,8 +119,9 @@ export interface AddonApi extends AddonDoorNames<""> , AddonDoorNames<"hook_"> {
   // parse
   galley_parse(session: bigint, data: Uint8Array, len: number): bigint;
   galley_parse_file(session: bigint, filePath: string): bigint;
-  galley_last_input(session: bigint): Uint8Array | null;
-  galley_last_position(session: bigint): [number, number] | null;
+  // A negative Number is the core's refusal; empty input is a buffer-less null.
+  galley_last_input(session: bigint): Uint8Array | number | null;
+  galley_last_position(session: bigint): [number, number] | number | null;
 
   // node / tree
   //
@@ -143,6 +144,7 @@ export interface AddonApi extends AddonDoorNames<""> , AddonDoorNames<"hook_"> {
     outSpanStart: BigUint64Array,
     outSpanLen: BigUint64Array,
     outIsSemanticError: Int32Array,
+    outIsRecovered: Int32Array,
     capacity: bigint,
   ): number;
 
@@ -544,12 +546,12 @@ export class NodePort implements FfiPort {
     return toNumber(this.api.galley_parse_file(handle as bigint, filePath));
   }
 
-  lastPosition(handle: Handle): [number, number] | null {
-    return this.api.galley_last_position(handle as bigint);
+  lastPosition(handle: Handle): [number, number] | number {
+    return this.api.galley_last_position(handle as bigint) ?? [0, 0];
   }
 
-  lastInput(handle: Handle): Uint8Array | null {
-    return this.api.galley_last_input(handle as bigint);
+  lastInput(handle: Handle): Uint8Array | number {
+    return this.api.galley_last_input(handle as bigint) ?? new Uint8Array(0);
   }
 
   // -- arena and navigation ----------------------------------------------
@@ -588,13 +590,14 @@ export class NodePort implements FfiPort {
       const spanStart = new BigUint64Array(count);
       const spanLen = new BigUint64Array(count);
       const isSemanticError = new Int32Array(count);
+      const isRecovered = new Int32Array(count);
       const total = this.api.galley_tree_snapshot(
         handle as bigint, generation, parent, firstChild, next, childCount,
-        variable, spanStart, spanLen, isSemanticError, BigInt(count),
+        variable, spanStart, spanLen, isSemanticError, isRecovered, BigInt(count),
       );
       if (total < 0) return total;
       if (total === count) {
-        return { count, parent, firstChild, next, childCount, variable, spanStart, spanLen, isSemanticError };
+        return { count, parent, firstChild, next, childCount, variable, spanStart, spanLen, isSemanticError, isRecovered };
       }
     }
     throw new GalleyError("node count changed during galley_tree_snapshot", Status.ErrorInternal);

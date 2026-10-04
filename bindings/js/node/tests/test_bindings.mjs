@@ -24,6 +24,7 @@ import { collect } from "../../../js/core/build/collect.mjs";
 import { ensureTestLibrary } from "../../../js/core/build/fixture.mjs";
 import { runConcurrencyScenario } from "../../../js/core/build/concurrency.mjs";
 import { runGenerationScenarios } from "../../../js/core/build/generations.mjs";
+import { runPublishedFailureScenarios } from "../../../js/core/build/published-failures.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const exampleLib = artifactFileName("galley-js-node", process.platform);
@@ -625,10 +626,10 @@ await test("Node construction is closed and the session exposes no creation help
   }
 });
 
-await test("lastInput buffers snapshot spans and starts empty", async () => {
+await test("lastInput buffers snapshot spans and refuses before any parse", async () => {
   const fresh = await newSession();
   try {
-    assert.equal(fresh.lastInput().length, 0);
+    assert.throws(() => fresh.lastInput(), StaleTreeError);
   } finally {
     fresh.close();
   }
@@ -652,8 +653,9 @@ await test("lastInput buffers snapshot spans and starts empty", async () => {
   }
 });
 
-await test("failed parse keeps the input of the last successful parse", async () => {
-  const s = await newSession();
+await test("a parse that publishes nothing retains no input", async () => {
+  // One error is the limit, so the failing parse raises instead of recovering.
+  const s = await newSession({ maxErrors: 1 });
   try {
     s.parse("alpha:12,beta:3");
     const retained = Buffer.from(s.lastInput());
@@ -661,11 +663,12 @@ await test("failed parse keeps the input of the last successful parse", async ()
     const root = s.rootNode();
     assert.ok(root !== null);
 
-    // A failed parse must not clobber the retained input. Its own tree
-    // wiped the last successful one when the parse started, so node
-    // reads and snapshots refuse until the next successful parse.
+    // The input follows the published tree like every read: the failed
+    // parse wiped the last successful tree when it started and published
+    // none of its own, so the input, node reads and snapshots all refuse
+    // until the next successful parse.
     assert.throws(() => s.parse("gamma:"), (err) => err.code === Status.ErrorSyntax);
-    assert.deepEqual(Buffer.from(s.lastInput()), retained);
+    assert.throws(() => s.lastInput(), StaleTreeError);
     assert.throws(() => s.snapshot(), StaleTreeError);
     assert.throws(() => s.text(root), StaleTreeError);
     assert.throws(() => root.text(), StaleTreeError);
@@ -1672,6 +1675,7 @@ await test("the consumer build gets -Doptimize only when a mode is chosen", () =
 });
 
 await runGenerationScenarios({ test, assert, newParser, SessionClosedError, StaleTreeError, GalleyError, Status, collect });
+await runPublishedFailureScenarios({ test, assert, newParser, StaleTreeError, GalleyError, Status });
 
 await test("two parsers, two sessions each, four threads at once", async () => {
   const secondDirectory = ensureTestLibrary({

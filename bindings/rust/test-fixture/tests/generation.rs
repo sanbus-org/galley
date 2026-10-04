@@ -1,5 +1,5 @@
 //! The core checks the generation of every node a session-door call names.
-use galley::{Error, Session};
+use galley::{Error, Session, SessionOptions};
 
 fn two_parses() -> (Session, galley::NodeHandle, galley::NodeHandle) {
     let mut session = Session::new().expect("session");
@@ -41,9 +41,19 @@ fn a_handle_of_an_earlier_parse_is_refused_on_every_edit() {
     assert!(session.child_count(second).expect("child count") > 0);
 }
 
+// One error is the limit, so a failing parse raises instead of recovering and
+// publishes nothing.
+fn strict_session() -> Session {
+    Session::with_options(SessionOptions {
+        max_errors: 1,
+        ..SessionOptions::default()
+    })
+    .expect("session")
+}
+
 #[test]
-fn a_handle_from_before_a_failed_parse_is_refused() {
-    let mut session = Session::new().expect("session");
+fn a_handle_from_before_a_parse_that_publishes_nothing_is_refused() {
+    let mut session = strict_session();
     session.parse(b"alpha:12").expect("first parse");
     let first = session.root_node().expect("root read").expect("root");
     session.parse(b"alpha:").expect_err("syntax error");
@@ -53,11 +63,11 @@ fn a_handle_from_before_a_failed_parse_is_refused() {
 }
 
 // `root_node` keeps "nothing is published" (`Ok(None)`) apart from a
-// refusal (`Err`): a fresh session and a session after a failed parse both
-// answer `Ok(None)`, and a published tree answers `Ok(Some)`.
+// refusal (`Err`): a fresh session and a session after a parse that published
+// nothing both answer `Ok(None)`, and a published tree answers `Ok(Some)`.
 #[test]
 fn root_node_reports_nothing_published_as_ok_none() {
-    let mut session = Session::new().expect("session");
+    let mut session = strict_session();
     assert_eq!(session.root_node(), Ok(None));
     // Nothing published is the core's stale tree, never a zero or an empty snapshot.
     assert_eq!(session.node_count(), Err(Error::StaleTree));
@@ -66,6 +76,6 @@ fn root_node_reports_nothing_published_as_ok_none() {
     assert!(matches!(session.root_node(), Ok(Some(_))));
     session.parse(b"alpha:").expect_err("syntax error");
     assert_eq!(session.root_node(), Ok(None));
-    let info = session.info().expect("info").expect("ast build");
-    assert!(info.root.is_none());
+    // The position follows the published tree like every read: refused.
+    assert_eq!(session.info().map(|_| ()), Err(Error::StaleTree));
 }

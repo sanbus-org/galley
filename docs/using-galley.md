@@ -330,9 +330,12 @@ than waiting if the session is already parsing or has active readers. Call
 `session.read(result)` before inspecting session-owned AST data. Multiple
 readers may coexist, but every reader must be released before parsing again.
 Results carry a session generation, so `read` returns
-`error.StaleParseResult` after a later parse — successful or failed — has
-reused the session: a failed parse resets node storage too, and only a
-successful parse publishes a fresh result.
+`error.StaleParseResult` after a later parse — published or not — has
+reused the session: every parse resets node storage, and a parse publishes a
+fresh result when it ran to its end — a success, or a failure that recorded
+only semantic errors or syntax errors the parser recovered from (see
+[syntax-error recovery](/syntax_error_recovery#recovered-trees)). A parse the
+parser could not recover from publishes nothing.
 `tryDeinit()` similarly returns `error.SessionInUse`; `deinit()` reports
 incorrect active-guard destruction with a clear panic.
 
@@ -405,8 +408,11 @@ of that diagnostic (what the C ABI returns). A recovery-enabled parse that
 encounters errors still returns `ParseError.SyntaxError`; acquire
 `session.readLatest()` before allowing another reuse, then use
 `syntaxErrorCount()`, `lastDiagnostic()`, and `recordedDiagnostics()` on that
-guard. The diagnostics guard's accessors expose no node storage: only `read(result)`
-after a successful parse exposes `astAllocator()`.
+guard. The diagnostics guard's accessors expose no node storage: only
+`read(result)` or `readCurrent()` over a published parse — a success, or a
+failure that ran to its end with errors recorded — exposes `astAllocator()`,
+and a recovered syntax error leaves its damaged regions there as nodes with
+`is_recovered` set.
 
 `SyntaxDiagnostic.recovery` is `null` until explicit synchronization succeeds. On success it identifies the winning terminal, whether parsing resumed `.before` or `.after` it, and the winning target: an LHS variable, a production `{ variable, rhs_index }`, or an occurrence `{ parent_variable, rhs_index, symbol_index, variable }`. The original unexpected token, expected tokens, source location, mismatch context, and LL/LR message-hook name are unchanged. Default plain and ANSI rendering append a `Recovery:` line, and custom message hooks receive the finalized diagnostic.
 

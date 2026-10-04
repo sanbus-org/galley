@@ -118,6 +118,7 @@ interface GalleyWasmExports extends DoorNames<"">, DoorNames<"hook_"> {
     outSpanStart: number,
     outSpanLen: number,
     outIsSemanticError: number,
+    outIsRecovered: number,
     capacity: bigint,
   ): bigint;
   galley_last_position(session: number, outLine: number, outCol: number): bigint;
@@ -886,11 +887,11 @@ export class WasmPort implements FfiPort {
     return this.parse(handle, data);
   }
 
-  lastPosition(handle: Handle): [number, number] | null {
+  lastPosition(handle: Handle): [number, number] | number {
     const out = this.malloc(8);
     try {
       const status = this.wasm.galley_last_position(handle as number, out, out + 4);
-      if (isNegative(status)) return null;
+      if (isNegative(status)) return toNumber(status);
       const view = this.dataView();
       return [view.getUint32(out, true), view.getUint32(out + 4, true)];
     } finally {
@@ -898,9 +899,18 @@ export class WasmPort implements FfiPort {
     }
   }
 
-  lastInput(handle: Handle): Uint8Array | null {
-    const session = handle as number;
-    return this.tryCopyBytes((data, len) => this.wasm.galley_last_input(session, data, len));
+  lastInput(handle: Handle): Uint8Array | number {
+    const out = this.malloc(8);
+    try {
+      const status = this.wasm.galley_last_input(handle as number, out, out + 4);
+      if (isNegative(status)) return toNumber(status);
+      const view = this.dataView();
+      const ptr = view.getUint32(out, true);
+      const len = view.getUint32(out + 4, true);
+      return ptr === 0 || len === 0 ? new Uint8Array(0) : this.readBytes(ptr, len);
+    } finally {
+      this.free(out, 8);
+    }
   }
 
   // -- arena and navigation ---------------------------------------------------
@@ -938,7 +948,7 @@ export class WasmPort implements FfiPort {
         // A zero count (a build with no AST construction) still crosses
         // with null columns so the gate can answer.
         const status = toNumber(
-          this.wasm.galley_tree_snapshot(handle as number, this.#generation.of(generation), 0, 0, 0, 0, 0, 0, 0, 0, 0n),
+          this.wasm.galley_tree_snapshot(handle as number, this.#generation.of(generation), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0n),
         );
         if (status < 0) return status;
         return {
@@ -951,12 +961,13 @@ export class WasmPort implements FfiPort {
           spanStart: new BigUint64Array(0),
           spanLen: new BigUint64Array(0),
           isSemanticError: new Int32Array(0),
+          isRecovered: new Int32Array(0),
         };
       }
       // Eight-byte columns first (parent, firstChild, next, spanStart,
       // spanLen, variable), then the u32 childCount tail and the i32
-      // semantic-flag tail: every column stays naturally aligned for
-      // bulk typed-array copies.
+      // semantic-error and recovered flag tails: every column stays
+      // naturally aligned for bulk typed-array copies.
       const stride = count * 8;
       const offParent = 0;
       const offFirst = stride;
@@ -966,13 +977,14 @@ export class WasmPort implements FfiPort {
       const offVariable = stride * 5;
       const offChildCount = stride * 6;
       const offSemantic = offChildCount + count * 4;
-      const total = offSemantic + count * 4;
+      const offRecovered = offSemantic + count * 4;
+      const total = offRecovered + count * 4;
       const base = this.malloc(total);
       try {
         const status = this.wasm.galley_tree_snapshot(
           handle as number, this.#generation.of(generation), base + offParent, base + offFirst, base + offNext,
           base + offChildCount, base + offVariable, base + offSpanStart,
-          base + offSpanLen, base + offSemantic, BigInt(count),
+          base + offSpanLen, base + offSemantic, base + offRecovered, BigInt(count),
         );
         if (isNegative(status)) return Number(status);
         if (status !== BigInt(count)) continue;
@@ -995,7 +1007,9 @@ export class WasmPort implements FfiPort {
         childCount.set(new Uint32Array(memory.buffer, memory.byteOffset + base + offChildCount, count));
         const isSemanticError = new Int32Array(count);
         isSemanticError.set(new Int32Array(memory.buffer, memory.byteOffset + base + offSemantic, count));
-        return { count, parent, firstChild, next, childCount, variable, spanStart, spanLen, isSemanticError };
+        const isRecovered = new Int32Array(count);
+        isRecovered.set(new Int32Array(memory.buffer, memory.byteOffset + base + offRecovered, count));
+        return { count, parent, firstChild, next, childCount, variable, spanStart, spanLen, isSemanticError, isRecovered };
       } finally {
         this.free(base, total);
       }

@@ -25,7 +25,7 @@ fn walk_matches_hand_rolled_recursion() {
     session.parse(b"alpha:12,beta:3").expect("clean parse");
     let root = session.root_node().expect("root read").expect("root");
     let walked: Vec<(galley::NodeHandle, u32)> = session
-        .walk(root, false)
+        .walk(root, false, false)
         .map(|step| step.expect("walk step"))
         .map(|step| (step.node, step.depth))
         .collect();
@@ -33,7 +33,7 @@ fn walk_matches_hand_rolled_recursion() {
     assert!(walked.len() > 1);
     assert_eq!(walked, expected);
     assert!(!session
-        .walk(root, false)
+        .walk(root, false, false)
         .map(|step| step.expect("walk step"))
         .any(|step| step.is_semantic_error));
 }
@@ -43,7 +43,7 @@ fn walk_skip_children_prunes_subtree() {
     let mut session = Session::new().expect("session");
     session.parse(b"alpha:12,beta:3").expect("clean parse");
     let root = session.root_node().expect("root read").expect("root");
-    let mut walker = session.walk(root, false);
+    let mut walker = session.walk(root, false, false);
     let first = walker.next().expect("first step").expect("first step");
     assert_eq!(first.node, root);
     assert_eq!(first.depth, 0);
@@ -57,7 +57,7 @@ fn walk_skip_children_prunes_subtree() {
 fn walk_of_the_invalid_sentinel_fails_at_the_first_step() {
     let mut session = Session::new().expect("session");
     session.parse(b"alpha:12,beta:3").expect("clean parse");
-    let mut walker = session.walk(galley::NodeHandle::INVALID, false);
+    let mut walker = session.walk(galley::NodeHandle::INVALID, false, false);
     assert_eq!(walker.next(), Some(Err(galley::Error::StaleTree)));
     // The failure ends the walk rather than repeating.
     assert!(walker.next().is_none());
@@ -71,7 +71,7 @@ fn walk_of_a_stale_root_fails_at_the_first_step() {
     session.parse(b"alpha:12").expect("first parse");
     let stale = session.root_node().expect("root read").expect("root");
     session.parse(b"alpha:12,beta:3").expect("second parse");
-    let mut walker = session.walk(stale, false);
+    let mut walker = session.walk(stale, false, false);
     assert_eq!(walker.next(), Some(Err(galley::Error::StaleTree)));
     assert!(walker.next().is_none());
 }

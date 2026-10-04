@@ -20,7 +20,7 @@ fn newCursor(root_address: Node.Pointer) tree_walker.Cursor {
         .depth = 0,
         .state = tree_walker.state_not_started,
         .options = 0,
-        .is_semantic_error = 0,
+        .flags = 0,
         .structure_version = 0,
     };
 }
@@ -181,6 +181,69 @@ test "walker flags and prunes semantic error subtrees" {
     try std.testing.expect(saw_start);
 }
 
+test "walker flags and prunes recovered subtrees independently of semantic errors" {
+    var node_allocator = try TestAllocator.initWithCapacity(std.testing.allocator, 8);
+    defer node_allocator.deinit(std.testing.allocator);
+    // root(0) -> 1 (recovered) -> 2; root -> 3 (semantic error); root -> 4 (both flags).
+    var addresses: [5]Node.Pointer = undefined;
+    for (&addresses) |*slot| slot.* = try node_allocator.create(0, 0);
+    Node.appendChildren(addresses[0], &node_allocator, addresses[1]);
+    Node.appendChildren(addresses[1], &node_allocator, addresses[2]);
+    Node.appendChildren(addresses[0], &node_allocator, addresses[3]);
+    Node.appendChildren(addresses[0], &node_allocator, addresses[4]);
+    node_allocator.at(addresses[1]).is_recovered = true;
+    node_allocator.at(addresses[3]).is_semantic_error = true;
+    node_allocator.at(addresses[4]).is_recovered = true;
+    node_allocator.at(addresses[4]).is_semantic_error = true;
+
+    // Without a skip option every node is yielded, each with its own flags.
+    var walker = Walker.init(&node_allocator, addresses[0], .{});
+    const flags = [_]struct { recovered: bool, semantic: bool }{
+        .{ .recovered = false, .semantic = false },
+        .{ .recovered = true, .semantic = false },
+        .{ .recovered = false, .semantic = false },
+        .{ .recovered = false, .semantic = true },
+        .{ .recovered = true, .semantic = true },
+    };
+    for (flags, addresses) |want, address| {
+        const step = (try walker.next()) orelse return error.TooFewSteps;
+        try std.testing.expectEqual(address, step.address);
+        try std.testing.expectEqual(want.recovered, step.is_recovered);
+        try std.testing.expectEqual(want.semantic, step.is_semantic_error);
+    }
+    try std.testing.expect((try walker.next()) == null);
+
+    // Each option prunes only its own nodes; both together keep the rest.
+    const cases = [_]struct { Walker.Options, []const usize }{
+        .{ .{ .skip_recovered_subtrees = true }, &.{ 0, 3 } },
+        .{ .{ .skip_semantic_error_subtrees = true }, &.{ 0, 1, 2 } },
+        .{ .{ .skip_recovered_subtrees = true, .skip_semantic_error_subtrees = true }, &.{0} },
+    };
+    for (cases) |case| {
+        var pruning = Walker.init(&node_allocator, addresses[0], case[0]);
+        for (case[1]) |index| {
+            const step = (try pruning.next()) orelse return error.TooFewSteps;
+            try std.testing.expectEqual(addresses[index], step.address);
+        }
+        try std.testing.expect((try pruning.next()) == null);
+    }
+
+    // The cursor carries both flags in its one byte.
+    var cursor = newCursor(addresses[0]);
+    cursor.options = tree_walker.option_skip_recovered;
+    try std.testing.expect(try walkNext(&node_allocator, &cursor));
+    try std.testing.expectEqual(@as(u8, 0), cursor.flags);
+    cursor = newCursor(addresses[0]);
+    try std.testing.expect(try walkNext(&node_allocator, &cursor));
+    try std.testing.expect(try walkNext(&node_allocator, &cursor));
+    try std.testing.expectEqual(tree_walker.flag_recovered, cursor.flags);
+    try std.testing.expect(try walkNext(&node_allocator, &cursor));
+    try std.testing.expect(try walkNext(&node_allocator, &cursor));
+    try std.testing.expectEqual(tree_walker.flag_semantic_error, cursor.flags);
+    try std.testing.expect(try walkNext(&node_allocator, &cursor));
+    try std.testing.expectEqual(tree_walker.flag_semantic_error | tree_walker.flag_recovered, cursor.flags);
+}
+
 test "walker visits a childless synthetic root exactly once" {
     var node_allocator = try TestAllocator.initWithCapacity(std.testing.allocator, 2);
     defer node_allocator.deinit(std.testing.allocator);
@@ -279,7 +342,7 @@ test "walk rejects cursors with unknown state, options, or out-of-range position
     try std.testing.expectError(error.InvalidCursor, walkNext(&node_allocator, &cursor));
 
     cursor.state = tree_walker.state_not_started;
-    cursor.options = 0x02;
+    cursor.options = 0x04;
     try std.testing.expectError(error.InvalidCursor, walkNext(&node_allocator, &cursor));
 
     cursor.options = 0;
