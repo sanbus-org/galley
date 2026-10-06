@@ -25,13 +25,11 @@ const RESULT_TIMEOUT_MS = 120_000;
 /**
  * Runs the scenario, asserts on the four workers' reports, and returns
  * them. `universalEntry` is the URL of the universal entry module;
- * `backend` is `"native"` or `"wasm"`; `firstDirectory` and
- * `secondDirectory` are the built language directories of the keyvalue and
- * second grammars.
+ * `firstDirectory` and `secondDirectory` are the built language
+ * directories of the keyvalue and second grammars.
  */
 export async function runConcurrencyScenario({
   universalEntry,
-  backend,
   firstDirectory,
   secondDirectory,
   items = 150,
@@ -49,7 +47,6 @@ export async function runConcurrencyScenario({
       workerData: {
         ...configuration,
         universalEntry,
-        backend,
         items,
         stressRounds,
         barrier: barrier.buffer,

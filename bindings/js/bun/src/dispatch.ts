@@ -9,29 +9,12 @@
  * workers (or two grammars) never share one.
  */
 
-import { createRequire } from "node:module";
-import * as path from "node:path";
 import { JSCallback, FFIType } from "bun:ffi";
 
-import { loadProceduresModule } from "@sanbus/galley-core/internal";
 import type { BunPort } from "./ffi.ts";
 
-const require = createRequire(import.meta.url);
 // Held to prevent GC: the callback must stay reachable for the port's life.
 const callbacks = new WeakMap<BunPort, unknown>();
-
-/**
- * Synchronously loads the language directory's `procedures` module, if
- * any. Returns the module for the session to install into its own
- * registry; never touches another session's hooks.
- */
-export function loadProcedures(languagePath: string): Record<string, unknown> | null {
-  return loadProceduresModule(
-    (specifier) => require(specifier) as unknown,
-    path.join,
-    languagePath,
-  );
-}
 
 /** Creates the port's callback and records its native address for `setSessionHooks`. */
 export function installDispatch(port: BunPort): void {

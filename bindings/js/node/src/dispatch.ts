@@ -9,25 +9,7 @@
  * library so two grammars in one process never share a port.
  */
 
-import * as path from "node:path";
-import { createRequire } from "node:module";
-const require = createRequire(import.meta.url);
-
-import { loadProceduresModule } from "@sanbus/galley-core/internal";
 import type { NodePort } from "./ffi.ts";
-
-/**
- * Synchronously loads the language directory's `procedures` module, if
- * any. Returns the module for the session to install into its own
- * registry; never touches another session's hooks.
- */
-export function loadProcedures(languagePath: string): Record<string, unknown> | null {
-  return loadProceduresModule(
-    (specifier) => require(specifier) as unknown,
-    path.join,
-    languagePath,
-  );
-}
 
 /**
  * Hands the addon the callback its parse frames re-enter. The addon keeps

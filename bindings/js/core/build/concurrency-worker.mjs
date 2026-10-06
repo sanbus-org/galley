@@ -14,7 +14,6 @@ const {
   items,
   stressRounds,
   universalEntry,
-  backend,
   barrier: barrierMemory,
   parties,
   barrierTimeoutMs,
@@ -50,7 +49,7 @@ const specific = grammar === "keyvalue" ? "hook_print" : "hook_tally";
 const reduction = grammar === "keyvalue" ? "reduction_Pair" : "reduction_Word";
 
 const { openLanguageDirectory } = await import(universalEntry);
-const parser = await openLanguageDirectory(directory, { backend });
+const parser = openLanguageDirectory(directory);
 // The fixture's bundled hooks are defaults every session would copy.
 parser.clearProcedures();
 const session = parser.openSession();

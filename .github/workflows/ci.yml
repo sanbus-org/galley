@@ -705,7 +705,7 @@ jobs:
           npx tsx demo.ts >/tmp/out-js-universal.txt 2>/tmp/err-js-universal.txt
           bun demo.ts >/tmp/out-js-universal-bun.txt 2>/tmp/err-js-universal-bun.txt
           deno run --allow-ffi --allow-read --allow-write --allow-env demo.ts >/tmp/out-js-universal-deno.txt 2>/tmp/err-js-universal-deno.txt
-          GALLEY_WASM=1 npx tsx demo.ts >/tmp/out-js-universal-wasm.txt 2>/tmp/err-js-universal-wasm.txt
+          npx tsx demo.ts --wasm >/tmp/out-js-universal-wasm.txt 2>/tmp/err-js-universal-wasm.txt
           cd ../..
           cd examples/zig
           zig build
@@ -925,8 +925,11 @@ jobs:
           }
           check_browser_bundle() {
             local bundle="$1" status=0
-            if ! grep -q 'using the WebAssembly backend' "$bundle"; then
-              echo "browser notice missing in $bundle"
+            # Positive marker: the browser entry's bare-load prefix. The
+            # loader side shares it, so the negative checks below are what
+            # separate the entries.
+            if ! grep -q 'galley: galley.loadUrl' "$bundle"; then
+              echo "browser entry missing in $bundle"
               status=1
             fi
             if grep -q 'tried native library' "$bundle"; then
@@ -989,9 +992,9 @@ jobs:
           diff /tmp/out-universal-node.txt /tmp/out-universal-deno.txt
           diff /tmp/err-universal-node.txt /tmp/err-universal-bun.txt
           diff /tmp/err-universal-node.txt /tmp/err-universal-deno.txt
-          GALLEY_WASM=1 npx tsx demo.ts >/tmp/out-universal-wasm.txt 2>/tmp/err-universal-wasm.txt
-          GALLEY_WASM=1 bun demo.ts >/tmp/out-universal-wasm-bun.txt 2>/tmp/err-universal-wasm-bun.txt
-          GALLEY_WASM=1 deno run --allow-ffi --allow-read --allow-write --allow-env demo.ts >/tmp/out-universal-wasm-deno.txt 2>/tmp/err-universal-wasm-deno.txt
+          npx tsx demo.ts --wasm >/tmp/out-universal-wasm.txt 2>/tmp/err-universal-wasm.txt
+          bun demo.ts --wasm >/tmp/out-universal-wasm-bun.txt 2>/tmp/err-universal-wasm-bun.txt
+          deno run --allow-ffi --allow-read --allow-write --allow-env demo.ts --wasm >/tmp/out-universal-wasm-deno.txt 2>/tmp/err-universal-wasm-deno.txt
           diff /tmp/out-universal-node.txt /tmp/out-universal-wasm.txt
           diff /tmp/err-universal-node.txt /tmp/err-universal-wasm.txt
           diff /tmp/out-universal-wasm.txt /tmp/out-universal-wasm-bun.txt

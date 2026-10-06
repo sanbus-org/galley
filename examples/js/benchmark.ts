@@ -8,6 +8,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 import { galley } from "@sanbus/galley";
 import type { Session } from "@sanbus/galley";
 import * as json from "./json/index.mjs";
@@ -28,22 +29,16 @@ function resolveInput(explicit: string | undefined): string {
   process.exit(1);
 }
 
-// GALLEY_WASM=1 (or a path to a `.wasm` module file) benchmarks the
-// WebAssembly backend instead of native, mirroring demo.ts.
-function jsonWasmBytes(): Uint8Array | "dir" | null {
-  const selected = process.env.GALLEY_WASM;
-  if (!selected) return null;
-  process.env.GALLEY_QUIET = "1";
-  if (selected === "1") return "dir";
-  return new Uint8Array(fs.readFileSync(selected));
-}
-
-async function main(): Promise<number> {
+function main(): number {
   const arguments_ = process.argv.slice(2);
+  // `--wasm` benchmarks the WebAssembly artifact explicitly: a `.wasm`
+  // file misses the native leg and instantiates through wasm.
+  const wasmMode = arguments_.includes("--wasm");
+  const positional = arguments_.filter((argument) => argument !== "--wasm");
   let iterations = DEFAULT_ITERATIONS;
-  const explicit = arguments_[0];
-  if (arguments_.length > 1) {
-    iterations = Number.parseInt(arguments_[1], 10);
+  const explicit = positional[0];
+  if (positional.length > 1) {
+    iterations = Number.parseInt(positional[1], 10);
     if (!Number.isInteger(iterations) || iterations < 1) {
       console.error("iterations must be >= 1");
       return 1;
@@ -62,16 +57,16 @@ async function main(): Promise<number> {
 
   let session: Session;
   try {
-    await json.initialize();
-    const wasm = jsonWasmBytes();
-    if (wasm !== null && wasm !== "dir") {
-      const parser = await galley.loadBytes(wasm);
-      session = await parser.openSession();
+    if (wasmMode) {
+      // Bare artifact loads wire nothing — fine here: the json grammar
+      // has no procedures.
+      const parser = galley.load(
+        fileURLToPath(new URL("./json/libgalley-js-wasm.wasm", import.meta.url)),
+      );
+      session = parser.openSession();
     } else {
-      session =
-        wasm === null
-          ? await json.openSession()
-          : await json.openSession({ backend: "wasm" });
+      // The entry is its parser: openSession returns a session directly.
+      session = json.openSession();
     }
   } catch {
     console.error("failed to create a parser session");
@@ -132,4 +127,4 @@ function withThousands(n: number | bigint): string {
   return out;
 }
 
-main().then((code) => process.exit(code));
+process.exit(main());

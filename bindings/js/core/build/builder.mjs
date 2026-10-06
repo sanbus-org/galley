@@ -281,6 +281,11 @@ async function loadArtifactNames() {
   }
 }
 
+/**
+ * The single procedures-file lookup: the build log and the entry's
+ * static import both take their answer here, so a directory holding
+ * both files wires `procedures.ts` — `.ts` before `.js`.
+ */
 function findJsProceduresFile(languageDirectory) {
   const candidates = [
     path.join(languageDirectory, "procedures.ts"),
@@ -577,9 +582,10 @@ function packageNameFor(languageDir) {
 
 /**
  * Writes the generated package entry for direct import: `package.json`
- * plus an `index.mjs` that opens sessions on its own directory, with
- * the bundled `procedures` scan the generated entry performs. The entry
- * only pre-binds the directory. Returns the package name, or null when
+ * plus an `index.mjs` that opens sessions on its own directory with the
+ * sibling `procedures` file statically imported (an empty stub is
+ * created when the grammar has none). The entry only pre-binds the
+ * directory. Returns the package name, or null when
  * the entry is skipped (warned, never fatal: packaging must not fail
  * artifact compilation).
  */
@@ -617,11 +623,27 @@ function emitPackageEntry(languageDir) {
     );
     return null;
   }
-  // Baked into the entry: the bundled hook file found at build time, or
-  // null for hook-less grammars. `initialize()` loads it on runtimes
-  // without a synchronous scan (Deno).
+  // The entry statically imports the sibling procedures file, so the
+  // import must always resolve: a missing file gets an empty editable
+  // stub, written once and never touched again.
+  let proceduresSpecifier = "./procedures.js";
   const proceduresFile = findJsProceduresFile(languageDir);
-  const proceduresSpecifier = proceduresFile === null ? "null" : `"./${path.basename(proceduresFile)}"`;
+  if (proceduresFile !== null) {
+    proceduresSpecifier = `./${path.basename(proceduresFile)}`;
+  } else {
+    const stubPath = path.join(languageDir, "procedures.js");
+    if (!fs.existsSync(stubPath)) {
+      fs.writeFileSync(
+        stubPath,
+        `// Bundled procedure hooks for this grammar: add named exports here
+// (\`reduction\`, \`reduction_<Variable>\`, \`hook_<name>\`).
+// Written empty by the build; edit freely, no build overwrites it.
+export {};
+`,
+        "utf-8",
+      );
+    }
+  }
   fs.writeFileSync(
     manifestPath,
     JSON.stringify(
@@ -645,15 +667,71 @@ function emitPackageEntry(languageDir) {
     ) + "\n",
     "utf-8",
   );
+  // The one list of parser members the entry mirrors: the JS re-exports
+  // and the .d.mts declarations below both derive from it, so the
+  // runtime surface and its types cannot drift apart. `bind: false`
+  // marks a member that is a value rather than a method.
+  const PARSER_MEMBERS = [
+    { name: "backend", bind: false, doc: ["/** The leg serving this parser: `\"native\"` or `\"wasm\"`. */"] },
+    { name: "installBundledProcedures" },
+    { name: "version" },
+    { name: "parserType" },
+    { name: "errorRecoveryMode" },
+    { name: "hasAst" },
+    { name: "hasProcedures" },
+    { name: "allowsNoAstTreeProcedures" },
+    { name: "sourceRetentionEnabled" },
+    { name: "hasPositionTracking" },
+    { name: "hasInputStreaming" },
+    { name: "usesVerbatim" },
+    { name: "stackOverflowRecoveryAvailable" },
+    { name: "symbolCount" },
+    { name: "variableCount" },
+    { name: "statusString" },
+    { name: "installProcedure" },
+    { name: "installProcedures" },
+    { name: "clearProcedures" },
+    { name: "listProcedures" },
+    { name: "procedureHook" },
+    {
+      name: "openSession",
+      doc: [
+        "/**",
+        " * Opens a session on this package's parser. Bundled `procedures` are",
+        " * wired at import, ahead of any explicit installs on the parser.",
+        " *",
+        " * @returns {import(\"@sanbus/galley\").Session}",
+        " */",
+      ],
+    },
+  ];
+  const parserMemberLines = [];
+  for (const [index, member] of PARSER_MEMBERS.entries()) {
+    if (member.doc !== undefined) {
+      if (parserMemberLines.length > 0) parserMemberLines.push("");
+      parserMemberLines.push(...member.doc);
+    }
+    const source = member.bind === false
+      ? `PARSER.${member.name}`
+      : `PARSER.${member.name}.bind(PARSER)`;
+    parserMemberLines.push(`export const ${member.name} = ${source};`);
+    if (member.doc !== undefined && index < PARSER_MEMBERS.length - 1) {
+      parserMemberLines.push("");
+    }
+  }
+  const parserMembersJs = parserMemberLines.join("\n");
+  const parserMembersTypes = PARSER_MEMBERS.map(
+    (member) => `export declare const ${member.name}: Parser["${member.name}"];`,
+  ).join("\n");
   fs.writeFileSync(
     initPath,
     `${GENERATED_BANNER}
-// Language package: parser surface plus bundled hook wiring. Sessions
-// open on this package's parser, and bundled hooks wire automatically.
+// Language package: this module IS this package's parser — it exports
+// the parser's interface, and bundled hooks wire automatically when
+// it is imported (synchronously, so CommonJS \`require()\` works too).
 //
 //   import * as kv from "./kv/index.mjs";
-//   await kv.initialize();
-//   const session = await kv.openSession({ maxErrors: 10 });
+//   const session = kv.openSession({ maxErrors: 10 });
 import { fileURLToPath } from "node:url";
 import {
   Session,
@@ -669,6 +747,7 @@ import {
   Resume,
 } from "@sanbus/galley-core";
 import { openLanguageDirectory } from "@sanbus/galley";
+import * as procedures from "${proceduresSpecifier}";
 
 export {
   Session,
@@ -686,65 +765,22 @@ export {
 
 const LANGUAGE_DIR = fileURLToPath(new URL(".", import.meta.url));
 
-// Baked at build time: the bundled hook file found next to the grammar,
-// or null for hook-less grammars.
-const PROCEDURES_SPECIFIER = ${proceduresSpecifier};
+// Wired at import: this package's shared parser — artifact load plus
+// bundled-hook wiring from the statically imported procedures — before
+// the importer resumes. Sessions and explicit installs reuse it, and
+// the exports below mirror its interface.
+const PARSER = openLanguageDirectory(LANGUAGE_DIR, {}, procedures);
 
-/**
- * Bundled hook namespace once loaded by \`initialize()\`, else null.
- * Module-private: hook namespaces are imported from their hook file.
- */
-let bundledProcedures = null;
-
-/**
- * Prepare this package for use. Required on Deno, where no synchronous
- * scan exists: loads the bundled hooks into the shared parser
- * for later sessions. A no-op on every other runtime, so one program
- * runs everywhere.
- */
-export async function initialize() {
-  if (
-    PROCEDURES_SPECIFIER !== null &&
-    bundledProcedures === null &&
-    globalThis.Deno !== undefined
-  ) {
-    bundledProcedures = await import(PROCEDURES_SPECIFIER);
-    (await openLanguageDirectory(LANGUAGE_DIR, { expectProcedures: true })).installBundledProcedures(bundledProcedures);
-  }
-}
-
-/**
- * The shared parser for this package's artifact. Sessions open
- * from it, and explicit hook installs target it directly.
- *
- * @returns {Promise<import("@sanbus/galley").Parser>}
- */
-export function parser(options = {}) {
-  return openLanguageDirectory(LANGUAGE_DIR, options);
-}
-
-/**
- * Opens a session on this package's parser. Bundled \`procedures\`
- * wire automatically at parser creation, ahead of any explicit
- * installs on the parser. Backend pins apply to the acquire
- * half only; explicit hooks need \`parser()\` first, since one call
- * cannot install and open atomically.
- *
- * @returns {Promise<import("@sanbus/galley").Session>}
- */
-export function openSession(options = {}) {
-  const { backend, ...sessionOptions } = options;
-  return openLanguageDirectory(LANGUAGE_DIR, { backend }).then((parser) =>
-    parser.openSession(sessionOptions),
-  );
-}
+${parserMembersJs}
 `,
     "utf-8",
   );
   fs.writeFileSync(
     typesPath,
     `${GENERATED_BANNER}
-// Type declarations for the generated language package entry.
+// Type declarations for the generated language package entry: the
+// module mirrors its package's parser, so every member below is that
+// parser's member, bound at import.
 import type {
   Session,
   Node,
@@ -758,8 +794,6 @@ import type {
   RecoveryMode,
   RecoveryTarget,
   Resume,
-  SessionOptions,
-  UniversalDirectoryOptions,
 } from "@sanbus/galley";
 
 export {
@@ -777,12 +811,7 @@ export {
   Resume,
 };
 
-/** See \`initialize\` in \`./index.mjs\`. */
-export declare function initialize(): Promise<void>;
-/** See \`openSession\` in \`./index.mjs\`. */
-export declare function openSession(options?: SessionOptions & UniversalDirectoryOptions): Promise<Session>;
-/** See \`parser\` in \`./index.mjs\`. */
-export declare function parser(options?: UniversalDirectoryOptions): Promise<Parser>;
+${parserMembersTypes}
 `,
     "utf-8",
   );

@@ -2,19 +2,36 @@
 
 Rules every host binding follows. Grammar-level procedure semantics live in [procedures.md](../docs/procedures.md); this file covers loading, wiring, walking, failures, and repo conventions (the Builds and Examples sections constrain repo content, not runtime behavior). Cross-host values keep one meaning and take one shape per host: this file states what crosses, the binding contracts (`bindings/<language>/CONTRACTS.md`) state how it is spelled, and a binding contract's spelling always wins where it differs.
 
+Since this document addresses different programming languages, name of artifacts like functions, classes, etc are written quoted. They are expected to be converted to the casing of the programming language.
+
 ## Artifacts and loading
 
-- A load takes its artifact as an explicit argument.
-- A language's bundled hooks wire automatically when its package is loaded or imported.
-- The same source always yields the identical parser, and repeated loads of the same source share one default hook table.
-- A failed load hands out no parser and invalidates none already handed out; retrying after the cause is fixed is a fresh attempt.
+- Every binding offers two methods for loading a parser:
+  1. Loading a language package with native language syntax for importing a package or module.
+  1. A bare load function.
+
+- As far as the binding host allows, either approach is idempotent: a failed one changes nothing, and retrying a factory call after the cause is fixed is a fresh attempt. Importing an entry constructs it.
+- The loaded package has the parser binary already loaded into it.
+- Both yield an instance of a "parser" which includes:
+  - A function for opening new sessions.
+  - Hook management functions: "install procedure", "install procedures", "procedure hook", "clear procedures", "list procedures"
+  - Introspection functions: "version", "parser type", "has ast", "has procedures", "symbol count", "variable count", "status string"
+- The same source-method combo always yields the identical parser, and repeated loads of the same source-method share one default hook table.
+- A failed load hands out no parser and invalidates none already handed out; retrying a factory call after the cause is fixed is a fresh attempt.
 - A missing artifact reports the path and the exact build command, with a machine-readable code identical across hosts.
 - A host that offers both dynamic and static forms of its artifact leaves the choice to the user.
+- Loading a parser and opening a session are two steps: sessions open from the loaded parser.
+
+### Loading language as a package
+
+- Bundled hooks of a parser package are considered a part of it and they are automatically installed upon import.
+- A host that scans at runtime imports the sibling procedures file beside the artifact; a host that bakes hooks at build wires the list the build recorded.
 
 Hosts that acquire native code at load time follow the load/open choreography:
 
-- Bare loads take an artifact and yield the parser without scanning for hook files; hooks arrive explicitly only.
-- Loading and opening are two steps: loading acquires the artifact and yields the parser, and sessions open from it, so hook installs fit between them.
+### Bare loading
+
+- A bare load wires nothing; hooks arrive explicitly only.
 
 ## Hooks
 

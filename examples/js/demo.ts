@@ -5,22 +5,16 @@
 
 import * as fs from "node:fs";
 import process from "node:process";
-import { galley, Kind } from "@sanbus/galley";
+import { fileURLToPath } from "node:url";
+import { Kind, galley } from "@sanbus/galley";
 import type { Session } from "@sanbus/galley";
 import * as kv from "./kv/index.mjs";
 import * as procedures from "./kv/procedures.ts";
 
-// GALLEY_WASM=1 (or a path to a `.wasm` module file) runs the same demo
-// through the WebAssembly backend instead of native. Explicit choice, so
-// the fallback notice is silenced process-wide and the output matches
-// the native run byte for byte.
-function wasmBytes(): Uint8Array | "dir" | null {
-  const selected = process.env.GALLEY_WASM;
-  if (!selected) return null;
-  process.env.GALLEY_QUIET = "1";
-  if (selected === "1") return "dir";
-  return new Uint8Array(fs.readFileSync(selected));
-}
+// `--wasm` runs through the WebAssembly artifact instead of native —
+// same output, byte for byte. The file argument (if any) follows.
+const wasmMode = process.argv.includes("--wasm");
+const fileArguments = process.argv.slice(2).filter((argument) => argument !== "--wasm");
 
 const VALID_SAMPLE = "alpha:12,beta:3";
 const BROKEN_SAMPLE = "alpha:";
@@ -46,27 +40,28 @@ function printTree(node: import("@sanbus/galley").Node, depth: number): void {
   }
 }
 
-async function main(): Promise<number> {
+function main(): number {
   let session: Session;
-  let parser: import("@sanbus/galley").Parser;
   try {
-    await kv.initialize();
-    const wasm = wasmBytes();
-    const hooks = procedures as unknown as Record<string, unknown>;
-    if (wasm === null) {
-      parser = await kv.parser();
-    } else if (wasm === "dir") {
-      parser = await kv.parser({ backend: "wasm" });
+    if (wasmMode) {
+      // The entry resolves at import in both modes; this load adds
+      // nothing of its own — the `.wasm` source names its engine, so no
+      // fallback notice fires and stderr matches native.
+      const parser = galley.load(
+        fileURLToPath(new URL("./kv/libgalley-js-wasm.wasm", import.meta.url)),
+      );
+      parser.installProcedures(procedures as unknown as Record<string, unknown>);
+      session = parser.openSession({ maxErrors: 10 });
     } else {
-      parser = await galley.loadBytes(wasm);
+      // The entry is its parser: importing kv wired the bundled hooks,
+      // and openSession returns a session directly.
+      session = kv.openSession({ maxErrors: 10 });
     }
-    parser.installProcedures(hooks);
-    session = await parser.openSession({ maxErrors: 10 });
   } catch {
     console.error("failed to create a parser session");
     return 1;
   }
-  console.log(`galley version: ${parser.version()}`);
+  console.log(`galley version: ${kv.version()}`);
 
   // scoped lifetime via try/finally
   try {
@@ -80,10 +75,9 @@ async function main(): Promise<number> {
       return 1;
     }
 
-    const args = process.argv.slice(2);
-    if (args.length > 0) {
+    if (fileArguments.length > 0) {
       try {
-        const parsed = session.parseFile(args[0]);
+        const parsed = session.parseFile(fileArguments[0]);
         console.log(`parsed ${parsed} bytes`);
         return 0;
       } catch (err: unknown) {
@@ -92,7 +86,7 @@ async function main(): Promise<number> {
         const line = diag?.line ?? 0;
         const col = diag?.column ?? 0;
         const msg = diag?.message ?? "";
-        console.error(`${args[0]}:${line}:${col}: ${msg}`);
+        console.error(`${fileArguments[0]}:${line}:${col}: ${msg}`);
         return 1;
       }
     }
@@ -107,7 +101,7 @@ async function main(): Promise<number> {
       return 1;
     }
     console.log(`parsed ${parsed} bytes, ${session.nodeCount()} AST nodes`);
-    if (!parser.hasAst()) {
+    if (!kv.hasAst()) {
       console.log("AST construction disabled; skipping tree walk");
     } else {
       const root = session.rootNode();
@@ -182,7 +176,7 @@ async function main(): Promise<number> {
     console.log(`file parse: ${parsed} bytes, ended at ${endLine}:${endColumn}`);
 
     // Tree editing: detach the root's children, then reattach them.
-    if (parser.hasAst()) {
+    if (kv.hasAst()) {
       const root = session.rootNode();
       if (!root) {
         console.error("expected the root to have children");
@@ -204,4 +198,4 @@ async function main(): Promise<number> {
   }
 }
 
-main().then((code) => process.exit(code));
+process.exit(main());

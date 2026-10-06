@@ -18,7 +18,7 @@ export {
 } from "./artifact.ts";
 export { displayTokenName } from "./diagnostic.ts";
 export { linkOrStatus, GenerationBigInt } from "./crossing.ts";
-export { isProcedureName, loadProceduresModule, registryFor, __resetSharedRegistries } from "./procedures.ts";
+export { isProcedureName, registryFor, __resetSharedRegistries } from "./procedures.ts";
 export {
   checkLanguagePath,
   checkArtifactPath,
@@ -27,9 +27,6 @@ export {
   checkParseInput,
   checkMessageBytes,
   fetchModuleBytes,
-  skippedScanMessage,
-  noteSkippedScan,
-  __resetSkippedScan,
 } from "./sources.ts";
 export { encodeUtf8, decodeUtf8, byteLengthUtf8 } from "./text.ts";
 

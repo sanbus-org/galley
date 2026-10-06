@@ -8,11 +8,10 @@
  * the seed wired in `index.ts`.
  */
 
-import { createRequire } from "node:module";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { loadProceduresModule, canonicalResolvePath } from "@sanbus/galley-core/internal";
+import { canonicalResolvePath } from "@sanbus/galley-core/internal";
 import type { FileIo } from "./ffi.ts";
 
 /** `FileIo` over the real filesystem. */
@@ -33,20 +32,3 @@ export const nodeFileIo: FileIo = {
     return canonicalResolvePath(candidate, path.resolve, fs.realpathSync);
   },
 };
-
-/**
- * `require()`-based load of `procedures.*` in a language directory.
- * Returns the module for the session to install into its own registry,
- * or null when nothing loadable is there. Anything found beside the
- * grammar belongs to this session; nothing else is even looked at.
- * Byte-fed modules have no directory: nothing to scan.
- */
-export function scanLanguageDir(directory: string | undefined): Record<string, unknown> | null {
-  if (!directory) return null;
-  const require = createRequire(import.meta.url);
-  return loadProceduresModule(
-    (specifier) => require(specifier) as unknown,
-    path.join,
-    path.resolve(directory),
-  );
-}

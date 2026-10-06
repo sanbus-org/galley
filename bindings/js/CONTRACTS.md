@@ -6,16 +6,19 @@ Host-specific rules for the JavaScript binding. Shared behavior lives in [CONTRA
 
 - Generated language entries export the `Session` value for namespace mirroring; adapter and universal entries expose it type-only and construct sessions exclusively from parsers.
 - The `galley` object loads explicit artifact files, raw module bytes, and fetched module URLs.
-- Byte and URL forms compile off the event loop through a shared module cache, so a source is never built twice.
+- Byte and URL forms share one module cache, so a source is never built twice. Only `loadUrl` is async — the fetch is; file, byte, and package loads return synchronously. The trade: a wasm module compiles on the loading thread at its first resolve, never in the background.
 - The same source always resolves to the identical parser, and repeated loads of that source share one default hook table.
-- The generated entry opens sessions against its own directory with bundled hooks. `initialize` preloads those hooks where no synchronous scan exists and is a no-op elsewhere, so it can be called unconditionally.
+- The generated entry statically imports its `procedures` file — the build writes an empty stub when the grammar has none — so importing the entry loads the artifact and wires those hooks with no runtime scan anywhere. The import completes synchronously — no top-level await — so CommonJS `require()` of the entry works.
+- An entry whose import threw stays failed for the process: re-importing rethrows the same error without re-running, so fixing the cause means a fresh process.
+- When the build has procedures enabled (`config.zig procedures = true`), a non-empty procedures module with no hook-named function exports prints one notice per module at bundled wiring; the build's empty stub and bare loads stay silent.
+- The entry is its parser: it exports the parser's interface bound to the import-time parser (`openSession`, the hook members, the status and inspection members), so there is no `parser()` accessor and no second load anywhere.
 - The file form of a package import works on every runtime; directory-form imports resolve only where the toolchain performs index resolution.
 
 ## Backends
 
-- Two engine legs: native first, WebAssembly as fallback, with explicit pins accepted at load time. Pins live on load calls only, never on session construction.
+- Two engine legs: native first, WebAssembly as fallback, no pins: the best available leg is picked, and load calls take no backend option.
 - Sessions report their leg through a read-only getter.
-- Fallback prints a one-time process notice, silenced process-wide with `GALLEY_QUIET=1`.
+- Fallback prints a one-time process notice.
 
 ## Types and errors
 

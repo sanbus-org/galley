@@ -140,8 +140,17 @@ export function isProcedureName(name: string): boolean {
 }
 
 /**
- * One artifact's procedure hooks. Parsers build one from the
- * directory scan; hooks never cross artifacts.
+ * The one wire rule: a hook-named function export. The scan, the
+ * default-export cover check, and the zero-wiring guard's "exports a
+ * hook" test all ask this, so the install rule cannot drift from them.
+ */
+function isWireableHook(name: string, value: unknown): value is HookFn {
+  return typeof value === "function" && isProcedureName(name);
+}
+
+/**
+ * One artifact's procedure hooks. Parsers build one from the entry's
+ * bundled namespace; hooks never cross artifacts.
  */
 export class ProcedureRegistry {
   readonly #hooks = new Map<string, HookFn>();
@@ -161,15 +170,33 @@ export class ProcedureRegistry {
    * or nested arrays; nullish entries are skipped. Only names with no
    * existing hook install, so explicit installs win over bundled scans
    * regardless of order. Returns the number installed.
+   *
+   * `proceduresEnabled` is the build's config flag (`config.zig
+   * procedures = true`) supplied by the parser: with it set, a
+   * non-empty module holding no hook-named function exports prints
+   * one notice per module — the misnaming the installed count cannot
+   * report, since a healthy re-scan also installs zero. A module the
+   * default-export diagnostic already reported stays at that one line:
+   * it names the same mistake and the same fix.
    */
-  installBundled(value: unknown): number {
+  installBundled(value: unknown, proceduresEnabled = false): number {
     if (value === null || value === undefined) return 0;
     if (Array.isArray(value)) {
       let total = 0;
-      for (const entry of value) total += this.installBundled(entry);
+      for (const entry of value) total += this.installBundled(entry, proceduresEnabled);
       return total;
     }
-    return this.#scanModule(value as Record<string, unknown>, false);
+    const module = value as Record<string, unknown>;
+    const wired = this.#scanModule(module, false);
+    if (
+      proceduresEnabled &&
+      Object.keys(module).length > 0 &&
+      !exportsHookName(module) &&
+      !warnedDefaultExports.has(module)
+    ) {
+      warnOnZeroHookWiring(module);
+    }
+    return wired;
   }
 
   /**
@@ -181,19 +208,26 @@ export class ProcedureRegistry {
     return this.#scanModule(module, true);
   }
 
-  /** Shared module scan: name filter, near-miss warning, overwrite policy. */
+  /**
+   * Shared module scan: name filter, near-miss warning, overwrite
+   * policy; the default-export diagnostic runs at scan end, once every
+   * top-level name is known.
+   */
   #scanModule(module: Record<string, unknown>, overwrite: boolean): number {
     if (module === null || typeof module !== "object") throw new TypeError("module must be an object");
     let count = 0;
     for (const [name, value] of Object.entries(module)) {
-      if (typeof value !== "function") continue;
-      if (!isProcedureName(name)) {
-        warnOnNearMissHook(name);
+      if (name === "default") continue;
+      if (!isWireableHook(name, value)) {
+        if (typeof value === "function") warnOnNearMissHook(name);
         continue;
       }
       if (!overwrite && this.#hooks.has(name)) continue;
-      this.#hooks.set(name, value as HookFn);
+      this.#hooks.set(name, value);
       count++;
+    }
+    if (Object.hasOwn(module, "default")) {
+      warnOnIgnoredDefault(module, module["default"]);
     }
     return count;
   }
@@ -333,80 +367,81 @@ function isNearMissHookName(name: string): boolean {
   return lower.startsWith("reduct") || lower.startsWith("hook");
 }
 
-/** Warns on a skipped export that looks like a mistyped hook name. */
+/** Names already reported as mistyped hooks: one report per name per process. */
+const warnedNearMissNames = new Set<string>();
+
+/** Warns once per name on a skipped export that looks like a mistyped hook. */
 function warnOnNearMissHook(name: string): void {
-  if (!isNearMissHookName(name)) return;
+  if (!isNearMissHookName(name) || warnedNearMissNames.has(name)) return;
+  warnedNearMissNames.add(name);
   console.warn(
     `galley: ignoring export "${name}": ` +
       `procedure hooks must be named reduction, reduction_*, or hook_*.`,
   );
 }
 
+/** Modules already reported for a hidden default export: one report per module. */
+const warnedDefaultExports = new WeakSet<object>();
+
 /**
- * Synchronously loads a `procedures` module from a language directory:
- * tries `procedures`, `procedures.ts` in order and returns the first
- * that loads as an object. Bare `procedures` covers `.js` under
- * `require` resolution (mirrored by the build gate's explicit
- * `procedures.ts`/`procedures.js` existence probe, which cannot rely
- * on resolution). Only named exports
- * (`reduction`, `reduction_*`, `hook_*`) install as hooks — a `default`
- * export is never read, and a loud warning names the file when it looks
- * like hooks were left there. Returns null when nothing loadable is
- * there. `requireModule` and `joinPath` are injected so this stays
- * runtime-neutral; runtimes without a synchronous loader (browsers,
- * Deno) pass no loader and register hooks explicitly through the
- * session instead.
+ * The default spelling never wires: the scan installs top-level named
+ * exports only. Warn when the default carries hook content no
+ * function-valued top-level export covers (an interop namespace
+ * exposing the same hooks under both spellings wires them and stays
+ * quiet), or when it is itself a function, which no scan can ever
+ * install. Presence of a top-level function of that name decides —
+ * not installation — so a re-scan over an already-installed name does
+ * not re-trigger. Keyed per module: wasm's double scan shares the
+ * namespace and prints once; a second broken module still reports.
  */
-export function loadProceduresModule(
-  requireModule: ((specifier: string) => unknown) | undefined,
-  joinPath: (...parts: string[]) => string,
-  directory: string,
-): Record<string, unknown> | null {
-  if (!requireModule) return null;
-  // Bare `procedures` covers `.js` under `require` resolution; the
-  // explicit `.ts` spelling is the only one that reaches TypeScript
-  // hook files. (ESM `import()` would need every spelling explicit —
-  // revisit if any leg leaves `require`.)
-  for (const file of ["procedures", "procedures.ts"]) {
-    const specifier = joinPath(directory, file);
-    let loaded: unknown;
-    try {
-      loaded = requireModule(specifier);
-    } catch (error) {
-      // A missing file means "try the next name". Anything else — a
-      // throw inside the module, an unloadable extension — is the
-      // user's bug, not a miss: rethrow instead of silently running
-      // hookless. A missing nested dependency names its own specifier,
-      // so it rethrows too.
-      if (isMissingSpecifier(error, specifier)) continue;
-      throw error;
-    }
-    if (loaded === null || typeof loaded !== "object") continue;
-    const module = loaded as Record<string, unknown>;
-    warnOnIgnoredDefault(specifier, module.default);
-    return module;
+function warnOnIgnoredDefault(module: Record<string, unknown>, defaultExport: unknown): void {
+  if (defaultExport === null) return;
+  const kind = typeof defaultExport;
+  if (kind !== "object" && kind !== "function") return;
+  let holdsHookContent = false;
+  let heldNames = 0;
+  for (const [name, value] of Object.entries(defaultExport as object)) {
+    if (!isWireableHook(name, value)) continue;
+    heldNames++;
+    if (Object.hasOwn(module, name) && isWireableHook(name, module[name])) continue;
+    holdsHookContent = true;
+    break;
   }
-  return null;
+  const bareFunction = kind === "function" && heldNames === 0;
+  if ((!holdsHookContent && !bareFunction) || warnedDefaultExports.has(module)) return;
+  warnedDefaultExports.add(module);
+  console.warn(
+    `galley: ignoring default export: ` +
+      `procedure hooks must be named exports (reduction_*, hook_*).`,
+  );
 }
 
-/** True when `error` reports `specifier` itself as not found. */
-function isMissingSpecifier(error: unknown, specifier: string): boolean {
-  if (typeof error !== "object" || error === null) return false;
-  const code = (error as { code?: unknown }).code;
-  if (code !== "MODULE_NOT_FOUND" && code !== "ERR_MODULE_NOT_FOUND") return false;
-  const message = (error as { message?: unknown }).message;
-  return typeof message === "string" && message.includes(specifier);
+/** True when the module has at least one hook-named function export. */
+function exportsHookName(module: Record<string, unknown>): boolean {
+  for (const [name, value] of Object.entries(module)) {
+    if (isWireableHook(name, value)) return true;
+  }
+  return false;
 }
 
-/** Warns when a `default` export holds hooks that will never run. */
-function warnOnIgnoredDefault(specifier: string, defaultExport: unknown): void {
-  if (defaultExport === null || typeof defaultExport !== "object") return;
-  for (const [name, value] of Object.entries(defaultExport)) {
-    if (typeof value !== "function" || !isProcedureName(name)) continue;
-    console.warn(
-      `galley: ignoring default export in ${specifier}: ` +
-        `procedure hooks must be named exports (reduction_*, hook_*).`,
-    );
-    return;
-  }
+/** Modules already reported for zero hook wiring: one report per module. */
+const warnedZeroHookWiring = new WeakSet<object>();
+
+/**
+ * The build has procedures enabled (config.zig `procedures = true`)
+ * but this module — non-empty, since the build's own empty stub says
+ * "no hooks" legitimately — has no hook-named function export at all:
+ * the bundled scan wired nothing and no other diagnostic fires. Keyed
+ * per module: wasm's double scan shares the namespace and prints once;
+ * a second broken language still reports.
+ */
+function warnOnZeroHookWiring(module: Record<string, unknown>): void {
+  if (warnedZeroHookWiring.has(module)) return;
+  warnedZeroHookWiring.add(module);
+  console.warn(
+    `galley: no hooks wired from the procedures module, but this build has procedures enabled ` +
+      `(config.zig procedures = true): hooks must be named reduction, reduction_*, or hook_*.`,
+  );
 }
+
+

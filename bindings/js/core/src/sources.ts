@@ -134,36 +134,3 @@ export async function fetchModuleBytes(url: string | URL, what: string): Promise
   return new Uint8Array(await response.arrayBuffer());
 }
 
-/**
- * Warning when a procedures file was detected but the runtime cannot
- * auto-load it (Deno has no synchronous module loader): names the file
- * and points at the explicit `procedures` option. One shared copy so
- * the Deno adapter and the universal loader cannot drift.
- */
-export function skippedScanMessage(found: string): string {
-  return (
-    `galley: ${found} was detected but not auto-loaded; ` +
-    `pass its hooks through the procedures option.`
-  );
-}
-
-let warnedSkippedScan = false;
-
-/**
- * Warns once per process when a procedures file was detected but not
- * loaded and no explicit `procedures` were given. The single gate for
- * the Deno adapter and the universal loader, so one process using both
- * entries warns once, not twice. Silent when nothing was found or when
- * the caller already passed hooks explicitly.
- */
-export function noteSkippedScan(found: string | null, explicit: unknown): void {
-  if (found === null || warnedSkippedScan) return;
-  if (explicit !== undefined && explicit !== null) return;
-  warnedSkippedScan = true;
-  console.warn(skippedScanMessage(found));
-}
-
-/** Test-only: clear the skipped-scan notice. */
-export function __resetSkippedScan(): void {
-  warnedSkippedScan = false;
-}

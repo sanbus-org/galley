@@ -46,27 +46,20 @@ const {
   GalleyError,
 } = await import("../dist/index.js");
 
-const { galley, openLanguageDirectory, __resetParserCache } = await import("../../universal/dist/index.js");
+const { galley, openLanguageDirectory, __resetParserCache, Parser } = await import("../../universal/dist/index.js");
 
-async function newParser(opts = {}) {
-  return openLanguageDirectory(languageDir, { backend: "wasm", ...opts });
+// The fixture's hook module, passed the way the generated entry passes it.
+const bundledProcedures = await import(
+  pathToFileURL(path.join(languageDir, "procedures.ts")).href
+);
+
+async function newParser() {
+  return openLanguageDirectory(languageDir, {}, bundledProcedures);
 }
 
 async function newSession(opts = {}) {
   const parser = await newParser();
   return parser.openSession(opts);
-}
-
-/** Runs `fn` with the process-wide wasm-notice opt-out set. */
-async function withQuietEnv(fn) {
-  const previous = process.env.GALLEY_QUIET;
-  process.env.GALLEY_QUIET = "1";
-  try {
-    return await fn();
-  } finally {
-    if (previous === undefined) delete process.env.GALLEY_QUIET;
-    else process.env.GALLEY_QUIET = previous;
-  }
 }
 
 let passed = 0;
@@ -91,13 +84,13 @@ function assertIn(value, arr, msg) {
 
 // ---- ParserSurfaceTests (grammar queries live on the parser) ----
 
-await test("openLanguageDirectory requires languagePath", async () => {
-  await assert.rejects(openLanguageDirectory(""), /languagePath/);
-  await assert.rejects(openLanguageDirectory(), /languagePath/);
+await test("openLanguageDirectory requires languagePath", () => {
+  assert.throws(() => openLanguageDirectory(""), /languagePath/);
+  assert.throws(() => openLanguageDirectory(), /languagePath/);
 });
 
 await test("openLanguageDirectory resolves a usable parser", async () => {
-  const parser = await openLanguageDirectory(languageDir, { backend: "wasm" });
+  const parser = await openLanguageDirectory(languageDir);
   assert.ok(parser.version().length > 0);
   const s = await parser.openSession();
   try {
@@ -107,22 +100,22 @@ await test("openLanguageDirectory resolves a usable parser", async () => {
   }
 });
 
-await test("missing artifact names the directory", async () => {
-  await assert.rejects(
-    openLanguageDirectory(path.join(languageDir, "no-such-dir"), { backend: "wasm" }),
+await test("missing artifact names the directory", () => {
+  assert.throws(
+    () => openLanguageDirectory(path.join(languageDir, "no-such-dir")),
     /no-such-dir/,
   );
 });
 
-await test("galley.load requires filePath", async () => {
-  await assert.rejects(galley.load(""), /filePath/);
-  await assert.rejects(galley.load(), /filePath/);
-  await assert.rejects(galley.load("no-such-lib\0"), /interior NUL/);
+await test("galley.load requires filePath", () => {
+  assert.throws(() => galley.load(""), /filePath/);
+  assert.throws(() => galley.load(), /filePath/);
+  assert.throws(() => galley.load("no-such-lib\0"), /interior NUL/);
 });
 
-await test("galley.load missing artifact names the file", async () => {
-  await assert.rejects(
-    galley.load(path.join(languageDir, "no-such-lib"), { backend: "wasm" }),
+await test("galley.load missing artifact names the file", () => {
+  assert.throws(
+    () => galley.load(path.join(languageDir, "no-such-lib")),
     /no-such-lib/,
   );
 });
@@ -134,8 +127,8 @@ await test("galley.load opens an explicit artifact file", async () => {
   const customLib = path.join(fileDir, `custom-name${path.extname(exampleLib)}`);
   fs.renameSync(path.join(fileDir, exampleLib), customLib);
   try {
-    // Bare file loads never scan: hooks arrive explicitly only.
-    const parser = await galley.load(customLib, { backend: "wasm" });
+    // Bare file loads wire nothing: hooks arrive explicitly only.
+    const parser = await galley.load(customLib);
     assert.deepEqual(parser.listProcedures(), {});
     const s = await parser.openSession();
     try {
@@ -175,7 +168,6 @@ await test("direct package import wires bundled hooks", async () => {
   fs.symlinkSync(path.join(__dirname, "..", "..", "universal"), universalLink);
   fs.symlinkSync(path.join(__dirname, "..", "..", "core"), coreLink);
   const kv = await import(pathToFileURL(path.join(languageDir, "index.mjs")).href);
-  await kv.initialize();
   // Hook namespaces are imported from their hook file; the entry binds
   // none, and named exports are the sole spelling.
   assert.equal("procedures" in kv, false);
@@ -196,16 +188,29 @@ await test("direct package import wires bundled hooks", async () => {
     "RecoveryTarget",
     "Resume",
   ];
+  // The entry mirrors the parser's interface: derive the pin from the
+  // Parser prototype chain (universal additions over core), excluding
+  // the constructor and core's internal `port` accessor.
+  const parserInterface = (() => {
+    const names = new Set();
+    for (let proto = Parser.prototype; proto !== Object.prototype; proto = Object.getPrototypeOf(proto)) {
+      for (const name of Object.getOwnPropertyNames(proto)) {
+        if (name === "constructor" || name === "port") continue;
+        names.add(name);
+      }
+    }
+    return [...names];
+  })();
+  assert.equal(parserInterface.length, 22);
   assert.deepEqual(
     Object.keys(kv).sort(),
-    ["initialize", "openSession", "parser", ...surface].sort(),
+    [...parserInterface, ...surface].sort(),
   );
-  // Construction stays async-only: the bare class needs a bound port.
+  // Construction stays direct: the bare class needs a bound port.
   assert.throws(() => new kv.Session(), /bound port/);
-  const parser = await kv.parser();
-  const s = await kv.openSession();
+  const s = kv.openSession();
   try {
-    assert.ok("reduction_Pair" in parser.listProcedures());
+    assert.ok("reduction_Pair" in kv.listProcedures());
     assert.equal(s.parse("alpha:12,beta:3"), 15);
   } finally {
     s.close();
@@ -252,7 +257,7 @@ await test("entry hides the base Session value", async () => {
 
 await test("entry keeps loader internals off the public surface", async () => {
   const ns = await import("../dist/index.js");
-  for (const name of ["resolveArtifact", "checkModuleBytes", "encodeUtf8", "noteSkippedScan"]) {
+  for (const name of ["resolveArtifact", "checkModuleBytes", "encodeUtf8"]) {
     assert.equal(name in ns, false);
   }
 });
@@ -1523,8 +1528,8 @@ await test("nested parse across symlinked paths keeps hooks", async () => {
     // Same file through two spellings: one shared port and one shared
     // parser, so the inner parse must restore the outer
     // session's gates on unwind.
-    const parser = await openLanguageDirectory(languageDir, { backend: "wasm" });
-    const alias = await openLanguageDirectory(linkDir, { backend: "wasm" });
+    const parser = await openLanguageDirectory(languageDir);
+    const alias = await openLanguageDirectory(linkDir);
     assert.equal(alias, parser);
     let outerCalls = 0;
     let nested = false;
@@ -1566,8 +1571,8 @@ await test("nested parse across symlinked file keeps hooks", async () => {
     // Same library through directory and symlinked-file spellings:
     // one shared port and one shared parser. Covers
     // findLibraryFile's half.
-    const parser = await openLanguageDirectory(languageDir, { backend: "wasm" });
-    const alias = await galley.load(linkFile, { backend: "wasm" });
+    const parser = await openLanguageDirectory(languageDir);
+    const alias = await galley.load(linkFile);
     assert.equal(alias, parser);
     let outerCalls = 0;
     let nested = false;
@@ -1599,9 +1604,9 @@ await test("two language directories parse independently", async () => {
   fs.cpSync(languageDir, secondDir, { recursive: true });
   try {
     const fired = [];
-    const parserA = await openLanguageDirectory(languageDir, { backend: "wasm" });
+    const parserA = await openLanguageDirectory(languageDir);
     parserA.installProcedure("reduction_Pair", () => { fired.push("a-pair"); });
-    const parserB = await openLanguageDirectory(secondDir, { backend: "wasm" });
+    const parserB = await openLanguageDirectory(secondDir);
     // Divergent hook tables: each parser gates only its own hooks, so
     // interleaved parses never fire the other parser's hooks.
     parserB.installProcedure("reduction_Number", () => { fired.push("b-number"); });
@@ -1638,7 +1643,6 @@ await test("two parsers, two sessions each, four threads at once", async () => {
   });
   await runConcurrencyScenario({
     universalEntry: pathToFileURL(path.join(__dirname, "..", "..", "universal", "dist/index.js")).href,
-    backend: "wasm",
     firstDirectory: languageDir,
     secondDirectory,
   });

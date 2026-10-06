@@ -12,8 +12,8 @@
 
 import { Parser as CoreParser, Session as CoreSession } from "@sanbus/galley-core";
 import type { SessionOptions } from "@sanbus/galley-core";
-import { checkModuleBytes, checkModuleUrl, hashModuleBytes, rejectSessionOptions } from "@sanbus/galley-core/internal";
-import { portFromBytes, portFromUrl } from "@sanbus/galley-wasm/browser";
+import { checkModuleBytes, checkModuleUrl, fetchModuleBytes, hashModuleBytes, rejectSessionOptions } from "@sanbus/galley-core/internal";
+import { instantiateWasm } from "@sanbus/galley-wasm/browser";
 
 export {
   Walker,
@@ -37,33 +37,8 @@ export interface BrowserSessionOptions {
   /** No options yet; reserved. */
 }
 
-let warned = false;
-
-function envQuiet(): boolean {
-  try {
-    const proc = (globalThis as Record<string, unknown>).process as
-      | { env?: Record<string, string | undefined> }
-      | undefined;
-    const value = proc?.env?.GALLEY_QUIET;
-    if (value === "1" || value === "true") return true;
-  } catch {
-    // Unreachable globals count as unset.
-  }
-  return false;
-}
-
-function noteBrowserWasm(): void {
-  if (envQuiet() || warned) return;
-  warned = true;
-  console.warn(
-    "galley: using the WebAssembly backend; throughput trails native codegen " +
-      "(roughly three quarters). Silence with GALLEY_QUIET=1.",
-  );
-}
-
-/** Test-only: clear the one-time notice. */
+/** Test-only: clear the parser cache. */
 export function __resetLoader(): void {
-  warned = false;
   parserCache.clear();
 }
 
@@ -97,36 +72,36 @@ const NO_LOAD_OPTIONS: ReadonlySet<string> = new Set([]);
 
 const parserCache = new Map<string, BrowserParser>();
 
-async function cachedParser(key: string, make: () => Promise<BrowserParser>): Promise<BrowserParser> {
+function cachedParser(key: string, make: () => BrowserParser): BrowserParser {
   const hit = parserCache.get(key);
   if (hit !== undefined) return hit;
-  const made = await make();
+  const made = make();
   parserCache.set(key, made);
   return made;
 }
 
 /**
  * Bare module loading: the only way to open raw bytes or a fetched
- * module in a browser. Hooks arrive explicitly only.
+ * module in a browser. Hooks arrive explicitly only. Synchronous
+ * except `loadUrl`, whose only async step is the fetch.
  */
 export const galley = {
-  async loadBytes(bytes: Uint8Array, options: BrowserSessionOptions = {}): Promise<BrowserParser> {
+  loadBytes(bytes: Uint8Array, options: BrowserSessionOptions = {}): BrowserParser {
     const source = checkModuleBytes(bytes, "galley: galley.loadBytes");
     rejectSessionOptions(options as Record<string, unknown>, "galley.loadBytes", NO_LOAD_OPTIONS);
     const key = `bytes:${hashModuleBytes(source)}`;
-    return cachedParser(key, async () => {
-      noteBrowserWasm();
-      return new BrowserParser(await portFromBytes(source, "galley"));
-    });
+    return cachedParser(key, () => new BrowserParser(instantiateWasm(source)));
   },
 
   async loadUrl(url: string | URL, options: BrowserSessionOptions = {}): Promise<BrowserParser> {
     const source = checkModuleUrl(url, "galley: galley.loadUrl");
     rejectSessionOptions(options as Record<string, unknown>, "galley.loadUrl", NO_LOAD_OPTIONS);
     const key = `url:${typeof source === "string" ? source : source.href}`;
-    return cachedParser(key, async () => {
-      noteBrowserWasm();
-      return new BrowserParser(await portFromUrl(source, "galley"));
-    });
+    const hit = parserCache.get(key);
+    if (hit !== undefined) return hit;
+    const bytes = await fetchModuleBytes(source, "galley: galley.loadUrl");
+    const made = new BrowserParser(instantiateWasm(bytes));
+    parserCache.set(key, made);
+    return made;
   },
 };

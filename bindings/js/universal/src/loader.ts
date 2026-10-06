@@ -12,11 +12,12 @@
  *
  * There is no `init()`: the universal factories resolve their
  * backend before returning — `openLanguageDirectory` (a directory
- * holding the standard-named artifact, with `procedures` scanned),
- * `galley.load` (an explicit artifact file, never scanned),
+ * holding the standard-named artifact; the entry passes its bundled
+ * hooks), `galley.load` (an explicit artifact file, no hooks),
  * `galley.loadBytes` (raw wasm), or `galley.loadUrl` (fetched).
- * A factory either resolves a usable session or rejects: there is no
- * unready state.
+ * A factory either returns a usable parser or throws: there is no
+ * unready state. All of them are synchronous except `loadUrl`,
+ * whose only async step is the fetch.
  *
  * Adapter acquisition is injected (`seedEngineLegs`): the loader names
  * backend specifiers but never imports them, so no backend — present or
@@ -30,16 +31,6 @@
 
 import type { FfiPort } from "@sanbus/galley-core";
 import { MissingArtifactError } from "@sanbus/galley-core";
-import {
-  fetchModuleBytes,
-  noteSkippedScan,
-  __resetSkippedScan,
-} from "@sanbus/galley-core/internal";
-
-// Re-exported so sessions keep one import: the loader owns backend
-// resolution, and the skipped-scan notice rides with it. The once-flag
-// itself lives in core, shared with the Deno adapter.
-export { noteSkippedScan };
 
 export type Runtime = "node" | "bun" | "deno" | "browser";
 export type Backend = "native" | "wasm";
@@ -49,14 +40,10 @@ export type NativeRuntime = "node" | "bun" | "deno";
 export interface SessionSource {
   /** Language directory holding the standard-named artifact file. */
   languagePath?: string;
-  /** Explicit artifact file. Never scanned; install explicitly on the parser. */
+  /** Explicit artifact file. Wires nothing; install explicitly on the parser. */
   filePath?: string;
-  /** Module URL for `fetch`. */
-  url?: string | URL;
   /** Raw wasm module bytes. */
   bytes?: Uint8Array;
-  /** Pin one backend instead of the native-first probe. */
-  backend?: Backend;
 }
 
 /** Detect the current JavaScript runtime. Bun and Deno are checked before
@@ -75,11 +62,12 @@ export function detectRuntime(): Runtime {
 interface WasmAdapter {
   getWasmPort(source: { languagePath?: string; filePath?: string; bytes?: Uint8Array }): FfiPort;
   instantiateWasm(bytes: Uint8Array): FfiPort;
-  portFromBytes?(bytes: Uint8Array): Promise<FfiPort>;
-  loadProcedures?(languagePath: string): Record<string, unknown> | null;
 }
 
-const NATIVE_ADAPTERS: Record<NativeRuntime, { module: string; getPort: string; getPortFromFile: string }> = {
+const NATIVE_ADAPTERS: Record<
+  NativeRuntime,
+  { module: string; getPort: string; getPortFromFile: string }
+> = {
   node: { module: "@sanbus/galley-node", getPort: "getNodePort", getPortFromFile: "getNodePortFromFile" },
   bun: { module: "@sanbus/galley-bun", getPort: "getBunPort", getPortFromFile: "getBunPortFromFile" },
   deno: { module: "@sanbus/galley-deno", getPort: "getDenoPort", getPortFromFile: "getDenoPortFromFile" },
@@ -88,9 +76,9 @@ const WASM_MODULE = "@sanbus/galley-wasm";
 
 /**
  * Adapter acquisition, injected by the entry point. The loader names
- * backend specifiers but never imports them: static or dynamic imports
- * here would pull the native adapters into every graph that loads this
- * module (bundlers follow bare specifiers because they are installed
+ * backend specifiers but never imports them: an import here would pull
+ * the native adapters into every graph that loads this module
+ * (bundlers follow bare specifiers because they are installed
  * dependencies), which is exactly what the browser entry must avoid.
  * The default entry (`index.ts`) seeds the Node implementations; the
  * browser entry seeds nothing and never imports this module.
@@ -100,8 +88,6 @@ const WASM_MODULE = "@sanbus/galley-wasm";
 export interface EngineLegs {
   /** Synchronous `require`, or absent where none exists (browsers). */
   requireModule?: (specifier: string) => Record<string, unknown>;
-  /** Dynamic `import`, or absent where backends resolve another way. */
-  importModule?: (specifier: string) => Promise<Record<string, unknown>>;
 }
 
 let legs: EngineLegs = {};
@@ -115,14 +101,22 @@ export function seedEngineLegs(seeded: EngineLegs): void {
   legs = { ...legs, ...seeded };
 }
 
-/** A resolved backend: the port, which leg served it, scanned hooks, and
- * a procedures file that was detected but not loaded (runtimes without
- * a synchronous loader — the session warns about it). */
-export interface ResolvedBackend {
+/** What a backend leg answers: the port and which engine served it. */
+interface ProbeResult {
   port: FfiPort;
   backend: Backend;
-  procedures: Record<string, unknown> | null;
-  unscannedProcedures: string | null;
+}
+
+/**
+ * A resolved backend: the leg's answer plus the policy fact only the
+ * resolution boundary knows — whether wasm was a fallback. True only
+ * when wasm served a source that never named wasm: a language
+ * directory after the native leg missed. Byte- and `.wasm`-file
+ * sources name wasm themselves, and native is the preferred leg, so
+ * neither falls back.
+ */
+export interface ResolvedBackend extends ProbeResult {
+  fallback: boolean;
 }
 
 let warnedWasm = false;
@@ -141,54 +135,38 @@ function compileGuidance(directory: string | undefined): MissingArtifactError {
   );
 }
 
-/**
- * Whether the process opts out of the one-time WebAssembly performance
- * notice (`GALLEY_QUIET=1`). Reads `process.env` where it exists and
- * `Deno.env` where that exists; denied permissions and missing globals
- * count as unset, so warnings stay on by default.
- */
-function envQuiet(): boolean {
-  try {
-    const proc = (globalThis as Record<string, unknown>).process as
-      | { env?: Record<string, string | undefined> }
-      | undefined;
-    const value = proc?.env?.GALLEY_QUIET;
-    if (value === "1" || value === "true") return true;
-  } catch {
-    // Unreachable globals count as unset.
-  }
-  try {
-    const deno = (globalThis as Record<string, unknown>).Deno as
-      | { env?: { get(key: string): string | undefined } }
-      | undefined;
-    const value = deno?.env?.get("GALLEY_QUIET");
-    if (value === "1" || value === "true") return true;
-  } catch {
-    // Denied permissions count as unset.
-  }
-  return false;
-}
-
 export function noteWasmFallback(): void {
-  if (envQuiet() || warnedWasm) return;
+  if (warnedWasm) return;
   warnedWasm = true;
   console.warn(
     "galley: using the WebAssembly backend (no native library found); " +
       "throughput trails native codegen (roughly three quarters). " +
-      "Build a native library for full speed. Silence with GALLEY_QUIET=1.",
+      "Build a native library for full speed.",
   );
 }
 
-/** The single source check: exactly one of the four artifact sources.
+/** The single source check: exactly one of the three artifact sources.
  * Empty strings count as absent; factories report the precise error for
  * bad values, so this only guards the seam. Factories pass one source
  * by construction. */
 export function checkSource(source: SessionSource): void {
   const present = (value: unknown): boolean => value !== undefined && value !== "";
-  const count = [source.languagePath, source.filePath, source.url, source.bytes].filter(present).length;
+  const count = [source.languagePath, source.filePath, source.bytes].filter(present).length;
   if (count !== 1) {
-    throw new TypeError("galley: Session needs exactly one of languagePath, filePath, url, bytes");
+    throw new TypeError("galley: Session needs exactly one of languagePath, filePath, bytes");
   }
+}
+
+/**
+ * Whether the source itself names the wasm engine: raw module bytes
+ * (only wasm consumes them) or a file bearing the `.wasm` extension.
+ * A language directory names no engine, so wasm serving one is a
+ * fallback — the case the one-time notice exists for.
+ */
+function sourceNamesWasm(source: SessionSource): boolean {
+  if (source.bytes !== undefined) return true;
+  if (source.filePath === undefined) return false;
+  return source.filePath.toLowerCase().endsWith(".wasm");
 }
 
 function requireAdapterModule(specifier: string): Record<string, unknown> | null {
@@ -209,53 +187,26 @@ function requireAdapterModule(specifier: string): Record<string, unknown> | null
 }
 
 /**
- * Whether synchronous resolution can serve this runtime: it needs a
- * require leg that honors the runtime's module mapping. Deno's require
- * resolves bare specifiers through package exports (compiled `dist`),
- * bypassing the TS sources the import map names, so Deno always takes
- * the asynchronous leg — as does any runtime without a seeded leg.
- */
-function canResolveSync(runtime: Runtime): boolean {
-  return runtime !== "deno" && legs.requireModule !== undefined;
-}
-
-/**
- * The single native-leg attempt behind both the sync and async probes:
- * resolves the port for a directory or file source, then the sibling
- * scan. Missing artifacts yield null (try the next engine); a
- * present-but-broken library throws loudly. `names` is the runtime's
- * row of the adapter table, so backend export names live in exactly
- * one place.
+ * The single native-leg attempt: resolves the port for a directory or
+ * file source. Missing artifacts yield null (try the next engine).
+ * `.wasm` sources never reach dlopen — they yield so the owning engine
+ * loads them — and a present-but-broken native library throws loudly.
+ * `names` is the runtime's row of the adapter table, so backend export
+ * names live in exactly one place.
  */
 function useNativeModule(
   loaded: Record<string, unknown>,
   names: { getPort: string; getPortFromFile: string },
   source: SessionSource,
-): ResolvedBackend | null {
+): ProbeResult | null {
+  if (sourceNamesWasm(source)) return null;
   const fromFile = source.filePath !== undefined;
   const getPortFn = loaded[fromFile ? names.getPortFromFile : names.getPort];
   if (typeof getPortFn !== "function") return null;
   const artifact = (fromFile ? source.filePath : source.languagePath) as string;
   try {
     const port = (getPortFn as (artifact: string) => FfiPort)(artifact);
-    // Bare file loads never scan: only directory opens consult the
-    // adapter's scan export. The find-probe below still runs for
-    // adapters that report present-but-unscanned files (Deno).
-    const loadProcedures = fromFile ? null : loaded["loadProcedures"];
-    const procedures =
-      typeof loadProcedures === "function"
-        ? (loadProcedures as (artifact: string) => Record<string, unknown> | null)(artifact)
-        : null;
-    // Detection without loading (Deno directory opens): a
-    // present-but-unscanned file is reported for the session to warn
-    // about. Bare file loads never scan and never warn. Legs that load
-    // (or throw on failure) never produce one.
-    const findScan = fromFile ? undefined : loaded["findProceduresFile"];
-    const unscannedProcedures =
-      typeof findScan === "function" && procedures === null
-        ? (findScan as (artifact: string) => string | null)(artifact)
-        : null;
-    return { port, backend: "native", procedures, unscannedProcedures };
+    return { port, backend: "native" };
   } catch (error) {
     if (MissingArtifactError.is(error)) return null;
     throw error;
@@ -263,38 +214,34 @@ function useNativeModule(
 }
 
 /** Sync probe: acquire through require, attempt through the shared body. */
-function tryNativeSync(runtime: NativeRuntime, source: SessionSource): ResolvedBackend | null {
+function tryNativeSync(runtime: NativeRuntime, source: SessionSource): ProbeResult | null {
   const loaded = requireAdapterModule(NATIVE_ADAPTERS[runtime].module);
   if (!loaded) return null;
   return useNativeModule(loaded, NATIVE_ADAPTERS[runtime], source);
 }
 
 /**
- * The single file-backed wasm attempt behind both probes. Byte-fed and
- * fetched sources never reach here; callers handle those first.
- * Missing artifacts yield null, anything else throws loudly.
+ * The single file-backed wasm attempt. Byte-fed sources bypass it
+ * (handled directly in `resolveSync`). Missing artifacts yield null,
+ * anything else throws loudly.
  */
-function resolveWasmFile(wasm: WasmAdapter, source: SessionSource): ResolvedBackend | null {
+function resolveWasmFile(wasm: WasmAdapter, source: SessionSource): ProbeResult | null {
   try {
     if (source.filePath !== undefined) {
       // The wasm leg serves wasm modules: anything else is another
       // engine's artifact, not a miss to compile. Yield so probing (and
       // its loud guidance) keeps working; getWasmPort itself throws for
       // direct callers.
-      if (!source.filePath.toLowerCase().endsWith(".wasm")) return null;
+      if (!sourceNamesWasm(source)) return null;
       return {
         port: wasm.getWasmPort({ filePath: source.filePath }),
         backend: "wasm",
-        procedures: null,
-        unscannedProcedures: null,
       };
     }
     if (source.languagePath === undefined) return null;
     return {
       port: wasm.getWasmPort({ languagePath: source.languagePath }),
       backend: "wasm",
-      procedures: wasm.loadProcedures?.(source.languagePath) ?? null,
-      unscannedProcedures: null,
     };
   } catch (error) {
     if (MissingArtifactError.is(error)) return null;
@@ -303,7 +250,7 @@ function resolveWasmFile(wasm: WasmAdapter, source: SessionSource): ResolvedBack
 }
 
 /** Sync probe: acquire through require; bytes instantiate directly. */
-function tryWasmSync(source: SessionSource): ResolvedBackend | null {
+function tryWasmSync(source: SessionSource): ProbeResult | null {
   const loaded = requireAdapterModule(WASM_MODULE);
   if (!loaded) return null;
   if (
@@ -314,130 +261,34 @@ function tryWasmSync(source: SessionSource): ResolvedBackend | null {
   }
   const wasm = loaded as unknown as WasmAdapter;
   if (source.bytes) {
-    return { port: wasm.instantiateWasm(source.bytes), backend: "wasm", procedures: null, unscannedProcedures: null };
+    return { port: wasm.instantiateWasm(source.bytes), backend: "wasm" };
   }
   return resolveWasmFile(wasm, source);
 }
 
-function probeOrder(runtime: Runtime, backend: Backend | undefined): Backend[] {
-  if (backend !== undefined) return [backend];
-  if (runtime === "browser") return ["wasm"];
-  return ["native", "wasm"];
-}
-
 /**
- * Synchronous resolution for sources that allow it. Returns the
- * resolution, or null where only an asynchronous leg can serve the
- * source (fetched `url`, or runtimes failing {@link canResolveSync}).
- * Throws when no leg can serve the source at all.
- */export function resolveSync(source: SessionSource, runtime: Runtime): ResolvedBackend | null {
-  checkSource(source);
-  if (source.url !== undefined) return null;
-  if (!canResolveSync(runtime)) return null;
-  if (source.bytes !== undefined) {
-    // Byte-fed modules instantiate synchronously wherever the wasm
-    // adapter loads. Errors (invalid bytes) propagate; they are user
-    // errors, not fallback cases.
-    return tryWasmSync(source);
-  }
-  const fromFile = source.filePath !== undefined;
-  const display = (fromFile ? source.filePath : source.languagePath) as string;
-  if (runtime === "browser") {
-    throw new Error(
-      fromFile
-        ? "galley: browsers cannot read artifact files; pass url or bytes instead"
-        : "galley: browsers cannot read language directories; pass url or bytes instead",
-    );
-  }
-  if (runtime !== "node" && runtime !== "bun" && runtime !== "deno") {
-    throw compileGuidance(display);
-  }
-  for (const leg of probeOrder(runtime, source.backend)) {
-    const resolved =
-      leg === "native" ? tryNativeSync(runtime, source) : tryWasmSync(source);
-    if (resolved) return resolved;
-  }
-  throw compileGuidance(display);
-}
-
-async function loadAdapterModule(specifier: string): Promise<Record<string, unknown> | null> {
-  // Same rule as the sync leg above: a throwing leg means unavailable.
-  // Only a returned module counts as consumed for the reseed guard.
-  if (!legs.importModule) return null;
-  try {
-    const loaded = await legs.importModule(specifier);
-    legsUsed = true;
-    return loaded;
-  } catch {
-    return null;
-  }
-}
-
-/** Async probe: acquire through dynamic import, attempt through the shared body. */
-async function tryNativeAsync(
-  runtime: NativeRuntime,
-  source: SessionSource,
-): Promise<ResolvedBackend | null> {
-  const loaded = await loadAdapterModule(NATIVE_ADAPTERS[runtime].module);
-  if (!loaded) return null;
-  return useNativeModule(loaded, NATIVE_ADAPTERS[runtime], source);
-}
-
-/** Async probe: acquire through dynamic import, attempt through the shared body. */
-async function tryWasmAsync(source: SessionSource): Promise<ResolvedBackend | null> {
-  const loaded = await loadAdapterModule(WASM_MODULE);
-  if (!loaded || typeof loaded["getWasmPort"] !== "function") return null;
-  return resolveWasmFile(loaded as unknown as WasmAdapter, source);
-}
-
-async function instantiateFromBytes(
-  bytes: Uint8Array,
-): Promise<ResolvedBackend> {
-  // Prefer the adapter's async gate (off-thread compile, shared module
-  // cache); older adapters expose only the synchronous compile.
-  const instantiateVia = async (loaded: Record<string, unknown>): Promise<FfiPort | null> => {
-    const wasm = loaded as unknown as WasmAdapter;
-    if (typeof wasm.portFromBytes === "function") {
-      return wasm.portFromBytes(bytes);
-    }
-    if (typeof wasm.instantiateWasm === "function") {
-      return wasm.instantiateWasm(bytes);
-    }
-    return null;
-  };
-  const syncLoaded = requireAdapterModule(WASM_MODULE);
-  if (syncLoaded) {
-    const port = await instantiateVia(syncLoaded);
-    if (port) {
-      return { port, backend: "wasm", procedures: null, unscannedProcedures: null };
-    }
-  }
-  const loaded = await loadAdapterModule(WASM_MODULE);
-  if (loaded) {
-    const port = await instantiateVia(loaded);
-    if (port) {
-      return { port, backend: "wasm", procedures: null, unscannedProcedures: null };
-    }
-  }
-  throw compileGuidance(undefined);
-}
-
-/**
- * Asynchronous resolution: fetched `url` sources, byte-fed sources
- * without a synchronous leg, and file or directory sources on runtimes
- * without synchronous `require`. Throws when no leg can serve the source.
+ * Stamp the policy fact the probes cannot know: whether the serving
+ * engine was chosen as a fallback (probes only report port and engine).
+ * `sourceNamesWasm` is the single source of that stamp: only bytes and
+ * `.wasm` paths name their engine, so only they pair a wasm port with
+ * `fallback: false` — the partition the resolveSync test pins.
  */
-export async function resolveAsync(
-  source: SessionSource,
-  runtime: Runtime,
-): Promise<ResolvedBackend> {
+function withFallback(source: SessionSource, probe: ProbeResult): ResolvedBackend {
+  return { ...probe, fallback: probe.backend === "wasm" && !sourceNamesWasm(source) };
+}
+
+/**
+ * The one resolution path: native leg first, WebAssembly fallback, and
+ * a throw when no leg serves the source. Byte-fed modules instantiate
+ * through the wasm leg wherever the adapter loads; invalid bytes
+ * propagate (user errors, not fallback cases).
+ */
+export function resolveSync(source: SessionSource, runtime: Runtime): ResolvedBackend {
   checkSource(source);
-  if (source.bytes) {
-    return instantiateFromBytes(source.bytes);
-  }
-  if (source.url !== undefined) {
-    const bytes = await fetchModuleBytes(source.url, "galley");
-    return instantiateFromBytes(bytes);
+  if (source.bytes !== undefined) {
+    const resolved = tryWasmSync(source);
+    if (resolved) return withFallback(source, resolved);
+    throw compileGuidance(undefined);
   }
   const fromFile = source.filePath !== undefined;
   const display = (fromFile ? source.filePath : source.languagePath) as string;
@@ -448,22 +299,13 @@ export async function resolveAsync(
         : "galley: browsers cannot read language directories; pass url or bytes instead",
     );
   }
-  if (runtime !== "node" && runtime !== "bun" && runtime !== "deno") {
-    throw compileGuidance(display);
-  }
-  for (const leg of probeOrder(runtime, source.backend)) {
-    const resolved =
-      leg === "native"
-        ? await tryNativeAsync(runtime, source)
-        : await tryWasmAsync(source);
-    if (resolved) return resolved;
-  }
+  const resolved = tryNativeSync(runtime, source) ?? tryWasmSync(source);
+  if (resolved) return withFallback(source, resolved);
   throw compileGuidance(display);
 }
 
-/** Test-only: clear the fallback, skipped-scan, and legs-consumed notices. */
+/** Test-only: clear the fallback and legs-consumed notices. */
 export function __resetLoader(): void {
   warnedWasm = false;
   legsUsed = false;
-  __resetSkippedScan();
 }

@@ -2,46 +2,37 @@
  * Universal `Parser`, bound to the resolved backend.
  *
  * Parsers come from `openLanguageDirectory` (a directory holding the
- * standard-named artifact, with `procedures` scanned) or from the
- * `galley` object (`load`, `loadBytes`, `loadUrl`). The same source
+ * standard-named artifact, wired with the entry's bundled hooks) or from
+ * the `galley` object (`load`, `loadBytes`, `loadUrl`). The same source
  * always yields the identical parser, so hook tables are stable per
  * artifact. Sessions open from the parser through `openSession` and
- * share its table. A factory either resolves a usable parser or
- * rejects: there is no unready state. `backend` reports which leg
- * serves the parser.
+ * share its table. A factory either returns a usable parser or throws:
+ * there is no unready state. Every factory is synchronous except
+ * `loadUrl`, whose only async step is the fetch. `backend` reports
+ * which leg serves the parser.
  */
 
 import { Parser as CoreParser, Session as CoreSession } from "@sanbus/galley-core";
 import type { FfiPort, SessionOptions } from "@sanbus/galley-core";
-import { checkArtifactPath, checkLanguagePath, checkModuleBytes, checkModuleUrl, hashModuleBytes } from "@sanbus/galley-core/internal";
+import { checkArtifactPath, checkLanguagePath, checkModuleBytes, checkModuleUrl, fetchModuleBytes, hashModuleBytes } from "@sanbus/galley-core/internal";
 import { rejectSessionOptions, __resetSharedRegistries } from "@sanbus/galley-core/internal";
 import {
   detectRuntime,
   resolveSync,
-  resolveAsync,
   noteWasmFallback,
-  noteSkippedScan,
   type Backend,
 } from "./loader.ts";
 
 export type { SessionOptions };
 
 export interface UniversalDirectoryOptions {
-  /** Pin one backend instead of the native-first probe. */
-  backend?: Backend;
-  /**
-   * Internal: the caller installs bundled hooks itself (the generated
-   * entry's `initialize`), so the unscanned-file notice stays silent.
-   */
-  expectProcedures?: boolean;
+  /** No options; any option is rejected. */
 }
 
 /** Same options as {@link UniversalDirectoryOptions}, for `galley.load`. */
 export interface UniversalFileOptions extends UniversalDirectoryOptions {}
 
-export interface UniversalWasmOptions {
-  /** No options yet; reserved. */
-}
+export interface UniversalWasmOptions extends UniversalDirectoryOptions {}
 
 function requireLanguagePath(languagePath: string): string {
   return checkLanguagePath(languagePath, "galley: openLanguageDirectory");
@@ -52,9 +43,7 @@ function requireLanguagePath(languagePath: string): string {
  * artifact only, and tunables belong to `openSession` on the returned
  * parser. Loud instead of silently dropping caller intent.
  */
-const DIRECTORY_LOAD_OPTIONS: ReadonlySet<string> = new Set(["backend", "expectProcedures"]);
-const FILE_LOAD_OPTIONS: ReadonlySet<string> = new Set(["backend"]);
-const BYTES_LOAD_OPTIONS: ReadonlySet<string> = new Set([]);
+const NO_LOAD_OPTIONS: ReadonlySet<string> = new Set([]);
 
 let parserByPort = new WeakMap<FfiPort, Parser>();
 // Byte- and URL-fed parsers pin by source identity for the process
@@ -75,46 +64,39 @@ export function __resetParserCache(): void {
  * one file (including symlinks) into one default hook table. Separate legs
  * resolve separate ports and therefore separate parsers.
  */
-function parserForPort(port: FfiPort, backend: Backend, scanned: unknown): Parser {
+function parserForPort(port: FfiPort, backend: Backend, bundledProcedures: unknown): Parser {
   const hit = parserByPort.get(port);
   if (hit !== undefined) {
     // A directory open over an already-resolved parser (a bare load can
-    // precede it): wire whatever the scan found, filling only names
+    // precede it): wire the entry's namespace, filling only names
     // never installed, so explicit installs keep winning. Bare loads
-    // pass null and never scan.
-    hit.installBundledProcedures(scanned);
+    // pass null and wire nothing.
+    hit.installBundledProcedures(bundledProcedures);
     return hit;
   }
-  const made = Parser.create(port, backend, scanned);
+  const made = Parser.create(port, backend, bundledProcedures);
   parserByPort.set(port, made);
   return made;
 }
 
-function hasHooks(parser: Parser): Record<string, unknown> | undefined {
-  return Object.keys(parser.listProcedures()).length > 0 ? {} : undefined;
-}
-
 /**
- * Opens the parser at `languagePath`: resolves the backend, loads the
- * directory's bundled `procedures` where the runtime allows, and returns
- * the shared parser. Internal: backs the generated package entry
- * (`openSession`); user code opens packages or files, never directories
- * directly.
+ * Opens the parser at `languagePath`: resolves the backend and returns
+ * the shared parser, wiring `bundledProcedures` (the generated entry's
+ * statically imported hook namespace) into its defaults. Internal:
+ * backs the generated package entry (its import-time wiring and
+ * `openSession`); user code opens packages or files, never
+ * directories directly.
  */
-export async function openLanguageDirectory(
+export function openLanguageDirectory(
   languagePath: string,
   options: UniversalDirectoryOptions = {},
-): Promise<Parser> {
+  bundledProcedures: Record<string, unknown> | null = null,
+): Parser {
   const directory = requireLanguagePath(languagePath);
-  rejectSessionOptions(options as Record<string, unknown>, "openLanguageDirectory", DIRECTORY_LOAD_OPTIONS);
-  const { backend, expectProcedures } = options;
-  const runtime = detectRuntime();
-  const source = { languagePath: directory, backend };
-  const resolved = resolveSync(source, runtime) ?? await resolveAsync(source, runtime);
-  if (resolved.backend === "wasm") noteWasmFallback();
-  const parser = parserForPort(resolved.port, resolved.backend, resolved.procedures);
-  noteSkippedScan(resolved.unscannedProcedures, expectProcedures === true ? {} : hasHooks(parser));
-  return parser;
+  rejectSessionOptions(options as Record<string, unknown>, "openLanguageDirectory", NO_LOAD_OPTIONS);
+  const resolved = resolveSync({ languagePath: directory }, detectRuntime());
+  if (resolved.fallback) noteWasmFallback();
+  return parserForPort(resolved.port, resolved.backend, bundledProcedures);
 }
 
 export class Parser extends CoreParser {
@@ -125,14 +107,14 @@ export class Parser extends CoreParser {
     return this.#backend;
   }
 
-  private constructor(port: FfiPort, backend: Backend, scannedProcedures: unknown = null) {
-    super(port, scannedProcedures);
+  private constructor(port: FfiPort, backend: Backend, bundledProcedures: unknown = null) {
+    super(port, bundledProcedures);
     this.#backend = backend;
   }
 
   /** Backs `galley` and `openLanguageDirectory`; user code never calls it. */
-  static create(port: FfiPort, backend: Backend, scannedProcedures: unknown = null): Parser {
-    return new Parser(port, backend, scannedProcedures);
+  static create(port: FfiPort, backend: Backend, bundledProcedures: unknown = null): Parser {
+    return new Parser(port, backend, bundledProcedures);
   }
 
   override openSession(options: SessionOptions = {}): Session {
@@ -161,33 +143,24 @@ export class Session extends CoreSession {
 
 /**
  * Bare artifact loading: the only way to open an explicit file, raw
- * bytes, or a fetched module. Never scans; hooks arrive explicitly only.
+ * bytes, or a fetched module. Wires nothing; hooks arrive explicitly only.
  */
 export const galley = {
-  async load(filePath: string, options: UniversalFileOptions = {}): Promise<Parser> {
+  load(filePath: string, options: UniversalFileOptions = {}): Parser {
     const file = checkArtifactPath(filePath, "galley: galley.load");
-    rejectSessionOptions(options as Record<string, unknown>, "galley.load", FILE_LOAD_OPTIONS);
-    const { backend } = options;
-    const runtime = detectRuntime();
-    const source = { filePath: file, backend };
-    const resolved = resolveSync(source, runtime) ?? await resolveAsync(source, runtime);
-    if (resolved.backend === "wasm") noteWasmFallback();
-    // Bare file loads never scan by contract; explicit installs only.
+    rejectSessionOptions(options as Record<string, unknown>, "galley.load", NO_LOAD_OPTIONS);
+    const resolved = resolveSync({ filePath: file }, detectRuntime());
+    // Bare file loads wire nothing by contract; explicit installs only.
     return parserForPort(resolved.port, resolved.backend, null);
   },
 
-  async loadBytes(bytes: Uint8Array, options: UniversalWasmOptions = {}): Promise<Parser> {
+  loadBytes(bytes: Uint8Array, options: UniversalWasmOptions = {}): Parser {
     const source = checkModuleBytes(bytes, "galley: galley.loadBytes");
-    rejectSessionOptions(options as Record<string, unknown>, "galley.loadBytes", BYTES_LOAD_OPTIONS);
-        const runtime = detectRuntime();
+    rejectSessionOptions(options as Record<string, unknown>, "galley.loadBytes", NO_LOAD_OPTIONS);
     const key = `bytes:${hashModuleBytes(source)}`;
     const hit = parserBySource.get(key);
     if (hit !== undefined) return hit;
-    // Bytes always resolve asynchronously: the async gate compiles
-    // off-thread through the shared module cache, while the synchronous
-    // path would block on compilation.
-    const resolved = await resolveAsync({ bytes: source }, runtime);
-    noteWasmFallback();
+    const resolved = resolveSync({ bytes: source }, detectRuntime());
     const made = Parser.create(resolved.port, resolved.backend, null);
     parserBySource.set(key, made);
     return made;
@@ -195,12 +168,13 @@ export const galley = {
 
   async loadUrl(url: string | URL, options: UniversalWasmOptions = {}): Promise<Parser> {
     const source = checkModuleUrl(url, "galley: galley.loadUrl");
-    rejectSessionOptions(options as Record<string, unknown>, "galley.loadUrl", BYTES_LOAD_OPTIONS);
-        const key = `url:${typeof source === "string" ? source : source.href}`;
+    rejectSessionOptions(options as Record<string, unknown>, "galley.loadUrl", NO_LOAD_OPTIONS);
+    const key = `url:${typeof source === "string" ? source : source.href}`;
     const hit = parserBySource.get(key);
     if (hit !== undefined) return hit;
-    const resolved = await resolveAsync({ url: source }, detectRuntime());
-    noteWasmFallback();
+    // The only async factory: the fetch. Compilation after it is synchronous.
+    const bytes = await fetchModuleBytes(source, "galley: galley.loadUrl");
+    const resolved = resolveSync({ bytes }, detectRuntime());
     const made = Parser.create(resolved.port, resolved.backend, null);
     parserBySource.set(key, made);
     return made;

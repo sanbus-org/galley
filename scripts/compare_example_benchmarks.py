@@ -56,7 +56,6 @@ class Runner:
     name: str
     argv: list[str]
     cwd: Path | None = None
-    env: dict[str, str] | None = None
 
 
 @dataclass
@@ -168,9 +167,8 @@ def default_runners(root: Path) -> list[Runner]:
         ),
         Runner(
             "wasm",
-            ["npx", "tsx", "benchmark.ts"],
+            ["npx", "tsx", "benchmark.ts", "--wasm"],
             cwd=root / "examples" / "js",
-            env={"GALLEY_WASM": "1"},
         ),
         Runner(
             "java",
@@ -188,7 +186,6 @@ def default_runners(root: Path) -> list[Runner]:
 
 def run_one(runner: Runner, sample: Path, iterations: int) -> int:
     argv = [*runner.argv, str(sample), str(iterations)]
-    env = {**os.environ, **runner.env} if runner.env else None
     result = subprocess.run(
         argv,
         cwd=runner.cwd,
@@ -196,7 +193,6 @@ def run_one(runner: Runner, sample: Path, iterations: int) -> int:
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        env=env,
     )
     if result.returncode != 0:
         sys.stderr.write(result.stderr)

@@ -24,25 +24,25 @@ export class Parser {
   /**
    * Takes a bound port: factories resolve the backend first, so a
    * constructed parser is always usable. There is no unready state.
-   * `scannedProcedures` carries the factory's language-directory scan
-   * (or null where the runtime has none); it fills only hook names
+   * `bundledProcedures` carries the entry's statically imported hook
+   * namespace (or null for bare loads); it fills only hook names
    * never installed, so explicit installs win regardless of order.
    */
-  constructor(port: FfiPort, scannedProcedures: unknown = null) {
+  constructor(port: FfiPort, bundledProcedures: unknown = null) {
     if (!port) throw new TypeError("galley: Parser needs a bound port");
     this.#port = port;
     this.#registry = registryFor(port);
-    this.installBundledProcedures(scannedProcedures);
+    this.installBundledProcedures(bundledProcedures);
   }
 
   /**
-   * Wires scanned bundled hooks in bulk for names not yet installed:
-   * at parser creation, on a directory open over an existing parser (a
-   * bare load can precede it), and from the generated entry's
-   * `initialize`. Explicit installs win per hook name regardless of order.
+   * Wires the bundled namespace in bulk for names not yet installed:
+   * at parser creation and on a directory open over an existing parser
+   * (a bare load can precede it). Explicit installs win per hook name
+   * regardless of order.
    */
   installBundledProcedures(value: unknown): void {
-    this.#registry.installBundled(value);
+    this.#registry.installBundled(value, this.hasProcedures());
   }
 
   /** The bound port. Sessions opened here share it. */

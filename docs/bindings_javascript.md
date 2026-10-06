@@ -13,19 +13,19 @@ object — `load` (an explicit artifact file), `loadBytes` (raw wasm
 module bytes), `loadUrl` (fetched) — or from a generated package entry,
 which opens its own directory with bundled hooks. Sessions open from
 the parser through `openSession` and share its hook table. A factory
-either resolves a usable parser or rejects — there is no unready
-state. When no native library is found the WebAssembly backend serves
-instead, with a one-time performance notice (opt out with
-`GALLEY_QUIET=1`); when nothing is found at all, construction explains
-how to build an artifact. `parser.backend` reports the serving leg
-(`"native"` or `"wasm"`).
+either returns a usable parser or throws — there is no unready
+state, and every factory is synchronous except `loadUrl` (the fetch
+is). A language directory with no native library falls back to the
+WebAssembly backend with a one-time performance notice; when nothing
+is found at all, construction explains how to build an artifact.
+`parser.backend` reports the serving leg (`"native"` or `"wasm"`).
 
 ```ts
 import { galley } from "@sanbus/galley";
 
-const parser = await galley.load("./my-language/libgalley-js-node.dylib");
+const parser = galley.load("./my-language/libgalley-js-node.dylib");
 console.log(parser.backend); // "native" or "wasm"
-const session = await parser.openSession({ maxErrors: 10 });
+const session = parser.openSession({ maxErrors: 10 });
 try {
   session.parse("alpha:12,beta:3");
 } finally {
@@ -40,11 +40,10 @@ imports as one whole module (`import kv`):
 ```ts
 import * as kv from "./kv/index.mjs";
 
-await kv.initialize(); // required on Deno; a no-op elsewhere
-const session = await kv.openSession({ maxErrors: 10 });
+const session = kv.openSession({ maxErrors: 10 });
 ```
 
-Bare loads never scan: hooks arrive explicitly only.
+Bare loads wire nothing: hooks arrive explicitly only.
 
 Browsers use the wasm-only entry, resolved automatically through the
 `browser` export condition (verified under vite and webpack with no
@@ -54,7 +53,7 @@ shims), or imported explicitly:
 import { galley } from "@sanbus/galley/browser";
 
 const parser = await galley.loadUrl("/parsers/language.wasm");
-const session = await parser.openSession();
+const session = parser.openSession();
 ```
 
 ## Build
@@ -115,15 +114,15 @@ instead of opening it by path:
 ```ts
 import * as kv from "./kv/index.mjs";
 
-await kv.initialize(); // required on Deno; a no-op elsewhere
-const session = await kv.openSession();
+const session = kv.openSession();
 ```
 
-`initialize()` loads the bundled hooks on Deno, which has no
-synchronous module scan; on Node, Bun, and WebAssembly legs the adapter
-scans synchronously at parser creation time, so `initialize()` is a
-no-op there and one program runs on every runtime. `galley.load` never
-scans on any runtime.
+Importing the entry loads the artifact and wires the bundled hooks
+before the import returns: the entry statically imports the sibling
+`procedures` file (the build writes an empty stub when the grammar has
+none) and installs it during module evaluation — one static import, no
+runtime scan, no top-level await (so CommonJS `require()` of the entry
+works too), on every runtime. `galley.load` wires nothing.
 
 Two ways to install, depending on what you are doing:
 
@@ -247,29 +246,24 @@ node's generation on the hook door too: a node of an earlier parse throws
 `StaleTreeError` on a read, a link, an edit or a walk step, never `null`.
 
 Every parser owns its hooks: the generated package entry (and the
-internal `openLanguageDirectory` behind it) loads the language
-directory's `procedures` module into that parser's registry where the
-runtime can load modules synchronously. On Deno the entry loads the
-bundled module in `initialize()` instead. `galley.load` never scans:
-hooks arrive explicitly only. Which entries scan:
+internal `openLanguageDirectory` behind it) statically imports the
+language directory's `procedures` file and installs that namespace
+into the parser's registry — no runtime scan, identical on every
+runtime. `galley.load` wires nothing: hooks arrive explicitly only.
+Which entries wire bundled hooks:
 
-| Entry | Auto-scan | Without a scan |
-|---|---|---|
-| Package entry / `openLanguageDirectory` (Node, Bun, wasm on Node) | `procedures.*` beside the artifact | install explicitly on the parser |
-| `galley.load` (every runtime) | none (bare loads never scan) | install explicitly on the parser |
-| Package entry on Deno | via `initialize()` (no synchronous loader) | warns once when a file is present but unloaded; install explicitly |
-| Browsers, `galley.loadBytes`, `galley.loadUrl` | none (no filesystem) | install explicitly on the parser |
+| Entry | Bundled wiring |
+|---|---|
+| Package entry / `openLanguageDirectory` (every runtime) | at import, from the entry's static `procedures` import |
+| `galley.load` (every runtime) | none — install explicitly on the parser |
+| `galley.loadBytes`, `galley.loadUrl`, browsers | none — install explicitly on the parser |
 
 ```ts
 import * as kv from "./kv/index.mjs";
-import * as procedures from "./procedures.js";
 
-await kv.initialize();
-const parser = await kv.parser();
-parser.installProcedures(procedures);
-const session = await parser.openSession();
-// or for a single hook:
-// parser.installProcedure("reduction_KeyTail", (args) => args.dropIfEmpty());
+const session = kv.openSession();
+// install an extra hook explicitly, beside the bundled ones:
+// kv.installProcedure("reduction_KeyTail", (args) => args.dropIfEmpty());
 ```
 
 The build links the generator's host shim (`host_procedures.zig`), which
@@ -356,8 +350,8 @@ built-in generic renderer. LR grammars use `lr_error_messages.zig`.
 ```ts
 import { galley, GalleyError } from "@sanbus/galley";
 
-const parser = await galley.load("./my-language/libgalley-js-node.dylib");
-await using session = await parser.openSession({
+const parser = galley.load("./my-language/libgalley-js-node.dylib");
+await using session = parser.openSession({
   maxErrors: 10,
   recoveryWindow: 500,
 });
@@ -436,7 +430,7 @@ npx galley-js-node <language-dir>
 ```ts
 import { galley } from "@sanbus/galley";
 
-const parser = await galley.load("./my-language/libgalley-js-node.dylib");
+const parser = galley.load("./my-language/libgalley-js-node.dylib");
 parser.version(); // every grammar query lives on the parser
 parser.hasAst();
 ```
@@ -473,8 +467,8 @@ bunx galley-js-bun .
 ```ts
 import { galley } from "@sanbus/galley";
 
-const parser = await galley.load("./my-language/libgalley-js-bun.dylib");
-const session = await parser.openSession();
+const parser = galley.load("./my-language/libgalley-js-bun.dylib");
+const session = parser.openSession();
 ```
 
 `ZIG_EXECUTABLE` selects zig. Bun runs TypeScript directly — the adapter
@@ -507,30 +501,14 @@ deno task build
 
 ```ts
 import * as kv from "./kv/index.mjs";
-import * as procedures from "./procedures.ts";
 
-await kv.initialize();
-const parser = await kv.parser();
-parser.installProcedures(procedures);
-const session = await parser.openSession();
+const session = kv.openSession();
 ```
 
 `ZIG_EXECUTABLE` selects zig. Deno runs the adapter's TypeScript sources
 directly — no build step. Sources use explicit `.ts` import specifiers, so
 plain strict `deno run` / `deno check` work with no extra flags (already
-wired into the `deno task` entries). One difference from Node: Deno has
-no synchronous module load, so the generated package entry loads its
-bundled hooks in `initialize()` instead of at open time:
-
-```ts
-import * as kv from "./kv/index.mjs";
-import * as procedures from "./procedures.ts";
-
-await kv.initialize();
-const parser = await kv.parser();
-parser.installProcedures(procedures);
-const session = await parser.openSession();
-```
+wired into the `deno task` entries).
 
 The suite mirrors the Node suite behavior by behavior. It typechecks the
 adapter (`deno check src/index.ts`) and runs the suite with `--no-check`,
@@ -562,8 +540,8 @@ npx galley-js-wasm .
 ```ts
 import { galley } from "@sanbus/galley";
 
-const parser = await galley.load("./my-language/libgalley-js-wasm.wasm");
-const session = await parser.openSession();
+const parser = galley.load("./my-language/libgalley-js-wasm.wasm");
+const session = parser.openSession();
 ```
 
 `ZIG_EXECUTABLE` selects zig. Byte and URL sources serve every
@@ -592,10 +570,11 @@ the matching `@sanbus/galley-wasm/browser` port helpers.
 import { galley } from "@sanbus/galley/browser";
 
 const parser = await galley.loadUrl("/parsers/language.wasm");
-const session = await parser.openSession();
+const session = parser.openSession();
 ```
 
-`loadBytes` works the same way; hooks install explicitly on the parser.
+`loadBytes` works the same way, without the fetch; hooks install
+explicitly on the parser.
 
 ## Development builds
 

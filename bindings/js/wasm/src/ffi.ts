@@ -29,7 +29,7 @@ import type {
 } from "@sanbus/galley-core";
 import { GalleyError, NO_VARIABLE, Status } from "@sanbus/galley-core";
 import { GenerationBigInt, resolveArtifact, resolveArtifactFile, wasmArtifactFileName } from "@sanbus/galley-core/internal";
-import { checkModuleBytes, checkModuleUrl, fetchModuleBytes, hashModuleBytes } from "@sanbus/galley-core/internal";
+import { hashModuleBytes } from "@sanbus/galley-core/internal";
 
 const LIBRARY_BASE = "galley-js-wasm";
 const WASI_NOSYS = 52;
@@ -296,36 +296,6 @@ export function seedFileIo(io: FileIo): void {
   fileIo = io;
 }
 
-/**
- * Procedure-hook scans seeded by the Node entry (`files.ts`): the
- * language-directory scan only. Bare file loads never scan; browsers
- * seed nothing and pass hooks explicitly through the session's
- * `procedures` option.
- */
-export interface ProceduresScan {
-  forDirectory(directory: string): Record<string, unknown> | null;
-}
-
-let proceduresScan: ProceduresScan | null = null;
-let proceduresScanUsed = false;
-
-/** Node entry wires the scans; browsers never call this. Reseeding after a seeded scan ran is a loud error. */
-export function seedProceduresScan(scan: ProceduresScan): void {
-  if (proceduresScanUsed) {
-    throw new Error("galley-wasm: procedures scan is already in use and cannot be reseeded");
-  }
-  proceduresScan = scan;
-}
-
-/**
- * The language directory's `procedures` module, if any and if scans are
- * seeded. Returned for the session to install into its own registry.
- */
-export function loadProcedures(directory: string): Record<string, unknown> | null {
-  if (proceduresScan === null) return null;
-  proceduresScanUsed = true;
-  return proceduresScan.forDirectory(directory);
-}
 
 // --- library discovery -----------
 // One place, named up front: the language directory must hold the
@@ -454,7 +424,7 @@ function makeWasiStub(getMemory: () => ArrayBuffer): Record<string, WebAssembly.
 export interface WasmPortSource {
   /** Language directory holding the standard-named module file. */
   languagePath?: string;
-  /** Explicit module file. Never scanned; pass `procedures` explicitly. */
+  /** Explicit module file. Wires nothing; install hooks explicitly. */
   filePath?: string;
   /** Raw module bytes. Instantiates synchronously in every runtime. */
   bytes?: Uint8Array;
@@ -503,13 +473,6 @@ function instantiate(bytes: Uint8Array<ArrayBuffer>, wasmPath: string, cache: bo
   return adoptInstance(instance, wasmPath, pending, cache);
 }
 
-async function instantiateAsync(bytes: Uint8Array<ArrayBuffer>, wasmPath: string): Promise<WasmPort> {
-  const module = await compileModule(bytes);
-  const pending: PendingInstance = { port: null, memory: null };
-  const instance = new WebAssembly.Instance(module, makeImports(pending));
-  return adoptInstance(instance, wasmPath, pending, false);
-}
-
 // --- compiled-module cache (one Module per distinct bytes) -----------------
 // Compilation dominates instantiation cost, so compiled modules are shared
 // while instances stay per session (session state lives in the instance:
@@ -517,7 +480,6 @@ async function instantiateAsync(bytes: Uint8Array<ArrayBuffer>, wasmPath: string
 // same documented policy.
 
 const compiledModules = new Map<string, WebAssembly.Module>();
-const compilingModules = new Map<string, Promise<WebAssembly.Module>>();
 
 function compileModuleSync(bytes: Uint8Array<ArrayBuffer>): WebAssembly.Module {
   const key = hashModuleBytes(bytes);
@@ -528,75 +490,25 @@ function compileModuleSync(bytes: Uint8Array<ArrayBuffer>): WebAssembly.Module {
   return module;
 }
 
-function compileModule(bytes: Uint8Array<ArrayBuffer>): Promise<WebAssembly.Module> {
-  const key = hashModuleBytes(bytes);
-  const hit = compiledModules.get(key);
-  if (hit !== undefined) return Promise.resolve(hit);
-  // Concurrent compiles of the same bytes share one job.
-  const pending = compilingModules.get(key);
-  if (pending !== undefined) return pending;
-  const job = WebAssembly.compile(bytes).then(
-    (module) => {
-      compiledModules.set(key, module);
-      compilingModules.delete(key);
-      return module;
-    },
-    (error) => {
-      compilingModules.delete(key);
-      throw error;
-    },
-  );
-  compilingModules.set(key, job);
-  return job;
-}
-
 /** Test-only: clear the compiled-module cache. */
 export function __resetModuleCache(): void {
   compiledModules.clear();
-  compilingModules.clear();
 }
 
-/** Test-only: clear the file-IO and scan consumption flags (mirrors `__resetLoader`). */
+/** Test-only: clear the file-IO consumption flag (mirrors `__resetLoader`). */
 export function __resetWasmAcquisition(): void {
   fileIoUsed = false;
-  proceduresScanUsed = false;
 }
 
 /**
  * Synchronously instantiates raw module bytes. Compiled modules are
  * shared through the cache above, but every call gets a fresh instance:
  * session state lives in the instance, so sharing one would merge
- * sessions. Async factories prefer {@link portFromBytes}, which compiles
- * off-thread; this stays for synchronous consumers (`getWasmPort` and
- * older adapters behind the universal loader).
+ * sessions. Byte ports arrive only through this gate (`getWasmPort`
+ * and the universal loader's byte path delegate here).
  */
 export function instantiateWasm(bytes: Uint8Array): WasmPort {
   return instantiate(Uint8Array.from(bytes), "<bytes>", false);
-}
-
-/**
- * Single gate for byte-fed ports: validates raw module bytes under
- * `prefix` labels, compiles off-thread (shared through the module
- * cache), and instantiates a fresh port. Every `fromBytes` factory
- * delegates here, so validation wording and the fresh-instance rule
- * live in one place.
- */
-export async function portFromBytes(bytes: Uint8Array, prefix = "galley-wasm"): Promise<WasmPort> {
-  // Copy: callers may hand over shared or resizable buffers, which the
-  // compiler rejects; the copy is ArrayBuffer-backed.
-  const owned = Uint8Array.from(checkModuleBytes(bytes, `${prefix}: galley.loadBytes`));
-  return instantiateAsync(owned, "<bytes>");
-}
-
-/**
- * Single gate for fetched ports: validates the url under `prefix`
- * labels, fetches, compiles off-thread, and instantiates a fresh port.
- * Every `fromUrl` factory delegates here.
- */
-export async function portFromUrl(url: string | URL, prefix = "galley-wasm"): Promise<WasmPort> {
-  const source = checkModuleUrl(url, `${prefix}: galley.loadUrl`);
-  const owned = Uint8Array.from(await fetchModuleBytes(source, prefix));
-  return instantiateAsync(owned, "<bytes>");
 }
 
 /**

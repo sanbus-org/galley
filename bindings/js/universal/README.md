@@ -4,11 +4,12 @@
 fallback, selected per runtime. No native dependencies beyond the built
 parser artifacts.
 
-Create sessions through async factories — `Session.fromDirectory` (a
-language directory, native-first per runtime), `Session.fromBytes` (raw
-wasm), or `Session.fromUrl` (fetched). When no native library is found
-the WebAssembly backend serves instead (with a one-time performance
-notice), otherwise the factory explains how to build one.
+Create parsers through the `galley` object — `load` (an explicit
+artifact file), `loadBytes` (raw wasm bytes), or `loadUrl` (fetched,
+the one async factory) — or through `openLanguageDirectory` in a
+generated entry. A language directory with no native library falls
+back to WebAssembly with a one-time performance notice; anything
+missing explains how to build an artifact.
 
 See `docs/bindings_javascript.md` for the consumer flow.
 

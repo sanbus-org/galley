@@ -58,8 +58,13 @@ const {
 
 const { galley, openLanguageDirectory, __resetParserCache } = await import("../../universal/src/index.ts");
 
-async function newParser(opts = {}) {
-  return openLanguageDirectory(languageDir, { backend: "native", ...opts });
+// The fixture's hook module, passed the way the generated entry passes it.
+const bundledProcedures = await import(
+  pathToFileURL(path.join(languageDir, "procedures.ts")).href
+);
+
+async function newParser() {
+  return openLanguageDirectory(languageDir, {}, bundledProcedures);
 }
 
 async function newSession(opts = {}) {
@@ -89,13 +94,13 @@ function assertIn(value, arr, msg) {
 
 // ---- ParserSurfaceTests (grammar queries live on the parser) ----
 
-await test("openLanguageDirectory requires languagePath", async () => {
-  await assert.rejects(openLanguageDirectory(""), /languagePath/);
-  await assert.rejects(openLanguageDirectory(), /languagePath/);
+await test("openLanguageDirectory requires languagePath", () => {
+  assert.throws(() => openLanguageDirectory(""), /languagePath/);
+  assert.throws(() => openLanguageDirectory(), /languagePath/);
 });
 
 await test("openLanguageDirectory resolves a usable parser", async () => {
-  const parser = await openLanguageDirectory(languageDir, { backend: "native" });
+  const parser = await openLanguageDirectory(languageDir);
   assert.ok(parser.version().length > 0);
   const s = await parser.openSession();
   try {
@@ -105,22 +110,22 @@ await test("openLanguageDirectory resolves a usable parser", async () => {
   }
 });
 
-await test("missing artifact names the directory", async () => {
-  await assert.rejects(
-    openLanguageDirectory(path.join(languageDir, "no-such-dir"), { backend: "native" }),
+await test("missing artifact names the directory", () => {
+  assert.throws(
+    () => openLanguageDirectory(path.join(languageDir, "no-such-dir")),
     /no-such-dir/,
   );
 });
 
-await test("galley.load requires filePath", async () => {
-  await assert.rejects(galley.load(""), /filePath/);
-  await assert.rejects(galley.load(), /filePath/);
-  await assert.rejects(galley.load("no-such-lib\0"), /interior NUL/);
+await test("galley.load requires filePath", () => {
+  assert.throws(() => galley.load(""), /filePath/);
+  assert.throws(() => galley.load(), /filePath/);
+  assert.throws(() => galley.load("no-such-lib\0"), /interior NUL/);
 });
 
-await test("galley.load missing artifact names the file", async () => {
-  await assert.rejects(
-    galley.load(path.join(languageDir, "no-such-lib"), { backend: "native" }),
+await test("galley.load missing artifact names the file", () => {
+  assert.throws(
+    () => galley.load(path.join(languageDir, "no-such-lib")),
     /no-such-lib/,
   );
 });
@@ -132,8 +137,8 @@ await test("galley.load opens an explicit artifact file", async () => {
   const customLib = path.join(fileDir, `custom-name${path.extname(exampleLib)}`);
   fs.renameSync(path.join(fileDir, exampleLib), customLib);
   try {
-    // Bare file loads never scan: hooks arrive explicitly only.
-    const parser = await galley.load(customLib, { backend: "native" });
+    // Bare file loads wire nothing: hooks arrive explicitly only.
+    const parser = await galley.load(customLib);
     assert.deepEqual(parser.listProcedures(), {});
     const s = await parser.openSession();
     try {
@@ -193,7 +198,7 @@ await test("entry hides the base Session value", async () => {
 
 await test("entry keeps loader internals off the public surface", async () => {
   const ns = (await import("../src/index.ts")) as Record<string, unknown>;
-  for (const name of ["resolveArtifact", "checkModuleBytes", "encodeUtf8", "noteSkippedScan"]) {
+  for (const name of ["resolveArtifact", "checkModuleBytes", "encodeUtf8"]) {
     assert.equal(name in ns, false);
   }
 });
@@ -1454,8 +1459,8 @@ await test("nested parse across symlinked paths keeps hooks", async () => {
     // Same file through two spellings: one shared port and one shared
     // parser, so the inner parse must restore the outer
     // session's gates on unwind.
-    const parser = await openLanguageDirectory(languageDir, { backend: "native" });
-    const alias = await openLanguageDirectory(linkDir, { backend: "native" });
+    const parser = await openLanguageDirectory(languageDir);
+    const alias = await openLanguageDirectory(linkDir);
     assert.equal(alias, parser);
     let outerCalls = 0;
     let nested = false;
@@ -1489,9 +1494,9 @@ await test("two language directories parse independently", async () => {
   fs.cpSync(languageDir, secondDir, { recursive: true });
   try {
     const fired = [];
-    const parserA = await openLanguageDirectory(languageDir, { backend: "native" });
+    const parserA = await openLanguageDirectory(languageDir);
     parserA.installProcedure("reduction_Pair", () => { fired.push("a-pair"); });
-    const parserB = await openLanguageDirectory(secondDir, { backend: "native" });
+    const parserB = await openLanguageDirectory(secondDir);
     // Divergent hook tables: each parser gates only its own hooks, so
     // interleaved parses never fire the other parser's hooks.
     parserB.installProcedure("reduction_Number", () => { fired.push("b-number"); });
@@ -1528,7 +1533,6 @@ await test("two parsers, two sessions each, four threads at once", async () => {
   });
   await runConcurrencyScenario({
     universalEntry: pathToFileURL(path.join(__dirname, "..", "..", "universal", "src/index.ts")).href,
-    backend: "native",
     firstDirectory: languageDir,
     secondDirectory,
   });

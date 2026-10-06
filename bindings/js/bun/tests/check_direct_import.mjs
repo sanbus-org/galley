@@ -22,7 +22,9 @@ if (!languageDir) {
 }
 
 const kv = await import(pathToFileURL(path.join(languageDir, "index.mjs")).href);
-await kv.initialize();
+// The universal Parser supplies the prototype chain the entry mirrors
+// (`kv.Parser` is the core class and lacks the universal additions).
+const { Parser } = await import("../../universal/dist/index.js");
 
 // Hook namespaces are imported from their hook file; the entry binds
 // none, and named exports are the sole spelling.
@@ -45,18 +47,31 @@ const surface = [
   "RecoveryTarget",
   "Resume",
 ];
-assert.deepEqual(Object.keys(kv).sort(), ["initialize", "openSession", "parser", ...surface].sort());
+// The entry mirrors the parser's interface: derive the pin from the
+// Parser prototype chain (universal additions over core), excluding
+// the constructor and core's internal `port` accessor.
+const parserInterface = (() => {
+  const names = new Set();
+  for (let proto = Parser.prototype; proto !== Object.prototype; proto = Object.getPrototypeOf(proto)) {
+    for (const name of Object.getOwnPropertyNames(proto)) {
+      if (name === "constructor" || name === "port") continue;
+      names.add(name);
+    }
+  }
+  return [...names];
+})();
+assert.equal(parserInterface.length, 22);
+assert.deepEqual(Object.keys(kv).sort(), [...parserInterface, ...surface].sort());
 
-// Construction stays async-only: the bare class needs a bound port.
+// Construction stays direct: the bare class needs a bound port.
 assert.throws(() => new kv.Session(), /bound port/);
 
-const parser = await kv.parser();
-const session = await kv.openSession();
+const session = kv.openSession();
 try {
-  assert.ok("reduction_Pair" in parser.listProcedures());
+  assert.ok("reduction_Pair" in kv.listProcedures());
   const parsed = session.parse("alpha:12,beta:3");
   assert.equal(parsed, 15);
-  console.log(`GALLEY_RESULT=${JSON.stringify({ parse: parsed, procedures: Object.keys(parser.listProcedures()).sort() })}`);
+  console.log(`GALLEY_RESULT=${JSON.stringify({ parse: parsed, procedures: Object.keys(kv.listProcedures()).sort() })}`);
 } finally {
   session.close();
 }

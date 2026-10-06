@@ -10,14 +10,12 @@
  * specifiers anywhere in its import graph.
  */
 
-import { seedFileIo, seedProceduresScan } from "./ffi.ts";
-import { nodeFileIo, scanLanguageDir } from "./files.ts";
+import { seedFileIo } from "./ffi.ts";
+import { nodeFileIo } from "./files.ts";
 
-// Node entry owns the Node capabilities: the real filesystem plus the
-// language-directory procedure scan. The browser entry (`browser.ts`)
-// never imports this module.
+// Node entry owns the Node capabilities: the real filesystem. The
+// browser entry (`browser.ts`) never imports this module.
 seedFileIo(nodeFileIo);
-seedProceduresScan({ forDirectory: scanLanguageDir });
 
 // Core surface: sessions come from the universal entry or the generated
 // package entry; the adapter binds ports only.
@@ -38,7 +36,7 @@ export {
   RecoveryTarget,
   Resume,
 } from "@sanbus/galley-core";
-export { getWasmPort, instantiateWasm, portFromBytes, portFromUrl, __resetModuleCache, __resetWasmAcquisition, loadProcedures, wasmFileName } from "./ffi.ts";
+export { getWasmPort, instantiateWasm, __resetModuleCache, __resetWasmAcquisition, wasmFileName } from "./ffi.ts";
 export type { WasmPortSource } from "./ffi.ts";
 export type { Session, SessionOptions } from "@sanbus/galley-core";
 export type { WalkStep, Diagnostic, TreeSnapshot } from "@sanbus/galley-core";
