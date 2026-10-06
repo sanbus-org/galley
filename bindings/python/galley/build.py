@@ -27,8 +27,9 @@ and may contain procedure hook implementations and custom message hooks:
 
 The tool drives generation and the consumer static-library build, then
 compiles the self-contained inner extension from the shipped `_galley.c`
-against the built archive and writes the generated package init, leaving
-the language directory itself importable: `import my_lang` parses with
+against the built archive and writes the generated package init,
+stubbing `procedures.py` when the grammar has none, leaving the
+language directory itself importable: `import my_lang` parses with
 bundled hooks; `galley.load(<impl path>)` binds the bare extension file
 with no hook wiring.
 
@@ -157,18 +158,27 @@ def extension_file_name() -> str:
 def emit_package_init(language_dir: Path) -> None:
     """Write the generated package init for the language directory.
 
-    The init re-exports the inner extension's surface, then scans the
-    sibling procedures.py (when present) into the hook registry. This
-    is the only automatic scan: bare ``galley.load()`` never executes
-    it.
+    The init re-exports the inner extension's surface, then imports the
+    sibling ``procedures`` submodule — stubbed here when the grammar
+    has none — and wires its hooks into the registry. This is the only
+    automatic wiring: bare ``galley.load()`` never executes it.
     """
     init_path = language_dir / "__init__.py"
     assert_generated_or_absent(init_path)
+    procedures_path = language_dir / "procedures.py"
+    if not procedures_path.exists():
+        # The init imports ``procedures`` unconditionally, so a grammar
+        # without hooks still needs the module; a hand-written file is
+        # never touched.
+        procedures_path.write_text(
+            f'# {GENERATED_MARKER}\n"""Bundled hooks: the grammar ships none."""\n',
+            encoding="utf-8",
+        )
     init_path.write_text(
         f"""# {GENERATED_MARKER}
 \"\"\"Language package: parser surface plus bundled hook wiring.\"\"\"
 
-from pathlib import Path as _Path
+import sys as _sys
 
 from .{IMPL_MODULE_NAME} import *  # noqa: F401,F403
 from . import {IMPL_MODULE_NAME} as _impl  # noqa: F401
@@ -181,32 +191,21 @@ del {IMPL_MODULE_NAME}
 # extension types are immutable, so no per-package rename. Behavior is
 # unaffected: same objects, same registry.
 
-# Bundled hooks live in the procedures submodule, importable directly
-# (`from my_language import procedures` resolves the registered module
-# below); the package binds no hook namespace itself.
-_procedures_file = _Path(__file__).resolve().parent / "procedures.py"
-if _procedures_file.is_file():
-    import importlib.util as _importlib_util
-    import sys as _sys
-
-    _spec = _importlib_util.spec_from_file_location(
-        __name__ + ".procedures", _procedures_file
+# Bundled hooks: the sibling procedures submodule, imported by name like
+# any module — the build stubs an empty one when the grammar has none,
+# so no file discovery happens at import time. The submodule stays
+# importable directly (`from my_language import procedures`) without
+# joining the package's public surface.
+from . import procedures as _procedures
+_installed = _impl.install_procedures(_procedures.__dict__)
+if _installed == 0 and any(
+    not name.startswith("_") for name in vars(_procedures)
+):
+    print(
+        f"galley: {{__name__}}.procedures defines no procedure hooks",
+        file=_sys.stderr,
     )
-    if _spec is None or _spec.loader is None:
-        raise ImportError(
-            f"not a loadable procedures module: {{_procedures_file}}"
-        )
-    _procedures = _importlib_util.module_from_spec(_spec)
-    _sys.modules[_spec.name] = _procedures
-    _spec.loader.exec_module(_procedures)
-    _installed = _impl.install_procedures(_procedures.__dict__)
-    if _installed == 0:
-        print(
-            f"galley: {{_procedures_file}} defines no procedure hooks",
-            file=_sys.stderr,
-        )
-    del _spec, _installed, _importlib_util, _sys, _procedures
-del _Path, _procedures_file
+del procedures, _procedures, _installed, _sys
 """,
         encoding="utf-8",
     )
@@ -430,9 +429,7 @@ def consumer_build_arguments(
 
 
 def main() -> None:
-    usage = (
-        "usage: python -m galley <language-dir> [--optimize <mode>] [generator flags...]"
-    )
+    usage = "usage: python -m galley <language-dir> [--optimize <mode>] [generator flags...]"
     if len(sys.argv) < 2:
         fatal(usage)
     if os.name == "nt":

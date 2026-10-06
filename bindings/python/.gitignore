@@ -10,6 +10,7 @@ build/
 /test_fixture/libgalley-python.*
 /test_fixture_second/_ll-parser.zig
 /test_fixture_second/procedures.zig
+/test_fixture_second/procedures.py
 /test_fixture_second/__init__.py
 /test_fixture_second/__init__.pyi
 /test_fixture_second/galley_impl.*.so

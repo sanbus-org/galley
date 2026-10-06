@@ -226,8 +226,9 @@ with parser.Session() as session:   # copies the defaults above
     session.parse("alpha:12")
 ```
 
-When no `procedures.py` exists, the shim is still linked
-so the archive links; hooks are simply no-ops until
+When the grammar ships no hooks, the build writes an empty
+`procedures.py`; the shim is still linked so the archive links
+and hooks are simply no-ops until
 registered via `parser.install_procedure` or `session.install_procedure`
 without requiring a rebuild.
 `parser.has_procedures()` reports whether

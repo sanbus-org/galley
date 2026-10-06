@@ -773,9 +773,7 @@ class WalkTests(unittest.TestCase):
         recurse(root, 0, expected)
         self.assertGreater(len(expected), 1)
 
-        walked = [
-            (step.node.address, step.depth) for step in root.walk()
-        ]
+        walked = [(step.node.address, step.depth) for step in root.walk()]
         self.assertEqual(expected, walked)
         first = next(iter(root.walk()))
         self.assertEqual(first.node, root)
@@ -1125,9 +1123,7 @@ class WalkTests(unittest.TestCase):
             self.skipTest("no AST build")
         root = self.session.root_node()
         assert root is not None
-        baseline = [
-            (step.node.address, step.depth) for step in root.walk()
-        ]
+        baseline = [(step.node.address, step.depth) for step in root.walk()]
         self.assertGreater(len(baseline), 1)
 
         walker = root.walk()
@@ -1148,9 +1144,7 @@ class WalkTests(unittest.TestCase):
         # Re-inserting the removed subtree brings it back into the walk.
         assert head is not None
         self.session.append_children(root, head)
-        restored = [
-            (step.node.address, step.depth) for step in root.walk()
-        ]
+        restored = [(step.node.address, step.depth) for step in root.walk()]
         self.assertEqual(len(restored), len(baseline))
         self.assertIn((removed.address, baseline[1][1]), restored)
 
@@ -1443,7 +1437,9 @@ class EditTests(unittest.TestCase):
             _restore_procedures(saved_procedures)
         self.assertEqual(refusals, [grammar.Status.ERROR_STALE_TREE] * 4)
 
-    def test_hook_door_refuses_a_node_of_an_earlier_parse_on_every_capability(self) -> None:
+    def test_hook_door_refuses_a_node_of_an_earlier_parse_on_every_capability(
+        self,
+    ) -> None:
         # The core checks the generation inside every hook-door call: a node
         # of the previous parse raises the one stale-tree error on a read, a
         # link, a count, an edit and a walk step, and nothing answers None.
@@ -1510,9 +1506,7 @@ class EditTests(unittest.TestCase):
             self.session.parse("alpha:12,beta:3")
         finally:
             self.session.clear_procedures()
-        self.assertEqual(
-            outcomes, [grammar.Status.ERROR_STALE_TREE] * (24 * 2)
-        )
+        self.assertEqual(outcomes, [grammar.Status.ERROR_STALE_TREE] * (24 * 2))
         self.assertEqual(live, [b"alpha:12", b"beta:3"])
 
     def test_chain_detached_in_one_hook_attaches_in_a_later_hook(self) -> None:
@@ -1716,7 +1710,9 @@ class GenerationTests(unittest.TestCase):
         self.assertEqual(hash(found), hash(first))
         self.assertEqual({found: "session"}[first], "session")
 
-    def test_hook_node_of_a_parse_that_publishes_nothing_is_refused_afterwards(self) -> None:
+    def test_hook_node_of_a_parse_that_publishes_nothing_is_refused_afterwards(
+        self,
+    ) -> None:
         stashed: list[grammar.Node] = []
 
         def reduction_Number(args: grammar.ProcedureArguments) -> None:
@@ -1825,10 +1821,7 @@ class GenerationTests(unittest.TestCase):
         def reduction_Pair(args: grammar.ProcedureArguments) -> None:
             node = args.current_node()
             assert node is not None
-            steps = [
-                (step.node.address, step.depth)
-                for step in node.walk()
-            ]
+            steps = [(step.node.address, step.depth) for step in node.walk()]
             recorded.append((steps, node))
 
         self.session.install_procedure("reduction_Pair", reduction_Pair)
@@ -1836,10 +1829,7 @@ class GenerationTests(unittest.TestCase):
         self.session.clear_procedures()
         self.assertGreater(len(recorded), 0)
         for steps, hook_root in recorded:
-            replayed = [
-                (step.node.address, step.depth)
-                for step in hook_root.walk()
-            ]
+            replayed = [(step.node.address, step.depth) for step in hook_root.walk()]
             self.assertEqual(replayed, steps)
 
         root = self.session.root_node()
@@ -2151,6 +2141,83 @@ class LoaderTests(unittest.TestCase):
         from directlang import procedures as namespace
 
         self.assertEqual(namespace.seen, [b"12"])
+
+
+class GeneratedPackageInitTests(unittest.TestCase):
+    """The generated init: one import, no file discovery.
+
+    Packages are assembled from the prebuilt fixture extension and
+    ``emit_package_init``'s own output — the init is what's under test,
+    so no rebuild runs.
+    """
+
+    def setUp(self) -> None:
+        from galley.build import GENERATED_MARKER, emit_package_init
+
+        self.generated_marker = GENERATED_MARKER
+        self.emit_package_init = emit_package_init
+        self.directory = Path(tempfile.mkdtemp(prefix="galley-init-test-"))
+        self.addCleanup(shutil.rmtree, self.directory, True)
+
+    def _make_package(self, name: str, procedures: str | None = None) -> Path:
+        package = self.directory / name
+        package.mkdir()
+        suffix = sysconfig.get_config_var("EXT_SUFFIX")
+        shutil.copy2(_fixture_impl_file(), package / f"galley_impl{suffix}")
+        self.emit_package_init(package)
+        if procedures is not None:
+            (package / "procedures.py").write_text(procedures, encoding="utf-8")
+        sys.path.insert(0, str(self.directory))
+        self.addCleanup(sys.path.remove, str(self.directory))
+        for key in (name, f"{name}.procedures", f"{name}.galley_impl"):
+            self.addCleanup(sys.modules.pop, key, None)
+        return package
+
+    def test_missing_procedures_module_is_stubbed_and_kept(self) -> None:
+        package = self.directory / "stublang"
+        package.mkdir()
+        self.emit_package_init(package)
+        stub = package / "procedures.py"
+        self.assertIn(self.generated_marker, stub.read_text(encoding="utf-8"))
+        # A hand-written module survives a regeneration untouched.
+        stub.write_text(
+            "def reduction_Number(args) -> None:\n    pass\n", encoding="utf-8"
+        )
+        self.emit_package_init(package)
+        self.assertIn("reduction_Number", stub.read_text(encoding="utf-8"))
+
+    def test_import_wires_hooks_with_no_file_discovery(self) -> None:
+        self._make_package(
+            "wiredlang",
+            "seen: list[bytes] = []\n"
+            "def reduction_Number(args) -> None:\n"
+            "    node = args.current_node()\n"
+            "    assert node is not None\n"
+            "    text = node.text()\n"
+            "    assert text is not None\n"
+            "    seen.append(text)\n",
+        )
+        import wiredlang
+
+        with wiredlang.Session() as session:
+            session.parse("alpha:12")
+        from wiredlang import procedures
+
+        self.assertEqual(procedures.seen, [b"12"])
+        # Importable, but not part of the package's public surface.
+        self.assertNotIn("procedures", dir(wiredlang))
+
+    def test_hookless_package_imports_silently(self) -> None:
+        import contextlib
+        import io
+
+        self._make_package("silentlang")  # no procedures.py: the build's stub
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            import silentlang  # noqa: F401
+
+        self.assertEqual(stderr.getvalue(), "")
+        self.assertEqual(silentlang.list_procedures(), {})
 
 
 class SessionHookTests(unittest.TestCase):
@@ -2497,9 +2564,11 @@ class BuildOptimizeTests(unittest.TestCase):
                 "ZIG_EXECUTABLE": str(fake_zig),
             }
             arguments = ["galley", str(language_dir), *extra_arguments]
-            with mock.patch.dict(os.environ, environment), mock.patch.object(
-                sys, "argv", arguments
-            ), mock.patch("builtins.print"):
+            with (
+                mock.patch.dict(os.environ, environment),
+                mock.patch.object(sys, "argv", arguments),
+                mock.patch("builtins.print"),
+            ):
                 with self.assertRaises(SystemExit):
                     build_module.main()
             return recorded.read_text(encoding="utf-8").splitlines()
