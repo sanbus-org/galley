@@ -3,9 +3,12 @@
 Four live parsers in your browser: JSON, Lisp, Lua, and Galley
 itself. Type below or
 drop in a file — parsing runs locally in WebAssembly, nothing is
-uploaded. The JSON tab counts values two ways: hooks that fire during
-the parse, or one AST snapshot plus a host walk — pick either and
-compare parse time against time-to-totals. Try real files: the
+uploaded. The JSON tab measures four ways: a raw parse, hooks that
+fire during the parse, the AST snapshot materialized, or the snapshot
+walked to totals — one row shows what the chosen workload costs, once
+or across a run count. Raw and Hooks run one build, so the gap between
+them is the hooks alone; the AST buttons run the build that constructs
+a tree as it parses. Try real files: the
 [JSON samples](https://github.com/sanbus-org/galley/tree/main/languages/json/samples),
 [Lisp samples](https://github.com/sanbus-org/galley/tree/main/languages/lisp/samples),
 [Lua samples](https://github.com/sanbus-org/galley/tree/main/languages/lua/samples)

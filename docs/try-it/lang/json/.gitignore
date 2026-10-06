@@ -2,3 +2,6 @@
 /procedures_wasm.zig
 /metadata.json
 /libgalley-js-wasm.wasm
+/index.mjs
+/index.d.mts
+/package.json
