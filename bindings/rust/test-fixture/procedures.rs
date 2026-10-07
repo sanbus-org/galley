@@ -4,6 +4,7 @@
 //! and source position, plus drop_if_empty on empty tails. Author-defined
 //! grammar hooks arrive as `hook_<name>` — Key is annotated `@print`.
 
+use std::ffi::c_void;
 use std::io::Write;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
@@ -75,10 +76,66 @@ pub extern "C" fn fixture_hook_live_reads() -> u32 {
     LIVE_READS.load(Ordering::SeqCst)
 }
 
+// What the tests/hook_arguments.rs suite checks: the first Pair hook's session
+// and ticket, kept past that hook, and how many of the calls made with them
+// the core refused as `Error::StaleHook` — from the later Document hook and
+// after the parse.
+// Kept per session: tests of one binary parse on several threads, and a ticket
+// is only ever used on the session that issued it.
+static FIRST_PAIR: Mutex<Vec<(usize, u64)>> = Mutex::new(Vec::new());
+static STALE_HOOK_DURING: AtomicU32 = AtomicU32::new(0);
+
+fn stale_hook_refusals(session: usize, hook: u64) -> u32 {
+    let stale = Err(procedure::Error::StaleHook);
+    unsafe {
+        ProcedureArguments::with(session as *mut c_void, hook, |arguments| {
+            [
+                arguments.drop_self() == stale,
+                arguments.drop_children() == stale,
+                arguments.drop_if_empty() == stale,
+                arguments.replace_with_children() == stale,
+                arguments.report_semantic_error("late").map(drop) == stale,
+                arguments.current_node().map(drop) == stale,
+                arguments.current_line().map(drop) == stale,
+                arguments.current_column().map(drop) == stale,
+                arguments.set_current_node(None) == stale,
+            ]
+            .iter()
+            .filter(|refused| **refused)
+            .count() as u32
+        })
+    }
+}
+
+/// How many calls made with the first Pair's arguments from the Document
+/// hook of the same parse were refused as a stale hook (9 are made).
+#[no_mangle]
+pub extern "C" fn fixture_stale_hook_during() -> u32 {
+    STALE_HOOK_DURING.load(Ordering::SeqCst)
+}
+
+/// The same calls, made now, after the parse (9 are made).
+#[no_mangle]
+pub extern "C" fn fixture_stale_hook_after() -> u32 {
+    match FIRST_PAIR.lock().unwrap().last() {
+        Some(&(session, hook)) => stale_hook_refusals(session, hook),
+        None => 0,
+    }
+}
+
+/// Forgets the recorded hook, so the next parse records its own.
+#[no_mangle]
+pub extern "C" fn fixture_forget_first_pair() {
+    FIRST_PAIR.lock().unwrap().clear();
+    STALE_HOOK_DURING.store(0, Ordering::SeqCst);
+}
+
 fn probe_hook_door(arguments: &mut ProcedureArguments, node: NodeHandle) {
     let mut previous = PREVIOUS_ROOT.lock().unwrap();
     if let Some(stale) = *previous {
-        let door = arguments.door();
+        let Ok(door) = arguments.door() else {
+            return;
+        };
         let stale_error = Err(procedure::Error::StaleTree);
         let refusals = [
             door.text(stale).map(drop) == stale_error,
@@ -93,7 +150,10 @@ fn probe_hook_door(arguments: &mut ProcedureArguments, node: NodeHandle) {
             door.prior_sibling(stale).map(drop) == stale_error,
             door.parent(stale).map(drop) == stale_error,
             // children() yields the refusal, once, then ends.
-            door.children(stale).map(|child| child.map(drop)).collect::<Vec<_>>() == [stale_error],
+            door.children(stale)
+                .map(|child| child.map(drop))
+                .collect::<Vec<_>>()
+                == [stale_error],
         ];
         let live = [
             door.text(node).is_ok(),
@@ -114,10 +174,14 @@ fn probe_hook_door(arguments: &mut ProcedureArguments, node: NodeHandle) {
         // set_current_node: a node of the previous parse is refused and the
         // current node stays; a node of this parse sets.
         let kept = arguments.current_node();
-        if arguments.set_current_node(Some(stale)) == stale_error && arguments.current_node() == kept {
+        if arguments.set_current_node(Some(stale)) == stale_error
+            && arguments.current_node() == kept
+        {
             refused += 1;
         }
-        if arguments.set_current_node(Some(node)).is_ok() && arguments.current_node() == Ok(Some(node)) {
+        if arguments.set_current_node(Some(node)).is_ok()
+            && arguments.current_node() == Ok(Some(node))
+        {
             read += 1;
         }
         STALE_REFUSALS.store(refused, Ordering::SeqCst);
@@ -127,89 +191,146 @@ fn probe_hook_door(arguments: &mut ProcedureArguments, node: NodeHandle) {
 }
 
 #[no_mangle]
-pub extern "C" fn reduction(_arguments: &mut ProcedureArguments) {}
+pub extern "C" fn reduction(_session: *mut c_void, _hook: u64) {}
 
 #[no_mangle]
-pub extern "C" fn reduction_Key(_arguments: &mut ProcedureArguments) {}
+pub extern "C" fn reduction_Key(_session: *mut c_void, _hook: u64) {}
 
 #[no_mangle]
-pub extern "C" fn reduction_PairList(_arguments: &mut ProcedureArguments) {}
+pub extern "C" fn reduction_PairList(_session: *mut c_void, _hook: u64) {}
 
 #[no_mangle]
-pub extern "C" fn reduction_KeyTail(arguments: &mut ProcedureArguments) {
-    let _ = arguments.drop_if_empty();
-}
-
-#[no_mangle]
-pub extern "C" fn reduction_NumberTail(arguments: &mut ProcedureArguments) {
-    let _ = arguments.drop_if_empty();
-}
-
-#[no_mangle]
-pub extern "C" fn reduction_PairListTail(arguments: &mut ProcedureArguments) {
-    let _ = arguments.drop_if_empty();
-}
-
-#[no_mangle]
-pub extern "C" fn hook_print(arguments: &mut ProcedureArguments) {
-    let door = arguments.door();
-    let Ok(Some(node)) = arguments.current_node() else {
-        return;
-    };
-    let (line, column) = pos(door, node);
-    write_stderr("@print \"");
-    write_bytes(door.text(node).unwrap_or(b""));
-    write_stderr(&format!("\" at {line}:{column}\n"));
-}
-
-#[no_mangle]
-pub extern "C" fn reduction_Number(arguments: &mut ProcedureArguments) {
-    let door = arguments.door();
-    let Ok(Some(node)) = arguments.current_node() else {
-        return;
-    };
-    let (line, column) = pos(door, node);
-    write_stderr("Number ");
-    write_bytes(door.text(node).unwrap_or(b""));
-    write_stderr(&format!(" at {line}:{column}\n"));
-    if let Ok(value) = std::str::from_utf8(door.text(node).unwrap_or(b""))
-        .unwrap_or("")
-        .parse::<u64>()
-    {
-        if value > 999 {
-            let _ = arguments.report_semantic_error("value out of range");
-        }
+pub extern "C" fn reduction_KeyTail(session: *mut c_void, hook: u64) {
+    unsafe {
+        ProcedureArguments::with(session, hook, |arguments| {
+            let _ = arguments.drop_if_empty();
+        })
     }
 }
 
 #[no_mangle]
-pub extern "C" fn reduction_Pair(arguments: &mut ProcedureArguments) {
-    let door = arguments.door();
-    let Ok(Some(node)) = arguments.current_node() else {
-        return;
-    };
-    let (line, column) = pos(door, node);
-    let text = door.text(node).unwrap_or(b"");
-    let mut parts = text.splitn(2, |&byte| byte == b':');
-    let key = parts.next().unwrap_or(b"");
-    let number = parts.next().unwrap_or(b"");
-    write_stderr("Pair ");
-    write_bytes(key);
-    write_stderr("=");
-    write_bytes(number);
-    write_stderr(&format!(
-        " ({} children) at {line}:{column}\n",
-        door.child_count(node).unwrap_or(0)
-    ));
+pub extern "C" fn reduction_NumberTail(session: *mut c_void, hook: u64) {
+    unsafe {
+        ProcedureArguments::with(session, hook, |arguments| {
+            let _ = arguments.drop_if_empty();
+        })
+    }
 }
 
 #[no_mangle]
-pub extern "C" fn reduction_Document(arguments: &mut ProcedureArguments) {
-    let Ok(Some(node)) = arguments.current_node() else {
-        return;
-    };
-    probe_hook_door(arguments, node);
-    let door = arguments.door();
-    let (count, total) = count_pairs(door, node);
-    write_stderr(&format!("Document {count} pairs, sum={total}\n"));
+pub extern "C" fn reduction_PairListTail(session: *mut c_void, hook: u64) {
+    unsafe {
+        ProcedureArguments::with(session, hook, |arguments| {
+            let _ = arguments.drop_if_empty();
+        })
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn hook_print(session: *mut c_void, hook: u64) {
+    unsafe {
+        ProcedureArguments::with(session, hook, |arguments| {
+            let Ok(door) = arguments.door() else {
+                return;
+            };
+            let Ok(Some(node)) = arguments.current_node() else {
+                return;
+            };
+            let (line, column) = pos(door, node);
+            write_stderr("@print \"");
+            write_bytes(door.text(node).unwrap_or(b""));
+            write_stderr(&format!("\" at {line}:{column}\n"));
+        })
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn reduction_Number(session: *mut c_void, hook: u64) {
+    unsafe {
+        ProcedureArguments::with(session, hook, |arguments| {
+            let Ok(door) = arguments.door() else {
+                return;
+            };
+            let Ok(Some(node)) = arguments.current_node() else {
+                return;
+            };
+            let (line, column) = pos(door, node);
+            write_stderr("Number ");
+            write_bytes(door.text(node).unwrap_or(b""));
+            write_stderr(&format!(" at {line}:{column}\n"));
+            if let Ok(value) = std::str::from_utf8(door.text(node).unwrap_or(b""))
+                .unwrap_or("")
+                .parse::<u64>()
+            {
+                if value > 999 {
+                    let _ = arguments.report_semantic_error("value out of range");
+                }
+            }
+        })
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn reduction_Pair(session: *mut c_void, hook: u64) {
+    {
+        let mut first_pairs = FIRST_PAIR.lock().unwrap();
+        if !first_pairs
+            .iter()
+            .any(|&(recorded, _)| recorded == session as usize)
+        {
+            first_pairs.push((session as usize, hook));
+        }
+    }
+    unsafe {
+        ProcedureArguments::with(session, hook, |arguments| {
+            let Ok(door) = arguments.door() else {
+                return;
+            };
+            let Ok(Some(node)) = arguments.current_node() else {
+                return;
+            };
+            let (line, column) = pos(door, node);
+            let text = door.text(node).unwrap_or(b"");
+            let mut parts = text.splitn(2, |&byte| byte == b':');
+            let key = parts.next().unwrap_or(b"");
+            let number = parts.next().unwrap_or(b"");
+            write_stderr("Pair ");
+            write_bytes(key);
+            write_stderr("=");
+            write_bytes(number);
+            write_stderr(&format!(
+                " ({} children) at {line}:{column}\n",
+                door.child_count(node).unwrap_or(0)
+            ));
+        })
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn reduction_Document(session: *mut c_void, hook: u64) {
+    unsafe {
+        ProcedureArguments::with(session, hook, |arguments| {
+            let Ok(Some(node)) = arguments.current_node() else {
+                return;
+            };
+            probe_hook_door(arguments, node);
+            let first = FIRST_PAIR
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|&&(recorded, _)| recorded == session as usize)
+                .copied();
+            if let Some((first_session, first_hook)) = first {
+                STALE_HOOK_DURING.store(
+                    stale_hook_refusals(first_session, first_hook),
+                    Ordering::SeqCst,
+                );
+            }
+            let Ok(door) = arguments.door() else {
+                return;
+            };
+            let (count, total) = count_pairs(door, node);
+            write_stderr(&format!("Document {count} pairs, sum={total}\n"));
+        })
+    }
 }

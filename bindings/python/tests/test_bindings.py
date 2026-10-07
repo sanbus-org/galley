@@ -213,6 +213,69 @@ class SessionTests(unittest.TestCase):
                 probe()
             self.assertNotIsInstance(closed.exception, grammar.StaleTreeError)
 
+    def test_finished_parse_queries_are_refused_inside_a_hook(self) -> None:
+        # Inside a hook (this thread, this session) nothing that describes a
+        # finished parse answers: not before the first parse publishes, not
+        # with a tree published, never 0 or empty. `session in use` comes
+        # first, and it is not a stale tree.
+        codes: list[tuple[str, int]] = []
+
+        def probe(args: grammar.ProcedureArguments) -> None:
+            for name in (
+                "node_capacity",
+                "node_count",
+                "snapshot",
+                "last_input",
+                "last_position",
+                "root_node",
+            ):
+                try:
+                    getattr(self.session, name)()
+                    codes.append((name, 0))
+                except grammar.GalleyError as error:
+                    codes.append((name, error.code))
+                    self.assertNotIsInstance(error, grammar.StaleTreeError)
+
+        names = [
+            "node_capacity", "node_count", "snapshot", "last_input",
+            "last_position", "root_node",
+        ]
+        refused = [(name, grammar.Status.ERROR_SESSION_IN_USE) for name in names]
+        for attempt in range(2):  # nothing published, then a tree published
+            codes.clear()
+            self.session.install_procedure("reduction_Document", probe)
+            try:
+                self.session.parse("alpha:12,beta:3")
+            finally:
+                self.session.clear_procedures()
+            self.assertEqual(codes, refused, f"attempt {attempt}")
+
+    def test_node_capacity_is_refused_while_another_thread_parses(self) -> None:
+        entered = threading.Event()
+        release = threading.Event()
+        outcome: list[int] = []
+
+        def block(args: grammar.ProcedureArguments) -> None:
+            entered.set()
+            self.assertTrue(release.wait(30))
+
+        self.session.install_procedure("reduction_Document", block)
+        thread = threading.Thread(target=lambda: self.session.parse("alpha:12,beta:3"))
+        thread.start()
+        try:
+            self.assertTrue(entered.wait(30))
+            for read in (self.session.node_capacity, self.session.node_count,
+                         self.session.snapshot, self.session.last_input,
+                         self.session.last_position):
+                with self.assertRaises(grammar.GalleyError) as refusal:
+                    read()
+                outcome.append(refusal.exception.code)
+        finally:
+            release.set()
+            thread.join(30)
+            self.session.clear_procedures()
+        self.assertEqual(outcome, [grammar.Status.ERROR_SESSION_IN_USE] * 5)
+
     def test_procedure_hook_can_read_node_text(self) -> None:
         seen: list[bytes] = []
 
@@ -264,25 +327,38 @@ class SessionTests(unittest.TestCase):
 
     def test_procedure_arguments_die_with_their_hook(self) -> None:
         # The arguments carry per-hook state (current node, position, the
-        # drop and replace channel). A reference stashed past its hook
-        # refuses instead of touching a frame that is gone.
+        # drop and replace channel). The core refuses every call made with
+        # a hook that has returned: from a later hook of the same parse and
+        # after the parse alike, on every accessor and with no expiry flag
+        # in the binding.
         stashed: list[grammar.ProcedureArguments] = []
-        outcomes: list[str] = []
+        during: list[tuple[str, int]] = []
+        later: list[grammar.ProcedureArguments] = []
 
         def stash_pair(args: grammar.ProcedureArguments) -> None:
             if not stashed:
                 stashed.append(args)
 
+        def uses(args: grammar.ProcedureArguments, node: Any = None) -> list[Any]:
+            return [
+                args.current_line,
+                args.current_column,
+                args.current_node,
+                args.drop_self,
+                args.drop_children,
+                args.drop_if_empty,
+                args.replace_with_children,
+                lambda: args.report_semantic_error("late"),
+                lambda: args.set_current_node(node),
+            ]
+
         def use_in_document(args: grammar.ProcedureArguments) -> None:
-            for use in (
-                stashed[0].current_line,
-                stashed[0].current_node,
-                stashed[0].drop_if_empty,
-            ):
+            later.append(args)
+            for use in uses(stashed[0], args.current_node()):
                 try:
                     use()
-                except ValueError as error:
-                    outcomes.append(str(error))
+                except grammar.GalleyError as error:
+                    during.append((type(error).__name__, error.code))
 
         self.session.install_procedure("reduction_Pair", stash_pair)
         self.session.install_procedure("reduction_Document", use_in_document)
@@ -290,8 +366,88 @@ class SessionTests(unittest.TestCase):
             self.session.parse("alpha:12,beta:3")
         finally:
             self.session.clear_procedures()
-        self.assertEqual(len(outcomes), 3)
-        self.assertTrue(all("procedure arguments" in outcome for outcome in outcomes))
+        calls = len(uses(stashed[0]))
+        # Every call refused, none as a stale tree, and the later hook's own
+        # arguments were served the whole time (the parse succeeded).
+        self.assertEqual(during, [("GalleyError", grammar.Status.ERROR_STALE_HOOK)] * calls)
+        # After the parse the same arguments, and the last hook's, still refuse.
+        root = self.session.root_node()
+        assert root is not None
+        for args in (stashed[0], later[0]):
+            for use in uses(args, root):
+                with self.assertRaises(grammar.GalleyError) as refusal:
+                    use()
+                self.assertEqual(refusal.exception.code, grammar.Status.ERROR_STALE_HOOK)
+                self.assertNotIsInstance(refusal.exception, grammar.StaleTreeError)
+        self.assertEqual(root.text(), b"alpha:12,beta:3")
+
+    def test_live_arguments_are_refused_on_any_thread_but_the_hooks(self) -> None:
+        # A hook's arguments live on the dispatching thread's stack: while the
+        # hook runs, every other thread is refused with `session in use` before
+        # anything is read, and nothing is changed.
+        entered = threading.Event()
+        probed = threading.Event()
+        codes: list[int] = []
+
+        def reduction_Document(args: grammar.ProcedureArguments) -> None:
+            def probe() -> None:
+                for use in (
+                    args.current_line,
+                    args.current_node,
+                    args.drop_self,
+                    lambda: args.report_semantic_error("late"),
+                ):
+                    try:
+                        use()
+                    except grammar.GalleyError as error:
+                        codes.append(error.code)
+                probed.set()
+
+            thread = threading.Thread(target=probe)
+            thread.start()
+            thread.join(30)
+            entered.set()
+            # Same thread, still live: served.
+            args.current_line()
+
+        self.session.install_procedure("reduction_Document", reduction_Document)
+        try:
+            self.session.parse("alpha:12,beta:3")
+        finally:
+            self.session.clear_procedures()
+        self.assertTrue(probed.is_set())
+        self.assertEqual(codes, [grammar.Status.ERROR_SESSION_IN_USE] * 4)
+        self.assertEqual(self.session.root_node().text(), b"alpha:12,beta:3")
+
+    def test_a_refused_call_with_returned_arguments_changes_nothing(self) -> None:
+        # drop_self through the first Pair's arguments, made from a later
+        # Pair hook, is refused and so cannot drop that later hook's node.
+        stashed: list[grammar.ProcedureArguments] = []
+        refusals: list[int] = []
+
+        def reduction_Pair(args: grammar.ProcedureArguments) -> None:
+            if not stashed:
+                stashed.append(args)
+                return
+            try:
+                stashed[0].drop_self()
+            except grammar.GalleyError as error:
+                refusals.append(error.code)
+
+        self.session.install_procedure("reduction_Pair", reduction_Pair)
+        try:
+            self.session.parse("alpha:12,beta:3")
+        finally:
+            self.session.clear_procedures()
+        self.assertEqual(refusals, [grammar.Status.ERROR_STALE_HOOK])
+        root = self.session.root_node()
+        assert root is not None
+        pairs = [
+            step.node
+            for step in root.walk()
+            if step.node.symbol_name() == b"Pair"
+        ]
+        self.assertEqual([pair.text() for pair in pairs], [b"alpha:12", b"beta:3"])
 
     def test_nested_parse_of_another_session_uses_its_own_hooks(self) -> None:
         # A hook that parses on another session: that session runs with its
@@ -1270,7 +1426,7 @@ class WalkTests(unittest.TestCase):
         self.assertNotIn((key_alpha.address, old_depth), steps)
         self.assertIn((key_alpha.address, new_depth), steps)
 
-    def test_completed_walk_stays_done_after_a_reparse(self) -> None:
+    def test_completed_walk_raises_stale_tree_after_a_reparse(self) -> None:
         if not grammar.has_ast():
             self.skipTest("no AST build")
         root = self.session.root_node()
@@ -1279,11 +1435,13 @@ class WalkTests(unittest.TestCase):
         self.assertGreater(len(list(walker)), 0)
         with self.assertRaises(StopIteration):
             next(walker)
-        # Done answers before the generation check: a reparse cannot
-        # resurrect the finished walk as a stale error.
+        # A walker belongs to the parse of the tree it was created over: the
+        # generation check comes before "done", so a reparse turns even a
+        # finished walk into a stale-tree error, and it stays one.
         self.session.parse("alpha:12,beta:3")
-        with self.assertRaises(StopIteration):
-            next(walker)
+        for _ in range(2):
+            with self.assertRaises(grammar.StaleTreeError):
+                next(walker)
 
     def test_hook_walk_prunes_semantic_error_subtrees(self) -> None:
         if not grammar.has_ast():
@@ -1849,6 +2007,107 @@ class GenerationTests(unittest.TestCase):
         assert pair is not None
         self.assertEqual(stashed[0], pair)
         self.assertEqual(hash(stashed[0]), hash(pair))
+
+
+class BorrowedMemoryTests(unittest.TestCase):
+    """Text and input pointers the core returns are borrowed.
+
+    They are valid until the next parse (inside a hook, until it returns), and
+    the session reuses two buffers for its input, so the third parse after a
+    read rewrites the memory the read came from. Every accessor must copy
+    before it returns; each read below is kept across such parses and must
+    still hold what it held when it was made.
+    """
+
+    FIRST = "alpha:12,beta:3"
+    # Same length as FIRST, so each one lands in a buffer FIRST used.
+    CHURN = ("qqqqq:88,wwww:7", "xxxxx:77,yyyy:6", "ppppp:66,rrrr:5")
+
+    def setUp(self) -> None:
+        self.session = grammar.Session(max_errors=10)
+        self.saved_procedures = grammar.list_procedures()
+
+    def tearDown(self) -> None:
+        self.session.close()
+        _restore_procedures(self.saved_procedures)
+
+    def churn(self) -> None:
+        for text in self.CHURN:
+            self.session.parse(text)
+
+    def test_node_text_and_input_are_copies(self) -> None:
+        if not grammar.has_ast():
+            self.skipTest("no AST build")
+        self.session.parse(self.FIRST)
+        root = self.session.root_node()
+        assert root is not None
+        nodes = [step.node for step in root.walk()]
+        texts = [node.text() for node in nodes]
+        names = [node.symbol_name() for node in nodes]
+        via_session = [self.session.text(node) for node in nodes]
+        names_via_session = [self.session.symbol_name(node) for node in nodes]
+        last_input = self.session.last_input()
+        self.churn()
+        self.assertEqual(self.session.last_input(), self.CHURN[-1].encode())
+        self.assertEqual(last_input, self.FIRST.encode())
+        self.assertEqual(texts[0], self.FIRST.encode())
+        self.assertIn(b"alpha:12", texts)
+        self.assertIn(b"beta:3", texts)
+        self.assertEqual(via_session, texts)
+        self.assertEqual(names.count(b"Pair"), 2)
+        self.assertEqual(names_via_session, names)
+
+    def test_hook_text_is_a_copy(self) -> None:
+        if not grammar.has_ast():
+            self.skipTest("no AST build")
+        seen: list[tuple[bytes, bytes]] = []
+
+        def reduction_Pair(args: grammar.ProcedureArguments) -> None:
+            node = args.current_node()
+            assert node is not None
+            seen.append((node.text(), node.symbol_name()))
+
+        self.session.install_procedure("reduction_Pair", reduction_Pair)
+        self.session.parse(self.FIRST)
+        self.churn()
+        self.assertEqual(seen[:2], [(b"alpha:12", b"Pair"), (b"beta:3", b"Pair")])
+
+    def test_diagnostics_are_copies(self) -> None:
+        with self.assertRaises(grammar.GalleyError) as raised:
+            self.session.parse("alpha:")
+        failure = raised.exception.diagnostic
+        assert failure is not None
+        current = self.session.diagnostic()
+        assert current is not None
+        recorded = self.session.diagnostics()
+
+        def fields(diagnostic: Any) -> tuple[Any, ...]:
+            return (
+                diagnostic.message,
+                diagnostic.message_ansi,
+                diagnostic.unexpected_token,
+                diagnostic.expected_tokens,
+                diagnostic.context,
+                diagnostic.semantic,
+                diagnostic.recovery_terminal,
+                diagnostic.recovery_lhs_variable,
+                diagnostic.recovery_production,
+                diagnostic.recovery_occurrence,
+            )
+
+        before = (fields(failure), fields(current), [fields(item) for item in recorded])
+        self.assertTrue(failure.expected_tokens)
+        # Failures of the same shape rewrite the input buffers and the
+        # rendered message; successes release the diagnostic memory.
+        for text in ("beta:?", "gamma:", "alpha:12,beta:3", "delta:", "alpha:12,beta:3"):
+            try:
+                self.session.parse(text)
+            except grammar.GalleyError:
+                pass
+        self.assertEqual(
+            (fields(failure), fields(current), [fields(item) for item in recorded]),
+            before,
+        )
 
 
 class SymbolTableTests(unittest.TestCase):

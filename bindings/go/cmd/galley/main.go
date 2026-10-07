@@ -690,13 +690,13 @@ func emitProcedureShim(hooks []string, outputPath string) error {
 	builder.WriteString("\n")
 	for _, name := range hooks {
 		fmt.Fprintf(&builder,
-			"var target_%[1]s: ?*const fn (?*anyopaque) callconv(.c) void = null;\n"+
+			"var target_%[1]s: ?*const fn (?*anyopaque, u64) callconv(.c) void = null;\n"+
 				"pub fn %[1]s(args: %[2]s) %[3]s {\n"+
-				"    if (target_%[1]s) |installed| installed(@ptrCast(args));\n"+
+				"    if (target_%[1]s) |installed| root.data_structures.host_hooks.callCompiled(args, installed);\n"+
 				"}\n\n",
 			name, parameters, result)
 	}
-	builder.WriteString("const procedure_slots = [_]struct { name: []const u8, slot: *?*const fn (?*anyopaque) callconv(.c) void }{\n")
+	builder.WriteString("const procedure_slots = [_]struct { name: []const u8, slot: *?*const fn (?*anyopaque, u64) callconv(.c) void }{\n")
 	for _, name := range hooks {
 		fmt.Fprintf(&builder, "    .{ .name = \"%[1]s\", .slot = &target_%[1]s },\n", name)
 	}
@@ -707,7 +707,7 @@ func emitProcedureShim(hooks []string, outputPath string) error {
 			"export fn galley_install_procedure_target(\n" +
 			"    name_ptr: [*]const u8,\n" +
 			"    name_len: usize,\n" +
-			"    target: *const fn (?*anyopaque) callconv(.c) void,\n" +
+			"    target: *const fn (?*anyopaque, u64) callconv(.c) void,\n" +
 			") c_int {\n" +
 			"    const name = name_ptr[0..name_len];\n" +
 			"    inline for (&procedure_slots) |*slot| {\n" +
@@ -740,7 +740,7 @@ func emitHookBinding(outputPath string, userHooks []string) error {
 	builder.WriteString("// the parser library's procedure slots at package init.\n")
 	builder.WriteString("package galley\n\n/*\n#include <stdlib.h>\n")
 	for _, name := range userHooks {
-		fmt.Fprintf(&builder, "void %[1]s(void*);\nstatic void* galley_addr_%[1]s(void) { return (void*)%[1]s; }\n", name)
+		fmt.Fprintf(&builder, "void %[1]s(void*, unsigned long long);\nstatic void* galley_addr_%[1]s(void) { return (void*)%[1]s; }\n", name)
 	}
 	builder.WriteString("extern int galley_install_procedure_target(const char*, size_t, void*);\n*/\n")
 	builder.WriteString("import \"C\"\nimport \"fmt\"\nimport \"os\"\nimport \"unsafe\"\n\n")

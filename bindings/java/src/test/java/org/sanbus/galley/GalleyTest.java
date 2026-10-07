@@ -773,6 +773,26 @@ public class GalleyTest {
         }
 
         @Test
+        void completedWalkerThrowsStaleTreeAfterAReparse() {
+            Node root = session.rootNode();
+            assertNotNull(root);
+            Walker walker = root.walk(false, false);
+            int steps = 0;
+            while (walker.hasNext()) {
+                walker.next();
+                steps++;
+            }
+            assertTrue(steps > 0);
+            // A finished walk is still answered by the core, which says
+            // "done" only while the walker's tree is live: it belongs to the
+            // parse of the tree it was created over, finished or not.
+            assertFalse(walker.hasNext());
+            assertEquals(15, session.parse("alpha:12,beta:3"));
+            assertThrows(StaleTreeException.class, walker::hasNext);
+            assertThrows(StaleTreeException.class, walker::next);
+        }
+
+        @Test
         void walkerStepAfterSessionCloseThrows() {
             Node root = session.rootNode();
             assertNotNull(root);
@@ -1026,8 +1046,8 @@ public class GalleyTest {
             Node oldChild = session.rootNode().firstChild();
             assertEquals(7, session.parse("alpha:1"));
             Node freshRoot = session.rootNode();
-            // The core compares one generation per call, so the host refuses a
-            // second node of another parse instead of forwarding its address.
+            // Each node crosses with its own generation and the core refuses a
+            // pair from two parses; the host compares nothing.
             assertStale(() -> session.appendChildren(freshRoot, oldChild));
             assertStale(() -> session.insertBefore(freshRoot, oldChild));
             assertStale(() -> session.insertAfter(freshRoot, oldChild));
@@ -1165,6 +1185,74 @@ public class GalleyTest {
                 assertThrows(GalleyException.class, () -> strict.parse("alpha:"));
                 assertNothingPublished(strict);
             }
+        }
+
+        @Test
+        void finishedParseQueriesAreRefusedInsideAHook() {
+            // Inside a hook (this thread, this session) nothing that describes
+            // a finished parse answers: not before the first parse publishes,
+            // not with a tree published, never 0 or empty. "Session in use"
+            // comes first and is not a stale tree.
+            List<String> outcomes = new ArrayList<>();
+            Map<String, Executable> reads = new java.util.LinkedHashMap<>();
+            reads.put("nodeCapacity", session::nodeCapacity);
+            reads.put("nodeCount", session::nodeCount);
+            reads.put("snapshot", session::snapshot);
+            reads.put("lastInput", session::lastInput);
+            reads.put("lastPosition", session::lastPosition);
+            reads.put("rootNode", session::rootNode);
+            session.installProcedure("reduction_Document", args -> {
+                for (Map.Entry<String, Executable> read : reads.entrySet()) {
+                    try {
+                        read.getValue().execute();
+                        outcomes.add(read.getKey() + ":answered");
+                    } catch (StaleTreeException stale) {
+                        outcomes.add(read.getKey() + ":stale");
+                    } catch (GalleyException refused) {
+                        outcomes.add(read.getKey() + ":" + refused.getCode());
+                    } catch (Throwable other) {
+                        outcomes.add(read.getKey() + ":" + other);
+                    }
+                }
+            });
+            List<String> expected = new ArrayList<>();
+            for (String name : reads.keySet()) expected.add(name + ":" + StatusCode.ERROR_SESSION_IN_USE);
+            for (int attempt = 0; attempt < 2; attempt++) { // nothing published, then a tree
+                outcomes.clear();
+                session.parse("alpha:12,beta:3");
+                assertEquals(expected, outcomes, "attempt " + attempt);
+            }
+            session.clearProcedures();
+        }
+
+        @Test
+        void nodeCapacityAndFinishedParseQueriesAreRefusedWhileAnotherThreadParses() throws Exception {
+            CountDownLatch entered = new CountDownLatch(1);
+            CountDownLatch release = new CountDownLatch(1);
+            session.installProcedure("reduction_Document", args -> {
+                entered.countDown();
+                try {
+                    assertTrue(release.await(30, TimeUnit.SECONDS));
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+            List<StatusCode> codes = new ArrayList<>();
+            Thread parseThread = new Thread(() -> session.parse("alpha:12,beta:3"));
+            parseThread.start();
+            try {
+                assertTrue(entered.await(30, TimeUnit.SECONDS));
+                for (Executable read : new Executable[]{
+                        session::nodeCapacity, session::nodeCount, session::snapshot,
+                        session::lastInput, session::lastPosition}) {
+                    codes.add(assertThrows(GalleyException.class, read).getCode());
+                }
+            } finally {
+                release.countDown();
+                parseThread.join(TimeUnit.SECONDS.toMillis(30));
+                session.clearProcedures();
+            }
+            assertEquals(Collections.nCopies(5, StatusCode.ERROR_SESSION_IN_USE), codes);
         }
 
         @Test
@@ -1577,6 +1665,110 @@ public class GalleyTest {
         }
     }
 
+    /**
+     * Text and input pointers the core returns are borrowed: valid until the
+     * next parse (inside a hook, until it returns), and the session reuses two
+     * buffers for its input, so the third parse after a read rewrites the
+     * memory the read came from. Every accessor must copy before it returns;
+     * each read below is kept across such parses and must still hold what it
+     * held when it was made.
+     */
+    @Nested
+    class BorrowedMemoryTests {
+        static final String FIRST = "alpha:12,beta:3";
+        // Same length as FIRST, so each one lands in a buffer FIRST used.
+        static final String[] CHURN = {"qqqqq:88,wwww:7", "xxxxx:77,yyyy:6", "ppppp:66,rrrr:5"};
+        Session session;
+        Parser parser;
+
+        @BeforeEach
+        void setUp() {
+            parser = fixtureParser();
+            session = parser.openSession(SessionOptions.builder().maxErrors(10).build());
+        }
+
+        @AfterEach
+        void tearDown() {
+            session.close();
+            parser.clearProcedures();
+        }
+
+        private void churn() {
+            for (String text : CHURN) session.parse(text);
+        }
+
+        @Test
+        void nodeTextNamesAndInputAreCopies() {
+            session.parse(FIRST);
+            Node root = session.rootNode();
+            assertNotNull(root);
+            List<byte[]> texts = new ArrayList<>();
+            List<byte[]> names = new ArrayList<>();
+            Walker walker = root.walk(false, false);
+            while (walker.hasNext()) {
+                Node node = walker.next().node;
+                texts.add(node.text());
+                names.add(session.symbolNameBytes(node));
+            }
+            byte[] input = session.lastInput();
+            churn();
+            assertArrayEquals(CHURN[CHURN.length - 1].getBytes(StandardCharsets.UTF_8), session.lastInput());
+            assertArrayEquals(FIRST.getBytes(StandardCharsets.UTF_8), input);
+            assertArrayEquals(FIRST.getBytes(StandardCharsets.UTF_8), texts.get(0));
+            assertTrue(texts.stream().anyMatch(text -> Arrays.equals(text, "alpha:12".getBytes(StandardCharsets.UTF_8))));
+            assertTrue(texts.stream().anyMatch(text -> Arrays.equals(text, "beta:3".getBytes(StandardCharsets.UTF_8))));
+            assertEquals(2, names.stream().filter(name -> Arrays.equals(name, "Pair".getBytes(StandardCharsets.UTF_8))).count());
+        }
+
+        @Test
+        void hookTextIsACopy() {
+            List<byte[]> seen = new ArrayList<>();
+            session.installProcedure("reduction_Pair", args -> seen.add(args.currentNode().text()));
+            session.parse(FIRST);
+            churn();
+            assertArrayEquals("alpha:12".getBytes(StandardCharsets.UTF_8), seen.get(0));
+            assertArrayEquals("beta:3".getBytes(StandardCharsets.UTF_8), seen.get(1));
+        }
+
+        @Test
+        void diagnosticsAreCopies() {
+            GalleyException failure = assertThrows(GalleyException.class, () -> session.parse("alpha:"));
+            Diagnostic frozen = failure.getDiagnostic();
+            Diagnostic current = session.diagnostic();
+            List<Diagnostic> recorded = session.diagnostics();
+            assertNotNull(frozen);
+            assertNotNull(current);
+            List<String> before = fields(frozen, current, recorded);
+            assertFalse(frozen.getExpectedTokens().isEmpty());
+            // Failures of the same shape rewrite the input buffers and the
+            // rendered message; successes release the diagnostic memory.
+            for (String text : List.of("beta:?", "gamma:", FIRST, "delta:", FIRST)) {
+                try {
+                    session.parse(text);
+                } catch (GalleyException expected) {
+                    // a failing parse is the point
+                }
+            }
+            assertEquals(before, fields(frozen, current, recorded));
+        }
+
+        private static List<String> fields(Diagnostic frozen, Diagnostic current, List<Diagnostic> recorded) {
+            List<String> out = new ArrayList<>();
+            List<Diagnostic> all = new ArrayList<>(List.of(frozen, current));
+            all.addAll(recorded);
+            for (Diagnostic diagnostic : all) {
+                StringBuilder row = new StringBuilder();
+                row.append(diagnostic.getMessage()).append('|').append(diagnostic.getMessageAnsi()).append('|');
+                row.append(Arrays.toString(diagnostic.getUnexpectedToken())).append('|');
+                for (byte[] token : diagnostic.getExpectedTokens()) row.append(Arrays.toString(token));
+                row.append('|').append(diagnostic.getContext());
+                row.append('|').append(Arrays.toString(diagnostic.getRecoveryTerminal()));
+                out.add(row.toString());
+            }
+            return out;
+        }
+    }
+
     @Nested
     class FixtureHookTests {
         Session session;
@@ -1837,22 +2029,25 @@ public class GalleyTest {
         @Test
         void procedureArgumentsDieWithTheirHook() {
             // The arguments carry per-hook state (current node, position,
-            // drop and replace). A reference stashed past its hook refuses
-            // instead of touching a frame that is gone.
+            // drop and replace). The core refuses every call made with a hook
+            // that has returned, from a later hook of the same parse and after
+            // the parse alike; the object keeps no expiry flag of its own.
             AtomicReference<ProcedureArguments> stashed = new AtomicReference<>();
-            List<Class<?>> outcomes = new ArrayList<>();
+            AtomicReference<ProcedureArguments> last = new AtomicReference<>();
+            AtomicReference<Node> lastNode = new AtomicReference<>();
+            List<StatusCode> during = new ArrayList<>();
             session.installProcedure("reduction_Pair", args -> {
                 if (stashed.get() == null) stashed.set(args);
             });
             session.installProcedure("reduction_Document", args -> {
-                for (Runnable use : List.<Runnable>of(
-                        () -> stashed.get().currentLine(),
-                        () -> stashed.get().currentNode(),
-                        () -> stashed.get().dropIfEmpty())) {
+                last.set(args);
+                lastNode.set(args.currentNode());
+                for (Runnable use : uses(stashed.get(), lastNode.get())) {
                     try {
                         use.run();
-                    } catch (GalleyClosedException error) {
-                        outcomes.add(error.getClass());
+                    } catch (GalleyException error) {
+                        during.add(error.getCode());
+                        assertFalse(error instanceof StaleTreeException);
                     }
                 }
             });
@@ -1861,11 +2056,95 @@ public class GalleyTest {
             } finally {
                 session.clearProcedures();
             }
-            assertEquals(3, outcomes.size());
-            // "Procedure arguments are invalidated" names that lifetime, not a
-            // stale tree: the arguments are gone, whatever the tree is now.
-            assertTrue(outcomes.stream().allMatch(GalleyClosedException.class::equals));
-            assertTrue(outcomes.stream().noneMatch(StaleTreeException.class::equals));
+            int calls = uses(stashed.get(), lastNode.get()).size();
+            assertEquals(Collections.nCopies(calls, StatusCode.ERROR_STALE_HOOK), during);
+            for (ProcedureArguments args : List.of(stashed.get(), last.get())) {
+                for (Runnable use : uses(args, root)) {
+                    GalleyException refused = assertThrows(GalleyException.class, use::run);
+                    assertEquals(StatusCode.ERROR_STALE_HOOK, refused.getCode());
+                    assertFalse(refused instanceof StaleTreeException);
+                }
+            }
+        }
+
+        private List<Runnable> uses(ProcedureArguments args, Node node) {
+            return List.of(
+                    args::currentLine,
+                    args::currentColumn,
+                    args::currentNode,
+                    args::dropSelf,
+                    args::dropChildren,
+                    args::dropIfEmpty,
+                    args::replaceWithChildren,
+                    () -> args.reportSemanticError("late"),
+                    () -> args.setCurrentNode(node));
+        }
+
+        @Test
+        void liveArgumentsAreRefusedOnAnyThreadButTheHooks() {
+            // A hook's arguments live on the dispatching thread's stack: every
+            // other thread is refused with session in use while it runs.
+            List<StatusCode> codes = new ArrayList<>();
+            AtomicInteger probed = new AtomicInteger();
+            session.installProcedure("reduction_Document", args -> {
+                Thread thread = new Thread(() -> {
+                    for (Runnable use : List.<Runnable>of(args::currentLine, args::currentNode, args::dropSelf,
+                            () -> args.reportSemanticError("late"))) {
+                        try {
+                            use.run();
+                        } catch (GalleyException error) {
+                            codes.add(error.getCode());
+                        }
+                    }
+                    probed.incrementAndGet();
+                });
+                thread.start();
+                try {
+                    thread.join(30_000);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+                args.currentLine();
+            });
+            try {
+                session.parse("alpha:12,beta:3");
+            } finally {
+                session.clearProcedures();
+            }
+            assertEquals(1, probed.get());
+            assertEquals(Collections.nCopies(4, StatusCode.ERROR_SESSION_IN_USE), codes);
+        }
+
+        @Test
+        void aRefusedCallWithReturnedArgumentsChangesNothing() {
+            // drop_self through the first Pair's arguments, made from a later
+            // Pair hook, is refused and cannot drop that hook's node.
+            AtomicReference<ProcedureArguments> stashed = new AtomicReference<>();
+            List<StatusCode> refusals = new ArrayList<>();
+            session.installProcedure("reduction_Pair", args -> {
+                if (stashed.get() == null) {
+                    stashed.set(args);
+                    return;
+                }
+                try {
+                    stashed.get().dropSelf();
+                } catch (GalleyException error) {
+                    refusals.add(error.getCode());
+                }
+            });
+            try {
+                session.parse("alpha:12,beta:3");
+            } finally {
+                session.clearProcedures();
+            }
+            assertEquals(List.of(StatusCode.ERROR_STALE_HOOK), refusals);
+            List<String> pairs = new ArrayList<>();
+            Walker walker = session.rootNode().walk(false, false);
+            while (walker.hasNext()) {
+                Node node = walker.next().node;
+                if ("Pair".equals(node.symbolName())) pairs.add(new String(node.text(), StandardCharsets.UTF_8));
+            }
+            assertEquals(List.of("alpha:12", "beta:3"), pairs);
         }
 
         @Test

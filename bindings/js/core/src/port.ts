@@ -7,13 +7,22 @@
  * instead of C out-parameters: adapters own all memory copying (bytes are
  * already-copied `Uint8Array`s here, valid after the next parse) and all
  * integer normalization (addresses are `bigint`, counts and statuses are
- * `number`). Opaque native pointers (sessions, procedure args)
+ * `number`). Opaque native pointers (sessions, hook doors)
  * cross the seam as `Handle` and are never inspected by the core; the walk
  * cursor crosses as a 40-byte `ArrayBuffer`, copied in and out per step
  * because a wasm guest may grow its memory during the call.
  */
 
 export type Handle = unknown;
+
+/**
+ * The ticket the core issues for one hook call. It is all a binding knows of
+ * a hook: every `galley_procedure_*` call takes the session and the ticket,
+ * and the core refuses the ticket of a hook that has returned
+ * (`galley_error_stale_hook`), so a binding keeps no expiry state of its own.
+ * Tickets are 64-bit and never reused.
+ */
+export type HookTicket = bigint;
 
 /**
  * The platform's native byte order, detected once. The walk cursor is a
@@ -69,10 +78,10 @@ export interface SnapshotColumns {
 
 /**
  * The one callback an adapter forwards every hook of its library to:
- * the handle the session registered, the hook's index, and its native
- * arguments (valid only until the callback returns).
+ * the handle the session registered, the hook's index, and the ticket of
+ * this hook call.
  */
-export type DispatchHandler = (hookHandle: number, hookIndex: number, args: Handle) => void;
+export type DispatchHandler = (hookHandle: number, hookIndex: number, hook: HookTicket) => void;
 
 /**
  * One door's node and tree calls: the `galley_node_*` / `galley_tree_*` /
@@ -112,14 +121,33 @@ export interface NodeFamily {
   /**
    * One step of a walk over the host-owned 40-byte cursor, which carries
    * its own generation: 1 yields a node, 0 ends the walk (and keeps ending
-   * it), negative is a failure (stale tree, session in use, malformed
-   * cursor bytes).
+   * it while its tree is live), negative is a failure (stale tree, session
+   * in use, malformed cursor bytes).
    */
   walkNext(handle: Handle, cursor: ArrayBuffer): number;
-  // Tree edits: the generation both nodes of a call must carry.
-  treeAppendChildren(handle: Handle, generation: number, parent: bigint, first: bigint): number;
-  treeInsertBefore(handle: Handle, generation: number, target: bigint, first: bigint): number;
-  treeInsertAfter(handle: Handle, generation: number, target: bigint, first: bigint): number;
+  // Tree edits. A call with a second node passes each node's own generation;
+  // the core refuses a pair from two parses, so nothing here compares them.
+  treeAppendChildren(
+    handle: Handle,
+    generation: number,
+    parent: bigint,
+    firstGeneration: number,
+    first: bigint,
+  ): number;
+  treeInsertBefore(
+    handle: Handle,
+    generation: number,
+    target: bigint,
+    firstGeneration: number,
+    first: bigint,
+  ): number;
+  treeInsertAfter(
+    handle: Handle,
+    generation: number,
+    target: bigint,
+    firstGeneration: number,
+    first: bigint,
+  ): number;
   treeRemoveSiblings(
     handle: Handle,
     generation: number,
@@ -133,6 +161,7 @@ export interface NodeFamily {
     generation: number,
     parent: bigint,
     index: number,
+    firstGeneration: number,
     first: bigint,
   ): number;
   treeRemoveChildrenAt(
@@ -198,6 +227,7 @@ export interface FfiPort {
   nodeCount(handle: Handle, generation: number): number;
   /** Negative status on failure (e.g. capacity exceeded). */
   reserveNodes(handle: Handle, capacity: bigint): number;
+  /** Node storage capacity, or a negative status (a parse is in flight). */
   nodeCapacity(handle: Handle): number;
   /**
    * The published tree's root and the generation every one of its nodes
@@ -270,27 +300,30 @@ export interface FfiPort {
   ): [string, number, number, string] | null;
 
   // -- procedure hooks (per-hook state) ------------------------------------------
-  // `args` is valid only while its hook runs.
+  // A hook is named by its session and ticket. Every call below answers with
+  // its value (>= 0) or a negative status; a ticket whose hook has returned is
+  // `galley_error_stale_hook`.
   /**
    * The parse's door: the same handle for every hook of one parse, valid
    * until that parse ends. The `hook` family crosses through it.
    */
-  procDoor(args: Handle): Handle;
-  procCurrentNode(args: Handle): bigint;
+  procDoor(session: Handle, hook: HookTicket): { status: number; door: Handle };
+  /** The hook's current node (`INVALID_NODE` when none), or the refusal as a negative Number. */
+  procCurrentNode(session: Handle, hook: HookTicket): bigint | number;
   /**
-   * Sets the hook's current node to a node of the parse that owns `args`
+   * Sets the hook's current node to a node of the parse that owns the hook
    * (`INVALID_NODE` clears it, no generation check). A negative status is the
-   * core's refusal: stale tree, invalid node, null argument.
+   * core's refusal: stale tree, invalid node, stale hook, null argument.
    */
-  procSetCurrentNode(args: Handle, generation: number, node: bigint): number;
-  procDropSelf(args: Handle): number;
-  procDropChildren(args: Handle): number;
-  procDropIfEmpty(args: Handle): number;
-  procReplaceWithChildren(args: Handle): number;
-  procContextLine(args: Handle): number;
-  procContextColumn(args: Handle): number;
+  procSetCurrentNode(session: Handle, hook: HookTicket, generation: number, node: bigint): number;
+  procDropSelf(session: Handle, hook: HookTicket): number;
+  procDropChildren(session: Handle, hook: HookTicket): number;
+  procDropIfEmpty(session: Handle, hook: HookTicket): number;
+  procReplaceWithChildren(session: Handle, hook: HookTicket): number;
+  procContextLine(session: Handle, hook: HookTicket): number;
+  procContextColumn(session: Handle, hook: HookTicket): number;
   /** Running semantic-error total, or a negative status code. */
-  procReportSemanticError(args: Handle, message: Uint8Array): number;
+  procReportSemanticError(session: Handle, hook: HookTicket, message: Uint8Array): number;
 
   /**
    * The core's parse generation of the parse that owns `door`: constant

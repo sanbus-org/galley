@@ -125,7 +125,8 @@ final class NodeDoor {
 
     /**
      * One step of a walk over the host-owned cursor: 1 yields a node, 0
-     * ends the walk (and keeps ending it), negative is a failure
+     * ends the walk (and keeps ending it while the cursor's tree is live),
+     * negative is a failure
      * (stale tree, session in use, invalid cursor bytes).
      */
     long walkStep(MemorySegment cursor) {
@@ -134,16 +135,19 @@ final class NodeDoor {
 
     // -- tree edits --
 
-    void appendChildren(long generation, long parent, long chain) {
-        check(calls.appendChildren(handle.get(), generation, parent, chain));
+    // The edits with a second node pass its own generation beside the first:
+    // the core refuses a pair from two parses.
+
+    void appendChildren(long generation, long parent, long chainGeneration, long chain) {
+        check(calls.appendChildren(handle.get(), generation, parent, chainGeneration, chain));
     }
 
-    void insertBefore(long generation, long target, long chain) {
-        check(calls.insertBefore(handle.get(), generation, target, chain));
+    void insertBefore(long generation, long target, long chainGeneration, long chain) {
+        check(calls.insertBefore(handle.get(), generation, target, chainGeneration, chain));
     }
 
-    void insertAfter(long generation, long target, long chain) {
-        check(calls.insertAfter(handle.get(), generation, target, chain));
+    void insertAfter(long generation, long target, long chainGeneration, long chain) {
+        check(calls.insertAfter(handle.get(), generation, target, chainGeneration, chain));
     }
 
     /** A tree edit that detaches a chain: runs {@code call} with an out-head and returns the head, {@link Galley#INVALID_NODE} when empty. */
@@ -170,8 +174,8 @@ final class NodeDoor {
         return detachedHead(outHead -> calls.cleanChildren(handle.get(), generation, address, outHead));
     }
 
-    void insertChildrenAt(long generation, long parent, int index, long chain) {
-        check(calls.insertChildrenAt(handle.get(), generation, parent, index, chain));
+    void insertChildrenAt(long generation, long parent, int index, long chainGeneration, long chain) {
+        check(calls.insertChildrenAt(handle.get(), generation, parent, index, chainGeneration, chain));
     }
 
     long removeChildrenAt(long generation, long parent, int index, int count) {

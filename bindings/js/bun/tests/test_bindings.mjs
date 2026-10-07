@@ -23,6 +23,7 @@ import { collect } from "../../../js/core/build/collect.mjs";
 import { ensureTestLibrary, installBunFixturePackages } from "../../../js/core/build/fixture.mjs";
 import { runConcurrencyScenario } from "../../../js/core/build/concurrency.mjs";
 import { runGenerationScenarios } from "../../../js/core/build/generations.mjs";
+import { runRefusalScenarios } from "../../../js/core/build/refusals.mjs";
 import { runPublishedFailureScenarios } from "../../../js/core/build/published-failures.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1222,39 +1223,6 @@ await test("hook nodes outlive their hook and their parse", async () => {
   }
 });
 
-await test("procedure arguments die with their hook", async () => {
-  // The arguments carry per-hook state (current node, position, drop and
-  // replace). A reference stashed past its hook refuses instead of
-  // touching a frame that is gone.
-  const parser = await newParser();
-  const stashed = [];
-  const outcomes = [];
-  parser.installProcedure("reduction_Pair", (args) => {
-    if (stashed.length === 0) stashed.push(args);
-  });
-  parser.installProcedure("reduction_Document", (args) => {
-    for (const use of [
-      () => stashed[0].currentLine(),
-      () => stashed[0].currentNode(),
-      () => stashed[0].dropIfEmpty(),
-    ]) {
-      try {
-        use();
-      } catch (error) {
-        outcomes.push(error);
-      }
-    }
-  });
-  const s = await parser.openSession();
-  try {
-    s.parse("alpha:12,beta:3");
-  } finally {
-    s.close();
-  }
-  assert.equal(outcomes.length, 3);
-  assert.ok(outcomes.every((error) => error instanceof SessionClosedError));
-});
-
 await test("hook-reported semantic errors aggregate and fail", async () => {
   const counts = [];
   const parser = await newParser();
@@ -1611,6 +1579,7 @@ await test("two language directories parse independently", async () => {
 
 await runGenerationScenarios({ test, assert, newParser, SessionClosedError, StaleTreeError, GalleyError, Status, collect });
 await runPublishedFailureScenarios({ test, assert, newParser, StaleTreeError, GalleyError, Status });
+await runRefusalScenarios({ test, assert, newParser, StaleTreeError, GalleyError, Status });
 
 await test("two parsers, two sessions each, four threads at once", async () => {
   const secondDirectory = ensureTestLibrary({

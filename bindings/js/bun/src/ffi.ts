@@ -12,7 +12,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import process from "node:process";
 import { dlopen, FFIType, ptr, toArrayBuffer, CString } from "bun:ffi";
-import type { FfiPort, NodeFamily, Handle, DispatchHandler, SessionCOptions, SnapshotColumns } from "@sanbus/galley-core";
+import type { FfiPort, NodeFamily, Handle, HookTicket, DispatchHandler, SessionCOptions, SnapshotColumns } from "@sanbus/galley-core";
 import { GalleyError, INVALID_NODE, NATIVE_LITTLE_ENDIAN, NO_VARIABLE, Status } from "@sanbus/galley-core";
 import { resolveArtifactFile, resolveAdapterArtifact, artifactFileName, canonicalResolvePath, SHARED_NATIVE_LIBRARY_BASE } from "@sanbus/galley-core/internal";
 import { installDispatch } from "./dispatch.ts";
@@ -40,13 +40,13 @@ interface DoorCalls {
   node_text(handle: NativeHandle, generation: number, node: bigint, outData: number, outLen: number): bigint;
   node_line_column(handle: NativeHandle, generation: number, node: bigint, outLine: number, outCol: number): bigint;
   walk_next(handle: NativeHandle, cursor: number): bigint;
-  tree_append_children(handle: NativeHandle, generation: number, parent: bigint, first: bigint): bigint;
-  tree_insert_before(handle: NativeHandle, generation: number, target: bigint, first: bigint): bigint;
-  tree_insert_after(handle: NativeHandle, generation: number, target: bigint, first: bigint): bigint;
+  tree_append_children(handle: NativeHandle, generation: number, parent: bigint, firstGeneration: number, first: bigint): bigint;
+  tree_insert_before(handle: NativeHandle, generation: number, target: bigint, firstGeneration: number, first: bigint): bigint;
+  tree_insert_after(handle: NativeHandle, generation: number, target: bigint, firstGeneration: number, first: bigint): bigint;
   tree_remove_siblings(handle: NativeHandle, generation: number, node: bigint, count: bigint, outHead: number): bigint;
   tree_remove_self(handle: NativeHandle, generation: number, node: bigint, outHead: number): bigint;
   tree_clean_children(handle: NativeHandle, generation: number, node: bigint, outHead: number): bigint;
-  tree_insert_children_at(handle: NativeHandle, generation: number, parent: bigint, index: bigint, first: bigint): bigint;
+  tree_insert_children_at(handle: NativeHandle, generation: number, parent: bigint, index: bigint, firstGeneration: number, first: bigint): bigint;
   tree_remove_children_at(handle: NativeHandle, generation: number, parent: bigint, index: bigint, count: bigint, outHead: number): bigint;
 }
 
@@ -137,16 +137,16 @@ interface GalleySymbols extends DoorNames<"">, DoorNames<"hook_"> {
   galley_recorded_recovery_lhs_variable(session: NativeHandle, diagIndex: bigint, outData: number, outLen: number): bigint;
   galley_recorded_recovery_production(session: NativeHandle, diagIndex: bigint, outVar: number, outLen: number, outIdx: number): bigint;
   galley_recorded_recovery_occurrence(session: NativeHandle, diagIndex: bigint, outParent: number, outParentLen: number, outRhs: number, outSym: number, outVar: number, outVarLen: number): bigint;
-  galley_procedure_current_node(args: NativeHandle): bigint;
-  galley_procedure_door(args: NativeHandle): NativeHandle;
-  galley_procedure_set_current_node(args: NativeHandle, generation: number, node: bigint): bigint;
-  galley_procedure_drop_self(args: NativeHandle): bigint;
-  galley_procedure_drop_children(args: NativeHandle): bigint;
-  galley_procedure_drop_if_empty(args: NativeHandle): bigint;
-  galley_procedure_replace_with_children(args: NativeHandle): bigint;
-  galley_procedure_context_line(args: NativeHandle): number;
-  galley_procedure_context_column(args: NativeHandle): number;
-  galley_procedure_report_semantic_error(args: NativeHandle, message: number, messageLen: bigint): bigint;
+  galley_procedure_current_node(session: NativeHandle, hook: bigint): bigint;
+  galley_procedure_door(session: NativeHandle, hook: bigint, outDoor: number): bigint;
+  galley_procedure_set_current_node(session: NativeHandle, hook: bigint, generation: number, node: bigint): bigint;
+  galley_procedure_drop_self(session: NativeHandle, hook: bigint): bigint;
+  galley_procedure_drop_children(session: NativeHandle, hook: bigint): bigint;
+  galley_procedure_drop_if_empty(session: NativeHandle, hook: bigint): bigint;
+  galley_procedure_replace_with_children(session: NativeHandle, hook: bigint): bigint;
+  galley_procedure_context_line(session: NativeHandle, hook: bigint): bigint;
+  galley_procedure_context_column(session: NativeHandle, hook: bigint): bigint;
+  galley_procedure_report_semantic_error(session: NativeHandle, hook: bigint, message: number, messageLen: bigint): bigint;
   // hook door: parse-time node/tree accessors over the live parse
   galley_hook_generation(door: NativeHandle, outGeneration: number): bigint;
   // host hooks (see galley_session_set_hooks in galley.h)
@@ -233,7 +233,7 @@ const BASE_SYMBOLS = {
   galley_last_position: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   galley_node_count: { args: [FFIType.ptr, FFIType.u64_fast], returns: FFIType.i64_fast },
   galley_reserve_nodes: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
-  galley_node_capacity: { args: [FFIType.ptr], returns: FFIType.u64 },
+  galley_node_capacity: { args: [FFIType.ptr], returns: FFIType.i64 },
   galley_root_node: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   galley_tree_snapshot: {
     args: [FFIType.ptr, FFIType.u64_fast, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.u64],
@@ -276,16 +276,16 @@ const BASE_SYMBOLS = {
   galley_recorded_recovery_lhs_variable: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   galley_recorded_recovery_production: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   galley_recorded_recovery_occurrence: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
-  galley_procedure_current_node: { args: [FFIType.ptr], returns: FFIType.u64 },
-  galley_procedure_door: { args: [FFIType.ptr], returns: FFIType.ptr },
-  galley_procedure_set_current_node: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64], returns: FFIType.i64 },
-  galley_procedure_drop_self: { args: [FFIType.ptr], returns: FFIType.i64 },
-  galley_procedure_drop_children: { args: [FFIType.ptr], returns: FFIType.i64 },
-  galley_procedure_drop_if_empty: { args: [FFIType.ptr], returns: FFIType.i64 },
-  galley_procedure_replace_with_children: { args: [FFIType.ptr], returns: FFIType.i64 },
-  galley_procedure_context_line: { args: [FFIType.ptr], returns: FFIType.u32 },
-  galley_procedure_context_column: { args: [FFIType.ptr], returns: FFIType.u32 },
-  galley_procedure_report_semantic_error: { args: [FFIType.ptr, FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
+  galley_procedure_current_node: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
+  galley_procedure_door: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr], returns: FFIType.i64 },
+  galley_procedure_set_current_node: { args: [FFIType.ptr, FFIType.u64, FFIType.u64_fast, FFIType.u64], returns: FFIType.i64 },
+  galley_procedure_drop_self: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
+  galley_procedure_drop_children: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
+  galley_procedure_drop_if_empty: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
+  galley_procedure_replace_with_children: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
+  galley_procedure_context_line: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
+  galley_procedure_context_column: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
+  galley_procedure_report_semantic_error: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
   galley_hook_generation: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
 } as const;
 
@@ -307,13 +307,13 @@ const DOOR_SYMBOLS = {
   node_text: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   node_line_column: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   walk_next: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
-  tree_append_children: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.u64], returns: FFIType.i64 },
-  tree_insert_before: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.u64], returns: FFIType.i64 },
-  tree_insert_after: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.u64], returns: FFIType.i64 },
+  tree_append_children: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.u64_fast, FFIType.u64], returns: FFIType.i64 },
+  tree_insert_before: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.u64_fast, FFIType.u64], returns: FFIType.i64 },
+  tree_insert_after: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.u64_fast, FFIType.u64], returns: FFIType.i64 },
   tree_remove_siblings: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.u64, FFIType.ptr], returns: FFIType.i64 },
   tree_remove_self: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.ptr], returns: FFIType.i64 },
   tree_clean_children: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.ptr], returns: FFIType.i64 },
-  tree_insert_children_at: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.u64, FFIType.u64], returns: FFIType.i64 },
+  tree_insert_children_at: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.u64, FFIType.u64_fast, FFIType.u64], returns: FFIType.i64 },
   tree_remove_children_at: { args: [FFIType.ptr, FFIType.u64_fast, FFIType.u64, FFIType.u64, FFIType.u64, FFIType.ptr], returns: FFIType.i64 },
 } as const satisfies Record<keyof DoorCalls, unknown>;
 
@@ -423,12 +423,12 @@ function bunFamily(native: GalleySymbols, door: "" | "hook_", outWords: BigUint6
       return index === NO_VARIABLE ? null : Number(index);
     },
     walkNext: (handle, cursor) => Number(walkNext(handle as NativeHandle, ptr(cursor))),
-    treeAppendChildren: (handle, generation, parentNode, first) =>
-      Number(appendChildren(handle as NativeHandle, generation, parentNode, first)),
-    treeInsertBefore: (handle, generation, target, first) =>
-      Number(insertBefore(handle as NativeHandle, generation, target, first)),
-    treeInsertAfter: (handle, generation, target, first) =>
-      Number(insertAfter(handle as NativeHandle, generation, target, first)),
+    treeAppendChildren: (handle, generation, parentNode, firstGeneration, first) =>
+      Number(appendChildren(handle as NativeHandle, generation, parentNode, firstGeneration, first)),
+    treeInsertBefore: (handle, generation, target, firstGeneration, first) =>
+      Number(insertBefore(handle as NativeHandle, generation, target, firstGeneration, first)),
+    treeInsertAfter: (handle, generation, target, firstGeneration, first) =>
+      Number(insertAfter(handle as NativeHandle, generation, target, firstGeneration, first)),
     treeRemoveSiblings: (handle, generation, node, count) => {
       const status = removeSiblings(handle as NativeHandle, generation, node, BigInt(count), ptr(outWords));
       return { status: Number(status), head: outWords[0] };
@@ -441,8 +441,8 @@ function bunFamily(native: GalleySymbols, door: "" | "hook_", outWords: BigUint6
       const status = cleanChildren(handle as NativeHandle, generation, node, ptr(outWords));
       return { status: Number(status), head: outWords[0] };
     },
-    treeInsertChildrenAt: (handle, generation, parentNode, index, first) =>
-      Number(insertChildrenAt(handle as NativeHandle, generation, parentNode, BigInt(index), first)),
+    treeInsertChildrenAt: (handle, generation, parentNode, index, firstGeneration, first) =>
+      Number(insertChildrenAt(handle as NativeHandle, generation, parentNode, BigInt(index), firstGeneration, first)),
     treeRemoveChildrenAt: (handle, generation, parentNode, index, count) => {
       const status = removeChildrenAt(
         handle as NativeHandle, generation, parentNode, BigInt(index), BigInt(count), ptr(outWords),
@@ -978,45 +978,53 @@ export class BunPort implements FfiPort {
 
   // -- procedure hooks ----------------------------------------------------------
 
-  procCurrentNode(args: Handle): bigint {
-    return this.native.galley_procedure_current_node(args as NativeHandle);
+  procCurrentNode(session: Handle, hook: HookTicket): bigint | number {
+    const node = this.native.galley_procedure_current_node(session as NativeHandle, hook);
+    return node < 0n ? Number(node) : node;
   }
 
-  procDoor(args: Handle): Handle {
-    return this.native.galley_procedure_door(args as NativeHandle);
+  procDoor(session: Handle, hook: HookTicket): { status: number; door: Handle } {
+    const outDoor = ptrOut64();
+    const status = Number(this.native.galley_procedure_door(session as NativeHandle, hook, ptr(outDoor)));
+    return { status, door: status < 0 ? null : Number(outDoor[0]) };
   }
 
-  procSetCurrentNode(args: Handle, generation: number, node: bigint): number {
-    return Number(this.native.galley_procedure_set_current_node(args as NativeHandle, generation, node));
+  procSetCurrentNode(session: Handle, hook: HookTicket, generation: number, node: bigint): number {
+    return Number(this.native.galley_procedure_set_current_node(session as NativeHandle, hook, generation, node));
   }
 
-  procDropSelf(args: Handle): number {
-    return Number(this.native.galley_procedure_drop_self(args as NativeHandle));
+  procDropSelf(session: Handle, hook: HookTicket): number {
+    return Number(this.native.galley_procedure_drop_self(session as NativeHandle, hook));
   }
 
-  procDropChildren(args: Handle): number {
-    return Number(this.native.galley_procedure_drop_children(args as NativeHandle));
+  procDropChildren(session: Handle, hook: HookTicket): number {
+    return Number(this.native.galley_procedure_drop_children(session as NativeHandle, hook));
   }
 
-  procDropIfEmpty(args: Handle): number {
-    return Number(this.native.galley_procedure_drop_if_empty(args as NativeHandle));
+  procDropIfEmpty(session: Handle, hook: HookTicket): number {
+    return Number(this.native.galley_procedure_drop_if_empty(session as NativeHandle, hook));
   }
 
-  procReplaceWithChildren(args: Handle): number {
-    return Number(this.native.galley_procedure_replace_with_children(args as NativeHandle));
+  procReplaceWithChildren(session: Handle, hook: HookTicket): number {
+    return Number(this.native.galley_procedure_replace_with_children(session as NativeHandle, hook));
   }
 
-  procContextLine(args: Handle): number {
-    return this.native.galley_procedure_context_line(args as NativeHandle);
+  procContextLine(session: Handle, hook: HookTicket): number {
+    return Number(this.native.galley_procedure_context_line(session as NativeHandle, hook));
   }
 
-  procContextColumn(args: Handle): number {
-    return this.native.galley_procedure_context_column(args as NativeHandle);
+  procContextColumn(session: Handle, hook: HookTicket): number {
+    return Number(this.native.galley_procedure_context_column(session as NativeHandle, hook));
   }
 
-  procReportSemanticError(args: Handle, message: Uint8Array): number {
+  procReportSemanticError(session: Handle, hook: HookTicket, message: Uint8Array): number {
     return Number(
-      this.native.galley_procedure_report_semantic_error(args as NativeHandle, ptr(message), BigInt(message.length)),
+      this.native.galley_procedure_report_semantic_error(
+        session as NativeHandle,
+        hook,
+        ptr(message),
+        BigInt(message.length),
+      ),
     );
   }
 

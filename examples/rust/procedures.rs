@@ -4,6 +4,7 @@
 //! and source position, plus drop_if_empty on empty tails. Author-defined
 //! grammar hooks arrive as `hook_<name>` — Key is annotated `@print`.
 
+use std::ffi::c_void;
 use std::io::Write;
 
 mod procedure {
@@ -53,88 +54,124 @@ fn count_pairs(door: &HookDoor, node: NodeHandle) -> (u32, u32) {
 }
 
 #[no_mangle]
-pub extern "C" fn reduction(_arguments: &mut ProcedureArguments) {}
+pub extern "C" fn reduction(_session: *mut c_void, _hook: u64) {}
 
 #[no_mangle]
-pub extern "C" fn reduction_Key(_arguments: &mut ProcedureArguments) {}
+pub extern "C" fn reduction_Key(_session: *mut c_void, _hook: u64) {}
 
 #[no_mangle]
-pub extern "C" fn reduction_PairList(_arguments: &mut ProcedureArguments) {}
+pub extern "C" fn reduction_PairList(_session: *mut c_void, _hook: u64) {}
 
 #[no_mangle]
-pub extern "C" fn reduction_KeyTail(arguments: &mut ProcedureArguments) {
-    let _ = arguments.drop_if_empty();
-}
-
-#[no_mangle]
-pub extern "C" fn reduction_NumberTail(arguments: &mut ProcedureArguments) {
-    let _ = arguments.drop_if_empty();
-}
-
-#[no_mangle]
-pub extern "C" fn reduction_PairListTail(arguments: &mut ProcedureArguments) {
-    let _ = arguments.drop_if_empty();
-}
-
-#[no_mangle]
-pub extern "C" fn hook_print(arguments: &mut ProcedureArguments) {
-    let door = arguments.door();
-    let Ok(Some(node)) = arguments.current_node() else {
-        return;
-    };
-    let (line, column) = pos(door, node);
-    write_stderr("@print \"");
-    write_bytes(door.text(node).unwrap_or(b""));
-    write_stderr(&format!("\" at {line}:{column}\n"));
-}
-
-#[no_mangle]
-pub extern "C" fn reduction_Number(arguments: &mut ProcedureArguments) {
-    let door = arguments.door();
-    let Ok(Some(node)) = arguments.current_node() else {
-        return;
-    };
-    let (line, column) = pos(door, node);
-    write_stderr("Number ");
-    write_bytes(door.text(node).unwrap_or(b""));
-    write_stderr(&format!(" at {line}:{column}\n"));
-    if let Ok(value) = std::str::from_utf8(door.text(node).unwrap_or(b""))
-        .unwrap_or("")
-        .parse::<u64>()
-    {
-        if value > 999 {
-            let _ = arguments.report_semantic_error("value out of range");
-        }
+pub extern "C" fn reduction_KeyTail(session: *mut c_void, hook: u64) {
+    unsafe {
+        ProcedureArguments::with(session, hook, |arguments| {
+            let _ = arguments.drop_if_empty();
+        })
     }
 }
 
 #[no_mangle]
-pub extern "C" fn reduction_Pair(arguments: &mut ProcedureArguments) {
-    let door = arguments.door();
-    let Ok(Some(node)) = arguments.current_node() else {
-        return;
-    };
-    let (line, column) = pos(door, node);
-    let text = door.text(node).unwrap_or(b"");
-    let mut parts = text.splitn(2, |&byte| byte == b':');
-    let key = parts.next().unwrap_or(b"");
-    let number = parts.next().unwrap_or(b"");
-    write_stderr("Pair ");
-    write_bytes(key);
-    write_stderr("=");
-    write_bytes(number);
-    write_stderr(&format!(
-        " ({} children) at {line}:{column}\n",
-        door.child_count(node).unwrap_or(0)
-    ));
+pub extern "C" fn reduction_NumberTail(session: *mut c_void, hook: u64) {
+    unsafe {
+        ProcedureArguments::with(session, hook, |arguments| {
+            let _ = arguments.drop_if_empty();
+        })
+    }
 }
 
 #[no_mangle]
-pub extern "C" fn reduction_Document(arguments: &mut ProcedureArguments) {
-    let door = arguments.door();
-    let Ok(Some(node)) = arguments.current_node() else {
-        return;
-    };
-    let (count, total) = count_pairs(door, node);
-    write_stderr(&format!("Document {count} pairs, sum={total}\n"));
+pub extern "C" fn reduction_PairListTail(session: *mut c_void, hook: u64) {
+    unsafe {
+        ProcedureArguments::with(session, hook, |arguments| {
+            let _ = arguments.drop_if_empty();
+        })
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn hook_print(session: *mut c_void, hook: u64) {
+    unsafe {
+        ProcedureArguments::with(session, hook, |arguments| {
+            let Ok(door) = arguments.door() else {
+                return;
+            };
+            let Ok(Some(node)) = arguments.current_node() else {
+                return;
+            };
+            let (line, column) = pos(door, node);
+            write_stderr("@print \"");
+            write_bytes(door.text(node).unwrap_or(b""));
+            write_stderr(&format!("\" at {line}:{column}\n"));
+        })
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn reduction_Number(session: *mut c_void, hook: u64) {
+    unsafe {
+        ProcedureArguments::with(session, hook, |arguments| {
+            let Ok(door) = arguments.door() else {
+                return;
+            };
+            let Ok(Some(node)) = arguments.current_node() else {
+                return;
+            };
+            let (line, column) = pos(door, node);
+            write_stderr("Number ");
+            write_bytes(door.text(node).unwrap_or(b""));
+            write_stderr(&format!(" at {line}:{column}\n"));
+            if let Ok(value) = std::str::from_utf8(door.text(node).unwrap_or(b""))
+                .unwrap_or("")
+                .parse::<u64>()
+            {
+                if value > 999 {
+                    let _ = arguments.report_semantic_error("value out of range");
+                }
+            }
+        })
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn reduction_Pair(session: *mut c_void, hook: u64) {
+    unsafe {
+        ProcedureArguments::with(session, hook, |arguments| {
+            let Ok(door) = arguments.door() else {
+                return;
+            };
+            let Ok(Some(node)) = arguments.current_node() else {
+                return;
+            };
+            let (line, column) = pos(door, node);
+            let text = door.text(node).unwrap_or(b"");
+            let mut parts = text.splitn(2, |&byte| byte == b':');
+            let key = parts.next().unwrap_or(b"");
+            let number = parts.next().unwrap_or(b"");
+            write_stderr("Pair ");
+            write_bytes(key);
+            write_stderr("=");
+            write_bytes(number);
+            write_stderr(&format!(
+                " ({} children) at {line}:{column}\n",
+                door.child_count(node).unwrap_or(0)
+            ));
+        })
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn reduction_Document(session: *mut c_void, hook: u64) {
+    unsafe {
+        ProcedureArguments::with(session, hook, |arguments| {
+            let Ok(door) = arguments.door() else {
+                return;
+            };
+            let Ok(Some(node)) = arguments.current_node() else {
+                return;
+            };
+            let (count, total) = count_pairs(door, node);
+            write_stderr(&format!("Document {count} pairs, sum={total}\n"));
+        })
+    }
 }

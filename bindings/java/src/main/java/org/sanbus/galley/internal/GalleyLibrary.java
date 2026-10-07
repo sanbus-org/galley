@@ -195,16 +195,16 @@ public final class GalleyLibrary {
         this.mh_galley_recorded_recovery_production = downcall("galley_recorded_recovery_production", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.mh_galley_recorded_recovery_occurrence = downcall("galley_recorded_recovery_occurrence", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.mh_galley_hook_generation = downcall("galley_hook_generation", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        this.mh_galley_procedure_door = downcall("galley_procedure_door", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        this.mh_galley_procedure_current_node = downcall("galley_procedure_current_node", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
-        this.mh_galley_procedure_set_current_node = downcall("galley_procedure_set_current_node", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG));
-        this.mh_galley_procedure_drop_self = downcall("galley_procedure_drop_self", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
-        this.mh_galley_procedure_drop_children = downcall("galley_procedure_drop_children", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
-        this.mh_galley_procedure_drop_if_empty = downcall("galley_procedure_drop_if_empty", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
-        this.mh_galley_procedure_replace_with_children = downcall("galley_procedure_replace_with_children", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
-        this.mh_galley_procedure_context_line = downcall("galley_procedure_context_line", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-        this.mh_galley_procedure_context_column = downcall("galley_procedure_context_column", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-        this.mh_galley_procedure_report_semantic_error = downcall("galley_procedure_report_semantic_error", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+        this.mh_galley_procedure_door = downcall("galley_procedure_door", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
+        this.mh_galley_procedure_current_node = downcall("galley_procedure_current_node", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+        this.mh_galley_procedure_set_current_node = downcall("galley_procedure_set_current_node", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG));
+        this.mh_galley_procedure_drop_self = downcall("galley_procedure_drop_self", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+        this.mh_galley_procedure_drop_children = downcall("galley_procedure_drop_children", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+        this.mh_galley_procedure_drop_if_empty = downcall("galley_procedure_drop_if_empty", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+        this.mh_galley_procedure_replace_with_children = downcall("galley_procedure_replace_with_children", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+        this.mh_galley_procedure_context_line = downcall("galley_procedure_context_line", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+        this.mh_galley_procedure_context_column = downcall("galley_procedure_context_column", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+        this.mh_galley_procedure_report_semantic_error = downcall("galley_procedure_report_semantic_error", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
         this.mh_galley_hooks_count = downcall("galley_hooks_count", FunctionDescriptor.of(ValueLayout.JAVA_LONG));
         this.mh_galley_hooks_name_data = downcall("galley_hooks_name_data", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
         this.mh_galley_hooks_name_length = downcall("galley_hooks_name_length", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG));
@@ -346,17 +346,22 @@ public final class GalleyLibrary {
     // procedure hook state
     /** The generation of the parse that owns {@code door}: written to {@code outGeneration}; returns the status. */
     public long galley_hook_generation(MemorySegment door, MemorySegment outGeneration) { try { return (long) mh_galley_hook_generation.invoke(door, outGeneration); } catch (Throwable t) { throw new RuntimeException(t); } }
-    /** The parse's door: the same pointer for every hook of one parse, valid until it ends. */
-    public MemorySegment galley_procedure_door(MemorySegment args) { try { return (MemorySegment) mh_galley_procedure_door.invoke(args); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_procedure_current_node(MemorySegment args) { try { return (long) mh_galley_procedure_current_node.invoke(args); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_procedure_set_current_node(MemorySegment args, long generation, long node) { try { return (long) mh_galley_procedure_set_current_node.invoke(args, generation, node); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_procedure_drop_self(MemorySegment args) { try { return (long) mh_galley_procedure_drop_self.invoke(args); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_procedure_drop_children(MemorySegment args) { try { return (long) mh_galley_procedure_drop_children.invoke(args); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_procedure_drop_if_empty(MemorySegment args) { try { return (long) mh_galley_procedure_drop_if_empty.invoke(args); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_procedure_replace_with_children(MemorySegment args) { try { return (long) mh_galley_procedure_replace_with_children.invoke(args); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public int galley_procedure_context_line(MemorySegment args) { try { return (int) mh_galley_procedure_context_line.invoke(args); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public int galley_procedure_context_column(MemorySegment args) { try { return (int) mh_galley_procedure_context_column.invoke(args); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_procedure_report_semantic_error(MemorySegment args, MemorySegment message, long messageLen) { try { return (long) mh_galley_procedure_report_semantic_error.invoke(args, message, messageLen); } catch (Throwable t) { throw new RuntimeException(t); } }
+    /**
+     * Every {@code galley_procedure_*} call names its hook by session and the
+     * ticket the core issued for the call; the core refuses the ticket of a
+     * hook that has returned with a negative status.
+     */
+    /** The parse's door of hook {@code hook}: written to {@code outDoor}, the same pointer for every hook of one parse, valid until it ends; returns the status. */
+    public long galley_procedure_door(MemorySegment session, long hook, MemorySegment outDoor) { try { return (long) mh_galley_procedure_door.invoke(session, hook, outDoor); } catch (Throwable t) { throw new RuntimeException(t); } }
+    public long galley_procedure_current_node(MemorySegment session, long hook) { try { return (long) mh_galley_procedure_current_node.invoke(session, hook); } catch (Throwable t) { throw new RuntimeException(t); } }
+    public long galley_procedure_set_current_node(MemorySegment session, long hook, long generation, long node) { try { return (long) mh_galley_procedure_set_current_node.invoke(session, hook, generation, node); } catch (Throwable t) { throw new RuntimeException(t); } }
+    public long galley_procedure_drop_self(MemorySegment session, long hook) { try { return (long) mh_galley_procedure_drop_self.invoke(session, hook); } catch (Throwable t) { throw new RuntimeException(t); } }
+    public long galley_procedure_drop_children(MemorySegment session, long hook) { try { return (long) mh_galley_procedure_drop_children.invoke(session, hook); } catch (Throwable t) { throw new RuntimeException(t); } }
+    public long galley_procedure_drop_if_empty(MemorySegment session, long hook) { try { return (long) mh_galley_procedure_drop_if_empty.invoke(session, hook); } catch (Throwable t) { throw new RuntimeException(t); } }
+    public long galley_procedure_replace_with_children(MemorySegment session, long hook) { try { return (long) mh_galley_procedure_replace_with_children.invoke(session, hook); } catch (Throwable t) { throw new RuntimeException(t); } }
+    public long galley_procedure_context_line(MemorySegment session, long hook) { try { return (long) mh_galley_procedure_context_line.invoke(session, hook); } catch (Throwable t) { throw new RuntimeException(t); } }
+    public long galley_procedure_context_column(MemorySegment session, long hook) { try { return (long) mh_galley_procedure_context_column.invoke(session, hook); } catch (Throwable t) { throw new RuntimeException(t); } }
+    public long galley_procedure_report_semantic_error(MemorySegment session, long hook, MemorySegment message, long messageLen) { try { return (long) mh_galley_procedure_report_semantic_error.invoke(session, hook, message, messageLen); } catch (Throwable t) { throw new RuntimeException(t); } }
 
     // host hooks
     public long galley_hooks_count() {
@@ -377,9 +382,9 @@ public final class GalleyLibrary {
         try { return (long) mh_galley_session_set_hooks.invoke(session, dispatch, handle, enabled, enabledCount); } catch (Throwable t) { throw new RuntimeException(t); }
     }
 
-    // Upcall stub management: (handle, hook index, hook arguments).
+    // Upcall stub management: (handle, hook index, hook ticket).
     public MemorySegment createDispatchStub(java.lang.invoke.MethodHandle dispatchHandle, Arena arena) {
-        FunctionDescriptor desc = FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS);
+        FunctionDescriptor desc = FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_LONG);
         return LINKER.upcallStub(dispatchHandle, desc, arena);
     }
 }

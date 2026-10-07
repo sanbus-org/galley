@@ -25,6 +25,8 @@ public enum StatusCode {
     ERROR_SESSION_IN_USE(-13),
     /** The walker's generation is not the tree's anymore: its session parsed again. */
     ERROR_STALE_TREE(-14),
+    /** A hook's arguments were used after its hook returned. */
+    ERROR_STALE_HOOK(-15),
     /** Fallback for codes this binding does not know (newer native builds). */
     UNKNOWN(Integer.MIN_VALUE);
 

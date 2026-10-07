@@ -261,6 +261,8 @@ pub enum Error {
     /// for every source that can find a tree gone, so a dead handle never
     /// reads as a live one and never answers an empty value.
     StaleTree,
+    /// A procedure call made with the arguments of a hook that has returned.
+    StaleHook,
 }
 
 impl Error {
@@ -280,6 +282,7 @@ impl Error {
             -11 => Error::Io,
             -13 => Error::SessionInUse,
             -14 => Error::StaleTree,
+            -15 => Error::StaleHook,
             _ => Error::Internal,
         }
     }
@@ -300,6 +303,7 @@ impl Error {
             Error::Io => -11,
             Error::SessionInUse => -13,
             Error::StaleTree => -14,
+            Error::StaleHook => -15,
         }
     }
 
@@ -1028,50 +1032,68 @@ impl Session {
     // Chains passed in must be detached orphans. Addresses are stable, so
     // edits never invalidate other handles.
 
-    /// The one generation an edit hands the core: the node's own, and for an
-    /// edit that takes a second node, the same one. The core compares a
-    /// single generation per call, so a chain from another parse is refused
-    /// here rather than forwarded under the first node's generation.
-    fn same_tree(node: NodeHandle, chain: NodeHandle) -> Result<u64, Error> {
-        if node.generation == chain.generation {
-            Ok(node.generation)
-        } else {
-            Err(Error::StaleTree)
-        }
-    }
-
     pub fn tree_append_children(&self, parent: NodeHandle, chain: NodeHandle) -> Result<(), Error> {
         unsafe extern "C" {
             fn galley_tree_append_children(
                 s: *mut GalleySessionRaw,
                 g: u64,
                 p: u64,
+                first_generation: u64,
                 f: u64,
             ) -> i64;
         }
-        let generation = Self::same_tree(parent, chain)?;
+        // Each node crosses with its own generation; the core refuses a pair
+        // from two parses.
         map_status(unsafe {
-            galley_tree_append_children(self.inner, generation, parent.address, chain.address)
+            galley_tree_append_children(
+                self.inner,
+                parent.generation,
+                parent.address,
+                chain.generation,
+                chain.address,
+            )
         })
     }
 
     pub fn tree_insert_before(&self, target: NodeHandle, chain: NodeHandle) -> Result<(), Error> {
         unsafe extern "C" {
-            fn galley_tree_insert_before(s: *mut GalleySessionRaw, g: u64, t: u64, f: u64) -> i64;
+            fn galley_tree_insert_before(
+                s: *mut GalleySessionRaw,
+                g: u64,
+                t: u64,
+                first_generation: u64,
+                f: u64,
+            ) -> i64;
         }
-        let generation = Self::same_tree(target, chain)?;
         map_status(unsafe {
-            galley_tree_insert_before(self.inner, generation, target.address, chain.address)
+            galley_tree_insert_before(
+                self.inner,
+                target.generation,
+                target.address,
+                chain.generation,
+                chain.address,
+            )
         })
     }
 
     pub fn tree_insert_after(&self, target: NodeHandle, chain: NodeHandle) -> Result<(), Error> {
         unsafe extern "C" {
-            fn galley_tree_insert_after(s: *mut GalleySessionRaw, g: u64, t: u64, f: u64) -> i64;
+            fn galley_tree_insert_after(
+                s: *mut GalleySessionRaw,
+                g: u64,
+                t: u64,
+                first_generation: u64,
+                f: u64,
+            ) -> i64;
         }
-        let generation = Self::same_tree(target, chain)?;
         map_status(unsafe {
-            galley_tree_insert_after(self.inner, generation, target.address, chain.address)
+            galley_tree_insert_after(
+                self.inner,
+                target.generation,
+                target.address,
+                chain.generation,
+                chain.address,
+            )
         })
     }
 
@@ -1140,12 +1162,19 @@ impl Session {
                 g: u64,
                 p: u64,
                 i: usize,
+                first_generation: u64,
                 f: u64,
             ) -> i64;
         }
-        let generation = Self::same_tree(parent, chain)?;
         map_status(unsafe {
-            galley_tree_insert_children_at(self.inner, generation, parent.address, index, chain.address)
+            galley_tree_insert_children_at(
+                self.inner,
+                parent.generation,
+                parent.address,
+                index,
+                chain.generation,
+                chain.address,
+            )
         })
     }
 

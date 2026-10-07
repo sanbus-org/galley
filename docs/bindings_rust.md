@@ -23,37 +23,56 @@ mod procedure {
     include!(concat!(env!("OUT_DIR"), "/galley_procedure_types.rs"));
 }
 use procedure::ProcedureArguments;
+use std::ffi::c_void;
 
+// A hook receives its session and the ticket of its call, and runs its body in
+// `ProcedureArguments::with`: the arguments, the door and the slices borrowed
+// from them cannot leave the closure.
 #[no_mangle]
-pub extern "C" fn reduction_Pair(arguments: &mut ProcedureArguments) {
-    let door = arguments.door();
-    let Ok(Some(node)) = arguments.current_node() else { return };
-    let text = door.text(node).unwrap_or(b"");
-    let (line, column) = door.line_column(node).unwrap_or((0, 0));
-    eprintln!(
-        "Pair {} ({} children) at {line}:{column}",
-        String::from_utf8_lossy(text),
-        door.child_count(node)
-    );
+pub extern "C" fn reduction_Pair(session: *mut c_void, hook: u64) {
+    unsafe {
+        ProcedureArguments::with(session, hook, |arguments| {
+            let Ok(door) = arguments.door() else { return };
+            let Ok(Some(node)) = arguments.current_node() else { return };
+            let text = door.text(node).unwrap_or(b"");
+            let (line, column) = door.line_column(node).unwrap_or((0, 0));
+            eprintln!(
+                "Pair {} ({} children) at {line}:{column}",
+                String::from_utf8_lossy(text),
+                door.child_count(node).unwrap_or(0)
+            );
+        })
+    }
 }
 
 #[no_mangle]
-pub extern "C" fn reduction_KeyTail(arguments: &mut ProcedureArguments) {
-    let _ = arguments.drop_if_empty();
+pub extern "C" fn reduction_KeyTail(session: *mut c_void, hook: u64) {
+    unsafe {
+        ProcedureArguments::with(session, hook, |arguments| {
+            let _ = arguments.drop_if_empty();
+        })
+    }
 }
 
 #[no_mangle]
-pub extern "C" fn hook_print(arguments: &mut ProcedureArguments) {
-    let door = arguments.door();
-    let Ok(Some(node)) = arguments.current_node() else { return };
-    let text = door.text(node).unwrap_or(b"");
-    let (line, column) = door.line_column(node).unwrap_or((0, 0));
-    eprintln!("@print \"{}\" at {line}:{column}", String::from_utf8_lossy(text));
+pub extern "C" fn hook_print(session: *mut c_void, hook: u64) {
+    unsafe {
+        ProcedureArguments::with(session, hook, |arguments| {
+            let Ok(door) = arguments.door() else { return };
+            let Ok(Some(node)) = arguments.current_node() else { return };
+            let text = door.text(node).unwrap_or(b"");
+            let (line, column) = door.line_column(node).unwrap_or((0, 0));
+            eprintln!("@print \"{}\" at {line}:{column}", String::from_utf8_lossy(text));
+        })
+    }
 }
 ```
 
 Tree reads go through the parse's door, `arguments.door()`; the arguments
-themselves hold per-hook state and are valid only while the hook runs. A door
+themselves hold per-hook state and are valid only while the hook runs (the
+closure of `with` is the only place they exist): the
+core refuses every call made with the ticket of a hook that has returned
+(`Error::StaleHook`). A door
 read returns the same types as the session's: `Result<_, Error>`, with the
 core refusing a handle of an earlier parse as `Error::StaleTree` and an
 address outside the parse as `Error::InvalidNode`.

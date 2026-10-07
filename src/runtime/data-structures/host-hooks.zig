@@ -23,9 +23,10 @@ else
 pub const hook_count = hook_names.len;
 
 /// Host callback for one hook call. `handle` is the session's
-/// `Context.user_data`, `index` the position in `hook_names`, and `args` a
-/// `ProcedureArguments` valid only until the call returns.
-pub const Dispatch = *const fn (handle: ?*anyopaque, index: u32, args: ?*anyopaque) callconv(.c) void;
+/// `Context.user_data`, `index` the position in `hook_names`, and `hook` the
+/// ticket of this call: the only way to reach its arguments, through the
+/// `galley_procedure_*` functions, and refused once the call has returned.
+pub const Dispatch = *const fn (handle: ?*anyopaque, index: u32, hook: u64) callconv(.c) void;
 
 /// The hook state a session copies onto every parse `Context`.
 pub const HostHooks = struct {
@@ -39,16 +40,30 @@ pub const HostHooks = struct {
 /// table index the host cannot mint, so wasm hosts receive hooks through
 /// this import and route by handle exactly like the native callback.
 const wasm_dispatch = struct {
-    extern "env" fn galley_host_dispatch(handle: ?*anyopaque, index: u32, args: ?*anyopaque) void;
+    extern "env" fn galley_host_dispatch(handle: ?*anyopaque, index: u32, hook: u64) void;
 };
 
-/// The one forwarding site of every host shim hook.
+/// The one forwarding site of every host shim hook: the call runs under a
+/// fresh ticket that names its arguments for exactly as long as it runs.
 pub inline fn forward(comptime index: u32, args: *data_structures.ProcedureArguments) void {
     const context = args.context;
     if (!context.host_hooks.enabled[index]) return;
+    const runtime = context.runtime();
+    const hook = runtime.enterHook(args);
+    defer runtime.exitHook();
     if (comptime builtin.cpu.arch.isWasm()) {
-        wasm_dispatch.galley_host_dispatch(context.user_data, index, @ptrCast(args));
+        wasm_dispatch.galley_host_dispatch(context.user_data, index, hook);
     } else if (context.host_hooks.dispatch) |dispatch| {
-        dispatch(context.user_data, index, @ptrCast(args));
+        dispatch(context.user_data, index, hook);
     }
+}
+
+/// The one calling site of every hook compiled into the library from C or
+/// C++: the hook receives its session and a ticket for this call, exactly
+/// what a host's dispatch receives, and nothing that outlives the call.
+pub inline fn callCompiled(args: *data_structures.ProcedureArguments, hook_function: *const fn (?*anyopaque, u64) callconv(.c) void) void {
+    const runtime = args.context.runtime();
+    const hook = runtime.enterHook(args);
+    defer runtime.exitHook();
+    hook_function(runtime.owner, hook);
 }

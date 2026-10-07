@@ -8,8 +8,10 @@
 // (Plain `//` comments: this file is `include!`d inside a module, where
 // inner `//!` docs are illegal.)
 // Tree queries call the `galley_hook_*` door of the parse (`ProcedureArguments::door`) —
-// unshared by construction. The arguments themselves are per-hook state and valid only
-// while their hook runs.
+// unshared by construction. A hook is named by its session and the ticket the core
+// issued for the call; the arguments are per-hook state, valid only while their hook
+// runs, and the core refuses every call made with the ticket of a hook that has
+// returned (`Error::StaleHook`).
 
 use std::ffi::{c_char, c_void};
 
@@ -60,6 +62,8 @@ pub enum Error {
     /// door: the node is of another parse, or `NodeHandle::INVALID` read
     /// through the door (`set_current_node` takes it as "clear").
     StaleTree,
+    /// A call made with the arguments of a hook that has returned.
+    StaleHook,
 }
 
 impl Error {
@@ -79,6 +83,7 @@ impl Error {
             -11 => Error::Io,
             -13 => Error::SessionInUse,
             -14 => Error::StaleTree,
+            -15 => Error::StaleHook,
             _ => Error::Internal,
         }
     }
@@ -92,12 +97,19 @@ fn map_status(status: i64) -> Result<(), Error> {
     }
 }
 
-/// Opaque per-hook argument: the current node, the reducing rule, the scanner
-/// position, drop and replace, and semantic errors. Valid only while its hook
-/// runs. Only the pointer is ABI-stable.
-#[repr(C)]
+/// Per-hook arguments: the current node, the reducing rule, the scanner
+/// position, drop and replace, and semantic errors. A hook receives the
+/// session and the ticket of its call as two parameters (`extern "C" fn
+/// hook(session: *mut c_void, hook: u64)`) and runs its body inside
+/// [`ProcedureArguments::with`], which hands the arguments to a closure and
+/// nothing else: the closure's return type cannot borrow from them, and they
+/// have no public constructor, no `Clone` and no `Copy`, so neither they nor
+/// the door and slices borrowed from them can leave the hook. The core also
+/// refuses every call made with the ticket of a hook that has returned.
+#[derive(Debug)]
 pub struct ProcedureArguments {
-    _private: [u8; 0],
+    session: *mut c_void,
+    hook: u64,
 }
 
 /// Opaque parse-time door over one parse's node storage: tree reads go
@@ -114,33 +126,41 @@ pub struct Rule {
 }
 
 extern "C" {
-    fn galley_procedure_door(arguments: *mut c_void) -> *mut c_void;
+    fn galley_procedure_door(session: *mut c_void, hook: u64, out_door: *mut *mut c_void) -> i64;
     fn galley_hook_generation(door: *mut c_void, out_generation: *mut u64) -> i64;
-    fn galley_procedure_current_node(arguments: *mut c_void) -> u64;
-    fn galley_procedure_set_current_node(arguments: *mut c_void, generation: u64, node: u64) -> i64;
-    fn galley_procedure_rule_present(arguments: *mut c_void) -> i32;
-    fn galley_procedure_rule_header(arguments: *mut c_void) -> i64;
-    fn galley_procedure_rule_rhs_index(arguments: *mut c_void) -> i64;
-    fn galley_procedure_context_line(arguments: *mut c_void) -> u32;
-    fn galley_procedure_context_column(arguments: *mut c_void) -> u32;
-    fn galley_procedure_drop_self(arguments: *mut c_void) -> i64;
-    fn galley_procedure_drop_children(arguments: *mut c_void) -> i64;
-    fn galley_procedure_drop_if_empty(arguments: *mut c_void) -> i64;
-    fn galley_procedure_replace_with_children(arguments: *mut c_void) -> i64;
-    fn galley_procedure_left_recursive_reduction(arguments: *mut c_void) -> i64;
-    fn galley_procedure_right_recursive_reduction(arguments: *mut c_void) -> i64;
+    fn galley_procedure_current_node(session: *mut c_void, hook: u64) -> i64;
+    fn galley_procedure_set_current_node(
+        session: *mut c_void,
+        hook: u64,
+        generation: u64,
+        node: u64,
+    ) -> i64;
+    fn galley_procedure_rule_present(session: *mut c_void, hook: u64) -> i64;
+    fn galley_procedure_rule_header(session: *mut c_void, hook: u64) -> i64;
+    fn galley_procedure_rule_rhs_index(session: *mut c_void, hook: u64) -> i64;
+    fn galley_procedure_context_line(session: *mut c_void, hook: u64) -> i64;
+    fn galley_procedure_context_column(session: *mut c_void, hook: u64) -> i64;
+    fn galley_procedure_drop_self(session: *mut c_void, hook: u64) -> i64;
+    fn galley_procedure_drop_children(session: *mut c_void, hook: u64) -> i64;
+    fn galley_procedure_drop_if_empty(session: *mut c_void, hook: u64) -> i64;
+    fn galley_procedure_replace_with_children(session: *mut c_void, hook: u64) -> i64;
+    fn galley_procedure_left_recursive_reduction(session: *mut c_void, hook: u64) -> i64;
+    fn galley_procedure_right_recursive_reduction(session: *mut c_void, hook: u64) -> i64;
     fn galley_procedure_rule_right_hand_side(
-        arguments: *mut c_void,
+        session: *mut c_void,
+        hook: u64,
         out_data: *mut *const u16,
         out_length: *mut usize,
     ) -> i64;
     fn galley_procedure_rule_rhs_index_slice(
-        arguments: *mut c_void,
+        session: *mut c_void,
+        hook: u64,
         out_data: *mut *const u8,
         out_length: *mut usize,
     ) -> i64;
     fn galley_procedure_report_semantic_error(
-        arguments: *mut c_void,
+        session: *mut c_void,
+        hook: u64,
         message: *const c_char,
         message_len: usize,
     ) -> i64;
@@ -204,25 +224,40 @@ fn bytes<'a>(data: *const c_char, len: usize) -> &'a [u8] {
 }
 
 impl ProcedureArguments {
-    fn as_ptr(&self) -> *mut c_void {
-        self as *const _ as *mut c_void
+    /// Runs `body` with the arguments of the hook a hook function was called
+    /// for. Nothing borrowed from the arguments (the door, the rule slices)
+    /// can be returned from `body`.
+    ///
+    /// # Safety
+    /// `session` and `hook` must be the two parameters the parser passed to
+    /// the hook function, and this must run before that function returns.
+    pub unsafe fn with<R>(
+        session: *mut c_void,
+        hook: u64,
+        body: impl FnOnce(&mut ProcedureArguments) -> R,
+    ) -> R {
+        body(&mut ProcedureArguments { session, hook })
     }
 
     /// The door of the parse this hook belongs to: tree reads go through it.
-    /// Borrowed from these arguments, so it cannot outlive the hook.
-    pub fn door(&self) -> &HookDoor {
-        unsafe { &*(galley_procedure_door(self.as_ptr()) as *const HookDoor) }
+    /// Borrowed from these arguments, so it cannot outlive the hook. The core
+    /// refuses a hook that has returned with [`Error::StaleHook`].
+    pub fn door(&self) -> Result<&HookDoor, Error> {
+        let mut door: *mut c_void = std::ptr::null_mut();
+        map_status(unsafe { galley_procedure_door(self.session, self.hook, &mut door) })?;
+        Ok(unsafe { &*(door as *const HookDoor) })
     }
 
     /// The node being reduced, `None` when there is none. The core's refusal
-    /// to report the parse's generation (a null door) is an error, never a
-    /// handle stamped with generation 0.
+    /// (a hook that has returned, a null door) is an error, never a handle
+    /// stamped with generation 0.
     pub fn current_node(&self) -> Result<Option<NodeHandle>, Error> {
+        let mut door: *mut c_void = std::ptr::null_mut();
+        map_status(unsafe { galley_procedure_door(self.session, self.hook, &mut door) })?;
         let mut generation = 0u64;
-        map_status(unsafe {
-            galley_hook_generation(galley_procedure_door(self.as_ptr()), &mut generation)
-        })?;
-        Ok(opt_handle(generation, unsafe { galley_procedure_current_node(self.as_ptr()) }))
+        map_status(unsafe { galley_hook_generation(door, &mut generation) })?;
+        let node = value(unsafe { galley_procedure_current_node(self.session, self.hook) })?;
+        Ok(opt_handle(generation, node))
     }
 
     /// Sets the current node, or clears it with `None`. The core checks the
@@ -232,32 +267,32 @@ impl ProcedureArguments {
     pub fn set_current_node(&mut self, node: Option<NodeHandle>) -> Result<(), Error> {
         let handle = node.unwrap_or(NodeHandle::INVALID);
         map_status(unsafe {
-            galley_procedure_set_current_node(self.as_ptr(), handle.generation, handle.address)
+            galley_procedure_set_current_node(self.session, self.hook, handle.generation, handle.address)
         })
     }
 
     pub fn drop_self(&mut self) -> Result<(), Error> {
-        map_status(unsafe { galley_procedure_drop_self(self.as_ptr()) })
+        map_status(unsafe { galley_procedure_drop_self(self.session, self.hook) })
     }
 
     pub fn drop_children(&mut self) -> Result<(), Error> {
-        map_status(unsafe { galley_procedure_drop_children(self.as_ptr()) })
+        map_status(unsafe { galley_procedure_drop_children(self.session, self.hook) })
     }
 
     pub fn drop_if_empty(&mut self) -> Result<(), Error> {
-        map_status(unsafe { galley_procedure_drop_if_empty(self.as_ptr()) })
+        map_status(unsafe { galley_procedure_drop_if_empty(self.session, self.hook) })
     }
 
     pub fn replace_with_children(&mut self) -> Result<(), Error> {
-        map_status(unsafe { galley_procedure_replace_with_children(self.as_ptr()) })
+        map_status(unsafe { galley_procedure_replace_with_children(self.session, self.hook) })
     }
 
     pub fn left_recursive_reduction(&mut self) -> Result<(), Error> {
-        map_status(unsafe { galley_procedure_left_recursive_reduction(self.as_ptr()) })
+        map_status(unsafe { galley_procedure_left_recursive_reduction(self.session, self.hook) })
     }
 
     pub fn right_recursive_reduction(&mut self) -> Result<(), Error> {
-        map_status(unsafe { galley_procedure_right_recursive_reduction(self.as_ptr()) })
+        map_status(unsafe { galley_procedure_right_recursive_reduction(self.session, self.hook) })
     }
 
     /// Records a semantic error on the current node and returns the running
@@ -266,7 +301,8 @@ impl ProcedureArguments {
     pub fn report_semantic_error(&mut self, message: &str) -> Result<usize, Error> {
         let status = unsafe {
             galley_procedure_report_semantic_error(
-                self.as_ptr(),
+                self.session,
+                self.hook,
                 message.as_ptr().cast(),
                 message.len(),
             )
@@ -278,56 +314,61 @@ impl ProcedureArguments {
         }
     }
 
-    pub fn rule(&self) -> Option<Rule> {
-        let present = unsafe { galley_procedure_rule_present(self.as_ptr()) };
-        if present == 0 {
-            return None;
+    /// The reducing rule, `None` when the hook runs for none. A hook that has
+    /// returned is [`Error::StaleHook`].
+    pub fn rule(&self) -> Result<Option<Rule>, Error> {
+        if value(unsafe { galley_procedure_rule_present(self.session, self.hook) })? != 1 {
+            return Ok(None);
         }
-        let header = unsafe { galley_procedure_rule_header(self.as_ptr()) };
-        let right_hand_side_index = unsafe { galley_procedure_rule_rhs_index(self.as_ptr()) };
-        if !(0..=u16::MAX as i64).contains(&header)
-            || !(0..=u16::MAX as i64).contains(&right_hand_side_index)
-        {
-            return None;
+        let header = value(unsafe { galley_procedure_rule_header(self.session, self.hook) })?;
+        let right_hand_side_index =
+            value(unsafe { galley_procedure_rule_rhs_index(self.session, self.hook) })?;
+        match (u16::try_from(header), u16::try_from(right_hand_side_index)) {
+            (Ok(header), Ok(right_hand_side_index)) => Ok(Some(Rule {
+                header,
+                right_hand_side_index,
+            })),
+            _ => Ok(None),
         }
-        Some(Rule {
-            header: header as u16,
-            right_hand_side_index: right_hand_side_index as u16,
-        })
     }
 
-    pub fn current_line(&self) -> u32 {
-        unsafe { galley_procedure_context_line(self.as_ptr()) }
+    /// The scanner line, or the core's refusal.
+    pub fn current_line(&self) -> Result<u32, Error> {
+        Ok(value(unsafe { galley_procedure_context_line(self.session, self.hook) })? as u32)
     }
 
-    pub fn current_column(&self) -> u32 {
-        unsafe { galley_procedure_context_column(self.as_ptr()) }
+    /// The scanner column, or the core's refusal.
+    pub fn current_column(&self) -> Result<u32, Error> {
+        Ok(value(unsafe { galley_procedure_context_column(self.session, self.hook) })? as u32)
     }
 
-    pub fn rule_right_hand_side(&self) -> Option<&[u16]> {
+    /// The rule's right-hand-side symbol indexes (static grammar storage),
+    /// `None` when the hook has no rule.
+    pub fn rule_right_hand_side(&self) -> Result<Option<&[u16]>, Error> {
         let mut data: *const u16 = std::ptr::null();
         let mut len = 0usize;
-        let status =
-            unsafe { galley_procedure_rule_right_hand_side(self.as_ptr(), &mut data, &mut len) };
-        if status != 0 || data.is_null() {
-            None
-        } else {
-            Some(unsafe { std::slice::from_raw_parts(data, len) })
+        match unsafe {
+            galley_procedure_rule_right_hand_side(self.session, self.hook, &mut data, &mut len)
+        } {
+            0 if !data.is_null() => Ok(Some(unsafe { std::slice::from_raw_parts(data, len) })),
+            0 | -10 => Ok(None),
+            status => Err(Error::from_status(status)),
         }
     }
 
-    pub fn rule_rhs_index_slice(&self) -> Option<&[u8]> {
+    /// The rule's right-hand-side index text (static grammar storage), `None`
+    /// when the hook has no rule.
+    pub fn rule_rhs_index_slice(&self) -> Result<Option<&[u8]>, Error> {
         let mut data: *const u8 = std::ptr::null();
         let mut len = 0usize;
-        let status =
-            unsafe { galley_procedure_rule_rhs_index_slice(self.as_ptr(), &mut data, &mut len) };
-        if status != 0 || data.is_null() {
-            None
-        } else {
-            Some(unsafe { std::slice::from_raw_parts(data, len) })
+        match unsafe {
+            galley_procedure_rule_rhs_index_slice(self.session, self.hook, &mut data, &mut len)
+        } {
+            0 if !data.is_null() => Ok(Some(unsafe { std::slice::from_raw_parts(data, len) })),
+            0 | -10 => Ok(None),
+            status => Err(Error::from_status(status)),
         }
     }
-
 }
 
 impl HookDoor {

@@ -39,6 +39,51 @@ fn summarizeNewlines(input: []const u8) NewlineSummary {
     return summary;
 }
 
+/// A 64-bit cell behind `load`, `store` and `fetchAdd`. Atomic wherever
+/// 64-bit atomics exist (64-bit pointers) or the build may use threads; the
+/// plain integer is only for single-threaded builds, which have nothing to
+/// race with (WebAssembly without threads).
+const TicketCell = if (!builtin.single_threaded and !builtin.cpu.arch.isWasm() or @sizeOf(usize) >= 8) std.atomic.Value(u64) else struct {
+    raw: u64,
+
+    fn init(value: u64) @This() {
+        return .{ .raw = value };
+    }
+
+    fn load(self: *const @This(), _: std.builtin.AtomicOrder) u64 {
+        return self.raw;
+    }
+
+    fn store(self: *@This(), value: u64, _: std.builtin.AtomicOrder) void {
+        self.raw = value;
+    }
+
+    fn fetchAdd(self: *@This(), delta: u64, _: std.builtin.AtomicOrder) u64 {
+        const previous = self.raw;
+        self.raw += delta;
+        return previous;
+    }
+};
+
+/// Hook tickets issued so far by this process. One counter for every session,
+/// so a live ticket of one session is never equal to a ticket of another.
+var issued_hook_tickets: TicketCell = .init(0);
+
+/// The calling thread, as a number a cell can hold; 0 where the build has no
+/// second thread to tell apart.
+fn currentThread() usize {
+    if (comptime builtin.single_threaded or builtin.cpu.arch.isWasm()) return 0;
+    return @truncate(std.Thread.getCurrentId());
+}
+
+/// Why a ticket names no arguments for the caller.
+pub const HookError = error{
+    /// The hook has returned, or the ticket was never issued by this session.
+    StaleHook,
+    /// The hook is running, but on another thread than the caller's.
+    OtherThread,
+};
+
 pub const RuntimeContext = struct {
     io: std.Io,
     input_path: ?[]const u8 = null,
@@ -75,6 +120,49 @@ pub const RuntimeContext = struct {
     /// Session-owned message override table, wired at parse start. Lookup
     /// happens only inside cold syntax-error paths.
     message_overrides: ?*const std.StringHashMapUnmanaged([]const u8) = null,
+
+    /// The embedding's handle for the session that owns this state (the C
+    /// API stores its session pointer here). Compiled hooks receive it with
+    /// their hook ticket, so a hook never needs a pointer into a stack frame.
+    owner: ?*anyopaque = null,
+    /// The ticket of the hook now running, or 0 between hooks and outside a
+    /// parse. The one place that says whether the arguments of a hook are
+    /// still valid: a ticket that is not this value belongs to a hook that
+    /// has returned. Tickets come from one process-wide counter and are never
+    /// reused, so a later hook whose arguments sit at the same stack address
+    /// does not revive an old one, and another session never accepts them.
+    live_hook: TicketCell = .init(0),
+    /// The thread that dispatches the hook `live_hook` names: the only thread
+    /// the arguments may be reached from, since they live on its stack.
+    live_hook_thread: std.atomic.Value(usize) = .init(0),
+    /// The arguments of the hook `live_hook` names, as an address.
+    live_hook_arguments: std.atomic.Value(usize) = .init(0),
+
+    /// Marks `arguments` as those of the hook now running, on the calling
+    /// thread, and returns its ticket, the only way to reach them from
+    /// outside the hook.
+    pub fn enterHook(self: *RuntimeContext, arguments: *data_structures.ProcedureArguments) u64 {
+        const ticket = issued_hook_tickets.fetchAdd(1, .monotonic) + 1;
+        self.live_hook_arguments.store(@intFromPtr(arguments), .monotonic);
+        self.live_hook_thread.store(currentThread(), .monotonic);
+        self.live_hook.store(ticket, .release);
+        return ticket;
+    }
+
+    /// Ends the running hook: its ticket stops naming anything.
+    pub fn exitHook(self: *RuntimeContext) void {
+        self.live_hook.store(0, .release);
+    }
+
+    /// The arguments of the hook `hook` names, for a caller on the thread
+    /// that dispatches it. The pointer is read only after both checks, so a
+    /// returned hook's dead stack frame and another thread's race with the
+    /// running hook are refused before anything is dereferenced.
+    pub fn hookArguments(self: *RuntimeContext, hook: u64) HookError!*data_structures.ProcedureArguments {
+        if (hook == 0 or self.live_hook.load(.acquire) != hook) return error.StaleHook;
+        if (self.live_hook_thread.load(.monotonic) != currentThread()) return error.OtherThread;
+        return @ptrFromInt(self.live_hook_arguments.load(.monotonic));
+    }
 
     /// Returns the most recently recorded diagnostic of the current (or
     /// previous) parse, if any.

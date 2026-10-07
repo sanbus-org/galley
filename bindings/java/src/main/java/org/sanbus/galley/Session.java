@@ -153,8 +153,8 @@ public final class Session implements AutoCloseable {
 
     /**
      * What one node operation crosses with, fixed by {@link #cross}: the
-     * door, the one generation every node of the operation carries (the
-     * first node's own), and that node's address.
+     * door, the first node's own generation, and that node's address. A
+     * second node crosses with its own generation beside it.
      */
     private record Crossing(NodeDoor door, long generation, long address) {}
 
@@ -166,20 +166,6 @@ public final class Session implements AutoCloseable {
     private Crossing cross(Node node) {
         NodeDoor door = door(node);
         return new Crossing(door, node.generation(), address(node));
-    }
-
-    /**
-     * The address of a second node of the same operation. A call hands the
-     * core one generation, so the second node must carry it: an edit mixing
-     * two trees is refused here instead of acting on a chain from another
-     * parse.
-     *
-     * @throws StaleTreeException if {@code chain} does not carry the crossing's generation
-     */
-    private long second(Crossing crossing, Node chain) {
-        long address = address(chain);
-        if (chain.generation() != crossing.generation()) throw new StaleTreeException("node");
-        return address;
     }
 
     /** Wraps an address read through a crossing; invalid becomes null. */
@@ -373,36 +359,39 @@ public final class Session implements AutoCloseable {
      * Hook throwables are logged and swallowed so a throwing hook never
      * aborts the parse.
      */
-    void dispatchHook(int index, MemorySegment argumentsPointer) {
-        Consumer<ProcedureArguments> hook = hooksByIndex[index];
-        if (hook == null) return;
+    void dispatchHook(int index, long hook) {
+        Consumer<ProcedureArguments> callback = hooksByIndex[index];
+        if (callback == null) return;
         // The parse's native door and core generation are constant for the
         // parse: read them on its first dispatch, drop them in the finish
         // gate. Only the thread running the hook is recorded per dispatch,
         // which is what lets a call choose its door when it is made.
         NodeDoor hookDoor = parseDoor;
         if (hookDoor == null) {
-            MemorySegment door = lib.galley_procedure_door(argumentsPointer);
             try (Arena arena = Arena.ofConfined()) {
+                MemorySegment outDoor = arena.allocate(ValueLayout.ADDRESS);
                 MemorySegment out = arena.allocate(ValueLayout.JAVA_LONG);
-                if (lib.galley_hook_generation(door, out) >= 0) {
-                    parseGeneration = out.get(ValueLayout.JAVA_LONG, 0);
-                    hookDoor = NodeDoor.ofHook(lib, door);
-                    parseDoor = hookDoor;
+                if (lib.galley_procedure_door(handle, hook, outDoor) >= 0) {
+                    MemorySegment door = outDoor.get(ValueLayout.ADDRESS, 0);
+                    if (lib.galley_hook_generation(door, out) >= 0) {
+                        parseGeneration = out.get(ValueLayout.JAVA_LONG, 0);
+                        hookDoor = NodeDoor.ofHook(lib, door);
+                        parseDoor = hookDoor;
+                    }
                 }
             }
         }
         dispatchThread = hookDoor == null ? null : Thread.currentThread();
-        ProcedureArguments arguments = new ProcedureArguments(argumentsPointer, lib, this, hookDoor, parseGeneration);
+        ProcedureArguments arguments = new ProcedureArguments(hook, lib, this, parseGeneration);
         try {
-            hook.accept(arguments);
+            callback.accept(arguments);
         } catch (Throwable t) {
             t.printStackTrace(System.err);
         } finally {
-            // The native arguments die when this hook call returns; expire
-            // the Java reference with them. The tree outlives the hook: its
-            // nodes carry the parse's generation, not the hook door.
-            arguments.expire();
+            // The hook's ticket stops naming anything in the core when this
+            // call returns, so a kept reference is refused there; nothing to
+            // expire here. The tree outlives the hook: its nodes carry the
+            // parse's generation, not the hook door.
             dispatchThread = null;
         }
     }
@@ -544,9 +533,16 @@ public final class Session implements AutoCloseable {
         checkStatus(st);
     }
 
+    /**
+     * Current node storage capacity in nodes.
+     *
+     * @throws GalleyException with {@code ERROR_SESSION_IN_USE} while a parse runs
+     */
     public long nodeCapacity() {
         requireOpen();
-        return lib.galley_node_capacity(handle);
+        long capacity = lib.galley_node_capacity(handle);
+        checkStatus(capacity);
+        return capacity;
     }
 
     // -- navigation --
@@ -1187,17 +1183,17 @@ public final class Session implements AutoCloseable {
 
     public void appendChildren(Node parent, Node chain) {
         Crossing crossing = cross(parent);
-        crossing.door().appendChildren(crossing.generation(), crossing.address(), second(crossing, chain));
+        crossing.door().appendChildren(crossing.generation(), crossing.address(), chain.generation(), address(chain));
     }
 
     public void insertBefore(Node target, Node chain) {
         Crossing crossing = cross(target);
-        crossing.door().insertBefore(crossing.generation(), crossing.address(), second(crossing, chain));
+        crossing.door().insertBefore(crossing.generation(), crossing.address(), chain.generation(), address(chain));
     }
 
     public void insertAfter(Node target, Node chain) {
         Crossing crossing = cross(target);
-        crossing.door().insertAfter(crossing.generation(), crossing.address(), second(crossing, chain));
+        crossing.door().insertAfter(crossing.generation(), crossing.address(), chain.generation(), address(chain));
     }
 
     public Node removeSiblings(Node node, int count) {
@@ -1217,7 +1213,7 @@ public final class Session implements AutoCloseable {
 
     public void insertChildrenAt(Node parent, int index, Node chain) {
         Crossing crossing = cross(parent);
-        crossing.door().insertChildrenAt(crossing.generation(), crossing.address(), index, second(crossing, chain));
+        crossing.door().insertChildrenAt(crossing.generation(), crossing.address(), index, chain.generation(), address(chain));
     }
 
     public Node removeChildrenAt(Node parent, int index, int count) {

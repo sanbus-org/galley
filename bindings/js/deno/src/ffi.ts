@@ -9,7 +9,7 @@
  * and `--allow-read` (library discovery, `parseFile`).
  */
 
-import type { FfiPort, NodeFamily, Handle, DispatchHandler, SessionCOptions, SnapshotColumns } from "@sanbus/galley-core";
+import type { FfiPort, NodeFamily, Handle, HookTicket, DispatchHandler, SessionCOptions, SnapshotColumns } from "@sanbus/galley-core";
 import { GalleyError, INVALID_NODE, NATIVE_LITTLE_ENDIAN, NO_VARIABLE, Status } from "@sanbus/galley-core";
 import { GenerationBigInt, resolveArtifactFile, resolveAdapterArtifact, artifactFileName, canonicalResolvePath, SHARED_NATIVE_LIBRARY_BASE } from "@sanbus/galley-core/internal";
 import { installDispatch } from "./dispatch.ts";
@@ -39,13 +39,13 @@ interface DoorCalls {
   node_text(handle: Deno.PointerValue, generation: bigint, node: bigint, outData: FfiOut, outLen: FfiOut): bigint;
   node_line_column(handle: Deno.PointerValue, generation: bigint, node: bigint, outLine: FfiOut, outCol: FfiOut): bigint;
   walk_next(handle: Deno.PointerValue, cursor: ArrayBuffer): bigint;
-  tree_append_children(handle: Deno.PointerValue, generation: bigint, parent: bigint, first: bigint): bigint;
-  tree_insert_before(handle: Deno.PointerValue, generation: bigint, target: bigint, first: bigint): bigint;
-  tree_insert_after(handle: Deno.PointerValue, generation: bigint, target: bigint, first: bigint): bigint;
+  tree_append_children(handle: Deno.PointerValue, generation: bigint, parent: bigint, firstGeneration: bigint, first: bigint): bigint;
+  tree_insert_before(handle: Deno.PointerValue, generation: bigint, target: bigint, firstGeneration: bigint, first: bigint): bigint;
+  tree_insert_after(handle: Deno.PointerValue, generation: bigint, target: bigint, firstGeneration: bigint, first: bigint): bigint;
   tree_remove_siblings(handle: Deno.PointerValue, generation: bigint, node: bigint, count: number, outHead: FfiOut): bigint;
   tree_remove_self(handle: Deno.PointerValue, generation: bigint, node: bigint, outHead: FfiOut): bigint;
   tree_clean_children(handle: Deno.PointerValue, generation: bigint, node: bigint, outHead: FfiOut): bigint;
-  tree_insert_children_at(handle: Deno.PointerValue, generation: bigint, parent: bigint, index: number, first: bigint): bigint;
+  tree_insert_children_at(handle: Deno.PointerValue, generation: bigint, parent: bigint, index: number, firstGeneration: bigint, first: bigint): bigint;
   tree_remove_children_at(handle: Deno.PointerValue, generation: bigint, parent: bigint, index: number, count: number, outHead: FfiOut): bigint;
 }
 
@@ -135,16 +135,16 @@ interface GalleySymbols extends DoorNames<"">, DoorNames<"hook_"> {
   galley_recorded_recovery_lhs_variable(session: Deno.PointerValue, diagIndex: bigint, outData: FfiOut, outLen: FfiOut): bigint;
   galley_recorded_recovery_production(session: Deno.PointerValue, diagIndex: bigint, outVar: FfiOut, outLen: FfiOut, outIdx: FfiOut): bigint;
   galley_recorded_recovery_occurrence(session: Deno.PointerValue, diagIndex: bigint, outParent: FfiOut, outParentLen: FfiOut, outRhs: FfiOut, outSym: FfiOut, outVar: FfiOut, outVarLen: FfiOut): bigint;
-  galley_procedure_current_node(args: Deno.PointerValue): bigint;
-  galley_procedure_door(args: Deno.PointerValue): Deno.PointerValue;
-  galley_procedure_set_current_node(args: Deno.PointerValue, generation: bigint, node: bigint): bigint;
-  galley_procedure_drop_self(args: Deno.PointerValue): bigint;
-  galley_procedure_drop_children(args: Deno.PointerValue): bigint;
-  galley_procedure_drop_if_empty(args: Deno.PointerValue): bigint;
-  galley_procedure_replace_with_children(args: Deno.PointerValue): bigint;
-  galley_procedure_context_line(args: Deno.PointerValue): number;
-  galley_procedure_context_column(args: Deno.PointerValue): number;
-  galley_procedure_report_semantic_error(args: Deno.PointerValue, message: FfiOut, messageLen: number): bigint;
+  galley_procedure_current_node(session: Deno.PointerValue, hook: bigint): bigint;
+  galley_procedure_door(session: Deno.PointerValue, hook: bigint, outDoor: FfiOut): bigint;
+  galley_procedure_set_current_node(session: Deno.PointerValue, hook: bigint, generation: bigint, node: bigint): bigint;
+  galley_procedure_drop_self(session: Deno.PointerValue, hook: bigint): bigint;
+  galley_procedure_drop_children(session: Deno.PointerValue, hook: bigint): bigint;
+  galley_procedure_drop_if_empty(session: Deno.PointerValue, hook: bigint): bigint;
+  galley_procedure_replace_with_children(session: Deno.PointerValue, hook: bigint): bigint;
+  galley_procedure_context_line(session: Deno.PointerValue, hook: bigint): bigint;
+  galley_procedure_context_column(session: Deno.PointerValue, hook: bigint): bigint;
+  galley_procedure_report_semantic_error(session: Deno.PointerValue, hook: bigint, message: FfiOut, messageLen: number): bigint;
   galley_hook_generation(door: Deno.PointerValue, outGeneration: FfiOut): bigint;
   // host hooks (see galley_session_set_hooks in galley.h)
   galley_hooks_count(): bigint;
@@ -239,7 +239,7 @@ const BASE_SYMBOLS = {
   galley_last_position: { parameters: ["pointer", "buffer", "buffer"], result: "i64" },
   galley_node_count: { parameters: ["pointer", "u64"], result: "i64" },
   galley_reserve_nodes: { parameters: ["pointer", "u64"], result: "i64" },
-  galley_node_capacity: { parameters: ["pointer"], result: "u64" },
+  galley_node_capacity: { parameters: ["pointer"], result: "i64" },
   galley_root_node: { parameters: ["pointer", "buffer", "buffer"], result: "i64" },
   galley_tree_snapshot: {
     parameters: ["pointer", "u64", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer", "u64"],
@@ -284,16 +284,16 @@ const BASE_SYMBOLS = {
   galley_recorded_recovery_lhs_variable: { parameters: ["pointer", "u64", "buffer", "buffer"], result: "i64" },
   galley_recorded_recovery_production: { parameters: ["pointer", "u64", "buffer", "buffer", "buffer"], result: "i64" },
   galley_recorded_recovery_occurrence: { parameters: ["pointer", "u64", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer"], result: "i64" },
-  galley_procedure_current_node: { parameters: ["pointer"], result: "u64" },
-  galley_procedure_door: { parameters: ["pointer"], result: "pointer" },
-  galley_procedure_set_current_node: { parameters: ["pointer", "u64", "u64"], result: "i64" },
-  galley_procedure_drop_self: { parameters: ["pointer"], result: "i64" },
-  galley_procedure_drop_children: { parameters: ["pointer"], result: "i64" },
-  galley_procedure_drop_if_empty: { parameters: ["pointer"], result: "i64" },
-  galley_procedure_replace_with_children: { parameters: ["pointer"], result: "i64" },
-  galley_procedure_context_line: { parameters: ["pointer"], result: "u32" },
-  galley_procedure_context_column: { parameters: ["pointer"], result: "u32" },
-  galley_procedure_report_semantic_error: { parameters: ["pointer", "buffer", "usize"], result: "i64" },
+  galley_procedure_current_node: { parameters: ["pointer", "u64"], result: "i64" },
+  galley_procedure_door: { parameters: ["pointer", "u64", "buffer"], result: "i64" },
+  galley_procedure_set_current_node: { parameters: ["pointer", "u64", "u64", "u64"], result: "i64" },
+  galley_procedure_drop_self: { parameters: ["pointer", "u64"], result: "i64" },
+  galley_procedure_drop_children: { parameters: ["pointer", "u64"], result: "i64" },
+  galley_procedure_drop_if_empty: { parameters: ["pointer", "u64"], result: "i64" },
+  galley_procedure_replace_with_children: { parameters: ["pointer", "u64"], result: "i64" },
+  galley_procedure_context_line: { parameters: ["pointer", "u64"], result: "i64" },
+  galley_procedure_context_column: { parameters: ["pointer", "u64"], result: "i64" },
+  galley_procedure_report_semantic_error: { parameters: ["pointer", "u64", "buffer", "usize"], result: "i64" },
   galley_hook_generation: { parameters: ["pointer", "buffer"], result: "i64" },
 } as const;
 
@@ -314,13 +314,13 @@ const DOOR_SYMBOLS = {
   node_text: { parameters: ["pointer", "u64", "u64", "buffer", "buffer"], result: "i64" },
   node_line_column: { parameters: ["pointer", "u64", "u64", "buffer", "buffer"], result: "i64" },
   walk_next: { parameters: ["pointer", "buffer"], result: "i64" },
-  tree_append_children: { parameters: ["pointer", "u64", "u64", "u64"], result: "i64" },
-  tree_insert_before: { parameters: ["pointer", "u64", "u64", "u64"], result: "i64" },
-  tree_insert_after: { parameters: ["pointer", "u64", "u64", "u64"], result: "i64" },
+  tree_append_children: { parameters: ["pointer", "u64", "u64", "u64", "u64"], result: "i64" },
+  tree_insert_before: { parameters: ["pointer", "u64", "u64", "u64", "u64"], result: "i64" },
+  tree_insert_after: { parameters: ["pointer", "u64", "u64", "u64", "u64"], result: "i64" },
   tree_remove_siblings: { parameters: ["pointer", "u64", "u64", "usize", "buffer"], result: "i64" },
   tree_remove_self: { parameters: ["pointer", "u64", "u64", "buffer"], result: "i64" },
   tree_clean_children: { parameters: ["pointer", "u64", "u64", "buffer"], result: "i64" },
-  tree_insert_children_at: { parameters: ["pointer", "u64", "u64", "usize", "u64"], result: "i64" },
+  tree_insert_children_at: { parameters: ["pointer", "u64", "u64", "usize", "u64", "u64"], result: "i64" },
   tree_remove_children_at: { parameters: ["pointer", "u64", "u64", "usize", "usize", "buffer"], result: "i64" },
 } as const satisfies Record<keyof DoorCalls, unknown>;
 
@@ -445,12 +445,12 @@ function denoFamily(
       return index === NO_VARIABLE ? null : Number(index);
     },
     walkNext: (handle, cursor) => Number(walkNext(pointer(handle), cursor)),
-    treeAppendChildren: (handle, generation, parentNode, first) =>
-      Number(appendChildren(pointer(handle), generations.of(generation), parentNode, first)),
-    treeInsertBefore: (handle, generation, target, first) =>
-      Number(insertBefore(pointer(handle), generations.of(generation), target, first)),
-    treeInsertAfter: (handle, generation, target, first) =>
-      Number(insertAfter(pointer(handle), generations.of(generation), target, first)),
+    treeAppendChildren: (handle, generation, parentNode, firstGeneration, first) =>
+      Number(appendChildren(pointer(handle), generations.of(generation), parentNode, BigInt(firstGeneration), first)),
+    treeInsertBefore: (handle, generation, target, firstGeneration, first) =>
+      Number(insertBefore(pointer(handle), generations.of(generation), target, BigInt(firstGeneration), first)),
+    treeInsertAfter: (handle, generation, target, firstGeneration, first) =>
+      Number(insertAfter(pointer(handle), generations.of(generation), target, BigInt(firstGeneration), first)),
     treeRemoveSiblings: (handle, generation, node, count) => {
       const status = removeSiblings(pointer(handle), generations.of(generation), node, count, firstWord);
       return { status: Number(status), head: firstWord[0] };
@@ -463,8 +463,8 @@ function denoFamily(
       const status = cleanChildren(pointer(handle), generations.of(generation), node, firstWord);
       return { status: Number(status), head: firstWord[0] };
     },
-    treeInsertChildrenAt: (handle, generation, parentNode, index, first) =>
-      Number(insertChildrenAt(pointer(handle), generations.of(generation), parentNode, index, first)),
+    treeInsertChildrenAt: (handle, generation, parentNode, index, firstGeneration, first) =>
+      Number(insertChildrenAt(pointer(handle), generations.of(generation), parentNode, index, BigInt(firstGeneration), first)),
     treeRemoveChildrenAt: (handle, generation, parentNode, index, count) => {
       const status = removeChildrenAt(pointer(handle), generations.of(generation), parentNode, index, count, firstWord);
       return { status: Number(status), head: firstWord[0] };
@@ -997,45 +997,50 @@ export class DenoPort implements FfiPort {
 
   // -- procedure hooks ----------------------------------------------------------
 
-  procCurrentNode(args: Handle): bigint {
-    return this.native.galley_procedure_current_node(args as Deno.PointerValue);
+  procCurrentNode(session: Handle, hook: HookTicket): bigint | number {
+    const node = this.native.galley_procedure_current_node(session as Deno.PointerValue, hook);
+    return node < 0n ? Number(node) : node;
   }
 
-  procDoor(args: Handle): Handle {
-    return this.native.galley_procedure_door(args as Deno.PointerValue);
+  procDoor(session: Handle, hook: HookTicket): { status: number; door: Handle } {
+    const outDoor = lenOut();
+    const status = Number(this.native.galley_procedure_door(session as Deno.PointerValue, hook, outDoor));
+    return { status, door: status < 0 ? null : Deno.UnsafePointer.create(outDoor[0]) };
   }
 
-  procSetCurrentNode(args: Handle, generation: number, node: bigint): number {
-    return Number(this.native.galley_procedure_set_current_node(args as Deno.PointerValue, this.#generation.of(generation), node));
-  }
-
-  procDropSelf(args: Handle): number {
-    return Number(this.native.galley_procedure_drop_self(args as Deno.PointerValue));
-  }
-
-  procDropChildren(args: Handle): number {
-    return Number(this.native.galley_procedure_drop_children(args as Deno.PointerValue));
-  }
-
-  procDropIfEmpty(args: Handle): number {
-    return Number(this.native.galley_procedure_drop_if_empty(args as Deno.PointerValue));
-  }
-
-  procReplaceWithChildren(args: Handle): number {
-    return Number(this.native.galley_procedure_replace_with_children(args as Deno.PointerValue));
-  }
-
-  procContextLine(args: Handle): number {
-    return this.native.galley_procedure_context_line(args as Deno.PointerValue);
-  }
-
-  procContextColumn(args: Handle): number {
-    return this.native.galley_procedure_context_column(args as Deno.PointerValue);
-  }
-
-  procReportSemanticError(args: Handle, message: Uint8Array): number {
+  procSetCurrentNode(session: Handle, hook: HookTicket, generation: number, node: bigint): number {
     return Number(
-      this.native.galley_procedure_report_semantic_error(args as Deno.PointerValue, message, message.length),
+      this.native.galley_procedure_set_current_node(session as Deno.PointerValue, hook, this.#generation.of(generation), node),
+    );
+  }
+
+  procDropSelf(session: Handle, hook: HookTicket): number {
+    return Number(this.native.galley_procedure_drop_self(session as Deno.PointerValue, hook));
+  }
+
+  procDropChildren(session: Handle, hook: HookTicket): number {
+    return Number(this.native.galley_procedure_drop_children(session as Deno.PointerValue, hook));
+  }
+
+  procDropIfEmpty(session: Handle, hook: HookTicket): number {
+    return Number(this.native.galley_procedure_drop_if_empty(session as Deno.PointerValue, hook));
+  }
+
+  procReplaceWithChildren(session: Handle, hook: HookTicket): number {
+    return Number(this.native.galley_procedure_replace_with_children(session as Deno.PointerValue, hook));
+  }
+
+  procContextLine(session: Handle, hook: HookTicket): number {
+    return Number(this.native.galley_procedure_context_line(session as Deno.PointerValue, hook));
+  }
+
+  procContextColumn(session: Handle, hook: HookTicket): number {
+    return Number(this.native.galley_procedure_context_column(session as Deno.PointerValue, hook));
+  }
+
+  procReportSemanticError(session: Handle, hook: HookTicket, message: Uint8Array): number {
+    return Number(
+      this.native.galley_procedure_report_semantic_error(session as Deno.PointerValue, hook, message, message.length),
     );
   }
 

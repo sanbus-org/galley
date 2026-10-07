@@ -52,7 +52,6 @@ public final class Walker implements Iterator<Walker.WalkStep>, Iterable<Walker.
     private final MemorySegment cursor;
     private final long generation;
     private WalkStep next;
-    private boolean done;
 
     Walker(Session session, long root, long generation, boolean skipSemanticErrors, boolean skipRecovered) {
         this.session = Objects.requireNonNull(session, "session");
@@ -85,10 +84,11 @@ public final class Walker implements Iterator<Walker.WalkStep>, Iterable<Walker.
     @Override
     public boolean hasNext() {
         if (session.isClosed()) throw new GalleyClosedException("walker's session");
-        if (done) return false;
         if (next != null) return true;
+        // A finished walk asks the core again: it answers "done" while its
+        // tree is live and raises the stale-tree failure once it is not, so
+        // the walker keeps no finished flag of its own.
         next = session.walkerStep(cursor, generation);
-        if (next == null) done = true;
         return next != null;
     }
 

@@ -82,6 +82,7 @@ class Status(enum.IntEnum):
     ERROR_SEMANTIC = -12
     ERROR_SESSION_IN_USE = -13
     ERROR_STALE_TREE = -14
+    ERROR_STALE_HOOK = -15
 
 INVALID_NODE: Final[int]
 """``2**63 - 1``, the address marking an absent node link."""
@@ -391,8 +392,9 @@ class Walker(Iterator[WalkStep]):
 class ProcedureArguments:
     """Per-hook arguments passed to a procedure hook.
 
-    Valid only while the hook runs: a reference kept past its hook raises
-    ``ValueError``. Tree queries use ``current_node()`` and the ordinary
+    Valid only while the hook runs: the core refuses every call made on a
+    reference kept past its hook with a ``GalleyError`` whose code is
+    ``ERROR_STALE_HOOK``. Tree queries use ``current_node()`` and the ordinary
     ``Node`` methods on the returned handle. Those nodes read the live parse
     while the hook runs and stay usable from later hooks of the same parse
     and, when the parse succeeds, until the session parses again. Drop/replace

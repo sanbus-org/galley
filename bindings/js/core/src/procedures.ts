@@ -19,7 +19,7 @@
  */
 
 import { Status } from "./constants.ts";
-import type { Handle, FfiPort } from "./port.ts";
+import type { Handle, FfiPort, HookTicket } from "./port.ts";
 import type { Node } from "./node.ts";
 import { GalleyError, SessionClosedError } from "./errors.ts";
 import type { Session } from "./session.ts";
@@ -27,78 +27,86 @@ import { checkMessageBytes } from "./sources.ts";
 
 /**
  * Per-hook state: the current node and its redirect, the scanner position,
- * drop and replace, and semantic errors. Valid only while its hook runs;
- * the dispatcher expires it when the hook returns, so a reference kept
- * past that throws instead of reading a frame that is gone. What must
- * outlive the hook — the tree — is addressed through the session.
+ * drop and replace, and semantic errors. Valid only while its hook runs: the
+ * core refuses every call made with the ticket of a hook that has returned
+ * (a `GalleyError` with status `Status.ErrorStaleHook`), and this object
+ * keeps no expiry state of its own. What must outlive the hook — the tree —
+ * is addressed through the session.
  */
 export class ProcedureArguments {
-  readonly #args: Handle;
+  readonly #hook: HookTicket;
+  readonly #handle: Handle;
   readonly #session: Session;
   readonly #port: FfiPort;
   /** The session's wrap of an address of the running parse; invalid is null. */
   readonly #wrap: (address: bigint) => Node | null;
-  #expired = false;
 
   constructor(
-    args: Handle,
+    hook: HookTicket,
+    handle: Handle,
     session: Session,
     port: FfiPort,
     wrap: (address: bigint) => Node | null,
   ) {
-    this.#args = args;
+    this.#hook = hook;
+    this.#handle = handle;
     this.#session = session;
     this.#port = port;
     this.#wrap = wrap;
   }
 
-  /** Dispatcher hook: the native arguments no longer exist past this call. @internal */
-  expire(): void {
-    this.#expired = true;
-  }
-
   /**
-   * The single gate for per-hook state: every accessor takes the native
-   * arguments from here and nowhere else.
+   * The session handle every call crosses with, refused once the session is
+   * closed: its native storage is gone, which is a different failure from a
+   * hook that has returned.
    */
   #live(): Handle {
-    if (this.#expired) throw new SessionClosedError("procedure arguments are invalidated");
-    return this.#args;
+    if (this.#session.isClosed) throw new SessionClosedError("session is closed");
+    return this.#handle;
   }
 
   currentNode(): Node | null {
-    return this.#wrap(this.#port.procCurrentNode(this.#live()));
+    const read = this.#port.procCurrentNode(this.#live(), this.#hook);
+    if (typeof read === "number") throw this.#failure("currentNode", read);
+    return this.#wrap(read);
   }
 
   setCurrentNode(node: Node): void {
-    const args = this.#live();
+    const handle = this.#live();
     const address = this.#session.admit(node);
-    const status = this.#port.procSetCurrentNode(args, node.generation, address);
+    const status = this.#port.procSetCurrentNode(handle, this.#hook, node.generation, address);
     if (status < 0) throw this.#session.errorFromStatus(status);
   }
 
   dropSelf(): void {
-    this.#throwOnFailure("dropSelf", this.#port.procDropSelf(this.#live()));
+    this.#throwOnFailure("dropSelf", this.#port.procDropSelf(this.#live(), this.#hook));
   }
 
   dropChildren(): void {
-    this.#throwOnFailure("dropChildren", this.#port.procDropChildren(this.#live()));
+    this.#throwOnFailure("dropChildren", this.#port.procDropChildren(this.#live(), this.#hook));
   }
 
   dropIfEmpty(): void {
-    this.#throwOnFailure("dropIfEmpty", this.#port.procDropIfEmpty(this.#live()));
+    this.#throwOnFailure("dropIfEmpty", this.#port.procDropIfEmpty(this.#live(), this.#hook));
   }
 
   replaceWithChildren(): void {
-    this.#throwOnFailure("replaceWithChildren", this.#port.procReplaceWithChildren(this.#live()));
+    this.#throwOnFailure(
+      "replaceWithChildren",
+      this.#port.procReplaceWithChildren(this.#live(), this.#hook),
+    );
   }
 
   currentLine(): number {
-    return this.#port.procContextLine(this.#live());
+    const line = this.#port.procContextLine(this.#live(), this.#hook);
+    this.#throwOnFailure("currentLine", line);
+    return line;
   }
 
   currentColumn(): number {
-    return this.#port.procContextColumn(this.#live());
+    const column = this.#port.procContextColumn(this.#live(), this.#hook);
+    this.#throwOnFailure("currentColumn", column);
+    return column;
   }
 
   /**
@@ -109,6 +117,7 @@ export class ProcedureArguments {
   reportSemanticError(message: string | Uint8Array): number {
     const status = this.#port.procReportSemanticError(
       this.#live(),
+      this.#hook,
       checkMessageBytes(message, "galley: reportSemanticError"),
     );
     this.#throwOnFailure("reportSemanticError", status);
@@ -116,17 +125,21 @@ export class ProcedureArguments {
   }
 
   /**
-   * Throws the host failure type for a negative native status: a
-   * `GalleyError` carrying the status as its named code. Procedure
-   * operations attach no diagnostic, so the snapshot is null.
+   * The host failure type for a negative native status: a `GalleyError`
+   * carrying the status as its named code. Procedure operations attach no
+   * diagnostic, so the snapshot is null.
    */
-  #throwOnFailure(operation: string, status: number): void {
-    if (status >= 0) return;
-    throw new GalleyError(
+  #failure(operation: string, status: number): GalleyError {
+    return new GalleyError(
       `galley: ${operation} failed: ${this.#port.statusString(status) ?? "unknown galley error"}`,
       status as Status,
       null,
     );
+  }
+
+  #throwOnFailure(operation: string, status: number): void {
+    if (status >= 0) return;
+    throw this.#failure(operation, status);
   }
 }
 
@@ -274,7 +287,7 @@ export function registryFor(port: FfiPort): ProcedureRegistry {
 /** What the router hands a hook to: the session that owns the handle. */
 export interface HookOwner {
   /** Runs hook `index` of the owner's running parse, on the parsing thread. */
-  dispatchHook(index: number, args: Handle): void;
+  dispatchHook(index: number, hook: HookTicket): void;
 }
 
 /**
@@ -295,8 +308,8 @@ export class HookRouter {
   constructor(port: FfiPort) {
     this.names = port.hookNames();
     this.names.forEach((name, index) => this.#indexes.set(name, index));
-    port.hookDispatch = (hookHandle, hookIndex, args) => {
-      this.#owners.get(hookHandle)?.dispatchHook(hookIndex, args);
+    port.hookDispatch = (hookHandle, hookIndex, hook) => {
+      this.#owners.get(hookHandle)?.dispatchHook(hookIndex, hook);
     };
   }
 

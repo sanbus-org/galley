@@ -54,3 +54,58 @@ test "wrapProcedure forwards ProcedureArguments" {
 
     try std.testing.expectEqual(@as(?galley.data_structures.Node.Pointer, null), args.node_address);
 }
+
+test "a hook ticket names its arguments only while its hook runs" {
+    var runtime: galley.data_structures.RuntimeContext = .{ .io = std.testing.io, .arena_allocator = std.testing.allocator };
+    var other: galley.data_structures.RuntimeContext = .{ .io = std.testing.io, .arena_allocator = std.testing.allocator };
+    var context: galley.data_structures.Context = .{ .runtime_context = &runtime };
+    var first_args: ProcedureArguments = .{ .context = &context, .rule = null, .node_address = null };
+    var second_args: ProcedureArguments = .{ .context = &context, .rule = null, .node_address = null };
+
+    // Nothing runs yet: no ticket, not even 0, names anything.
+    try std.testing.expectError(error.StaleHook, runtime.hookArguments(0));
+    try std.testing.expectError(error.StaleHook, runtime.hookArguments(1));
+
+    const first = runtime.enterHook(&first_args);
+    try std.testing.expect(first != 0);
+    try std.testing.expectEqual(&first_args, try runtime.hookArguments(first));
+    // Another session never accepts a live ticket of this one.
+    try std.testing.expectError(error.StaleHook, other.hookArguments(first));
+    runtime.exitHook();
+    try std.testing.expectError(error.StaleHook, runtime.hookArguments(first));
+
+    // A later hook gets a new ticket even when its arguments sit where the
+    // first hook's did, so the returned hook's ticket stays refused.
+    const second = runtime.enterHook(&first_args);
+    try std.testing.expect(second != first);
+    try std.testing.expectEqual(&first_args, try runtime.hookArguments(second));
+    try std.testing.expectError(error.StaleHook, runtime.hookArguments(first));
+    runtime.exitHook();
+
+    // Tickets are unique across sessions: a second session's hook never
+    // collides with the first's.
+    const third = other.enterHook(&second_args);
+    try std.testing.expect(third != first and third != second);
+    try std.testing.expectError(error.StaleHook, runtime.hookArguments(third));
+    try std.testing.expectEqual(&second_args, try other.hookArguments(third));
+    other.exitHook();
+}
+
+test "a live hook ticket is refused on any thread but the dispatching one" {
+    if (comptime @import("builtin").single_threaded) return error.SkipZigTest;
+    var runtime: galley.data_structures.RuntimeContext = .{ .io = std.testing.io, .arena_allocator = std.testing.allocator };
+    var context: galley.data_structures.Context = .{ .runtime_context = &runtime };
+    var args: ProcedureArguments = .{ .context = &context, .rule = null, .node_address = null };
+    const ticket = runtime.enterHook(&args);
+    defer runtime.exitHook();
+    const Probe = struct {
+        fn run(target: *galley.data_structures.RuntimeContext, hook: u64, result: *?anyerror) void {
+            result.* = if (target.hookArguments(hook)) |_| null else |err| err;
+        }
+    };
+    var result: ?anyerror = null;
+    const thread = try std.Thread.spawn(.{}, Probe.run, .{ &runtime, ticket, &result });
+    thread.join();
+    try std.testing.expectEqual(@as(?anyerror, error.OtherThread), result);
+    try std.testing.expectEqual(&args, try runtime.hookArguments(ticket));
+}

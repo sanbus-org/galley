@@ -11,7 +11,7 @@ import { INVALID_NODE, NO_VARIABLE, Status } from "./constants.ts";
 import type { Kind, RecoveryTarget, Resume } from "./constants.ts";
 import type { Diagnostic } from "./diagnostic.ts";
 import { GalleyError, SessionClosedError, StaleTreeError } from "./errors.ts";
-import type { FfiPort, Handle, NodeFamily, SessionCOptions, SnapshotColumns } from "./port.ts";
+import type { FfiPort, Handle, HookTicket, NodeFamily, SessionCOptions, SnapshotColumns } from "./port.ts";
 import { decodeUtf8 } from "./text.ts";
 import { checkArtifactPath, checkMessageBytes, checkParseInput } from "./sources.ts";
 import { rejectSessionOptions } from "./internal.ts";
@@ -180,16 +180,16 @@ class Door implements NodeDoor {
     return head;
   }
 
-  appendChildren(generation: number, parent: bigint, chain: bigint): void {
-    this.#check(this.#family.treeAppendChildren(this.#handle, generation, parent, chain));
+  appendChildren(generation: number, parent: bigint, chainGeneration: number, chain: bigint): void {
+    this.#check(this.#family.treeAppendChildren(this.#handle, generation, parent, chainGeneration, chain));
   }
 
-  insertBefore(generation: number, target: bigint, chain: bigint): void {
-    this.#check(this.#family.treeInsertBefore(this.#handle, generation, target, chain));
+  insertBefore(generation: number, target: bigint, chainGeneration: number, chain: bigint): void {
+    this.#check(this.#family.treeInsertBefore(this.#handle, generation, target, chainGeneration, chain));
   }
 
-  insertAfter(generation: number, target: bigint, chain: bigint): void {
-    this.#check(this.#family.treeInsertAfter(this.#handle, generation, target, chain));
+  insertAfter(generation: number, target: bigint, chainGeneration: number, chain: bigint): void {
+    this.#check(this.#family.treeInsertAfter(this.#handle, generation, target, chainGeneration, chain));
   }
 
   removeSiblings(generation: number, address: bigint, count: number): bigint {
@@ -204,8 +204,8 @@ class Door implements NodeDoor {
     return head;
   }
 
-  insertChildrenAt(generation: number, parent: bigint, index: number, chain: bigint): void {
-    this.#check(this.#family.treeInsertChildrenAt(this.#handle, generation, parent, index, chain));
+  insertChildrenAt(generation: number, parent: bigint, index: number, chainGeneration: number, chain: bigint): void {
+    this.#check(this.#family.treeInsertChildrenAt(this.#handle, generation, parent, index, chainGeneration, chain));
   }
 
   removeChildrenAt(generation: number, parent: bigint, index: number, count: number): bigint {
@@ -410,18 +410,6 @@ export class Session implements HookOwner {
   }
 
   /**
-   * The address of `chain`, the second node of an operation on `node`. A
-   * call hands the core one generation, so both nodes must carry it: an
-   * operation mixing two trees is refused here instead of acting on a chain
-   * from another parse.
-   */
-  #admitChain(node: Node, chain: Node): bigint {
-    const address = this.admit(chain);
-    if (chain.generation !== node.generation) throw this.errorFromStatus(Status.ErrorStaleTree);
-    return address;
-  }
-
-  /**
    * The one creation path for `Node` handles, and the lazy generation
    * gate: the table holds the live generation's nodes — the published
    * tree's, or the running parse's while its hooks dispatch — one object
@@ -576,12 +564,12 @@ export class Session implements HookOwner {
   }
 
   /**
-   * Runs hook `index` of the running parse, on the parsing thread. Hook
-   * exceptions are logged and swallowed so a throwing hook never aborts
-   * the parse.
+   * Runs hook `index` of the running parse, on the parsing thread, under the
+   * ticket the core issued for this call. Hook exceptions are logged and
+   * swallowed so a throwing hook never aborts the parse.
    * @internal
    */
-  dispatchHook(index: number, args: Handle): void {
+  dispatchHook(index: number, hook: HookTicket): void {
     const fn = this.#hooksByIndex[index];
     if (!fn) return;
     const name = routerFor(this.#port).names[index];
@@ -591,7 +579,9 @@ export class Session implements HookOwner {
     // lets a call choose its door when it is made.
     if (this.#parseDoor === null) {
       try {
-        const nativeDoor = this.#port.procDoor(args);
+        const opened = this.#port.procDoor(this.#requireHandle(), hook);
+        if (opened.status < 0) throw this.errorFromStatus(opened.status);
+        const nativeDoor = opened.door;
         const generation = this.#port.hookGeneration(nativeDoor);
         if (generation < 0) throw this.errorFromStatus(generation);
         this.#parseGeneration = generation;
@@ -614,15 +604,18 @@ export class Session implements HookOwner {
       }
       return;
     }
-    const procedureArguments = new ProcedureArguments(args, this, this.#port, (address) =>
-      this.#wrap(this.#parseGeneration, address),
+    const procedureArguments = new ProcedureArguments(
+      hook,
+      this.#requireHandle(),
+      this,
+      this.#port,
+      (address) => this.#wrap(this.#parseGeneration, address),
     );
     try {
       fn(procedureArguments);
     } catch (err) {
       console.error(`galley procedure ${name} threw:`, err);
     } finally {
-      procedureArguments.expire();
       this.#dispatching = false;
     }
   }
@@ -729,8 +722,14 @@ export class Session implements HookOwner {
     this.#checkStatus(st);
   }
 
+  /**
+   * Current node storage capacity in nodes. Throws `GalleyError` (session in
+   * use) while a parse runs.
+   */
   nodeCapacity(): number {
-    return this.port.nodeCapacity(this.#requireHandle());
+    const capacity = this.port.nodeCapacity(this.#requireHandle());
+    if (capacity < 0) throw this.errorFromStatus(capacity);
+    return capacity;
   }
 
   // -- navigation ------------------------------------------------------
@@ -1147,17 +1146,17 @@ export class Session implements HookOwner {
 
   appendChildren(parent: Node, chain: Node): void {
     const door = this.#door();
-    door.appendChildren(parent.generation, this.admit(parent), this.#admitChain(parent, chain));
+    door.appendChildren(parent.generation, this.admit(parent), chain.generation, this.admit(chain));
   }
 
   insertBefore(target: Node, chain: Node): void {
     const door = this.#door();
-    door.insertBefore(target.generation, this.admit(target), this.#admitChain(target, chain));
+    door.insertBefore(target.generation, this.admit(target), chain.generation, this.admit(chain));
   }
 
   insertAfter(target: Node, chain: Node): void {
     const door = this.#door();
-    door.insertAfter(target.generation, this.admit(target), this.#admitChain(target, chain));
+    door.insertAfter(target.generation, this.admit(target), chain.generation, this.admit(chain));
   }
 
   removeSiblings(node: Node, count: number): Node | null {
@@ -1177,7 +1176,7 @@ export class Session implements HookOwner {
 
   insertChildrenAt(parent: Node, index: number, chain: Node): void {
     const door = this.#door();
-    door.insertChildrenAt(parent.generation, this.admit(parent), index, this.#admitChain(parent, chain));
+    door.insertChildrenAt(parent.generation, this.admit(parent), index, chain.generation, this.admit(chain));
   }
 
   removeChildrenAt(parent: Node, index: number, count: number): Node | null {

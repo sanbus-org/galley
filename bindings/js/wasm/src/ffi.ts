@@ -23,6 +23,7 @@ import type {
   FfiPort,
   NodeFamily,
   Handle,
+  HookTicket,
   DispatchHandler,
   SessionCOptions,
   SnapshotColumns,
@@ -55,13 +56,13 @@ interface DoorCalls {
   node_line_column(handle: number, generation: bigint, node: bigint, outLine: number, outCol: number): bigint;
   node_variable_index(handle: number, generation: bigint, node: bigint): bigint;
   walk_next(handle: number, cursor: number): bigint;
-  tree_append_children(handle: number, generation: bigint, parent: bigint, first: bigint): bigint;
-  tree_insert_before(handle: number, generation: bigint, target: bigint, first: bigint): bigint;
-  tree_insert_after(handle: number, generation: bigint, target: bigint, first: bigint): bigint;
+  tree_append_children(handle: number, generation: bigint, parent: bigint, firstGeneration: bigint, first: bigint): bigint;
+  tree_insert_before(handle: number, generation: bigint, target: bigint, firstGeneration: bigint, first: bigint): bigint;
+  tree_insert_after(handle: number, generation: bigint, target: bigint, firstGeneration: bigint, first: bigint): bigint;
   tree_remove_siblings(handle: number, generation: bigint, node: bigint, count: number, outHead: number): bigint;
   tree_remove_self(handle: number, generation: bigint, node: bigint, outHead: number): bigint;
   tree_clean_children(handle: number, generation: bigint, node: bigint, outHead: number): bigint;
-  tree_insert_children_at(handle: number, generation: bigint, parent: bigint, index: number, first: bigint): bigint;
+  tree_insert_children_at(handle: number, generation: bigint, parent: bigint, index: number, firstGeneration: bigint, first: bigint): bigint;
   tree_remove_children_at(handle: number, generation: bigint, parent: bigint, index: number, count: number, outHead: number): bigint;
 }
 
@@ -238,16 +239,16 @@ interface GalleyWasmExports extends DoorNames<"">, DoorNames<"hook_"> {
     outVar: number,
     outVarLen: number,
   ): bigint;
-  galley_procedure_current_node(args: number): bigint;
-  galley_procedure_door(args: number): number;
-  galley_procedure_set_current_node(args: number, generation: bigint, node: bigint): bigint;
-  galley_procedure_drop_self(args: number): bigint;
-  galley_procedure_drop_children(args: number): bigint;
-  galley_procedure_drop_if_empty(args: number): bigint;
-  galley_procedure_replace_with_children(args: number): bigint;
-  galley_procedure_context_line(args: number): number;
-  galley_procedure_context_column(args: number): number;
-  galley_procedure_report_semantic_error(args: number, message: number, messageLen: number): bigint;
+  galley_procedure_current_node(session: number, hook: bigint): bigint;
+  galley_procedure_door(session: number, hook: bigint, outDoor: number): bigint;
+  galley_procedure_set_current_node(session: number, hook: bigint, generation: bigint, node: bigint): bigint;
+  galley_procedure_drop_self(session: number, hook: bigint): bigint;
+  galley_procedure_drop_children(session: number, hook: bigint): bigint;
+  galley_procedure_drop_if_empty(session: number, hook: bigint): bigint;
+  galley_procedure_replace_with_children(session: number, hook: bigint): bigint;
+  galley_procedure_context_line(session: number, hook: bigint): bigint;
+  galley_procedure_context_column(session: number, hook: bigint): bigint;
+  galley_procedure_report_semantic_error(session: number, hook: bigint, message: number, messageLen: number): bigint;
   galley_hook_generation(door: number, outGeneration: number): bigint;
   // host hooks (see galley_session_set_hooks in galley.h)
   galley_hooks_count(): number;
@@ -443,9 +444,9 @@ function makeImports(pending: PendingInstance): WebAssembly.Imports {
     }),
     env: {
       // Every hook of the module: the session's handle, the hook's index,
-      // and its native arguments.
-      galley_host_dispatch: (hookHandle: number, hookIndex: number, argsPtr: number) => {
-        pending.port?.hookDispatch?.(hookHandle, hookIndex, argsPtr);
+      // and the ticket of this hook call (a 64-bit value, so a BigInt).
+      galley_host_dispatch: (hookHandle: number, hookIndex: number, hook: bigint) => {
+        pending.port?.hookDispatch?.(hookHandle, hookIndex, hook);
       },
     },
   };
@@ -1457,20 +1458,20 @@ export class WasmPort implements FfiPort {
         this.#copyCursorFromGuest(slot, cursor);
         return Number(status);
       },
-      treeAppendChildren: (handle, generation, parentNode, first) =>
-        toNumber(appendChildren(handle as number, generations.of(generation), parentNode, first)),
-      treeInsertBefore: (handle, generation, target, first) =>
-        toNumber(insertBefore(handle as number, generations.of(generation), target, first)),
-      treeInsertAfter: (handle, generation, target, first) =>
-        toNumber(insertAfter(handle as number, generations.of(generation), target, first)),
+      treeAppendChildren: (handle, generation, parentNode, firstGeneration, first) =>
+        toNumber(appendChildren(handle as number, generations.of(generation), parentNode, BigInt(firstGeneration), first)),
+      treeInsertBefore: (handle, generation, target, firstGeneration, first) =>
+        toNumber(insertBefore(handle as number, generations.of(generation), target, BigInt(firstGeneration), first)),
+      treeInsertAfter: (handle, generation, target, firstGeneration, first) =>
+        toNumber(insertAfter(handle as number, generations.of(generation), target, BigInt(firstGeneration), first)),
       treeRemoveSiblings: (handle, generation, node, count) =>
         head((out) => removeSiblings(handle as number, generations.of(generation), node, count, out)),
       treeRemoveSelf: (handle, generation, node) =>
         head((out) => removeSelf(handle as number, generations.of(generation), node, out)),
       treeCleanChildren: (handle, generation, node) =>
         head((out) => cleanChildren(handle as number, generations.of(generation), node, out)),
-      treeInsertChildrenAt: (handle, generation, parentNode, index, first) =>
-        toNumber(insertChildrenAt(handle as number, generations.of(generation), parentNode, index, first)),
+      treeInsertChildrenAt: (handle, generation, parentNode, index, firstGeneration, first) =>
+        toNumber(insertChildrenAt(handle as number, generations.of(generation), parentNode, index, BigInt(firstGeneration), first)),
       treeRemoveChildrenAt: (handle, generation, parentNode, index, count) =>
         head((out) => removeChildrenAt(handle as number, generations.of(generation), parentNode, index, count, out)),
     };
@@ -1478,48 +1479,55 @@ export class WasmPort implements FfiPort {
 
   // -- procedure hooks (parse-time state) ---------------------------------------------------
 
-  procCurrentNode(args: Handle): bigint {
-    return this.wasm.galley_procedure_current_node(args as number);
+  procCurrentNode(session: Handle, hook: HookTicket): bigint | number {
+    const node = this.wasm.galley_procedure_current_node(session as number, hook);
+    return isNegative(node) ? toNumber(node) : node;
   }
 
-  procDoor(args: Handle): Handle {
-    return this.wasm.galley_procedure_door(args as number);
+  procDoor(session: Handle, hook: HookTicket): { status: number; door: Handle } {
+    const out = this.malloc(8);
+    try {
+      const status = toNumber(this.wasm.galley_procedure_door(session as number, hook, out));
+      return { status, door: status < 0 ? null : this.dataView().getUint32(out, true) };
+    } finally {
+      this.free(out, 8);
+    }
   }
 
-  procSetCurrentNode(args: Handle, generation: number, node: bigint): number {
-    return Number(this.wasm.galley_procedure_set_current_node(args as number, this.#generation.of(generation), node));
+  procSetCurrentNode(session: Handle, hook: HookTicket, generation: number, node: bigint): number {
+    return Number(this.wasm.galley_procedure_set_current_node(session as number, hook, this.#generation.of(generation), node));
   }
 
-  procDropSelf(args: Handle): number {
-    return toNumber(this.wasm.galley_procedure_drop_self(args as number));
+  procDropSelf(session: Handle, hook: HookTicket): number {
+    return toNumber(this.wasm.galley_procedure_drop_self(session as number, hook));
   }
 
-  procDropChildren(args: Handle): number {
-    return toNumber(this.wasm.galley_procedure_drop_children(args as number));
+  procDropChildren(session: Handle, hook: HookTicket): number {
+    return toNumber(this.wasm.galley_procedure_drop_children(session as number, hook));
   }
 
-  procDropIfEmpty(args: Handle): number {
-    return toNumber(this.wasm.galley_procedure_drop_if_empty(args as number));
+  procDropIfEmpty(session: Handle, hook: HookTicket): number {
+    return toNumber(this.wasm.galley_procedure_drop_if_empty(session as number, hook));
   }
 
-  procReplaceWithChildren(args: Handle): number {
-    return toNumber(this.wasm.galley_procedure_replace_with_children(args as number));
+  procReplaceWithChildren(session: Handle, hook: HookTicket): number {
+    return toNumber(this.wasm.galley_procedure_replace_with_children(session as number, hook));
   }
 
-  procContextLine(args: Handle): number {
-    return this.wasm.galley_procedure_context_line(args as number);
+  procContextLine(session: Handle, hook: HookTicket): number {
+    return toNumber(this.wasm.galley_procedure_context_line(session as number, hook));
   }
 
-  procContextColumn(args: Handle): number {
-    return this.wasm.galley_procedure_context_column(args as number);
+  procContextColumn(session: Handle, hook: HookTicket): number {
+    return toNumber(this.wasm.galley_procedure_context_column(session as number, hook));
   }
 
-  procReportSemanticError(args: Handle, message: Uint8Array): number {
+  procReportSemanticError(session: Handle, hook: HookTicket, message: Uint8Array): number {
     const bytes = textEncoder.encode(textDecoder.decode(message));
     const slot = this.writeBytes(bytes);
     try {
       return toNumber(
-        this.wasm.galley_procedure_report_semantic_error(args as number, slot.ptr, slot.len),
+        this.wasm.galley_procedure_report_semantic_error(session as number, hook, slot.ptr, slot.len),
       );
     } finally {
       this.free(slot.ptr, Math.max(slot.len, 1));

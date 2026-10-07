@@ -4,13 +4,26 @@
  * and source position, plus drop_if_empty on empty tails. Author-defined
  * grammar hooks arrive as hook_<name> — Key is annotated @print.
  *
- * Tree queries go through the parse's hook door: take it from the arguments
- * with galley_procedure_door, then use galley_hook_*. The door is unshared by
+ * Each hook receives its session and the ticket of its call. Tree queries go
+ * through the parse's hook door: take it with galley_procedure_door, then use
+ * galley_hook_*. The door is unshared by
  * construction and valid for the whole parse.
  */
 #include <galley.h>
 #include <stdio.h>
 #include <string.h>
+
+/* A hook is named by its session and the ticket of its call. */
+static GalleyNodeAddress current_node(GalleySession *session, unsigned long long hook) {
+    long long node = galley_procedure_current_node(session, hook);
+    return node < 0 ? GALLEY_INVALID_NODE : (GalleyNodeAddress)node;
+}
+
+static GalleyHookDoor *procedure_door(GalleySession *session, unsigned long long hook) {
+    GalleyHookDoor *door = NULL;
+    galley_procedure_door(session, hook, &door);
+    return door;
+}
 
 static int symbol_is(GalleyHookDoor *door, unsigned long long generation, GalleyNodeAddress node, const char *want) {
     const char *data = NULL;
@@ -64,21 +77,22 @@ static void count_pairs(GalleyHookDoor *door, unsigned long long generation, Gal
     }
 }
 
-void reduction(void *args) {
-    (void)args;
+void reduction(GalleySession *session, unsigned long long hook) {
+    (void)session;
+    (void)hook;
 }
 
-void reduction_KeyTail(void *args) { galley_procedure_drop_if_empty(args); }
-void reduction_NumberTail(void *args) { galley_procedure_drop_if_empty(args); }
-void reduction_PairListTail(void *args) { galley_procedure_drop_if_empty(args); }
-void reduction_PairList(void *args) { (void)args; }
-void reduction_Key(void *args) { (void)args; }
+void reduction_KeyTail(GalleySession *session, unsigned long long hook) { galley_procedure_drop_if_empty(session, hook); }
+void reduction_NumberTail(GalleySession *session, unsigned long long hook) { galley_procedure_drop_if_empty(session, hook); }
+void reduction_PairListTail(GalleySession *session, unsigned long long hook) { galley_procedure_drop_if_empty(session, hook); }
+void reduction_PairList(GalleySession *session, unsigned long long hook) { (void)session; (void)hook; }
+void reduction_Key(GalleySession *session, unsigned long long hook) { (void)session; (void)hook; }
 
-void hook_print(void *args) {
-    GalleyHookDoor *door = galley_procedure_door(args);
+void hook_print(GalleySession *session, unsigned long long hook) {
+    GalleyHookDoor *door = procedure_door(session, hook);
     unsigned long long generation = 0;
     galley_hook_generation(door, &generation);
-    GalleyNodeAddress node = galley_procedure_current_node(args);
+    GalleyNodeAddress node = current_node(session, hook);
     const char *text = NULL;
     size_t len = 0;
     unsigned line = 0, column = 0;
@@ -92,11 +106,11 @@ void hook_print(void *args) {
     fflush(stderr);
 }
 
-void reduction_Number(void *args) {
-    GalleyHookDoor *door = galley_procedure_door(args);
+void reduction_Number(GalleySession *session, unsigned long long hook) {
+    GalleyHookDoor *door = procedure_door(session, hook);
     unsigned long long generation = 0;
     galley_hook_generation(door, &generation);
-    GalleyNodeAddress node = galley_procedure_current_node(args);
+    GalleyNodeAddress node = current_node(session, hook);
     const char *text = NULL;
     size_t len = 0;
     unsigned line = 0, column = 0;
@@ -110,15 +124,15 @@ void reduction_Number(void *args) {
     fflush(stderr);
     if (text != NULL && parse_u(text, len) > 999) {
         static const char message[] = "value out of range";
-        galley_procedure_report_semantic_error(args, message, sizeof(message) - 1);
+        galley_procedure_report_semantic_error(session, hook, message, sizeof(message) - 1);
     }
 }
 
-void reduction_Pair(void *args) {
-    GalleyHookDoor *door = galley_procedure_door(args);
+void reduction_Pair(GalleySession *session, unsigned long long hook) {
+    GalleyHookDoor *door = procedure_door(session, hook);
     unsigned long long generation = 0;
     galley_hook_generation(door, &generation);
-    GalleyNodeAddress node = galley_procedure_current_node(args);
+    GalleyNodeAddress node = current_node(session, hook);
     const char *text = NULL;
     size_t len = 0;
     unsigned line = 0, column = 0;
@@ -141,11 +155,11 @@ void reduction_Pair(void *args) {
     fflush(stderr);
 }
 
-void reduction_Document(void *args) {
-    GalleyHookDoor *door = galley_procedure_door(args);
+void reduction_Document(GalleySession *session, unsigned long long hook) {
+    GalleyHookDoor *door = procedure_door(session, hook);
     unsigned long long generation = 0;
     galley_hook_generation(door, &generation);
-    GalleyNodeAddress node = galley_procedure_current_node(args);
+    GalleyNodeAddress node = current_node(session, hook);
     unsigned count = 0, sum = 0;
     if (node == GALLEY_INVALID_NODE)
         return;

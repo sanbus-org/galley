@@ -217,7 +217,7 @@ int main(int argc, char **argv) {
             galley_session_destroy(session);
             return 1;
         }
-        long long reattached = galley_tree_append_children(session, generation, root, head);
+        long long reattached = galley_tree_append_children(session, generation, root, generation, head);
         if (reattached != galley_ok) {
             fprintf(stderr, "failed to reattach children: %s (%lld)\n",
                     galley_status_string(reattached), reattached);

@@ -34,19 +34,23 @@ export interface NodeDoor {
   /**
    * One step of a walk over the host-owned 40-byte cursor, which carries
    * its own generation: 1 yields a node, 0 ends the walk (and keeps ending
-   * it), negative is a failure (stale tree, session in use, malformed
-   * cursor bytes).
+   * it while its tree is live), negative is a failure (stale tree, session
+   * in use, malformed cursor bytes).
    */
   walkNext(cursor: ArrayBuffer): number;
   /** Head of the detached chain; `INVALID_NODE` when there were no children. */
   cleanChildren(generation: number, address: bigint): bigint;
-  appendChildren(generation: number, parent: bigint, chain: bigint): void;
-  insertBefore(generation: number, target: bigint, chain: bigint): void;
-  insertAfter(generation: number, target: bigint, chain: bigint): void;
+  /*
+   * The edits with a second node pass its own generation beside the first:
+   * the core refuses a pair from two parses.
+   */
+  appendChildren(generation: number, parent: bigint, chainGeneration: number, chain: bigint): void;
+  insertBefore(generation: number, target: bigint, chainGeneration: number, chain: bigint): void;
+  insertAfter(generation: number, target: bigint, chainGeneration: number, chain: bigint): void;
   /** Head of the detached chain; `INVALID_NODE` when empty. */
   removeSiblings(generation: number, address: bigint, count: number): bigint;
   removeSelf(generation: number, address: bigint): bigint;
-  insertChildrenAt(generation: number, parent: bigint, index: number, chain: bigint): void;
+  insertChildrenAt(generation: number, parent: bigint, index: number, chainGeneration: number, chain: bigint): void;
   removeChildrenAt(generation: number, parent: bigint, index: number, count: number): bigint;
 }
 

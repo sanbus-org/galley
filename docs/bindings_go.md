@@ -79,10 +79,18 @@ import (
 	galley "example.com/my-parser-consumer/galley"
 )
 
+/*
+#include <stdlib.h>
+*/
+import "C"
+
 //export reduction_Pair
-func reduction_Pair(ptr unsafe.Pointer) {
-	args := galley.Args(ptr)
-	door := args.Door()
+func reduction_Pair(session unsafe.Pointer, hook C.ulonglong) {
+	args := galley.Args(session, uint64(hook))
+	door, err := args.Door()
+	if err != nil {
+		return
+	}
 	node, ok, err := args.CurrentNode()
 	if err != nil || !ok {
 		return
@@ -95,14 +103,17 @@ func reduction_Pair(ptr unsafe.Pointer) {
 }
 
 //export reduction_KeyTail
-func reduction_KeyTail(ptr unsafe.Pointer) {
-	_ = galley.Args(ptr).DropIfEmpty()
+func reduction_KeyTail(session unsafe.Pointer, hook C.ulonglong) {
+	_ = galley.Args(session, uint64(hook)).DropIfEmpty()
 }
 
 //export hook_print
-func hook_print(ptr unsafe.Pointer) {
-	args := galley.Args(ptr)
-	door := args.Door()
+func hook_print(session unsafe.Pointer, hook C.ulonglong) {
+	args := galley.Args(session, uint64(hook))
+	door, err := args.Door()
+	if err != nil {
+		return
+	}
 	node, ok, err := args.CurrentNode()
 	if err != nil || !ok {
 		return
@@ -130,7 +141,7 @@ the corresponding variable is reduced; unregistered slots are no-ops.
 Reduction hooks keep their `reduction_<VariableName>` names (plus the
 general `reduction`); author-defined grammar hooks are declared as
 `hook_<name>`. Semantic payloads are unavailable through bindings. Tree
-queries use the parse's door, `galley.Args(ptr).Door()`, which implements
+queries use the parse's door, `galley.Args(session, uint64(hook)).Door()` (which returns `ErrStaleHook` once the hook has returned and `ErrNullArgument` after the session is closed), which implements
 `galley.NodeDoor` like a session does; the door is the same for every hook of
 one parse and usable until that parse ends: a copy kept from one hook still
 works in a later hook of the same parse. Once `Parse` (or `ParseSentinel`,
@@ -139,7 +150,11 @@ from it answer `ErrStaleTree` on every call, without the door's native
 pointer being read — it died with the parse. Keep `Node` handles for
 references that outlive the parse; the next parse refuses them with
 `ErrStaleTree` too. The arguments themselves are valid only while their hook
-runs; drop/replace use `args.DropSelf()` and friends.
+runs: a hook is named by its session and the ticket of its call, and the core
+refuses every call made with the ticket of a hook that has returned
+(`ErrStaleHook`). Hooks are `//export`ed as `func hook(session unsafe.Pointer,
+hook C.ulonglong)` and make their arguments with `galley.Args(session,
+uint64(hook))`; drop/replace use `args.DropSelf()` and friends.
 
 ## Error Messages
 
@@ -200,7 +215,7 @@ for {
 }
 ```
 
-`door.Walk(root, skip)` — `door` from a hook's `galley.Args(ptr).Door()` —
+`door.Walk(root, skip)` — `door` from a hook's `galley.Args(session, uint64(hook)).Door()` —
 is the hook-door twin: it walks the running parse's in-flight tree through
 `galley_hook_walk_next`, bound to the root's generation, and reproduces the
 post-parse walk once the parse publishes. Every `HookDoor` read checks the

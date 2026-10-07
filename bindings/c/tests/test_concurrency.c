@@ -136,9 +136,9 @@ typedef struct Worker {
     long long parse_status;
 } Worker;
 
-static void dispatch(void *handle, unsigned int index, void *args) {
+static void dispatch(void *handle, unsigned int index, unsigned long long hook) {
     Worker *worker = (Worker *)handle;
-    (void)args;
+    (void)hook;
     if (!pthread_equal(pthread_self(), worker->thread)) ++worker->wrong_thread;
     if (index < MAX_HOOKS) ++worker->calls[index];
     if (worker->barrier != NULL && !worker->waited) {

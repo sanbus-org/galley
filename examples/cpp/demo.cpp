@@ -220,7 +220,7 @@ int main(int argc, char *argv[]) {
                 return 1;
             }
             const long long reattached =
-                galley_tree_append_children(&session, generation, root, head);
+                galley_tree_append_children(&session, generation, root, generation, head);
             if (reattached != galley_ok) {
                 std::fprintf(stderr, "failed to reattach children: %s (%lld)\n",
                              galley_status_string(reattached), reattached);

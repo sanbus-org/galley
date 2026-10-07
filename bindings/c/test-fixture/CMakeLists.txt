@@ -138,6 +138,47 @@ add_custom_target(galley_concurrency_fixture DEPENDS
     "${CONCURRENCY_SECOND_LIBRARY}"
 )
 
+# 5. No-AST fixture: the keyvalue grammar built without AST construction
+#    (the shared config with `ast = false`) as a host-shim library in the
+#    build tree. Every refusal still raises in such a build.
+set(NO_AST_DIRECTORY "${CMAKE_BINARY_DIR}/no-ast")
+if(APPLE)
+    set(NO_AST_FILENAME "libgalley-no-ast.dylib")
+else()
+    set(NO_AST_FILENAME "libgalley-no-ast.so")
+endif()
+set(SHARED_FIXTURE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../../test-fixture")
+add_custom_command(
+    OUTPUT "${NO_AST_DIRECTORY}/_ll-parser.zig" "${NO_AST_DIRECTORY}/host_procedures.zig"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${NO_AST_DIRECTORY}"
+    COMMAND "${CMAKE_COMMAND}" -E copy "${SHARED_FIXTURE_DIRECTORY}/ll.grm" "${NO_AST_DIRECTORY}"
+    COMMAND "${CMAKE_COMMAND}"
+            "-DSOURCE=${SHARED_FIXTURE_DIRECTORY}/config.zig"
+            "-DDESTINATION=${NO_AST_DIRECTORY}/config.zig"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/write_no_ast_config.cmake"
+    COMMAND "${GALLEY_CLI}" --emit-host-procedures "${NO_AST_DIRECTORY}"
+    DEPENDS "${GALLEY_CLI}" "${SHARED_FIXTURE_DIRECTORY}/ll.grm" "${SHARED_FIXTURE_DIRECTORY}/config.zig"
+            "${CMAKE_CURRENT_SOURCE_DIR}/write_no_ast_config.cmake"
+    VERBATIM
+)
+add_custom_command(
+    OUTPUT "${NO_AST_DIRECTORY}/${NO_AST_FILENAME}"
+    COMMAND "${ZIG_EXECUTABLE}" build
+            --build-file "${GALLEY_SOURCE_DIR}/bindings/c/consumer/build.zig"
+            "-Dparser-source=${NO_AST_DIRECTORY}/_ll-parser.zig"
+            "-Dprocedures-zig-source=${NO_AST_DIRECTORY}/host_procedures.zig"
+            "-Dlib-name=galley-no-ast"
+            "-Doutput=${NO_AST_FILENAME}"
+            ${GALLEY_OPTIMIZE_ARGUMENT}
+            --prefix "${NO_AST_DIRECTORY}"
+            install
+    WORKING_DIRECTORY "${GALLEY_SOURCE_DIR}"
+    DEPENDS "${GALLEY_OPTIMIZE_STAMP}" "${NO_AST_DIRECTORY}/_ll-parser.zig"
+            "${NO_AST_DIRECTORY}/host_procedures.zig" ${GALLEY_LIBRARY_SOURCES}
+    VERBATIM
+)
+add_custom_target(galley_no_ast_fixture DEPENDS "${NO_AST_DIRECTORY}/${NO_AST_FILENAME}")
+
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
 # One suite, both native legs: the shared suite compiled as C and as C++.
@@ -160,6 +201,15 @@ target_include_directories(test_bindings_cpp PRIVATE "${GALLEY_INCLUDE_DIR}")
 target_link_libraries(test_bindings_cpp PRIVATE "${GALLEY_LIBRARY}" Threads::Threads)
 add_dependencies(test_bindings_cpp galley_c_fixture)
 add_test(NAME bindings-cpp COMMAND test_bindings_cpp)
+
+# The refusals of a build without AST construction: the generation check
+# still comes first, so nothing answers 0 for a tree it does not hold.
+add_executable(test_no_ast_c "${CMAKE_CURRENT_SOURCE_DIR}/../tests/test_no_ast.c")
+set_target_properties(test_no_ast_c PROPERTIES BUILD_RPATH "${NO_AST_DIRECTORY}")
+target_include_directories(test_no_ast_c PRIVATE "${GALLEY_INCLUDE_DIR}")
+target_link_libraries(test_no_ast_c PRIVATE "${NO_AST_DIRECTORY}/${NO_AST_FILENAME}")
+add_dependencies(test_no_ast_c galley_no_ast_fixture)
+add_test(NAME no-ast-c COMMAND test_no_ast_c)
 
 # Two parsers, two sessions each, four threads at once. dlopen keeps the two
 # libraries' identical symbol names apart.

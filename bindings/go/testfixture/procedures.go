@@ -77,10 +77,10 @@ func emit(line string) {
 }
 
 //export reduction
-func reduction(_ unsafe.Pointer) {}
+func reduction(_ unsafe.Pointer, _hook C.ulonglong) {}
 
 //export reduction_Key
-func reduction_Key(_ unsafe.Pointer) {}
+func reduction_Key(_ unsafe.Pointer, _hook C.ulonglong) {}
 
 // probeStaleReads reads a node of an earlier parse through the hook door
 // with every capability, returning each call's error.
@@ -112,28 +112,49 @@ func probeStaleReads(door galley.HookDoor, node galley.Node) []error {
 	return append(errs, err)
 }
 
+// staleHookCalls makes every call a hook's arguments offer and returns what
+// each answered.
+func staleHookCalls(args galley.ProcedureArgs, node galley.Node) []error {
+	var errs []error
+	errs = append(errs, args.DropSelf(), args.DropChildren(), args.DropIfEmpty(), args.ReplaceWithChildren())
+	_, err := args.ReportSemanticError("late")
+	errs = append(errs, err)
+	_, err = args.Line()
+	errs = append(errs, err)
+	_, err = args.Column()
+	errs = append(errs, err)
+	_, _, err = args.CurrentNode()
+	errs = append(errs, err)
+	_, err = args.Door()
+	errs = append(errs, err)
+	return errs
+}
+
 //export reduction_PairList
-func reduction_PairList(_ unsafe.Pointer) {}
+func reduction_PairList(_ unsafe.Pointer, _hook C.ulonglong) {}
 
 //export reduction_KeyTail
-func reduction_KeyTail(ptr unsafe.Pointer) {
-	_ = galley.Args(ptr).DropIfEmpty()
+func reduction_KeyTail(session unsafe.Pointer, hook C.ulonglong) {
+	_ = galley.Args(session, uint64(hook)).DropIfEmpty()
 }
 
 //export reduction_NumberTail
-func reduction_NumberTail(ptr unsafe.Pointer) {
-	_ = galley.Args(ptr).DropIfEmpty()
+func reduction_NumberTail(session unsafe.Pointer, hook C.ulonglong) {
+	_ = galley.Args(session, uint64(hook)).DropIfEmpty()
 }
 
 //export reduction_PairListTail
-func reduction_PairListTail(ptr unsafe.Pointer) {
-	_ = galley.Args(ptr).DropIfEmpty()
+func reduction_PairListTail(session unsafe.Pointer, hook C.ulonglong) {
+	_ = galley.Args(session, uint64(hook)).DropIfEmpty()
 }
 
 //export hook_print
-func hook_print(ptr unsafe.Pointer) {
-	args := galley.Args(ptr)
-	door := args.Door()
+func hook_print(session unsafe.Pointer, hook C.ulonglong) {
+	args := galley.Args(session, uint64(hook))
+	door, err := args.Door()
+	if err != nil {
+		return
+	}
 	node, ok, err := args.CurrentNode()
 	if err != nil || !ok {
 		return
@@ -143,9 +164,12 @@ func hook_print(ptr unsafe.Pointer) {
 }
 
 //export reduction_Number
-func reduction_Number(ptr unsafe.Pointer) {
-	args := galley.Args(ptr)
-	door := args.Door()
+func reduction_Number(session unsafe.Pointer, hook C.ulonglong) {
+	args := galley.Args(session, uint64(hook))
+	door, err := args.Door()
+	if err != nil {
+		return
+	}
 	node, ok, err := args.CurrentNode()
 	if err != nil || !ok {
 		return
@@ -188,7 +212,20 @@ var (
 	staleReads       []error
 )
 
+// hook_args_test.go: the first Pair's arguments kept past its hook, and what
+// every call made with them answered from a later hook of the same parse. A
+// hook that has returned is refused by the core, not by the binding.
+var (
+	firstPairArgs     galley.ProcedureArgs
+	firstPairArgsSeen bool
+	staleHookDuring   []error
+	capacityInHook    error
+)
+
 func resetDoorRecording() {
+	firstPairArgsSeen = false
+	staleHookDuring = nil
+	capacityInHook = nil
 	firstPairSeen = false
 	laterHookSharesDoor = false
 	laterHookChildCount = 0
@@ -204,9 +241,12 @@ func resetDoorRecording() {
 }
 
 //export reduction_Pair
-func reduction_Pair(ptr unsafe.Pointer) {
-	args := galley.Args(ptr)
-	door := args.Door()
+func reduction_Pair(session unsafe.Pointer, hook C.ulonglong) {
+	args := galley.Args(session, uint64(hook))
+	door, err := args.Door()
+	if err != nil {
+		return
+	}
 	node, ok, err := args.CurrentNode()
 	if err != nil || !ok {
 		return
@@ -222,6 +262,10 @@ func reduction_Pair(ptr unsafe.Pointer) {
 		}
 	}
 	emit(fmt.Sprintf("Pair %s=%s (%d children) at %d:%d\n", key, number, childCountOf(door, node), line, column))
+	if !firstPairArgsSeen {
+		firstPairArgsSeen = true
+		firstPairArgs = args
+	}
 	if !firstPairSeen {
 		firstPairSeen = true
 		firstPairDoor = door
@@ -230,15 +274,22 @@ func reduction_Pair(ptr unsafe.Pointer) {
 }
 
 //export reduction_Document
-func reduction_Document(ptr unsafe.Pointer) {
-	args := galley.Args(ptr)
-	door := args.Door()
+func reduction_Document(session unsafe.Pointer, hook C.ulonglong) {
+	args := galley.Args(session, uint64(hook))
+	door, err := args.Door()
+	if err != nil {
+		return
+	}
 	node, ok, err := args.CurrentNode()
 	if err != nil || !ok {
 		return
 	}
 	if sessionProbe != nil {
 		_, _, hookRootErr = sessionProbe.RootNode()
+		_, capacityInHook = sessionProbe.NodeCapacity()
+	}
+	if firstPairArgsSeen {
+		staleHookDuring = staleHookCalls(firstPairArgs, node)
 	}
 	if previousSeen {
 		staleReads = probeStaleReads(door, previousDocument)

@@ -17,6 +17,7 @@ import type {
   FfiPort,
   Handle,
   NodeFamily,
+  HookTicket,
   DispatchHandler,
   SessionCOptions,
   SnapshotColumns,
@@ -51,9 +52,9 @@ interface AddonDoorCalls {
   /** The raw variable index, null for a node without one, or a negative status. */
   node_variable_index(handle: bigint, generation: number, node: bigint): number | null;
   walk_next(handle: bigint, cursor: ArrayBuffer): bigint;
-  tree_append_children(handle: bigint, generation: number, parent: bigint, first: bigint): number;
-  tree_insert_before(handle: bigint, generation: number, target: bigint, first: bigint): number;
-  tree_insert_after(handle: bigint, generation: number, target: bigint, first: bigint): number;
+  tree_append_children(handle: bigint, generation: number, parent: bigint, firstGeneration: number, first: bigint): number;
+  tree_insert_before(handle: bigint, generation: number, target: bigint, firstGeneration: number, first: bigint): number;
+  tree_insert_after(handle: bigint, generation: number, target: bigint, firstGeneration: number, first: bigint): number;
   tree_remove_siblings(handle: bigint, generation: number, node: bigint, count: bigint): [number, bigint];
   tree_remove_self(handle: bigint, generation: number, node: bigint): [number, bigint];
   tree_clean_children(handle: bigint, generation: number, node: bigint): [number, bigint];
@@ -62,6 +63,7 @@ interface AddonDoorCalls {
     generation: number,
     parent: bigint,
     index: bigint,
+    firstGeneration: number,
     first: bigint,
   ): number;
   tree_remove_children_at(
@@ -131,7 +133,7 @@ export interface AddonApi extends AddonDoorNames<""> , AddonDoorNames<"hook_"> {
   // Counts and statuses are Numbers; addresses stay BigInt.
   galley_node_count(session: bigint, generation: number): number;
   galley_reserve_nodes(session: bigint, capacity: bigint): bigint;
-  galley_node_capacity(session: bigint): bigint;
+  galley_node_capacity(session: bigint): number;
   galley_root_node(session: bigint): { status: number; root: bigint; generation: number };
   galley_tree_snapshot(
     session: bigint,
@@ -210,22 +212,24 @@ export interface AddonApi extends AddonDoorNames<""> , AddonDoorNames<"hook_"> {
 
   // host hooks: the addon's one callback per library, and the per-session
   // hook state (see galley_session_set_hooks in galley.h)
-  install_dispatch(callback: (hookHandle: number, hookIndex: number, args: bigint) => void): void;
+  install_dispatch(callback: (hookHandle: number, hookIndex: number, hook: bigint) => void): void;
   galley_hooks_count(): number;
   galley_hooks_name(index: number): string | null;
   galley_session_set_hooks(session: bigint, hookHandle: number, enabled: Uint8Array): bigint;
 
   // procedure-hook state; node reads use the galley_hook_* twins below
-  galley_procedure_current_node(args: bigint): bigint;
-  galley_procedure_door(args: bigint): bigint;
-  galley_procedure_set_current_node(args: bigint, generation: number, node: bigint): number;
-  galley_procedure_drop_self(args: bigint): bigint;
-  galley_procedure_drop_children(args: bigint): bigint;
-  galley_procedure_drop_if_empty(args: bigint): bigint;
-  galley_procedure_replace_with_children(args: bigint): bigint;
-  galley_procedure_context_line(args: bigint): number;
-  galley_procedure_context_column(args: bigint): number;
-  galley_procedure_report_semantic_error(args: bigint, message: string): bigint;
+  /** The hook's current node, or the core's refusal as a negative Number. */
+  galley_procedure_current_node(session: bigint, hook: bigint): bigint | number;
+  /** [status, door]: the parse's hook door as a handle, 0n when refused. */
+  galley_procedure_door(session: bigint, hook: bigint): [number, bigint];
+  galley_procedure_set_current_node(session: bigint, hook: bigint, generation: number, node: bigint): number;
+  galley_procedure_drop_self(session: bigint, hook: bigint): number;
+  galley_procedure_drop_children(session: bigint, hook: bigint): number;
+  galley_procedure_drop_if_empty(session: bigint, hook: bigint): number;
+  galley_procedure_replace_with_children(session: bigint, hook: bigint): number;
+  galley_procedure_context_line(session: bigint, hook: bigint): number;
+  galley_procedure_context_column(session: bigint, hook: bigint): number;
+  galley_procedure_report_semantic_error(session: bigint, hook: bigint, message: string): number;
   galley_hook_generation(door: bigint): [number, number];
   /** [status, generation] of the published tree (0 when none or stale). */
 }
@@ -390,12 +394,12 @@ function addonFamily(api: AddonApi, door: "" | "hook_"): NodeFamily {
     nodeLineColumn: (handle, generation, node) => lineColumn(handle as bigint, generation, node),
     nodeVariableIndex: (handle, generation, node) => variableIndex(handle as bigint, generation, node),
     walkNext: (handle, cursor) => toNumber(walkNext(handle as bigint, cursor)),
-    treeAppendChildren: (handle, generation, parentNode, first) =>
-      appendChildren(handle as bigint, generation, parentNode, first),
-    treeInsertBefore: (handle, generation, target, first) =>
-      insertBefore(handle as bigint, generation, target, first),
-    treeInsertAfter: (handle, generation, target, first) =>
-      insertAfter(handle as bigint, generation, target, first),
+    treeAppendChildren: (handle, generation, parentNode, firstGeneration, first) =>
+      appendChildren(handle as bigint, generation, parentNode, firstGeneration, first),
+    treeInsertBefore: (handle, generation, target, firstGeneration, first) =>
+      insertBefore(handle as bigint, generation, target, firstGeneration, first),
+    treeInsertAfter: (handle, generation, target, firstGeneration, first) =>
+      insertAfter(handle as bigint, generation, target, firstGeneration, first),
     treeRemoveSiblings: (handle, generation, node, count) => {
       const [status, head] = removeSiblings(handle as bigint, generation, node, BigInt(count));
       return { status, head };
@@ -408,8 +412,8 @@ function addonFamily(api: AddonApi, door: "" | "hook_"): NodeFamily {
       const [status, head] = cleanChildren(handle as bigint, generation, node);
       return { status, head };
     },
-    treeInsertChildrenAt: (handle, generation, parentNode, index, first) =>
-      insertChildrenAt(handle as bigint, generation, parentNode, BigInt(index), first),
+    treeInsertChildrenAt: (handle, generation, parentNode, index, firstGeneration, first) =>
+      insertChildrenAt(handle as bigint, generation, parentNode, BigInt(index), firstGeneration, first),
     treeRemoveChildrenAt: (handle, generation, parentNode, index, count) => {
       const [status, head] = removeChildrenAt(
         handle as bigint, generation, parentNode, BigInt(index), BigInt(count),
@@ -570,7 +574,7 @@ export class NodePort implements FfiPort {
   }
 
   nodeCapacity(handle: Handle): number {
-    return toNumber(this.api.galley_node_capacity(handle as bigint));
+    return this.api.galley_node_capacity(handle as bigint);
   }
 
   rootNode(handle: Handle): { status: number; root: bigint; generation: number } {
@@ -781,46 +785,45 @@ export class NodePort implements FfiPort {
 
   // -- procedure hooks ----------------------------------------------------------
 
-  procCurrentNode(args: Handle): bigint {
-    return this.api.galley_procedure_current_node(args as bigint);
+  procCurrentNode(session: Handle, hook: HookTicket): bigint | number {
+    return this.api.galley_procedure_current_node(session as bigint, hook);
   }
 
-  procDoor(args: Handle): Handle {
-    return this.api.galley_procedure_door(args as bigint);
+  procDoor(session: Handle, hook: HookTicket): { status: number; door: Handle } {
+    const [status, door] = this.api.galley_procedure_door(session as bigint, hook);
+    return { status, door };
   }
 
-  procSetCurrentNode(args: Handle, generation: number, node: bigint): number {
-    return this.api.galley_procedure_set_current_node(args as bigint, generation, node);
+  procSetCurrentNode(session: Handle, hook: HookTicket, generation: number, node: bigint): number {
+    return this.api.galley_procedure_set_current_node(session as bigint, hook, generation, node);
   }
 
-  procDropSelf(args: Handle): number {
-    return toNumber(this.api.galley_procedure_drop_self(args as bigint));
+  procDropSelf(session: Handle, hook: HookTicket): number {
+    return this.api.galley_procedure_drop_self(session as bigint, hook);
   }
 
-  procDropChildren(args: Handle): number {
-    return toNumber(this.api.galley_procedure_drop_children(args as bigint));
+  procDropChildren(session: Handle, hook: HookTicket): number {
+    return this.api.galley_procedure_drop_children(session as bigint, hook);
   }
 
-  procDropIfEmpty(args: Handle): number {
-    return toNumber(this.api.galley_procedure_drop_if_empty(args as bigint));
+  procDropIfEmpty(session: Handle, hook: HookTicket): number {
+    return this.api.galley_procedure_drop_if_empty(session as bigint, hook);
   }
 
-  procReplaceWithChildren(args: Handle): number {
-    return toNumber(this.api.galley_procedure_replace_with_children(args as bigint));
+  procReplaceWithChildren(session: Handle, hook: HookTicket): number {
+    return this.api.galley_procedure_replace_with_children(session as bigint, hook);
   }
 
-  procContextLine(args: Handle): number {
-    return this.api.galley_procedure_context_line(args as bigint);
+  procContextLine(session: Handle, hook: HookTicket): number {
+    return this.api.galley_procedure_context_line(session as bigint, hook);
   }
 
-  procContextColumn(args: Handle): number {
-    return this.api.galley_procedure_context_column(args as bigint);
+  procContextColumn(session: Handle, hook: HookTicket): number {
+    return this.api.galley_procedure_context_column(session as bigint, hook);
   }
 
-  procReportSemanticError(args: Handle, message: Uint8Array): number {
-    return toNumber(
-      this.api.galley_procedure_report_semantic_error(args as bigint, bytesToString(message)),
-    );
+  procReportSemanticError(session: Handle, hook: HookTicket, message: Uint8Array): number {
+    return this.api.galley_procedure_report_semantic_error(session as bigint, hook, bytesToString(message));
   }
 
   hookGeneration(door: Handle): number {

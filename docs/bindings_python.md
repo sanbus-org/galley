@@ -180,8 +180,16 @@ def hook_print(args: ProcedureArguments) -> None:
     print(f'@print "{text}" at {line}:{column}', file=sys.stderr)
 ```
 
-`ProcedureArguments` is valid only while its hook runs and raises `ValueError`
-afterwards. The nodes it yields belong to the parse: a hook may keep one for
+`ProcedureArguments` is valid only while its hook runs: the core refuses every
+call made with the arguments of a hook that has returned, and the object keeps
+no expiry state of its own, so a kept reference raises `GalleyError` with code
+`ERROR_STALE_HOOK`, from a later hook of the same parse and after the parse
+alike. `node_capacity()`, `node_count()`, `snapshot()`, `last_input()` and
+`last_position()` raise `GalleyError` with `ERROR_SESSION_IN_USE` inside a hook,
+never 0 or an empty value, and a walker belongs to the parse of the tree it was
+created over: stepping it after a re-parse raises `StaleTreeError`, even if it
+had already finished. Text and input bytes are copies that outlive the next
+parse. The nodes it yields belong to the parse: a hook may keep one for
 later hooks of the same parse, and, when the parse publishes (a success, or
 a failure that ran to its end), for use after it until the session parses
 again. A node of a parse that published nothing raises. A node reads

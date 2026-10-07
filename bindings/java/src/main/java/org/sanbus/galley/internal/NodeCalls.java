@@ -49,7 +49,10 @@ public final class NodeCalls {
     NodeCalls(BiFunction<String, FunctionDescriptor, MethodHandle> downcall, String door) {
         FunctionDescriptor link = FunctionDescriptor.of(LONG, ADDRESS, LONG, LONG);
         FunctionDescriptor pair = FunctionDescriptor.of(LONG, ADDRESS, LONG, LONG, ADDRESS, ADDRESS);
-        FunctionDescriptor edit = FunctionDescriptor.of(LONG, ADDRESS, LONG, LONG, LONG);
+        // The edits that take a second node pass each node's own generation:
+        // (handle, generation, target, firstGeneration, first). The core
+        // refuses nodes of two parses, so the host never compares them.
+        FunctionDescriptor edit = FunctionDescriptor.of(LONG, ADDRESS, LONG, LONG, LONG, LONG);
         FunctionDescriptor detach = FunctionDescriptor.of(LONG, ADDRESS, LONG, LONG, ADDRESS);
         childCount = downcall.apply("galley_" + door + "node_child_count", link);
         firstChild = downcall.apply("galley_" + door + "node_first_child", link);
@@ -71,7 +74,7 @@ public final class NodeCalls {
         removeSelf = downcall.apply("galley_" + door + "tree_remove_self", detach);
         cleanChildren = downcall.apply("galley_" + door + "tree_clean_children", detach);
         insertChildrenAt = downcall.apply("galley_" + door + "tree_insert_children_at",
-                FunctionDescriptor.of(LONG, ADDRESS, LONG, LONG, LONG, LONG));
+                FunctionDescriptor.of(LONG, ADDRESS, LONG, LONG, LONG, LONG, LONG));
         removeChildrenAt = downcall.apply("galley_" + door + "tree_remove_children_at",
                 FunctionDescriptor.of(LONG, ADDRESS, LONG, LONG, LONG, LONG, ADDRESS));
     }
@@ -88,12 +91,12 @@ public final class NodeCalls {
     public long lineColumn(MemorySegment handle, long generation, long node, MemorySegment outLine, MemorySegment outColumn) { try { return (long) lineColumn.invoke(handle, generation, node, outLine, outColumn); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long variableIndex(MemorySegment handle, long generation, long node) { try { return (long) variableIndex.invoke(handle, generation, node); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long walkNext(MemorySegment handle, MemorySegment cursor) { try { return (long) walkNext.invoke(handle, cursor); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long appendChildren(MemorySegment handle, long generation, long parent, long first) { try { return (long) appendChildren.invoke(handle, generation, parent, first); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long insertBefore(MemorySegment handle, long generation, long target, long first) { try { return (long) insertBefore.invoke(handle, generation, target, first); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long insertAfter(MemorySegment handle, long generation, long target, long first) { try { return (long) insertAfter.invoke(handle, generation, target, first); } catch (Throwable t) { throw new RuntimeException(t); } }
+    public long appendChildren(MemorySegment handle, long generation, long parent, long firstGeneration, long first) { try { return (long) appendChildren.invoke(handle, generation, parent, firstGeneration, first); } catch (Throwable t) { throw new RuntimeException(t); } }
+    public long insertBefore(MemorySegment handle, long generation, long target, long firstGeneration, long first) { try { return (long) insertBefore.invoke(handle, generation, target, firstGeneration, first); } catch (Throwable t) { throw new RuntimeException(t); } }
+    public long insertAfter(MemorySegment handle, long generation, long target, long firstGeneration, long first) { try { return (long) insertAfter.invoke(handle, generation, target, firstGeneration, first); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long removeSiblings(MemorySegment handle, long generation, long node, long count, MemorySegment outHead) { try { return (long) removeSiblings.invoke(handle, generation, node, count, outHead); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long removeSelf(MemorySegment handle, long generation, long node, MemorySegment outHead) { try { return (long) removeSelf.invoke(handle, generation, node, outHead); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long cleanChildren(MemorySegment handle, long generation, long node, MemorySegment outHead) { try { return (long) cleanChildren.invoke(handle, generation, node, outHead); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long insertChildrenAt(MemorySegment handle, long generation, long parent, long index, long first) { try { return (long) insertChildrenAt.invoke(handle, generation, parent, index, first); } catch (Throwable t) { throw new RuntimeException(t); } }
+    public long insertChildrenAt(MemorySegment handle, long generation, long parent, long index, long firstGeneration, long first) { try { return (long) insertChildrenAt.invoke(handle, generation, parent, index, firstGeneration, first); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long removeChildrenAt(MemorySegment handle, long generation, long parent, long index, long count, MemorySegment outHead) { try { return (long) removeChildrenAt.invoke(handle, generation, parent, index, count, outHead); } catch (Throwable t) { throw new RuntimeException(t); } }
 }

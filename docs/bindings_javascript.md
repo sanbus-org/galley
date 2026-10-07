@@ -235,7 +235,14 @@ export function hook_print(args: ProcedureArguments): void {
 }
 ```
 
-`ProcedureArguments` is valid only while its hook runs and throws afterwards.
+`ProcedureArguments` is valid only while its hook runs: the core refuses every call made with
+the arguments of a hook that has returned, and the object keeps no expiry state of its own, so a kept
+reference throws a `GalleyError` with code `Status.ErrorStaleHook`, from a later hook of the same
+parse and after the parse alike. `nodeCapacity()`, `nodeCount()`, `snapshot()`, `lastInput()` and
+`lastPosition()` throw `GalleyError` with `Status.ErrorSessionInUse` inside a hook, never an empty
+answer; a walker belongs to the parse of the tree it was created over, so stepping it after a re-parse
+throws `StaleTreeError`, even if it had already finished. Text and input the core returns are borrowed
+until the next parse, and every adapter copies them out before returning.
 The nodes it yields belong to the parse: a hook may keep one for later hooks
 of the same parse and, when the parse publishes (a success, or a failure that
 ran to its end), for use after it until the session parses again. A node of a

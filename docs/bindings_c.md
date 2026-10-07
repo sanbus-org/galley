@@ -26,31 +26,38 @@ namespacing them away from unrelated symbols:
 #include <galley.h>
 #include <stdio.h>
 
-void reduction_Pair(void *args) {
-    GalleyHookDoor *door = galley_procedure_door(args);
+static GalleyNodeAddress current_node(GalleySession *session, unsigned long long hook) {
+    long long node = galley_procedure_current_node(session, hook);
+    return node < 0 ? GALLEY_INVALID_NODE : (GalleyNodeAddress)node;
+}
+
+void reduction_Pair(GalleySession *session, unsigned long long hook) {
+    GalleyHookDoor *door = NULL;
     unsigned long long generation = 0;
-    GalleyNodeAddress node = galley_procedure_current_node(args);
+    GalleyNodeAddress node = current_node(session, hook);
     const char *text = NULL;
     size_t len = 0;
     unsigned line = 0, column = 0;
     if (node == GALLEY_INVALID_NODE) return;
+    galley_procedure_door(session, hook, &door);
     galley_hook_generation(door, &generation);
     galley_hook_node_text(door, generation, node, &text, &len);
     galley_hook_node_line_column(door, generation, node, &line, &column);
     fprintf(stderr, "Pair %.*s (%lld children) at %u:%u\n", (int)len, text,
             galley_hook_node_child_count(door, generation, node), line, column);
 }
-void reduction_KeyTail(void *args) {
-    galley_procedure_drop_if_empty(args);
+void reduction_KeyTail(GalleySession *session, unsigned long long hook) {
+    galley_procedure_drop_if_empty(session, hook);
 }
-void hook_print(void *args) {
-    GalleyHookDoor *door = galley_procedure_door(args);
+void hook_print(GalleySession *session, unsigned long long hook) {
+    GalleyHookDoor *door = NULL;
     unsigned long long generation = 0;
-    GalleyNodeAddress node = galley_procedure_current_node(args);
+    GalleyNodeAddress node = current_node(session, hook);
     const char *text = NULL;
     size_t len = 0;
     unsigned line = 0, column = 0;
     if (node == GALLEY_INVALID_NODE) return;
+    galley_procedure_door(session, hook, &door);
     galley_hook_generation(door, &generation);
     galley_hook_node_text(door, generation, node, &text, &len);
     galley_hook_node_line_column(door, generation, node, &line, &column);
@@ -58,15 +65,18 @@ void hook_print(void *args) {
 }
 ```
 
-Each hook receives an opaque `ProcedureArguments` pointer, valid only while
-that hook runs. Tree access crosses the parse's door instead: take it with
-`galley_procedure_door(args)` and inspect nodes with the `galley_hook_*`
-twins, which take no lock while the parse runs. The door is the same pointer
-for every hook of one parse and dies when that parse ends, so a hook may keep
-it, and the nodes it reads, for later hooks of the same parse.
-`galley_procedure_session(args)` names the session whose parse is calling the
-hook, for a host that keeps state of its own per session (the Go binding ends
-its hook doors with the parse that way). The session
+Each hook receives its session and a ticket (`unsigned long long`) the core
+issues for that one call, never a pointer into the parser's stack. Every
+`galley_procedure_*` function takes the pair and **the core checks it**: the
+ticket of a hook that has returned is refused with `galley_error_stale_hook`,
+from a later hook of the same parse and after the parse alike, in every build.
+Tickets are never reused, so a later hook cannot revive an old one, and a
+host keeps no expiry flag of its own. Tree access crosses the parse's door
+instead: take it with `galley_procedure_door(session, hook, &door)` and
+inspect nodes with the `galley_hook_*` twins, which take no lock while the
+parse runs. The door is the same pointer for every hook of one parse and dies
+when that parse ends, so a hook may keep it, and the nodes it reads, for later
+hooks of the same parse. The session
 door — `galley_node_*`,
 `galley_tree_*`, diagnostics — refuses with `galley_error_session_in_use`
 until the parse finishes, so a session stashed from a hook gains no
@@ -77,23 +87,27 @@ when nothing is published). **The core owns the check**: every session-door
 node and tree call takes the generation of the tree it addresses and returns
 a status, refusing anything but the published one with
 `galley_error_stale_tree`. No host caches that generation, so no host-side
-reading can disagree with the core about which tree is live. The hook twins
-take the same arguments as the session calls after the handle — the door in
-place of the session, the node's generation next — and refuse the same way:
-`galley_error_stale_tree` for a generation that is not the running parse's
-(0 never is), `galley_error_invalid_node` for an address outside that parse's
-node storage, `galley_error_null_argument` for a null door or output. They
-have no `galley_error_session_in_use`, because the door is unshared by
+reading can disagree with the core about which tree is live. An operation that
+takes a second node (`galley_tree_append_children`, `galley_tree_insert_before`,
+`galley_tree_insert_after`, `galley_tree_insert_children_at`) takes each node's
+own generation, and the core refuses a pair from two parses with
+`galley_error_stale_tree`, so no host compares generations across nodes. The
+hook twins take the same arguments as the session calls after the handle — the
+door in place of the session, the node's generation next — and refuse the same
+way: `galley_error_stale_tree` for a generation that is not the running
+parse's (0 never is), `galley_error_invalid_node` for an address outside that
+parse's node storage, `galley_error_null_argument` for a null door or output.
+They have no `galley_error_session_in_use`, because the door is unshared by
 construction. There is no validity probe: a real read is the answer, and it
 refuses. The check runs in
 every build — a lifetime contract, one integer compare per call.
-`galley_procedure_set_current_node(args, generation, node)` goes through the
-same gate against the running parse (`galley_error_stale_tree`,
+`galley_procedure_set_current_node(session, hook, generation, node)` goes
+through the same gate against the running parse (`galley_error_stale_tree`,
 `galley_error_invalid_node`, `galley_error_null_argument`); a refused call
 leaves the current node as it was, and `GALLEY_INVALID_NODE` clears it with no
 generation check. Drop/replace the current node with
 `galley_procedure_drop_*` / `galley_procedure_replace_with_children`; those
-talk to the parser through `args.node_address` and are not the same as
+talk to the parser through the hook's own state and are not the same as
 `galley_tree_remove_self`.
 
 Semantic payloads remain unavailable through the C API.
@@ -106,8 +120,8 @@ to C functions, per session. `galley_hooks_count()` and
 `galley_hooks_name_data(i)` / `galley_hooks_name_length(i)` list the hooks;
 `galley_session_set_hooks(session, dispatch, handle, enabled, count)` gives one
 session its enabled set (one byte per hook), a dispatch callback and a handle.
-Each enabled hook then calls `dispatch(handle, index, args)` on the parsing
-thread; the others return before any call. The call takes the session's
+Each enabled hook then calls `dispatch(handle, index, hook)` on the parsing
+thread, with the ticket of that call; the others return before any call. The call takes the session's
 exclusive lease, so it returns `galley_error_session_in_use` while a parse is
 in flight and the set a parse runs with is fixed for that parse. Sessions share
 no hook state, so sessions of one library, and of different libraries, may
@@ -258,8 +272,10 @@ galley_session_destroy(session);
 ```
 
 Sessions are **not thread-safe** — use one per thread or guard externally.
-All result data (node addresses, text pointers, diagnostic strings) remains
-valid until the next parse on the same session or session destruction.
+All result data (node addresses, text pointers, input pointers, diagnostic
+strings) remains valid until the next parse on the same session or session
+destruction; on the hook door, text and input pointers only until the calling
+hook returns. A host copies them out before it hands anything to its users.
 
 ### Parsing
 
@@ -303,8 +319,9 @@ while ((status = galley_walk_next(session, &cursor)) > 0) {
 ```
 
 `galley_walk_next` returns 1 for a yielded node, 0 when the walk is done
-(further steps keep returning 0), or a negative code: `galley_error_stale_tree`
-after a re-parse, `galley_error_session_in_use` while a parse runs, or
+(further steps keep returning 0 while the cursor's tree is live), or a
+negative code: `galley_error_stale_tree` after a re-parse, a finished walk
+included, `galley_error_session_in_use` while a parse runs, or
 `galley_error_invalid_node` for a cursor that is not a walk position, an
 invalid root, or a step whose position is no longer inside the walk's root
 (removed, or moved elsewhere) — steps follow the live links, so edits
@@ -379,10 +396,10 @@ passing an attached chain corrupts the tree.
 ```c
 GalleyNodeAddress head;
 galley_tree_clean_children(session, generation, parent, &head);
-galley_tree_append_children(session, generation, parent, head);
-galley_tree_insert_before(session, generation, target, chain);
-galley_tree_insert_after(session, generation, target, chain);
-galley_tree_insert_children_at(session, generation, parent, index, chain);
+galley_tree_append_children(session, generation, parent, generation, head);
+galley_tree_insert_before(session, generation, target, generation, chain);
+galley_tree_insert_after(session, generation, target, generation, chain);
+galley_tree_insert_children_at(session, generation, parent, index, generation, chain);
 galley_tree_remove_siblings(session, generation, node, count, &head);
 galley_tree_remove_self(session, generation, node, &head);
 galley_tree_remove_children_at(session, generation, parent, index, count, &head);
@@ -452,7 +469,7 @@ AST nodes live in non-relocating storage (a reserved contiguous region on
 macOS/Linux/BSD, fixed segments elsewhere), which is why node addresses and
 pointers derived from them are stable across allocations. Node storage can
 be preallocated with `galley_reserve_nodes`; `galley_node_capacity` reports
-the current capacity.
+the current capacity, or `galley_error_session_in_use` while a parse runs.
 
 ## Development builds
 

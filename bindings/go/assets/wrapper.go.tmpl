@@ -53,18 +53,6 @@ func (n Node) Index() uint64 { return n.address }
 // (generation 0 is never live), so using it is ErrStaleTree.
 var InvalidNode = Node{address: invalidAddress}
 
-// sameTree returns the one generation an edit hands the core: the first
-// node's, and for an edit that takes a second node, the same one. The core
-// compares a single generation per call, so a chain from another parse is
-// refused here with ErrStaleTree instead of being forwarded under the first
-// node's generation.
-func sameTree(node, chain Node) (C.ulonglong, error) {
-	if node.generation != chain.generation {
-		return 0, ErrStaleTree
-	}
-	return C.ulonglong(node.generation), nil
-}
-
 // Status codes mirrored from the C API (negative values are failures).
 type Error int32
 
@@ -89,6 +77,9 @@ const (
 	// published. One failure for every source that can find a tree gone,
 	// so a dead handle never reads as a live one.
 	ErrStaleTree Error = -14
+	// ErrStaleHook: a procedure call made with the arguments of a hook that
+	// has returned; the core refuses it, whatever the tree is now.
+	ErrStaleHook Error = -15
 )
 
 var errorDescriptions = map[Error]string{
@@ -106,6 +97,7 @@ var errorDescriptions = map[Error]string{
 	ErrSemantic:             "semantic error",
 	ErrSessionInUse:         "session in use",
 	ErrStaleTree:            "stale tree",
+	ErrStaleHook:            "stale hook",
 }
 
 func (e Error) Error() string {
@@ -837,29 +829,17 @@ func (s *Session) Diagnostics() []Diagnostic {
 // TreeAppendChildren appends chain (and its next-linked siblings) as the
 // last children of parent.
 func (s *Session) TreeAppendChildren(parent, chain Node) error {
-	generation, err := sameTree(parent, chain)
-	if err != nil {
-		return err
-	}
-	return s.treeStatus(C.galley_tree_append_children(s.ptr, generation, C.ulonglong(parent.address), C.ulonglong(chain.address)))
+	return s.treeStatus(C.galley_tree_append_children(s.ptr, C.ulonglong(parent.generation), C.ulonglong(parent.address), C.ulonglong(chain.generation), C.ulonglong(chain.address)))
 }
 
 // TreeInsertBefore inserts chain immediately before target.
 func (s *Session) TreeInsertBefore(target, chain Node) error {
-	generation, err := sameTree(target, chain)
-	if err != nil {
-		return err
-	}
-	return s.treeStatus(C.galley_tree_insert_before(s.ptr, generation, C.ulonglong(target.address), C.ulonglong(chain.address)))
+	return s.treeStatus(C.galley_tree_insert_before(s.ptr, C.ulonglong(target.generation), C.ulonglong(target.address), C.ulonglong(chain.generation), C.ulonglong(chain.address)))
 }
 
 // TreeInsertAfter inserts chain immediately after target.
 func (s *Session) TreeInsertAfter(target, chain Node) error {
-	generation, err := sameTree(target, chain)
-	if err != nil {
-		return err
-	}
-	return s.treeStatus(C.galley_tree_insert_after(s.ptr, generation, C.ulonglong(target.address), C.ulonglong(chain.address)))
+	return s.treeStatus(C.galley_tree_insert_after(s.ptr, C.ulonglong(target.generation), C.ulonglong(target.address), C.ulonglong(chain.generation), C.ulonglong(chain.address)))
 }
 
 // TreeRemoveSiblings removes count consecutive siblings starting at node
@@ -894,11 +874,7 @@ func (s *Session) TreeCleanChildren(node Node) (Node, bool, error) {
 // TreeInsertChildrenAt inserts chain into the children of parent at index;
 // an index equal to the child count appends.
 func (s *Session) TreeInsertChildrenAt(parent Node, index int, chain Node) error {
-	generation, err := sameTree(parent, chain)
-	if err != nil {
-		return err
-	}
-	return s.treeStatus(C.galley_tree_insert_children_at(s.ptr, generation, C.ulonglong(parent.address), C.size_t(index), C.ulonglong(chain.address)))
+	return s.treeStatus(C.galley_tree_insert_children_at(s.ptr, C.ulonglong(parent.generation), C.ulonglong(parent.address), C.size_t(index), C.ulonglong(chain.generation), C.ulonglong(chain.address)))
 }
 
 // TreeRemoveChildrenAt removes count consecutive children of parent
@@ -918,9 +894,14 @@ func (s *Session) ReserveNodes(capacity uint64) error {
 	return s.treeStatus(C.galley_reserve_nodes(s.ptr, C.ulonglong(capacity)))
 }
 
-// NodeCapacity returns the current node storage capacity in nodes.
-func (s *Session) NodeCapacity() uint64 {
-	return uint64(C.galley_node_capacity(s.ptr))
+// NodeCapacity returns the current node storage capacity in nodes, or
+// ErrSessionInUse while a parse runs.
+func (s *Session) NodeCapacity() (uint64, error) {
+	capacity := C.galley_node_capacity(s.ptr)
+	if capacity < 0 {
+		return 0, Error(int32(capacity))
+	}
+	return uint64(capacity), nil
 }
 
 // NodeDoor is one of the two doors over node storage: a post-parse
@@ -963,18 +944,32 @@ func Children(door NodeDoor, node Node) ([]Node, error) {
 
 // ProcedureArgs is the per-hook argument passed to a Go procedure hook:
 // the current node, the scanner position, drop and replace, and semantic
-// errors. It is valid only while the hook runs. Tree reads do not go
-// through it: take the parse's door with Door.
+// errors. It is valid only while the hook runs: it names its hook by the
+// session and the ticket the core issued for the call, and the core refuses
+// every call made with the ticket of a hook that has returned (ErrStaleHook).
+// Tree reads do not go through it: take the parse's door with Door.
 type ProcedureArgs struct {
-	ptr unsafe.Pointer
+	session unsafe.Pointer
+	hook    uint64
 }
 
-// Args wraps the opaque pointer the parser passes to a hook.
-func Args(ptr unsafe.Pointer) ProcedureArgs {
-	return ProcedureArgs{ptr: ptr}
+// Args wraps the session and the ticket the parser passes to a hook.
+func Args(session unsafe.Pointer, hook uint64) ProcedureArgs {
+	return ProcedureArgs{session: session, hook: hook}
 }
 
-func (a ProcedureArgs) cptr() unsafe.Pointer { return a.ptr }
+// open is the one gate to the session the arguments name: a session that was
+// closed is refused (ErrNullArgument, like every use after Close) before its
+// freed memory is read. Whether the hook is still running is the core's to
+// say, by the ticket.
+func (a ProcedureArgs) open() (*C.GalleySession, error) {
+	if _, ok := sessions.Load(uintptr(a.session)); !ok {
+		return nil, ErrNullArgument
+	}
+	return (*C.GalleySession)(a.session), nil
+}
+
+func (a ProcedureArgs) cticket() C.ulonglong { return C.ulonglong(a.hook) }
 
 // HookDoor is the parse-time door over one parse's node storage: node reads
 // go through the galley_hook_* twins on it, which check the node's generation
@@ -993,19 +988,24 @@ type HookDoor struct {
 	epoch uint64
 }
 
-// Door returns the door of the parse this hook belongs to.
-func (a ProcedureArgs) Door() HookDoor {
-	door := HookDoor{ptr: unsafe.Pointer(C.galley_procedure_door(a.cptr()))}
-	// The hook's own session names the life the door ends with. A hook whose
-	// session is unknown gets a door that refuses every call.
-	session := uintptr(unsafe.Pointer(C.galley_procedure_session(a.cptr())))
-	if life, ok := sessions.Load(session); ok {
-		door.life = life.(*sessionLife)
-		door.epoch = atomic.LoadUint64(&door.life.epoch)
-	} else {
-		door.ptr = nil
+// Door returns the door of the parse this hook belongs to, or the core's
+// refusal: ErrStaleHook once the hook has returned, ErrNullArgument after the
+// session is closed.
+func (a ProcedureArgs) Door() (HookDoor, error) {
+	session, err := a.open()
+	if err != nil {
+		return HookDoor{}, err
 	}
-	return door
+	var native *C.GalleyHookDoor
+	if status := C.galley_procedure_door(session, a.cticket(), &native); status < 0 {
+		return HookDoor{}, Error(int32(status))
+	}
+	door := HookDoor{ptr: unsafe.Pointer(native)}
+	// The hook's own session names the life the door ends with.
+	life, _ := sessions.Load(uintptr(a.session))
+	door.life = life.(*sessionLife)
+	door.epoch = atomic.LoadUint64(&door.life.epoch)
+	return door, nil
 }
 
 func (d HookDoor) cptr() *C.GalleyHookDoor { return (*C.GalleyHookDoor)(d.ptr) }
@@ -1014,11 +1014,23 @@ func (d HookDoor) cptr() *C.GalleyHookDoor { return (*C.GalleyHookDoor)(d.ptr) }
 // refusal to report the parse's generation is an error, never a node stamped
 // with generation 0.
 func (a ProcedureArgs) CurrentNode() (Node, bool, error) {
-	var generation C.ulonglong
-	if status := C.galley_hook_generation(C.galley_procedure_door(a.cptr()), &generation); status < 0 {
+	session, err := a.open()
+	if err != nil {
+		return Node{}, false, err
+	}
+	var native *C.GalleyHookDoor
+	if status := C.galley_procedure_door(session, a.cticket(), &native); status < 0 {
 		return Node{}, false, Error(int32(status))
 	}
-	node, ok := cToNode(uint64(generation), C.galley_procedure_current_node(a.cptr()))
+	var generation C.ulonglong
+	if status := C.galley_hook_generation(native, &generation); status < 0 {
+		return Node{}, false, Error(int32(status))
+	}
+	current := C.galley_procedure_current_node(session, a.cticket())
+	if current < 0 {
+		return Node{}, false, Error(int32(current))
+	}
+	node, ok := cToNode(uint64(generation), C.ulonglong(current))
 	return node, ok, nil
 }
 
@@ -1077,31 +1089,51 @@ func procedureStatus(status C.longlong) error {
 
 // DropSelf drops the current node from the parse.
 func (a ProcedureArgs) DropSelf() error {
-	return procedureStatus(C.galley_procedure_drop_self(a.cptr()))
+	session, err := a.open()
+	if err != nil {
+		return err
+	}
+	return procedureStatus(C.galley_procedure_drop_self(session, a.cticket()))
 }
 
 // DropChildren drops children of the current node.
 func (a ProcedureArgs) DropChildren() error {
-	return procedureStatus(C.galley_procedure_drop_children(a.cptr()))
+	session, err := a.open()
+	if err != nil {
+		return err
+	}
+	return procedureStatus(C.galley_procedure_drop_children(session, a.cticket()))
 }
 
 // DropIfEmpty drops the current node when it has no children.
 func (a ProcedureArgs) DropIfEmpty() error {
-	return procedureStatus(C.galley_procedure_drop_if_empty(a.cptr()))
+	session, err := a.open()
+	if err != nil {
+		return err
+	}
+	return procedureStatus(C.galley_procedure_drop_if_empty(session, a.cticket()))
 }
 
 // ReplaceWithChildren replaces the current node with its children.
 func (a ProcedureArgs) ReplaceWithChildren() error {
-	return procedureStatus(C.galley_procedure_replace_with_children(a.cptr()))
+	session, err := a.open()
+	if err != nil {
+		return err
+	}
+	return procedureStatus(C.galley_procedure_replace_with_children(session, a.cticket()))
 }
 
 // ReportSemanticError records a semantic error on the current node and
 // returns the running total. Parsing continues; a syntax-clean parse with
 // any semantic error fails with ErrSemantic.
 func (a ProcedureArgs) ReportSemanticError(message string) (uint64, error) {
+	session, err := a.open()
+	if err != nil {
+		return 0, err
+	}
 	cMessage := C.CString(message)
 	defer C.free(unsafe.Pointer(cMessage))
-	status := C.galley_procedure_report_semantic_error(a.cptr(), cMessage, C.size_t(len(message)))
+	status := C.galley_procedure_report_semantic_error(session, a.cticket(), cMessage, C.size_t(len(message)))
 	if status < 0 {
 		return 0, Error(int32(status))
 	}
@@ -1109,11 +1141,27 @@ func (a ProcedureArgs) ReportSemanticError(message string) (uint64, error) {
 }
 
 // Line is the scanner line during this reduction.
-func (a ProcedureArgs) Line() uint32 {
-	return uint32(C.galley_procedure_context_line(a.cptr()))
+func (a ProcedureArgs) Line() (uint32, error) {
+	session, err := a.open()
+	if err != nil {
+		return 0, err
+	}
+	line := C.galley_procedure_context_line(session, a.cticket())
+	if line < 0 {
+		return 0, Error(int32(line))
+	}
+	return uint32(line), nil
 }
 
 // Column is the scanner column during this reduction.
-func (a ProcedureArgs) Column() uint32 {
-	return uint32(C.galley_procedure_context_column(a.cptr()))
+func (a ProcedureArgs) Column() (uint32, error) {
+	session, err := a.open()
+	if err != nil {
+		return 0, err
+	}
+	column := C.galley_procedure_context_column(session, a.cticket())
+	if column < 0 {
+		return 0, Error(int32(column))
+	}
+	return uint32(column), nil
 }

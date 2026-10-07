@@ -52,7 +52,7 @@ public final class Parser {
         }
         try {
             var handle = MethodHandles.lookup().findVirtual(Parser.class, "dispatch",
-                    java.lang.invoke.MethodType.methodType(void.class, MemorySegment.class, int.class, MemorySegment.class));
+                    java.lang.invoke.MethodType.methodType(void.class, MemorySegment.class, int.class, long.class));
             this.dispatchStub = lib.createDispatchStub(handle.bindTo(this), Arena.global());
         } catch (NoSuchMethodException | IllegalAccessException e) {
             throw new RuntimeException(e);
@@ -181,11 +181,10 @@ public final class Parser {
 
     // Called by this parser's upcall stub on the parsing thread: routes the
     // hook to the session whose handle the library passed.
-    private void dispatch(MemorySegment handle, int index, MemorySegment arguments) {
+    private void dispatch(MemorySegment handle, int index, long hook) {
         try {
-            if (arguments.equals(MemorySegment.NULL)) return;
             Session session = sessions.get(handle.address());
-            if (session != null) session.dispatchHook(index, arguments);
+            if (session != null) session.dispatchHook(index, hook);
         } catch (Throwable t) {
             t.printStackTrace(System.err);
         }

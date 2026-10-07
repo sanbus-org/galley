@@ -89,6 +89,9 @@ pub const galley_error_session_in_use: i64 = -13;
 /// parsed again, the last parse failed and published nothing, or nothing was
 /// ever published), and in a hook the generation is not that parse's.
 pub const galley_error_stale_tree: i64 = -14;
+/// A `galley_procedure_*` call made with the ticket of a hook that has
+/// returned: the arguments are valid only while their hook runs.
+pub const galley_error_stale_hook: i64 = -15;
 
 /// Diagnostic kinds returned by `galley_diagnostic_kind`.
 pub const galley_diagnostic_kind_none: i64 = 0;
@@ -443,8 +446,9 @@ fn gateStatusError(err: root.SessionError) GateError {
     };
 }
 
-/// The value shape behind the node count, the five links and the variable
-/// index, on either door: the gate, then a core that answers null for an
+/// The value shape behind the five links and the variable index, on either
+/// door: the gate (also in a build without AST construction, which then has
+/// no node to address), then a core that answers null for an
 /// address outside the live storage (`galley_error_invalid_node`). The value
 /// is non-negative, so it shares its return with the negative statuses; a
 /// link that does not exist is `GALLEY_INVALID_NODE`, a real answer.
@@ -456,22 +460,22 @@ fn nodeValue(
     comptime core: anytype,
     extra: anytype,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
     var entry = gate(kind, .read, handle, generation) catch |err| return statusForError(err);
     defer entry.deinit();
+    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
     const value = @call(.auto, core, .{ &entry.door, address } ++ extra) orelse return galley_error_invalid_node;
     return @intCast(value);
 }
 
 /// The read shape behind the byte reads (symbol name, text), the pair reads
 /// (span, line and column) and the snapshot, on either door. In order: the
-/// answer of a build without AST construction (`no_ast`), the out-parameters
-/// the call requires (`required`: indexes into `arguments`, null is
-/// `galley_error_null_argument`), the gate, then a core that takes the door
-/// and `arguments` (the address and the out-parameters, or the snapshot's
-/// columns) and returns a status or count. Argument errors come before the
-/// gate, so a stale or contended call with a null output still reports the
-/// null.
+/// out-parameters the call requires (`required`: indexes into `arguments`,
+/// null is `galley_error_null_argument`), the gate, the answer of a build
+/// without AST construction (`no_ast`, so a refusal still comes first there),
+/// then a core that takes the door and `arguments` (the address and the
+/// out-parameters, or the snapshot's columns) and returns a status or count.
+/// Argument errors come before the gate, so a stale or contended call with a
+/// null output still reports the null.
 fn nodeRead(
     comptime kind: DoorKind,
     handle: DoorHandle(kind),
@@ -481,18 +485,18 @@ fn nodeRead(
     comptime core: anytype,
     arguments: anytype,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return no_ast;
     inline for (required) |index| {
         if (arguments[index] == null) return galley_error_null_argument;
     }
     var entry = gate(kind, .read, handle, generation) catch |err| return statusForError(err);
     defer entry.deinit();
+    if (comptime !parser.is_ast_enabled) return no_ast;
     return @call(.auto, core, .{&entry.door} ++ arguments);
 }
 
 /// The edit shape behind every `galley_tree_*` / `galley_hook_tree_*` call:
-/// the build without AST construction (`galley_error_internal`), the required
-/// out-parameters, the gate (the exclusive tier on the session door), then
+/// the required out-parameters, the gate (the exclusive tier on the session
+/// door), the build without AST construction (`galley_error_internal`), then
 /// the edit core over `arguments`.
 fn treeEdit(
     comptime kind: DoorKind,
@@ -502,12 +506,43 @@ fn treeEdit(
     comptime core: anytype,
     arguments: anytype,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_internal;
+    return treeEditOf(kind, handle, generation, null, required, core, arguments);
+}
+
+/// The edit shape of the calls that take a second node (`first_node` of an
+/// insert or append), each with the generation it carries: the one place the
+/// core refuses nodes of two parses, so no host compares generations across
+/// nodes. The first generation goes through the gate; a second that differs is
+/// `galley_error_stale_tree`, since at most one of them can be the live tree's.
+fn treePairEdit(
+    comptime kind: DoorKind,
+    handle: DoorHandle(kind),
+    generation: u64,
+    other_generation: u64,
+    comptime core: anytype,
+    arguments: anytype,
+) i64 {
+    return treeEditOf(kind, handle, generation, other_generation, &.{}, core, arguments);
+}
+
+fn treeEditOf(
+    comptime kind: DoorKind,
+    handle: DoorHandle(kind),
+    generation: u64,
+    other_generation: ?u64,
+    comptime required: []const usize,
+    comptime core: anytype,
+    arguments: anytype,
+) i64 {
     inline for (required) |index| {
         if (arguments[index] == null) return galley_error_null_argument;
     }
     var entry = gate(kind, .edit, handle, generation) catch |err| return statusForError(err);
     defer entry.deinit();
+    if (other_generation) |other| {
+        if (other != generation) return galley_error_stale_tree;
+    }
+    if (comptime !parser.is_ast_enabled) return galley_error_internal;
     return @call(.auto, core, .{&entry.door} ++ arguments);
 }
 
@@ -958,6 +993,7 @@ export fn galley_session_create_ex(options: ?*const GalleyCOptions) ?*GalleySess
         std.heap.c_allocator.destroy(embedded);
         return null;
     };
+    embedded.session.runtime_context.owner = embedded;
     return @ptrCast(embedded);
 }
 
@@ -1087,6 +1123,10 @@ fn statusForError(err: anyerror) i64 {
         // failed, or never published).
         error.StaleTree => galley_error_stale_tree,
         error.NullArgument => galley_error_null_argument,
+        error.StaleHook => galley_error_stale_hook,
+        // A live hook's arguments live on the dispatching thread's stack: any
+        // other thread is a concurrent use of a session mid-parse.
+        error.OtherThread => galley_error_session_in_use,
         // A cursor that cannot be trusted (unknown state or option bits,
         // root/current outside the node storage) or a walk position that
         // left the walked subtree: either way there is no live node to step
@@ -1186,10 +1226,12 @@ export fn galley_node_count(
 /// one probe for "is there a tree here": both values are written under one
 /// guard, so a caller never pairs a root with another parse's generation.
 /// Returns `galley_ok` with `GALLEY_INVALID_NODE` and 0 when nothing is
-/// published (no parse has published yet, a later parse has begun, or the
-/// parser was built without AST construction), and
-/// `galley_error_session_in_use` while a parse holds the session. Real
-/// generations start at 1, so a 0 never matches a live tree.
+/// published (no parse has published yet, or a later parse has begun), and
+/// `galley_error_session_in_use` while a parse holds the session. A parser
+/// built without AST construction publishes a generation too, with no root:
+/// `galley_node_count` answers 0 for it, a real answer, after the same
+/// generation check. Real generations start at 1, so a 0 never matches a
+/// live tree.
 export fn galley_root_node(
     session_ptr: ?*GalleySession,
     out_root: ?*GalleyNodeAddress,
@@ -1200,14 +1242,15 @@ export fn galley_root_node(
     out_root_value.* = galley_invalid_node;
     out_generation_value.* = 0;
     const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    if (comptime !parser.is_ast_enabled) return galley_ok;
     var guard = embedded.session.readCurrent() catch |err| switch (err) {
         error.StaleParseResult, error.NoParseResult => return galley_ok,
         else => return statusForError(err),
     };
     defer guard.deinit();
     out_generation_value.* = guard.generation();
-    if (guard.result.ast_root) |ast_root| out_root_value.* = @intCast(ast_root);
+    if (comptime parser.is_ast_enabled) {
+        if (guard.result.ast_root) |ast_root| out_root_value.* = @intCast(ast_root);
+    }
     return galley_ok;
 }
 
@@ -1396,19 +1439,16 @@ export fn galley_hook_last_input(
 /// `galley_walk_next` for the field contract.
 pub const GalleyWalkCursor = root.data_structures.tree_walker.Cursor;
 
-/// The walk-step shape behind both doors: the finished-walk shortcut, then
-/// the gate on the cursor's generation, then one step over the door's node
-/// storage.
+/// The walk-step shape behind both doors: the gate on the cursor's
+/// generation, then one step over the door's node storage. A finished walk
+/// goes through the gate like any other step, so a walker belongs to the parse
+/// it was created over even after it ended.
 fn walkNext(comptime kind: DoorKind, handle: DoorHandle(kind), cursor_ptr: ?*GalleyWalkCursor) i64 {
     const cursor = cursor_ptr orelse return galley_error_null_argument;
-    // A finished walker stays finished: done reports 0 before any session
-    // or generation check, so hosts see the end of the walk rather than a
-    // stale or closed-session error.
-    if (cursor.state == tree_walker.state_done) return 0;
-    if (handle == null) return galley_error_null_argument;
-    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
     var entry = gate(kind, .read, handle, cursor.generation) catch |err| return statusForError(err);
     defer entry.deinit();
+    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
+    if (cursor.state == tree_walker.state_done) return 0;
     const yielded = tree_walker.walkNext(entry.door.node_allocator, cursor) catch |err| return statusForError(err);
     return if (yielded) 1 else 0;
 }
@@ -1417,12 +1457,13 @@ fn walkNext(comptime kind: DoorKind, handle: DoorHandle(kind), cursor_ptr: ?*Gal
 /// the position back into the cursor (`current`, `depth`, `state`, `flags`,
 /// `structure_version`). Returns 1 when a node was
 /// yielded, 0 when the walk is done (the cursor stays
-/// `GALLEY_WALK_STATE_DONE` and further steps keep returning 0, before any
-/// session or generation check), or a negative status:
+/// `GALLEY_WALK_STATE_DONE` and further steps keep returning 0 while its
+/// generation is live), or a negative status:
 ///
 /// - `galley_error_stale_tree`: the cursor's `generation` is not the
 ///   session's live tree (it was reparsed, or no parse has published that
-///   generation). Recreate the walk against the current tree.
+///   generation), whether or not the walk had finished. Recreate the walk
+///   against the current tree.
 /// - `galley_error_session_in_use`: a parse is in flight.
 /// - `galley_error_invalid_node`: the cursor bytes are not a walk position
 ///   (`state` above `GALLEY_WALK_STATE_DONE`, unknown `options` bits,
@@ -1670,6 +1711,7 @@ export fn galley_status_string(status: i64) ?[*:0]const u8 {
         galley_error_io => "I/O error",
         galley_error_session_in_use => "session in use",
         galley_error_stale_tree => "stale tree",
+        galley_error_stale_hook => "stale hook",
         else => null,
     };
 }
@@ -2062,21 +2104,24 @@ export fn galley_hook_node_prior_sibling(
 // exclusive tier: `galley_error_session_in_use` while a parse is in flight
 // (session door only), `galley_error_stale_tree` for a generation that is
 // not the door's live tree's — the published tree's on the session door, the
-// running parse's on the `galley_hook_tree_*` twin. Both nodes of an edit
-// that takes two must belong to that tree: an address carries no generation,
-// so the host guarantees it.
+// running parse's on the `galley_hook_tree_*` twin. An edit that takes two
+// nodes takes each one's generation, and a second generation that differs
+// from the first is `galley_error_stale_tree`: the core refuses nodes of two
+// parses, so no host compares generations across nodes.
 // ---------------------------------------------------------------------------
 
 /// Appends `first_node` (and any chain attached via its next links) as the
-/// last children of `parent`. Both addresses must belong to the tree
-/// `generation` names (an address carries no generation, so the host checks).
+/// last children of `parent`. `generation` is the parent's and
+/// `first_generation` the chain head's; both must name the live tree,
+/// otherwise `galley_error_stale_tree`.
 export fn galley_tree_append_children(
     session_ptr: ?*GalleySession,
     generation: u64,
     parent: GalleyNodeAddress,
+    first_generation: u64,
     first_node: GalleyNodeAddress,
 ) i64 {
-    return treeEdit(.session, session_ptr, generation, &.{}, treeAppendChildrenCore, .{ parent, first_node });
+    return treePairEdit(.session, session_ptr, generation, first_generation, treeAppendChildrenCore, .{ parent, first_node });
 }
 
 /// Hook-time twin of `galley_tree_append_children`: same parameters and refusals, over the
@@ -2085,20 +2130,24 @@ export fn galley_hook_tree_append_children(
     hook_door: ?*anyopaque,
     generation: u64,
     parent: GalleyNodeAddress,
+    first_generation: u64,
     first_node: GalleyNodeAddress,
 ) i64 {
-    return treeEdit(.hook, hook_door, generation, &.{}, treeAppendChildrenCore, .{ parent, first_node });
+    return treePairEdit(.hook, hook_door, generation, first_generation, treeAppendChildrenCore, .{ parent, first_node });
 }
 
 /// Inserts `first_node` (and its chain) immediately before `target` among
-/// its siblings. Both addresses must belong to the tree `generation` names.
+/// its siblings. `generation` is the target's and `first_generation` the
+/// chain head's; both must name the live tree, otherwise
+/// `galley_error_stale_tree`.
 export fn galley_tree_insert_before(
     session_ptr: ?*GalleySession,
     generation: u64,
     target: GalleyNodeAddress,
+    first_generation: u64,
     first_node: GalleyNodeAddress,
 ) i64 {
-    return treeEdit(.session, session_ptr, generation, &.{}, treeInsertBeforeCore, .{ target, first_node });
+    return treePairEdit(.session, session_ptr, generation, first_generation, treeInsertBeforeCore, .{ target, first_node });
 }
 
 /// Hook-time twin of `galley_tree_insert_before`: same parameters and refusals, over the
@@ -2107,20 +2156,23 @@ export fn galley_hook_tree_insert_before(
     hook_door: ?*anyopaque,
     generation: u64,
     target: GalleyNodeAddress,
+    first_generation: u64,
     first_node: GalleyNodeAddress,
 ) i64 {
-    return treeEdit(.hook, hook_door, generation, &.{}, treeInsertBeforeCore, .{ target, first_node });
+    return treePairEdit(.hook, hook_door, generation, first_generation, treeInsertBeforeCore, .{ target, first_node });
 }
 
 /// Inserts `first_node` (and its chain) immediately after `target` among its
-/// siblings. Both addresses must belong to the tree `generation` names.
+/// siblings. `generation` is the target's and `first_generation` the chain
+/// head's; both must name the live tree, otherwise `galley_error_stale_tree`.
 export fn galley_tree_insert_after(
     session_ptr: ?*GalleySession,
     generation: u64,
     target: GalleyNodeAddress,
+    first_generation: u64,
     first_node: GalleyNodeAddress,
 ) i64 {
-    return treeEdit(.session, session_ptr, generation, &.{}, treeInsertAfterCore, .{ target, first_node });
+    return treePairEdit(.session, session_ptr, generation, first_generation, treeInsertAfterCore, .{ target, first_node });
 }
 
 /// Hook-time twin of `galley_tree_insert_after`: same parameters and refusals, over the
@@ -2129,9 +2181,10 @@ export fn galley_hook_tree_insert_after(
     hook_door: ?*anyopaque,
     generation: u64,
     target: GalleyNodeAddress,
+    first_generation: u64,
     first_node: GalleyNodeAddress,
 ) i64 {
-    return treeEdit(.hook, hook_door, generation, &.{}, treeInsertAfterCore, .{ target, first_node });
+    return treePairEdit(.hook, hook_door, generation, first_generation, treeInsertAfterCore, .{ target, first_node });
 }
 
 /// Removes `count` consecutive siblings starting at `node`, detaching them
@@ -2824,9 +2877,10 @@ export fn galley_tree_insert_children_at(
     generation: u64,
     parent: GalleyNodeAddress,
     index: usize,
+    first_generation: u64,
     first_node: GalleyNodeAddress,
 ) i64 {
-    return treeEdit(.session, session_ptr, generation, &.{}, treeInsertChildrenAtCore, .{ parent, index, first_node });
+    return treePairEdit(.session, session_ptr, generation, first_generation, treeInsertChildrenAtCore, .{ parent, index, first_node });
 }
 
 /// Hook-time twin of `galley_tree_insert_children_at`: same parameters and refusals, over the
@@ -2836,9 +2890,10 @@ export fn galley_hook_tree_insert_children_at(
     generation: u64,
     parent: GalleyNodeAddress,
     index: usize,
+    first_generation: u64,
     first_node: GalleyNodeAddress,
 ) i64 {
-    return treeEdit(.hook, hook_door, generation, &.{}, treeInsertChildrenAtCore, .{ parent, index, first_node });
+    return treePairEdit(.hook, hook_door, generation, first_generation, treeInsertChildrenAtCore, .{ parent, index, first_node });
 }
 
 /// Removes `count` consecutive children of `parent` starting at child
@@ -2877,10 +2932,10 @@ export fn galley_hook_tree_remove_children_at(
 /// `galley_error_session_in_use` while a parse is in flight.
 export fn galley_reserve_nodes(session_ptr: ?*GalleySession, capacity: u64) i64 {
     const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    if (comptime !parser.is_ast_enabled) return galley_ok;
-    if (capacity > std.math.maxInt(usize)) return galley_error_ast_capacity_exceeded;
     var guard = embedded.session.edit() catch |err| return statusForError(err);
     defer guard.deinit();
+    if (comptime !parser.is_ast_enabled) return galley_ok;
+    if (capacity > std.math.maxInt(usize)) return galley_error_ast_capacity_exceeded;
     guard.mutableAstAllocator().ensureCapacity(@intCast(capacity)) catch |err| switch (err) {
         error.OutOfMemory => return galley_error_out_of_memory,
         error.ASTCapacityTooLarge => return galley_error_ast_capacity_exceeded,
@@ -2888,14 +2943,16 @@ export fn galley_reserve_nodes(session_ptr: ?*GalleySession, capacity: u64) i64 
     return galley_ok;
 }
 
-/// Returns the current node storage capacity in nodes. Refuses with 0 while
-/// a parse is in flight.
-export fn galley_node_capacity(session_ptr: ?*GalleySession) u64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return 0));
-    if (comptime !parser.is_ast_enabled) return 0;
-    var guard = embedded.session.readLatest() catch return 0;
+/// Returns the current node storage capacity in nodes (0 for a parser built
+/// without AST construction), or a negative status:
+/// `galley_error_session_in_use` while a parse is in flight,
+/// `galley_error_null_argument` for a null session.
+export fn galley_node_capacity(session_ptr: ?*GalleySession) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
     defer guard.deinit();
-    return embedded.session.node_allocator.totalNodeCapacity();
+    if (comptime !parser.is_ast_enabled) return 0;
+    return @intCast(embedded.session.node_allocator.totalNodeCapacity());
 }
 
 // ---------------------------------------------------------------------------
@@ -3008,40 +3065,53 @@ export fn galley_variable_name(session_ptr: ?*GalleySession, index: u64, out_dat
 
 // ---------------------------------------------------------------------------
 // ProcedureArguments: per-hook state (current node, rule, drop/replace
-// channel, position), valid only while its hook runs. Tree queries and
-// edits use the `galley_hook_node_*` / `galley_hook_tree_*` twins over the
-// parse's door (`galley_procedure_door`); the session-door `galley_node_*` /
-// `galley_tree_*` functions belong to post-parse access and refuse during a
-// parse.
+// channel, position), valid only while its hook runs. A hook is named by its
+// session and the ticket the core issued for that call (the dispatch callback
+// and a compiled hook receive it), never by a pointer into the parser's
+// stack. One gate, `hookArguments`, turns the pair into the arguments or
+// refuses with `galley_error_stale_hook`, so a call made after its hook
+// returned is refused in every build and no host tracks expiry. Tree queries
+// and edits use the `galley_hook_node_*` / `galley_hook_tree_*` twins over
+// the parse's door (`galley_procedure_door`); the session-door
+// `galley_node_*` / `galley_tree_*` functions belong to post-parse access and
+// refuse during a parse.
 // ---------------------------------------------------------------------------
 
 inline fn allowsNoAstTreeProcedures() bool {
     return @hasDecl(parser, "allow_no_ast_tree_procedures") and parser.allow_no_ast_tree_procedures;
 }
 
-inline fn procedureArguments(args: ?*anyopaque) ?*root.data_structures.ProcedureArguments {
-    return @ptrCast(@alignCast(args orelse return null));
+/// The single gate of every `galley_procedure_*` call: the arguments of the
+/// hook `hook` names on `session_ptr`, or `StaleHook` once that hook has
+/// returned (a ticket is never reused, so a later hook cannot revive it) and
+/// `OtherThread` from a thread that is not the one running it.
+fn hookArguments(session_ptr: ?*GalleySession, hook: u64) (root.data_structures.HookError || error{NullArgument})!*root.data_structures.ProcedureArguments {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return error.NullArgument));
+    return embedded.session.runtime_context.hookArguments(hook);
 }
 
-/// Returns the parse-time door of the parse that is calling this hook: the
+/// The tree-helper shape shared by the drop and reduction procedures: the
+/// gate, then the helper (or `galley_error_internal` in a build that has no
+/// tree to edit).
+fn treeProcedure(session_ptr: ?*GalleySession, hook: u64, comptime helper: anytype) i64 {
+    const procedure_arguments = hookArguments(session_ptr, hook) catch |err| return statusForError(err);
+    if (comptime parser.is_ast_enabled or allowsNoAstTreeProcedures()) {
+        helper(procedure_arguments) catch |err| return statusForError(err);
+        return galley_ok;
+    }
+    return galley_error_internal;
+}
+
+/// Writes the parse-time door of the parse that is calling hook `hook`: the
 /// handle the `galley_hook_*` twins take. It is the same pointer for every
 /// hook of one parse and dies when that parse ends, so a host may keep it for
-/// the parse and must drop it after. Returns null for null `args`.
-export fn galley_procedure_door(args: ?*anyopaque) ?*anyopaque {
-    const procedure_arguments = procedureArguments(args) orelse return null;
-    return procedure_arguments.context;
-}
-
-/// Returns the session whose parse is calling this hook, or null for null
-/// `args`. A host that keeps per-session state outside the core (the Go
-/// binding's door lifetime) finds it from a hook's arguments through this.
-export fn galley_procedure_session(args: ?*anyopaque) ?*GalleySession {
-    const procedure_arguments = procedureArguments(args) orelse return null;
-    // The parent pointers are only as aligned as the fields they come from
-    // (2 on wasm32), but the session really is an aligned `Embedded`.
-    const session: *root.Session = @alignCast(@fieldParentPtr("runtime_context", procedure_arguments.context.runtime()));
-    const embedded: *Embedded = @alignCast(@fieldParentPtr("session", session));
-    return @ptrCast(embedded);
+/// the parse and must drop it after. Returns `galley_error_stale_hook` for a
+/// hook that has returned.
+export fn galley_procedure_door(session_ptr: ?*GalleySession, hook: u64, out_door: ?*?*anyopaque) i64 {
+    const out = out_door orelse return galley_error_null_argument;
+    const procedure_arguments = hookArguments(session_ptr, hook) catch |err| return statusForError(err);
+    out.* = procedure_arguments.context;
+    return galley_ok;
 }
 
 /// Writes the parse generation of the parse that owns `hook_door` to
@@ -3056,11 +3126,13 @@ export fn galley_hook_generation(hook_door: ?*anyopaque, out_generation: ?*u64) 
     return galley_ok;
 }
 
-export fn galley_procedure_current_node(args: ?*anyopaque) GalleyNodeAddress {
-    const procedure_arguments = procedureArguments(args) orelse return galley_invalid_node;
-    if (comptime !parser.is_ast_enabled) return galley_invalid_node;
-    const addr = procedure_arguments.node_address orelse return galley_invalid_node;
-    return @intCast(addr);
+/// Returns the node the hook is working on, `GALLEY_INVALID_NODE` when it has
+/// none (dropped or cleared), or a negative status.
+export fn galley_procedure_current_node(session_ptr: ?*GalleySession, hook: u64) i64 {
+    const procedure_arguments = hookArguments(session_ptr, hook) catch |err| return statusForError(err);
+    if (comptime !parser.is_ast_enabled) return @intCast(galley_invalid_node);
+    const address = procedure_arguments.node_address orelse return @intCast(galley_invalid_node);
+    return @intCast(address);
 }
 
 /// The body behind `galley_procedure_set_current_node`, run through the hook
@@ -3075,15 +3147,15 @@ fn setCurrentNodeCore(
     return galley_ok;
 }
 
-/// Sets the current node of this hook to `node`, a node of the parse that
-/// owns `args`, or clears it when `node` is `GALLEY_INVALID_NODE` (which
-/// needs no generation). The node goes through the hook door's gate like any
-/// other: `galley_error_stale_tree` when `generation` is not this parse's
+/// Sets the current node of hook `hook` to `node`, a node of the parse that
+/// owns it, or clears it when `node` is `GALLEY_INVALID_NODE` (which needs no
+/// generation). The node goes through the hook door's gate like any other:
+/// `galley_error_stale_tree` when `generation` is not this parse's
 /// (generation 0 never is), `galley_error_invalid_node` for an address
-/// outside the parse's node storage, `galley_error_null_argument` for null
-/// `args`. A refused call leaves the current node as it was.
-export fn galley_procedure_set_current_node(args: ?*anyopaque, generation: u64, node: GalleyNodeAddress) i64 {
-    const procedure_arguments = procedureArguments(args) orelse return galley_error_null_argument;
+/// outside the parse's node storage, `galley_error_stale_hook` for a hook
+/// that has returned. A refused call leaves the current node as it was.
+export fn galley_procedure_set_current_node(session_ptr: ?*GalleySession, hook: u64, generation: u64, node: GalleyNodeAddress) i64 {
+    const procedure_arguments = hookArguments(session_ptr, hook) catch |err| return statusForError(err);
     if (node == galley_invalid_node) {
         if (comptime parser.is_ast_enabled) procedure_arguments.node_address = null;
         return galley_ok;
@@ -3091,113 +3163,95 @@ export fn galley_procedure_set_current_node(args: ?*anyopaque, generation: u64, 
     return nodeRead(.hook, procedure_arguments.context, generation, galley_error_invalid_node, &.{}, setCurrentNodeCore, .{ procedure_arguments, node });
 }
 
-export fn galley_procedure_rule_present(args: ?*anyopaque) i32 {
-    const procedure_arguments = procedureArguments(args) orelse return 0;
+/// Returns 1 when the hook runs for a grammar rule, 0 when it does not, or a
+/// negative status.
+export fn galley_procedure_rule_present(session_ptr: ?*GalleySession, hook: u64) i64 {
+    const procedure_arguments = hookArguments(session_ptr, hook) catch |err| return statusForError(err);
     return if (procedure_arguments.rule != null) 1 else 0;
 }
 
-export fn galley_procedure_rule_header(args: ?*anyopaque) i64 {
-    const procedure_arguments = procedureArguments(args) orelse return -1;
-    const rule = procedure_arguments.rule orelse return -1;
+/// Returns the rule's header variable index, or a negative status
+/// (`galley_error_invalid_node` when the hook has no rule).
+export fn galley_procedure_rule_header(session_ptr: ?*GalleySession, hook: u64) i64 {
+    const procedure_arguments = hookArguments(session_ptr, hook) catch |err| return statusForError(err);
+    const rule = procedure_arguments.rule orelse return galley_error_invalid_node;
     return @intCast(rule.header);
 }
 
-export fn galley_procedure_rule_rhs_index(args: ?*anyopaque) i64 {
-    const procedure_arguments = procedureArguments(args) orelse return -1;
-    const rule = procedure_arguments.rule orelse return -1;
-    return std.fmt.parseInt(i64, rule.right_hand_side_index, 10) catch -1;
+/// Returns the rule's right-hand-side index, or a negative status
+/// (`galley_error_invalid_node` when the hook has no rule).
+export fn galley_procedure_rule_rhs_index(session_ptr: ?*GalleySession, hook: u64) i64 {
+    const procedure_arguments = hookArguments(session_ptr, hook) catch |err| return statusForError(err);
+    const rule = procedure_arguments.rule orelse return galley_error_invalid_node;
+    return std.fmt.parseInt(i64, rule.right_hand_side_index, 10) catch galley_error_internal;
 }
 
-export fn galley_procedure_rule_right_hand_side(args: ?*anyopaque, out_data: ?*[*]const u16, out_len: ?*usize) i64 {
-    const procedure_arguments = procedureArguments(args) orelse return galley_error_null_argument;
+/// Writes the rule's right-hand-side symbol indexes (static grammar storage).
+export fn galley_procedure_rule_right_hand_side(session_ptr: ?*GalleySession, hook: u64, out_data: ?*[*]const u16, out_len: ?*usize) i64 {
     if (out_data == null or out_len == null) return galley_error_null_argument;
-    const rule = procedure_arguments.rule orelse return -1;
+    const procedure_arguments = hookArguments(session_ptr, hook) catch |err| return statusForError(err);
+    const rule = procedure_arguments.rule orelse return galley_error_invalid_node;
     out_data.?.* = rule.right_hand_side.ptr;
     out_len.?.* = rule.right_hand_side.len;
     return galley_ok;
 }
 
-export fn galley_procedure_rule_rhs_index_slice(args: ?*anyopaque, out_data: ?*[*]const u8, out_len: ?*usize) i64 {
-    const procedure_arguments = procedureArguments(args) orelse return galley_error_null_argument;
+/// Writes the rule's right-hand-side index text (static grammar storage).
+export fn galley_procedure_rule_rhs_index_slice(session_ptr: ?*GalleySession, hook: u64, out_data: ?*[*]const u8, out_len: ?*usize) i64 {
     if (out_data == null or out_len == null) return galley_error_null_argument;
-    const rule = procedure_arguments.rule orelse return -1;
+    const procedure_arguments = hookArguments(session_ptr, hook) catch |err| return statusForError(err);
+    const rule = procedure_arguments.rule orelse return galley_error_invalid_node;
     out_data.?.* = rule.right_hand_side_index.ptr;
     out_len.?.* = rule.right_hand_side_index.len;
     return galley_ok;
 }
 
-export fn galley_procedure_context_line(args: ?*anyopaque) u32 {
-    const procedure_arguments = procedureArguments(args) orelse return 0;
+/// Returns the scanner line during this hook (0 without position tracking),
+/// or a negative status.
+export fn galley_procedure_context_line(session_ptr: ?*GalleySession, hook: u64) i64 {
+    const procedure_arguments = hookArguments(session_ptr, hook) catch |err| return statusForError(err);
     if (comptime !root.position_tracking_enabled) return 0;
     return procedure_arguments.context.line;
 }
 
-export fn galley_procedure_context_column(args: ?*anyopaque) u32 {
-    const procedure_arguments = procedureArguments(args) orelse return 0;
+/// Returns the scanner column during this hook (0 without position
+/// tracking), or a negative status.
+export fn galley_procedure_context_column(session_ptr: ?*GalleySession, hook: u64) i64 {
+    const procedure_arguments = hookArguments(session_ptr, hook) catch |err| return statusForError(err);
     if (comptime !root.position_tracking_enabled) return 0;
     return procedure_arguments.context.column;
 }
 
-export fn galley_procedure_drop_self(args: ?*anyopaque) i64 {
-    const procedure_arguments = procedureArguments(args) orelse return galley_error_null_argument;
-    if (comptime parser.is_ast_enabled or allowsNoAstTreeProcedures()) {
-        root.standard_procedures.dropSelf(procedure_arguments) catch |e| return statusForError(e);
-        return galley_ok;
-    }
-    return galley_error_internal;
+export fn galley_procedure_drop_self(session_ptr: ?*GalleySession, hook: u64) i64 {
+    return treeProcedure(session_ptr, hook, root.standard_procedures.dropSelf);
 }
 
-export fn galley_procedure_drop_children(args: ?*anyopaque) i64 {
-    const procedure_arguments = procedureArguments(args) orelse return galley_error_null_argument;
-    if (comptime parser.is_ast_enabled or allowsNoAstTreeProcedures()) {
-        root.standard_procedures.dropChildren(procedure_arguments) catch |e| return statusForError(e);
-        return galley_ok;
-    }
-    return galley_error_internal;
+export fn galley_procedure_drop_children(session_ptr: ?*GalleySession, hook: u64) i64 {
+    return treeProcedure(session_ptr, hook, root.standard_procedures.dropChildren);
 }
 
-export fn galley_procedure_drop_if_empty(args: ?*anyopaque) i64 {
-    const procedure_arguments = procedureArguments(args) orelse return galley_error_null_argument;
-    if (comptime parser.is_ast_enabled or allowsNoAstTreeProcedures()) {
-        root.standard_procedures.dropIfEmpty(procedure_arguments) catch |e| return statusForError(e);
-        return galley_ok;
-    }
-    return galley_error_internal;
+export fn galley_procedure_drop_if_empty(session_ptr: ?*GalleySession, hook: u64) i64 {
+    return treeProcedure(session_ptr, hook, root.standard_procedures.dropIfEmpty);
 }
 
-export fn galley_procedure_replace_with_children(args: ?*anyopaque) i64 {
-    const procedure_arguments = procedureArguments(args) orelse return galley_error_null_argument;
-    if (comptime parser.is_ast_enabled or allowsNoAstTreeProcedures()) {
-        root.standard_procedures.replaceWithChildren(procedure_arguments) catch |e| return statusForError(e);
-        return galley_ok;
-    }
-    return galley_error_internal;
+export fn galley_procedure_replace_with_children(session_ptr: ?*GalleySession, hook: u64) i64 {
+    return treeProcedure(session_ptr, hook, root.standard_procedures.replaceWithChildren);
 }
 
-export fn galley_procedure_left_recursive_reduction(args: ?*anyopaque) i64 {
-    const procedure_arguments = procedureArguments(args) orelse return galley_error_null_argument;
-    if (comptime parser.is_ast_enabled or allowsNoAstTreeProcedures()) {
-        root.standard_procedures.leftRecursiveReduction(procedure_arguments) catch |e| return statusForError(e);
-        return galley_ok;
-    }
-    return galley_error_internal;
+export fn galley_procedure_left_recursive_reduction(session_ptr: ?*GalleySession, hook: u64) i64 {
+    return treeProcedure(session_ptr, hook, root.standard_procedures.leftRecursiveReduction);
 }
 
-export fn galley_procedure_right_recursive_reduction(args: ?*anyopaque) i64 {
-    const procedure_arguments = procedureArguments(args) orelse return galley_error_null_argument;
-    if (comptime parser.is_ast_enabled or allowsNoAstTreeProcedures()) {
-        root.standard_procedures.rightRecursiveReduction(procedure_arguments) catch |e| return statusForError(e);
-        return galley_ok;
-    }
-    return galley_error_internal;
+export fn galley_procedure_right_recursive_reduction(session_ptr: ?*GalleySession, hook: u64) i64 {
+    return treeProcedure(session_ptr, hook, root.standard_procedures.rightRecursiveReduction);
 }
 
 /// Reports a semantic error on the current node and returns the total
 /// semantic error count, or a negative status. Parsing continues; a
 /// syntax-clean parse with any semantic error returns `SemanticError`.
-export fn galley_procedure_report_semantic_error(args: ?*anyopaque, message_ptr: ?[*]const u8, message_len: usize) i64 {
-    const procedure_arguments = procedureArguments(args) orelse return galley_error_null_argument;
+export fn galley_procedure_report_semantic_error(session_ptr: ?*GalleySession, hook: u64, message_ptr: ?[*]const u8, message_len: usize) i64 {
     const message = if (message_ptr) |ptr| ptr[0..message_len] else if (message_len == 0) @as([]const u8, &.{}) else return galley_error_null_argument;
+    const procedure_arguments = hookArguments(session_ptr, hook) catch |err| return statusForError(err);
     const count = procedure_arguments.reportSemanticError(message) catch |e| return statusForError(e);
     return @intCast(count);
 }

@@ -44,6 +44,7 @@ pub const Context = @import("context.zig").Context;
 pub const newlineAfterBlockEndEnabled = @import("context.zig").newlineAfterBlockEndEnabled;
 pub const indentationSyntaxEnabled = @import("context.zig").indentationSyntaxEnabled;
 pub const RuntimeContext = @import("context.zig").RuntimeContext;
+pub const HookError = @import("context.zig").HookError;
 pub const max_syntax_error_stack_depth = @import("context.zig").max_syntax_error_stack_depth;
 pub const SyntaxErrorStack = @import("context.zig").SyntaxErrorStack;
 pub const Offsets = @import("offsets.zig").Offsets;
