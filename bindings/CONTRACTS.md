@@ -1,121 +1,94 @@
 # Binding contracts
 
-Rules every host binding follows. Grammar-level procedure semantics live in [procedures.md](../docs/procedures.md). This file covers loading, wiring, walking, failures, and repo conventions (the Builds and Examples sections constrain repo content, not runtime behavior). Cross-host values keep one meaning and take one shape per host: this file states what crosses, the binding contracts (`bindings/<language>/CONTRACTS.md`) state how it is spelled, and a binding contract's spelling always wins where it differs.
+A binding has two interfaces, and each has its contract. **With the user**: what a host's users can depend on. **With the core**: what a binding does, and refrains from doing, when it crosses into the galley core. Spelling in a language (class names, types, build commands) is documentation, not contract; how a binding is built inside, beyond what crosses these two interfaces, is not contract either. Names in code spans (`open_session`, `root_node`) are written in snake_case and indicate the call; each host spells it in its own idiom. Applies to Python, Java and JavaScript. Grammar-level hook semantics live in [procedures.md](../docs/procedures.md).
 
-Since this document addresses different programming languages, name of artifacts like functions, classes, etc are written quoted. They are expected to be converted to the casing of the programming language.
+## With the user
 
-## Artifacts and loading
+### Loading
 
-- Bindings offer two methods for loading a parser:
-  1. Loading a language package with native language syntax for importing an artifact embraced in a package/module.
-  1. A bare load function to solely and directly import an artifact.
+- A parser comes from a package import (the language's own import of a generated package, with its bundled hooks already installed) or from `load(path)` (an explicit artifact, with no hooks installed). Artifact paths are always explicit: no environment variable or search path fills one in.
+- Every `load(path)` returns a new parser whose default hooks are its own (none after a bare load). Loading one artifact twice never shares hook state. A package import gives the package's one parser.
+- A failed `load` hands out no parser and affects none already handed out; retrying after the cause is fixed is a fresh attempt.
+- A missing artifact reports the path and the build command that produces it, with a machine-readable code identical across hosts.
+- Loading and opening are two steps, so hooks can be installed in between: sessions open from a parser.
+- A parser offers `open_session`; hook management (`install_procedure`, `install_procedures`, `procedure_hook`, `list_procedures`, `clear_procedures`); and introspection (`version`, `parser_type`, `has_ast`, `has_procedures`, `symbol_count`, `variable_count`, `status_string`).
+- Loading writes nothing to stdout. A diagnostic goes to stderr only when no other channel carries it; a host's one-time notice, such as falling back to a slower engine, is the only other thing written there.
 
-- As far as the binding host allows, either approach is idempotent: a failed one changes nothing, and retrying a factory call after the cause is fixed is a fresh attempt. Importing an entry constructs it.
-- Both yield an instance of a "parser" which includes:
-  - A function for opening new sessions.
-  - Hook management functions: "install procedure", "install procedures", "procedure hook", "clear procedures", "list procedures"
-  - Introspection functions: "version", "parser type", "has ast", "has procedures", "symbol count", "variable count", "status string"
-- The same source-method combo always yields the identical parser, and repeated loads of the same source-method share one default hook table.
-- A failed load hands out no parser and invalidates none already handed out. Retrying a factory call after the cause is fixed is a fresh attempt.
-- A missing artifact reports the path and the exact build command, with a machine-readable code identical across hosts.
-- A host that offers both dynamic and static forms of its artifact leaves the choice to the user.
-- Loading a parser and opening a session are two steps: sessions open from the loaded parser.
+### Sessions
 
-### Loading language as a package
+- A session opens with options for the parser's tunables, including whether it retains the input of the parse it publishes (it does by default), and owns its hooks: a copy of its parser's defaults taken when it opens. A default installed later reaches only sessions opened later. Message overrides replace the text of diagnostic messages and, like hooks, are fixed while a parse runs.
+- Parsing copies the input, so the caller may reuse or release its buffer afterwards. Interior NUL bytes are data. Message inputs accept text or raw bytes without silent re-encoding. A file path with an interior NUL is rejected, never truncated.
+- A call with an input form the host does not accept is rejected at the earliest point the host allows (compile time where the type system catches it, otherwise at call entry), with no silent coercion.
+- Sessions close explicitly or through the host's scoped-resource form, and closing is idempotent. Use after close fails with an error that names the closed object and is distinct from the stale-tree error.
+- Sessions of one parser, and of different parsers, parse at the same time on different threads, and no hook or session state is shared between them.
+- A session serves one parse at a time. Any use that overlaps a running parse (another parse, close, a hook or message-override change, a node read or edit, a walk step, a snapshot, from another thread or from a hook) is refused with `session in use` and changes nothing: no node, walker or running hook loses its validity. The one exception is the running hook, on the thread that dispatches it, whose node reads, node edits and walk steps address the running parse's tree. Overlapping use never leaves a host with undefined behavior.
+- A parse started inside a hook is a parse of another session, with that session's hooks.
 
-- Bundled hooks of a parser package are considered a part of it and they are automatically installed upon import.
-- A host that scans at runtime imports the sibling procedures module; a host that bakes hooks at build wires the list the build recorded.
+### Hooks
 
-### Bare loading
+- Hooks are managed on the parser, for its defaults, and on the session, for its own, through the same five functions: install, install many, look up, list, clear. Later installs win per hook name.
+- A hook name is `reduction`, `reduction_<Variable>` or `hook_<name>`, and it must be a name the artifact defines. Installing any other name raises; an artifact without procedures defines none. A scan of a module considers only exports whose names begin with `reduction`, or with `hook` followed by `_` or an uppercase letter, and warns, naming the export, when it is not one the artifact defines. An install is deliberate, so it raises; a scan sees every export, so it warns about the ones that look like hooks.
+- A hook is called with the arguments object. A hook that declares no positional parameter (a variadic parameter alone does not count) is called with none; a host whose language ignores a surplus argument may pass the object anyway.
+- The arguments object exposes the current node and a redirect for it, the hook's position, and a way to report a semantic error. It is valid only while its hook runs and refuses afterwards.
+- A hook reaches the tree through the session, never through the arguments object.
+- A hook that raises aborts the parse. The parse fails, publishing nothing, and `parse` raises the host's failure with the original exception as its cause. A hook that wants the parse to go on reports a semantic error instead.
+- Hooks run on the thread that parses. A hook that shares state with other hooks or sessions must be thread-safe.
 
-- A bare load wires nothing. Hooks arrive explicitly only.
+### Trees and nodes
 
-## Hooks
+- A node belongs to the parse that produced it, and it is valid while that parse's tree is live: the running parse's during its hooks, the published tree afterwards. A node a hook yields stays usable from later hooks of the same parse and, when the parse publishes its tree, until the next parse begins. Nodes of a parse that published nothing are refused afterwards.
+- A parse publishes its tree when it ran to its end. A success does, and so does a failure that only recorded errors: semantic errors, or syntax errors the parser recovered from. `parse` raises that failure all the same, and the published tree is complete, with its semantic-error and recovered nodes marked. A parse the parser could not recover from (the error limit reached, or no recovery point in LR and explicit LL recovery), a read or indentation failure, a stack overflow, running out of memory, a parse aborted by a hook that raised, or a refusal publishes nothing. Without AST construction a published failure still answers `last_input` and `last_position`, and `root_node` answers empty, as it does after every parse in such a build.
+- A node read or edit, or a walk, addresses the running parse's tree when it is made inside a hook, on the thread that dispatches it, and the published tree everywhere else. The user never chooses which. What describes a finished parse (`root_node`, `node_count`, `snapshot`, `last_input`, `last_position`) has no running-parse form: inside a hook it is refused with `session in use`.
+- Nodes come from sessions. A session method takes the host's node type and nothing else, because a raw address cannot say which parse it belongs to. It refuses a node of another session, and an operation given nodes of two different parses is refused with the stale-tree error.
+- Nodes are equal, and key collections alike, when they have the same session, parse and position. A handle of an earlier parse never equals the node that now holds its position.
+- A node exposes its address through a read-only accessor, for display only. Addresses are 64-bit integers wherever they are exposed.
 
-- Each artifact owns a default hook table; each session owns its own hooks, a copy of the defaults taken when the session opens. A default installed later reaches only sessions opened later.
-- Both are managed through functions that install, list, look up, and clear hooks: on the parser for the defaults, on the session for its own.
-- Hook names are `reduction`, `reduction_<Variable>`, and `hook_<name>`.
-- A scan ignores any other name; a scanned name that looks like a mistyped hook produces a warning naming the export and the rule.
-- Later installs win per hook name; explicit installs win over bundled scans.
-- Unregistered hooks never cross into the host: a session hands the library its enabled set whenever its hooks change, and every hook starts disabled.
-- Hooks are called with an arguments object or with no arguments at all.
-- The arguments object exposes the current node and a redirect for it, the hook's position, and a way to report a semantic error. It is per-hook state: valid only while its hook runs, and refusing once the hook returns.
-- Hook code reaches the tree through the session, not the arguments object: the host chooses the door when each call is made. A call made inside a hook dispatch of the session's running parse, on the thread running that hook, crosses the `galley_hook_*` twins over that parse's door in C (each host's named equivalents elsewhere), lock-free while the parse runs; every other call crosses the post-parse door. The two doors differ only in what they are opened on, never in shape or rules: the twins take the node's generation, return the same statuses, and each host implements a capability once, with the door as data (the handle and which family to call).
-- A node is valid by the core's parse generation, never by a host counter: the core stamps one generation per parse when the parse starts, hooks see that generation (`galley_hook_generation`), and a parse that publishes its tree does so under it, which `galley_root_node` reports. The core checks it inside every call, on both doors: a node is valid when its generation is the door's live tree's — the running parse's on the hook door, the published tree's on the session door — and no host compares a generation with the parse's. So a node a hook yields stays usable from later hooks of the same parse and, when the parse publishes, until the next parse; nodes of a parse that published nothing are refused afterwards. A parse the core refuses with `session in use` changes nothing: no node, walker, or running hook loses its validity.
-- The core owns the generation check, not the host. Every call that reads or edits a node, on the post-parse door and on the hook door alike, takes the generation it addresses and returns a status (a call with one result, such as a link, a count or the variable index, returns it in the same value: `>= 0` is the answer, negative is the status); the core refuses a generation that is not the door's live tree's with `stale tree` — the published tree's on the session door, the running parse's on the hook door. `galley_procedure_set_current_node` goes through the same check. No host keeps a cached copy of either generation to compare against, so no host-side check can disagree with the core.
-- A parse publishes its tree when it ran to its end: a success does, and so does a failure that only recorded errors — semantic errors, or syntax errors the parser recovered from. `parse()` raises that failure all the same, and the published tree is complete: the semantic-error and recovered nodes are marked (see Walking and snapshots). A parse the parser could not recover from (the error limit reached, or no recovery point in LR and explicit LL recovery), a read or indentation failure, a stack overflow, or running out of memory publishes nothing; so does a parse that was refused. Publishing does not need a tree: without AST construction a published failure still answers `last_input` and `last_position`, and `root_node()` answers the host empty value as it does for every parse there.
-- `galley_root_node` is the one source of the published generation and the one "is there a tree here" probe: it writes the root and the generation together under one guard, answers `GALLEY_INVALID_NODE` and `0` when nothing is published (a published failure whose recovery left no root answers `GALLEY_INVALID_NODE` with its generation), and refuses with `session in use` mid-parse. There is no separate validity probe on the session door.
-- The post-parse door (session node reads, tree edits, walkers, snapshots) refuses with `session in use` while a parse holds the session — including a hook node used from a thread other than the one running the hook — and with `stale tree` once a later parse — published or not — has retired the generation the call carries; an address outside the live tree's storage is still `invalid node`. No stashed handle bypasses it. A node of another session is refused, never read as a bare address.
-- Every node address and the two "nothing here" sentinels, `GALLEY_INVALID_NODE` (no node at that link) and `GALLEY_NO_VARIABLE` (a node without a variable), are non-negative (`INT64_MAX`); only statuses are negative. Hosts map the sentinels to their own spelling at their public boundary.
-- The generation check runs in every build. It is a lifetime contract memory-safe hosts depend on, not a misuse check, and it costs one integer comparison per call.
-- A session's hooks are fixed for the length of a parse: a change attempted while a parse is in flight — from a hook, or from another thread — is refused with `session in use` and leaves the hooks as they were.
-- A nested parse is a parse of another session, so each parse runs with its own session's hooks and neither sees the other's.
-- Sessions of one artifact, and of different artifacts, may parse at the same time on different threads: nothing in hook dispatch is shared between sessions. A hook runs on the thread that parses and must be thread-safe if it shares state with other hooks.
-- A failing hook never aborts the parse.
+### Walking and snapshots
 
-## Walking and snapshots
+- A walk starts from a node (`node.walk`) and covers its subtree, the node itself at depth zero. Each step yields the node, its depth, and its semantic-error and recovered flags. Two options skip semantic-error subtrees and skip recovered subtrees; they are independent, they combine, and each prunes whole subtrees without yielding them. A walker can also skip the subtree it just yielded.
+- A walker holds no resource: abandoning it is free and it has nothing to close.
+- A walk covers the tree the tree-choice rule in Trees and nodes names. Steps follow the live links, so edits between steps are visible. A step whose position is no longer inside the walk's root (removed, or moved elsewhere) raises `invalid node`, and repeats that failure rather than yielding anything past the detached point.
+- A walker belongs to the parse of the tree it was created over: stepping it after a re-parse raises the stale-tree error. Parsing with an abandoned walker succeeds; the walker fails at its next step.
+- The recovered flag marks a node that syntax-error recovery kept in place of damaged input, spanning the input recovery skipped. Under LL parsing it is the damaged variable's own node, with the children parsed before the damage. Under LR parsing, which builds no node before a rule completes, it is a placeholder with no children, and no variable under automatic recovery. Either way it sits where the damage was, as a child of the node covering it, so a walk that skips recovered subtrees yields only undamaged nodes. The damaged variable's hooks never ran, and the hooks of the nodes around it see it flagged.
+- A snapshot reads the published tree in one call: parent and sibling links, child counts, variables, spans, and the semantic-error and recovered flags, all of one parse. A parse that runs in between raises the stale-tree error rather than returning columns of two trees. `snapshot.node(i)` converts a stored address back to a node: the empty value for "no node", the host's index error for an out-of-range `i`, and otherwise a node of the snapshot's parse, stale after a re-parse.
+- Unless its option says otherwise, a session retains the input of its published parse, and node text and `last_input` read it. Without retention they raise `input not retained`; spans, snapshots and `last_position` need no input and still answer. `last_input` and `last_position` follow the published tree like every node read. When several refusals apply, `session in use` comes first, then `stale tree`, then `input not retained`.
 
-- A walk covers the subtree of its root, the root included at depth zero. Python, Java, and JavaScript start it from the root node itself (`node.walk`); every other host takes the root as an argument.
-- Walkers yield named steps carrying the node, the depth, and the semantic-error and recovered flags; the first step is at depth zero. Python's steps are a read-only `WalkStep` type; Java and JavaScript yield their `WalkStep` values. Go yields the semantic-error flag only and has no recovered flag yet.
-- The recovered flag marks a node syntax-error recovery kept in place of damaged input; its span covers the input recovery skipped. Under LL parsing it is the damaged variable's own node, with the children parsed before the damage; under LR parsing, which builds no node before a rule completes, it is a placeholder with no children (and no variable under automatic recovery). Either way it sits where the damage was, as a child of the node covering it, so a walk that skips recovered subtrees yields only undamaged nodes. The damaged variable's hooks never ran, and the hooks of the nodes around it see it flagged.
-- A walk takes two skip options, one per flag: skipping semantic-error subtrees and skipping recovered subtrees. They are independent and combine; each prunes whole subtrees without yielding them. Go has the first only.
-- A walker owns no native resource: it is one host-side cursor, one native call per step, nothing to close. Abandoning a walker is free; sessions still release their resources explicitly, through the mechanism the binding contract names, and that closing stays idempotent.
-- Pruning is host-side too: it changes the cursor's state without a native call, and skips the last yielded subtree.
-- Steps follow the live tree: `galley_tree_*` edits between steps are visible to later steps.
-- Where a host can name an invalid root, a walk from it hands back a walker whose first step fails with the host's stale-tree error. Python, Java, and JavaScript cannot: a node handle is never an invalid address.
-- A walker belongs to the core's parse generation of the tree it was created over: stepping it after a re-parse raises the stale-tree error, never a stale read. Parsing with an abandoned walker succeeds; the walker fails at its next step.
-- Each step crosses through the door a node call of the same session would choose: the session door otherwise, which refuses with `session in use` mid-parse, and — where the binding offers a walk through the hook door — the hook door from the dispatching thread of the running parse, so that walk matches the post-parse walk.
-- A step whose position is no longer inside the walk's root (removed, or moved elsewhere) raises invalid node, and repeats that failure rather than yielding anything past the detached point.
-- Snapshots bulk-read the published tree in a single crossing: parentage, child counts, variables, spans, and the semantic-error and recovered flags (Go's has neither column yet). Every leg of a snapshot carries one generation, so a parse that runs in between raises the stale-tree error instead of returning columns that mix two trees.
-- A snapshot remembers the parse generation it describes, and `snapshot.node(i)` is the one conversion from a stored address back to a node: the host empty value for the invalid-node sentinel, the host's index error for an out-of-range `i`, and nodes of that parse — stale after a re-parse, never the later parse's nodes at the same address.
-- A session retains the input of its published parse (a success, or a failure that ran to its end); snapshots and node spans index into that retained input. The input and the end position follow the published tree like every node read: `last_input` and `last_position` raise the stale-tree error whenever nothing is published — before the first parse, after a parse that published nothing, or once a later parse has begun — and `session in use` mid-parse. Neither answers an empty value or zeros for a refusal.
+### Failures, refusals and absence
 
-## Names, values, and codes
+- A failure is the host's failure type and carries a status code, a named value that also has its numeric value. A parse failure, a hook failure included, also carries a frozen diagnostic snapshot of where the parse stopped, its text fixed when the failure is created.
+- Every refusal raises, and no read answers an empty value or zero for one:
+  - `session in use` (see Sessions). It takes precedence while a parse runs: a finished-parse query made inside a hook raises it even when nothing is published yet.
+  - `stale tree`: the node's parse is no longer live, or a query that needs a published tree finds none (`node_count`, `snapshot`, `last_input` and `last_position`, before the first parse included). The stale-tree error is a subtype of the failure type carrying the stale-tree status code, and every way a tree can be gone raises it; use after close is neither.
+  - `invalid node`: a node whose position was removed or moved out of the walk's root, or a tree edit with an out-of-range index, in every build.
+  - `input not retained`: the session's option dropped the input, so `last_input` and node text have nothing to read.
+- No handle has a validity probe: a real read is the answer.
+- Absence is not a refusal. `root_node` answers the host's empty value when nothing is published or the published tree has no root, and is the one "is there a tree here" probe; a link query with no node there and `snapshot.node(i)` of the invalid-node constant answer the empty value too. A node without a variable answers `-1` in every host, from the variable query and the snapshot's variable column, and snapshot link columns hold the invalid-node constant. An empty value means really empty.
+- Argument errors (a node of another session, a raw address where a node is expected, a missing argument, an unsupported input form, a path with an interior NUL) use the host's own argument error and are never answered with an empty value.
 
-- Grammar names cross in one canonical form per host; each binding contract names that form and any raw-bytes form beside it.
-- A host that turns name bytes into text performs a UTF-8 charset decode, never an escape-unescape: it never throws and never modifies the raw bytes; hosts whose text type requires valid encoding replace with U+FFFD.
-- Token content is raw bytes in every host.
-- A node address crosses as a wide integer in every host.
-- Sequences, mappings, and the empty value take each host's idiomatic types; the binding contracts name them.
-- Status codes, parser families, recovery modes, diagnostic kinds, recovery targets, resume sides, and the invalid-node sentinel cross as named values in every host, never as bare integers.
+### Names and values
 
-## Failures
+- Grammar names cross in one canonical form per host, with the raw-bytes form beside it. Token content is raw bytes. Name bytes decode as UTF-8 and the decode never throws and never alters the raw bytes: invalid sequences become U+FFFD.
+- Sequences, mappings and the empty value take each host's idiomatic types. Status codes, parser families, recovery modes, diagnostic kinds, recovery targets and resume sides are named values, never bare integers.
 
-- A failure signals to the caller as the host's failure type: a numeric code plus a frozen diagnostic snapshot, with its text fixed when the failure is created and structured detail in the snapshot.
-- Failures other than a missing artifact surface the underlying error unchanged.
-- Use after close signals a failure to the caller with an error idiomatic to the host, naming the closed object; the type each host uses is in its binding contract.
-- One stale-tree error per host, distinct from use after close, raised by every source that can find a handle's tree gone: the core's stale status on either door and a stale walk step. A refusal on the hook door raises exactly as on the session door; no hook read answers `None`/`null`/an empty value for a refusal. Each binding contract names the type.
-- Every refusal raises. A session-door read never answers an empty value or a zero for a refusal: `root_node()` returning the host empty value is the only "nothing here" answer, and `node_count` / `snapshot` / `last_input` / `last_position` with nothing published raise the stale-tree error. An empty value means really empty.
+### Building
 
-## Inputs and nodes
+- Every builder builds the parser library ReleaseFast by default, and accepts a Zig build mode (`Debug`, `ReleaseSafe`, `ReleaseFast`, `ReleaseSmall`) that it passes to zig as given.
+- Debug builds check every misuse, and a failed check aborts the process. Release builds skip every check inside the parser's per-byte loop. During hook dispatch they run a check only if it is a single comparison or load, or if omitting it could corrupt memory or leave bad state; a check whose absence merely crashes is skipped, since a crash fails loudly. Every other check runs in every build.
+- A hook installed later fires without a rebuild.
+- A `procedures.c` or `procedures.cpp` next to a grammar fails the build, naming the host file to use instead.
+- A builder checks every guard before it writes anything. Every generated file carries a marker banner, and a builder never overwrites a file without it.
 
-- Entries accept their host-idiomatic input forms and reject the rest at the earliest boundary the host offers — compile time where the type system catches it, otherwise call entry before the native crossing — with no silent coercion.
-- Message inputs accept text or raw bytes without silent re-encoding.
-- Handles come from sessions; a session method takes the host's node type and nothing else, because a raw address carries no generation to check.
-- Nodes expose their address through a named read-only accessor for display, never as an argument where a node is expected, and compare by owning session, core parse generation, plus address; the door a node was reached through is neither stored in it nor part of its identity.
-- Hosts may narrow object identity to the live generation, as the JavaScript binding does: one object per (session, generation, address) while the generation is live, and a fresh handle after it is superseded — value identity itself is unchanged.
-- A node handle is bound to the core's parse generation it was created in: reading through it once that generation is no longer live signals a failure to the caller, never a stale read.
-- No public validity probe: whether a handle is usable is answered by a real read, which raises. Asking separately would only report what the next real call reports anyway.
-- Node keying in collections follows each host's default semantics; the binding contracts spell it out.
-- Tree edits cross the door chosen when they are made: the parse's hook door inside a hook dispatch on the dispatching thread, the post-parse door everywhere else, for session methods and node sugar alike.
-- Parsing copies the input into session ownership, so the caller may reuse or release its own buffer afterward.
-- Interior NUL bytes are data, not terminators.
-- File paths with interior NUL bytes are rejected loudly at the boundary instead of truncated; each binding contract names the failure its host signals to the caller.
+## With the core
 
-## Builds
+The core is the single owner of validity, locking and publication. A binding translates; it never decides anything the core decides.
 
-- Every builder builds the parser library ReleaseFast by default and accepts a Zig build mode (`Debug`, `ReleaseSafe`, `ReleaseFast`, `ReleaseSmall`), passed to zig verbatim and forwarded only when the user chose one. Debug builds enable the runtime's misuse checks and a failed check aborts the process; release builds do not check. The one exception is the index and count of the tree-edit calls (insert children at, remove children at, remove siblings): they are range-checked in every build and an out-of-range value fails with the invalid-node error.
-- Every build links the host shim the generator writes (`--emit-host-procedures`; non-empty even when the grammar disables procedures), so a hook installed later fires without a rebuild.
-- A `procedures.c` / `procedures.cpp` next to a grammar is a fatal build error naming the host file to use instead.
-- Every generated file carries its marker banner, builders refuse to overwrite a file without it, and guards are checked before anything is written.
-- Generated code reports explicit errors, never `assert`, for control flow.
-- Library import writes nothing to stdout; a diagnostic goes to stderr only when no other channel carries it.
-
-## Examples and surface
-
-- One grammar per package directory (`kv/`, `json/`), with containers per language.
-- Example output is byte-identical across bindings, comparing stdout and stderr separately.
-- Comments in a binding never reference another binding — its files or its behavior; cross-binding guarantees live in this contract.
-- Only documented entries are public API.
-- Generated entries expose their surface through named exports.
-- Artifact paths are always explicit.
+- **Generations belong to the core.** The core stamps each parse with a generation. A binding keeps no generation counter and no liveness state, and counts no parses; a node merely carries the generation the core issued. It passes the node's generation on every call that reads or edits a node and lets the core refuse a generation that is not live with `stale tree`; the check runs in every build and a binding adds no liveness check of its own. An operation given nodes of different parses is refused by the core too, so no binding compares generations across nodes. It learns the published generation and root together from `galley_root_node`, and a running parse's generation from `galley_hook_generation`.
+- **Only a node and its generation cross.** A binding's public boundary never accepts a raw address, and nothing but a node (session, generation, address) is turned into a call.
+- **One capability, two paths.** Inside a hook dispatch, on the dispatching thread, a binding calls the `galley_hook_*` family over the door `galley_procedure_door` gives the running parse; everywhere else it calls the `galley_node_*`, `galley_tree_*` and `galley_walk_next` family. The families have one shape, one set of statuses and one set of rules, so a binding implements each capability once, with the path as data (the handle and which family to call).
+- **Statuses are never absorbed.** A call returns its answer when it is `>= 0` and a status when it is negative. Every status becomes the host's failure of that kind (`session in use`, `stale tree`, `invalid node`, and the rest), and none becomes an empty or zero answer. The core's "no node" and "no variable" sentinels are non-negative (`INT64_MAX`) and are mapped at the public boundary as the absence rules say.
+- **The core keeps no walker.** A binding owns a small cursor and calls `galley_walk_next` once per step, passing the cursor, which holds the generation it expects. Skipping a subtree is a write to the cursor.
+- **Locking belongs to the core.** A binding takes no lock of its own around session state and does not hold a host-wide lock across a parse, so parses run in parallel. It relies on the core's `session in use` refusal for every overlapping use, hook changes and message overrides included, and does not pre-check.
+- **Hooks cross by name and only when enabled.** A binding validates hook names against the library's own list (`galley_hooks_count`, `galley_hooks_name_*`) and hands the library the enabled set through `galley_session_set_hooks` whenever a session's hooks change. Every hook starts disabled, so an uninstalled hook never calls into the host.
+- **A hook failure crosses as a status.** An exception never escapes an upcall into the core. The binding catches it at the upcall, keeps it, and returns the hook-failure status; the core aborts the parse with that status, and the binding raises its failure from `parse` with the kept exception as the cause.
+- **Hook arguments are borrowed.** The core checks every `galley_procedure_*` call, and refuses one made with the arguments of a hook that has returned; a binding turns that refusal into the host's failure and keeps no expiry flag of its own. Text and input pointers the core returns are borrowed too: valid until the next parse, and on the hook path only until the hook returns, so a binding copies them out.
+- **The core copies input.** A binding may release its buffer when the parse call returns.
