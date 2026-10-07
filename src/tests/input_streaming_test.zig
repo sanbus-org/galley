@@ -242,6 +242,213 @@ test "input streaming invalid indentation returns a structured diagnostic" {
     try std.testing.expectError(parser.ParseError.IndentationError, parseFile(invalid));
 }
 
+test "indentation lexing ignores blank lines inside a block" {
+    if (!test_options.indentation) return error.SkipZigTest;
+
+    // A blank line between two rows of one block must not close and reopen
+    // the block: the rows stay one `new_line` apart. The grammar has no
+    // close/reopen acceptance, so a successful parse is the assertion.
+    const input = "Rule:\n  - field: int\n\n  - other: int\n";
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    defer parsed.deinit();
+    try expectParsedAll(parsed.result, input);
+}
+
+test "indentation lexing ignores whitespace-only lines of any width" {
+    if (!test_options.indentation) return error.SkipZigTest;
+
+    // The middle line has 3 spaces against a detected width of 2. As a
+    // content line that is an IndentationError; as a blank line it is
+    // ignored before the divisibility check runs.
+    const input = "Rule:\n  - field: int\n   \n  - other: int\n";
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    defer parsed.deinit();
+    try expectParsedAll(parsed.result, input);
+}
+
+test "trailing blank lines still close open blocks at end of input" {
+    if (!test_options.indentation) return error.SkipZigTest;
+
+    // The blank line is skipped, but the boundary it leaves behind — the
+    // file's final newline meeting end of input — still closes the block.
+    const input = "Rule:\n  - field: int\n\n";
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    defer parsed.deinit();
+    try expectParsedAll(parsed.result, input);
+}
+
+test "indentation diagnostics count blank lines above the error" {
+    if (!test_options.indentation) return error.SkipZigTest;
+
+    // Line 3 is blank, so the broken line is source line 4.
+    const invalid = "Rule:\n  - field: int\n\n   - broken: int\n";
+
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer session.deinit();
+    try std.testing.expectError(
+        parser.ParseError.IndentationError,
+        session.parseBytes(invalid, "invalid-with-blank"),
+    );
+    var read_guard = try session.readLatest();
+    defer read_guard.deinit();
+    const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
+    const indentation = switch (diagnostic) {
+        .indentation => |indentation| indentation,
+        .syntax, .semantic, .hook => return error.ExpectedIndentationDiagnostic,
+    };
+    try std.testing.expectEqual(@as(u32, 4), indentation.line);
+    try std.testing.expectEqual(@as(u16, 3), indentation.spaces);
+    try std.testing.expectEqual(@as(u16, 2), indentation.indentation_width);
+}
+
+test "indentation lexing treats a tab-only line as content" {
+    if (!test_options.indentation) return error.SkipZigTest;
+
+    // A tab is not a space, so a tab-only line is not a blank line: it sits
+    // at level 0 (closing the block), the tab is tokenized, and no rule
+    // accepts a lone tab between rules. Skipping it as a blank would parse.
+    const input = "Rule:\n  - field: int\n\t\n  - other: int\n";
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer session.deinit();
+    try std.testing.expectError(
+        parser.ParseError.SyntaxError,
+        session.parseBytes(input, "tab-only-line"),
+    );
+}
+
+test "blank line at a streaming chunk boundary is still skipped" {
+    if (!test_options.streaming_enabled or !test_options.indentation) return error.SkipZigTest;
+
+    // Land a blank line exactly on the chunk seam: its two spaces are the
+    // last bytes of the first window and its newline the first byte of the
+    // next, so the blank check peeks a byte the loaded window does not yet
+    // hold. Misreading it turns the blank into a same-level content line and
+    // inserts a second `new_line` between rows, which the grammar rejects.
+    const name_prefix = "  - ";
+    const name_suffix = ": int\n";
+    const row = name_prefix ++ "f" ++ name_suffix;
+    const head = "Rule:\n";
+    const blank = "  \n";
+    const tail = name_prefix ++ "tail" ++ name_suffix;
+
+    const prefix_len = parser.read_chunk_size - 2;
+    const rows_len = prefix_len - head.len;
+    const full_rows = rows_len / row.len;
+    const remainder = rows_len % row.len;
+    const normal_rows = full_rows - @intFromBool(remainder != 0);
+    const wide_name_len = (row.len - name_prefix.len - name_suffix.len) + remainder;
+
+    const input = try std.testing.allocator.alloc(u8, prefix_len + blank.len + tail.len);
+    defer std.testing.allocator.free(input);
+
+    var offset: usize = 0;
+    @memcpy(input[offset..][0..head.len], head);
+    offset += head.len;
+    for (0..normal_rows) |_| {
+        @memcpy(input[offset..][0..row.len], row);
+        offset += row.len;
+    }
+    if (remainder != 0) {
+        @memcpy(input[offset..][0..name_prefix.len], name_prefix);
+        offset += name_prefix.len;
+        @memset(input[offset..][0..wide_name_len], 'z');
+        offset += wide_name_len;
+        @memcpy(input[offset..][0..name_suffix.len], name_suffix);
+        offset += name_suffix.len;
+    }
+    try std.testing.expectEqual(prefix_len, offset);
+    @memcpy(input[offset..][0..blank.len], blank);
+    offset += blank.len;
+    @memcpy(input[offset..][0..tail.len], tail);
+    offset += tail.len;
+    try std.testing.expectEqual(input.len, offset);
+
+    // The blank's newline sits at the seam, outside the first window.
+    try std.testing.expectEqual('\n', input[parser.read_chunk_size]);
+
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    defer parsed.deinit();
+    try expectParsedAll(parsed.result, input);
+}
+
+/// Parse `with_blanks` and `without_blanks` — the same source with and
+/// without its blank lines — and require recovery to reach the same result:
+/// the same number of syntax errors, each at the same column on the same
+/// unexpected token. Only line numbers may differ, and then only by exactly
+/// `blank_lines` for diagnostics after the first: blank lines are skipped
+/// while lexing but still counted as lines, and in these inputs the first
+/// diagnostic sits above every blank line.
+fn expectRecoveryAgrees(
+    with_blanks: []const u8,
+    without_blanks: []const u8,
+    blank_lines: u32,
+) !void {
+    var with_session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer with_session.deinit();
+    try std.testing.expectError(
+        parser.ParseError.SyntaxError,
+        with_session.parseBytes(with_blanks, "with-blanks"),
+    );
+    var with_guard = try with_session.readLatest();
+    defer with_guard.deinit();
+
+    var without_session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer without_session.deinit();
+    try std.testing.expectError(
+        parser.ParseError.SyntaxError,
+        without_session.parseBytes(without_blanks, "without-blanks"),
+    );
+    var without_guard = try without_session.readLatest();
+    defer without_guard.deinit();
+
+    const without_errors = without_guard.syntaxErrorCount();
+    try std.testing.expect(without_errors >= 1);
+    try std.testing.expectEqual(without_errors, with_guard.syntaxErrorCount());
+
+    const with_diagnostics = with_guard.recordedDiagnostics();
+    const without_diagnostics = without_guard.recordedDiagnostics();
+    try std.testing.expectEqual(without_diagnostics.len, with_diagnostics.len);
+    for (without_diagnostics, with_diagnostics, 0..) |without_diagnostic, with_diagnostic, index| {
+        const without_syntax = switch (without_diagnostic) {
+            .syntax => |syntax| syntax,
+            else => return error.ExpectedSyntaxDiagnostic,
+        };
+        const with_syntax = switch (with_diagnostic) {
+            .syntax => |syntax| syntax,
+            else => return error.ExpectedSyntaxDiagnostic,
+        };
+        const line_offset: u32 = if (index == 0) 0 else blank_lines;
+        try std.testing.expectEqual(without_syntax.line + line_offset, with_syntax.line);
+        try std.testing.expectEqual(without_syntax.column, with_syntax.column);
+        try std.testing.expectEqualStrings(
+            without_syntax.unexpected_token,
+            with_syntax.unexpected_token,
+        );
+    }
+}
+
+test "recovery lookahead skips blank lines like the lexer" {
+    if (!test_options.indentation_recovery) return error.SkipZigTest;
+
+    // A syntax error at level 0 with blank lines and a further block after
+    // it: recovery reaches the same result with and without the blanks.
+    try expectRecoveryAgrees(
+        "Rule:\n  - field: int\njunk\n\n\nNext:\n  - other: int\n",
+        "Rule:\n  - field: int\njunk\nNext:\n  - other: int\n",
+        2,
+    );
+
+    // A blank line inside a block: without the skip the lookahead would
+    // synthesize a block_end/block_start pair where the lexer emits a
+    // single new_line, so recovery would resume elsewhere and record a
+    // different set of errors.
+    try expectRecoveryAgrees(
+        "Rule:\n  - field: int\n  junk\n\n  - other: int\n",
+        "Rule:\n  - field: int\n  junk\n  - other: int\n",
+        1,
+    );
+}
+
 test "input streaming recovery handles EOF without reading beyond the window" {
     if (!test_options.recovery_eof) return error.SkipZigTest;
 

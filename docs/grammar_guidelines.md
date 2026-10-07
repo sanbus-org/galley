@@ -187,8 +187,9 @@ Galley's `languages/indentation/ll.grm` is a maintained example: blocks are writ
 - Only literal ASCII spaces count. Leading tabs are not indentation; a line
   that begins with a tab is treated as being at level 0, and the tab itself is
   tokenized normally.
-- `indent_width` snaps to the leading-space count of the first line that follows
-  a newline. Every later line's leading spaces must be an integer multiple of
+- `indent_width` snaps to the leading-space count of the first line with
+  content that follows a newline (blank lines never snap it). Every later
+  line's leading spaces must be an integer multiple of
   that width; otherwise parsing fails with a structured `IndentationError`
   ("N spaces are not divisible by the detected indentation width of M").
 - Each line's indentation level is `leading_spaces / indent_width`. Compared
@@ -198,10 +199,13 @@ Galley's `languages/indentation/ll.grm` is a maintained example: blocks are writ
   - `k` levels shallower → `k` `block_end` tokens.
 
   The leading spaces themselves are consumed and never appear as tokens.
-- A blank line (zero leading spaces) closes every open block with one
-  `block_end` each, snapping the level to 0; the next indented line re-opens the
-  blocks with `block_start` tokens. So blocks that must survive blank lines
-  cannot be written directly — the grammar must accept the close/reopen pair.
+- A blank line — spaces and nothing else, then `\n` — is ignored: it emits no
+  tokens, never changes the level, never snaps `indent_width`, and cannot
+  raise an `IndentationError`. The next line with content decides the level,
+  so blocks survive blank lines without close/reopen pairs. Only spaces count:
+  a line that holds a tab is not blank, so it stays content (level 0, tab
+  tokenized). What follows the file's final newline is end of input, not a
+  blank line: that boundary still closes the open blocks.
 - End of input emits no implicit closing tokens. A grammar that expects a block
   to be closed must match the trailing `block_end`s itself.
 

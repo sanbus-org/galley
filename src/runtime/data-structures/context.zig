@@ -1156,6 +1156,70 @@ pub const Context = struct {
         return indent;
     }
 
+    /// The head of the line that opens at the cursor's newline: its leading
+    /// spaces, the blank lines crossed before it, and the offset of that
+    /// newline. A blank line is spaces then `\n` — it emits no token, never
+    /// moves the indentation level, never snaps `indent_width` and cannot
+    /// raise an indentation diagnostic. What follows the file's final newline
+    /// is end of input, not a blank line, so that boundary still closes open
+    /// blocks.
+    const LineHead = struct {
+        blank_lines: u32,
+        spaces: u16,
+        newline_offset: usize,
+    };
+
+    /// The lexer's live input cursor: stepping moves `seek` through the
+    /// loaded window and refills it at the edge.
+    const LexerCursor = struct {
+        context: *Self,
+
+        inline fn peek(self: @This()) u8 {
+            return self.context.chunk_buffer[self.context.seek];
+        }
+        inline fn step(self: @This()) void {
+            self.context.advanceInput();
+        }
+        inline fn offset(self: @This()) usize {
+            return self.context.read_bytes + self.context.seek;
+        }
+    };
+
+    /// A plain position inside a buffer, for scans that read without
+    /// moving the lexer.
+    const BufferCursor = struct {
+        buffer: []const u8,
+        position: *usize,
+
+        inline fn peek(self: @This()) u8 {
+            return self.buffer[self.position.*];
+        }
+        inline fn step(self: @This()) void {
+            self.position.* += 1;
+        }
+        inline fn offset(self: @This()) usize {
+            return self.position.*;
+        }
+    };
+
+    /// Scans from the newline at `cursor` across the blank lines it opens and
+    /// stops at the first content byte.
+    inline fn scanLineHead(comptime Cursor: type, cursor: Cursor) LineHead {
+        var line_head = LineHead{ .blank_lines = 0, .spaces = 0, .newline_offset = 0 };
+        while (true) {
+            line_head.newline_offset = cursor.offset();
+            cursor.step();
+            line_head.spaces = 0;
+            while (cursor.peek() == ' ') {
+                cursor.step();
+                line_head.spaces += 1;
+            }
+            if (cursor.peek() != '\n') break;
+            line_head.blank_lines += 1;
+        }
+        return line_head;
+    }
+
     pub fn recoveryLookahead(self: *Self) ![]const u8 {
         const required = self.runtime().recovery_window +| root.parser.longest_terminal_length;
 
@@ -1186,12 +1250,10 @@ pub const Context = struct {
         var indent_width = self.indent_width;
         while (output.items.len < required) {
             while (self.chunk_buffer[seek] == '\n') {
-                seek += 1;
-                var line_spaces: u16 = 0;
-                while (self.chunk_buffer[seek] == ' ') {
-                    seek += 1;
-                    line_spaces += 1;
-                }
+                const line_spaces = scanLineHead(
+                    BufferCursor,
+                    .{ .buffer = self.chunk_buffer, .position = &seek },
+                ).spaces;
 
                 if (indent_width == 0) {
                     indent_width = line_spaces;
@@ -1376,14 +1438,12 @@ pub const Context = struct {
         if (comptime root.config.indentation_syntax) {
             const chunk_buffer = self.chunk_buffer;
             while (chunk_buffer[self.seek] == '\n') {
-                const boundary_source = self.read_bytes + self.seek;
-                self.advanceInput();
-                var line_spaces: u16 = 0;
-
-                while (chunk_buffer[self.seek] == ' ') {
-                    self.advanceInput();
-                    line_spaces += 1;
-                }
+                const line_head = scanLineHead(LexerCursor, .{ .context = self });
+                const boundary_source = line_head.newline_offset;
+                // A blank line has no token byte to carry a `line_offsets`
+                // entry, so it is counted as it is skipped.
+                if (comptime root.position_tracking_enabled) self.line += line_head.blank_lines;
+                const line_spaces = line_head.spaces;
 
                 if (self.indent_width == 0) {
                     self.indent_width = line_spaces;
