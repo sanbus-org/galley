@@ -1,6 +1,6 @@
 # Galley Java example
 
-Requires `java` ≥ 22, `javac`, `zig` 0.16, and `git` (only the fetch script uses `git`; the build itself needs `GALLEY_CHECKOUT`).
+Requires `java` ≥ 22, `javac`, `zig` 0.17, and `git` (only the fetch script uses `git`; the build itself needs `GALLEY_CHECKOUT`).
 
 ```sh
 # from repo root

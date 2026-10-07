@@ -894,7 +894,7 @@ fn diagnosticMessageCore(
         transient = rendered;
         break :blk rendered;
     };
-    return allocator.dupeZ(u8, source);
+    return allocator.dupeSentinel(u8, source, 0);
 }
 
 fn diagnosticMessageAnsiCore(
@@ -905,7 +905,7 @@ fn diagnosticMessageAnsiCore(
     defer if (transient) |rendered| allocator.free(rendered);
     const rendered = root.renderParseDiagnostic(allocator, diagnostic, .ansi) catch return error.OutOfMemory;
     transient = rendered;
-    return allocator.dupeZ(u8, rendered);
+    return allocator.dupeSentinel(u8, rendered, 0);
 }
 
 // --- recorded diagnostics ------------------------------------------------
@@ -1517,7 +1517,7 @@ export fn galley_recorded_diagnostic_message(
     const diagnostic = recordedDiagnostic(&sessionDoor(embedded), diag_index) orelse return galley_error_no_diagnostic;
     const arena = embedded.session.arena.allocator();
     const rendered = root.renderParseDiagnostic(arena, diagnostic, .plain) catch return galley_error_out_of_memory;
-    const z = arena.dupeZ(u8, rendered) catch return galley_error_out_of_memory;
+    const z = arena.dupeSentinel(u8, rendered, 0) catch return galley_error_out_of_memory;
     out.?.* = z.ptr;
     return galley_ok;
 }

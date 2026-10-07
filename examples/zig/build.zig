@@ -11,12 +11,12 @@ pub fn build(b: *std.Build) void {
     });
 
     const generate_demo = b.addRunArtifact(galley.artifact("galley"));
-    generate_demo.addArg(b.pathFromRoot("."));
+    generate_demo.addFileArg(b.path("."));
     generate_demo.addFileInput(b.path("ll.grm"));
     generate_demo.addFileInput(b.path("config.zig"));
 
     const generate_benchmark = b.addRunArtifact(galley.artifact("galley"));
-    generate_benchmark.addArg(b.pathFromRoot("benchmark"));
+    generate_benchmark.addFileArg(b.path("benchmark"));
     generate_benchmark.addFileInput(b.path("benchmark/ll.grm"));
     generate_benchmark.addFileInput(b.path("benchmark/config.zig"));
 
@@ -41,9 +41,7 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(demo);
 
     const run_demo = b.addRunArtifact(demo);
-    if (b.args) |args| {
-        run_demo.addArgs(args);
-    }
+    run_demo.addPassthruArgs();
     const run_step = b.step("run", "Run the key/value demo");
     run_step.dependOn(&run_demo.step);
 
@@ -68,9 +66,7 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(benchmark);
 
     const run_benchmark = b.addRunArtifact(benchmark);
-    if (b.args) |args| {
-        run_benchmark.addArgs(args);
-    }
+    run_benchmark.addPassthruArgs();
     const run_benchmark_step = b.step("run-benchmark", "Run the JSON throughput benchmark");
     run_benchmark_step.dependOn(&run_benchmark.step);
 }

@@ -40,7 +40,7 @@ For a local, up-to-date comparison against third-party parsers see [BENCHMARKS.m
 
 ### Prerequisites
 
-* [Zig 0.16+](https://ziglang.org/download/) — Native compiler toolchain
+* [Zig 0.17+](https://ziglang.org/download/) — Native compiler toolchain
 
 ### Generate and Benchmark a Bundled Parser
 

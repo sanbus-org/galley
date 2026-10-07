@@ -755,11 +755,11 @@ const Generator = struct {
                 \\{s}const frame = try semantic_allocator.create(SemanticReductionFrame);
                 \\{s}frame.* = .{{
                 \\{s}    .node = .{{ .text_start = context.currentTokenSourceOffset(), .variable = {d}, .payload = .{{}} }},
-                \\{s}    .children = .{{null}} ** {d},
+                \\{s}    .children = @splat(null),
                 \\{s}}};
                 \\{s}try frames.append(semantic_allocator, frame);
                 \\
-            , .{ indent, indent, indent, self.variableIndex(params.variable), indent, self.expandedSlotCount(params.rule), indent, indent });
+            , .{ indent, indent, indent, self.variableIndex(params.variable), indent, indent, indent });
             const skip_ast_for_children = params.skip_ast_construction or !self.symbols.items[params.variable].ast_enabled;
             for (params.rule.rhs.items[0..params.self_index], 0..) |symbol_index, child_index| {
                 try self.emitChildParseLine(writer, symbol_index, params.variable, params.rule, child_index, "frame.node", "frame.children", indent, skip_ast_for_children, child_index);
@@ -1089,7 +1089,7 @@ const Generator = struct {
 
         if (rule.rhs.items.len != 0) {
             if (!self.options.with_ast and parent_returns_node and self.ruleHasNodeChildren(rule, skip_ast_construction)) {
-                try writer.print("{s}var child_nodes: [{d}]?data_structures.Node = .{{null}} ** {d};\n", .{ indent, self.expandedSlotCount(rule), self.expandedSlotCount(rule) });
+                try writer.print("{s}var child_nodes: [{d}]?data_structures.Node = @splat(null);\n", .{ indent, self.expandedSlotCount(rule) });
             }
             if (captures_root) {
                 try writer.print("{s}var root_node: root.data_structures.VariableResult = {s};\n", .{ indent, self.missingNode() });
@@ -1504,7 +1504,7 @@ const Generator = struct {
         if (include_outcome and self.options.with_ast) {
             try writer.print(
                 \\
-                \\{s}if (comptime builtin.mode == .Debug) {{
+                \\{s}if (comptime builtin.mode == .debug) {{
                 \\{s}    if (context.verbosityLevel() > 2) {{
                 \\{s}        std.debug.print("Procedure outcome for
             , .{ indent, indent, indent });
@@ -1531,7 +1531,7 @@ const Generator = struct {
 
     fn emitDebugRuleExpansion(self: *Generator, writer: *std.Io.Writer, rule: Rule, parent_variable: usize, indent: []const u8) !void {
         try writer.print(
-            \\{s}if (comptime builtin.mode == .Debug) {{
+            \\{s}if (comptime builtin.mode == .debug) {{
             \\{s}    if (context.verbosityLevel() > 1) {{
             \\{s}        std.debug.print("Rule expansion:
         , .{ indent, indent, indent });

@@ -433,7 +433,7 @@ const Generator = struct {
         switch (action.kind) {
             .accept => {
                 try writer.print(
-                    \\{s}if (comptime builtin.mode == .Debug) {{
+                    \\{s}if (comptime builtin.mode == .debug) {{
                     \\{s}    if (context.verbosityLevel() > 1) {{
                     \\{s}        std.debug.print("Accept!\n", .{{}});
                     \\{s}    }}
@@ -481,7 +481,7 @@ const Generator = struct {
                     try writer.print("{s}try stack.append(.{{ .start_pos = start_pos }});\n", .{indent});
                 }
                 try writer.print(
-                    \\{s}if (comptime builtin.mode == .Debug) {{
+                    \\{s}if (comptime builtin.mode == .debug) {{
                     \\{s}    if (context.verbosityLevel() > 1) {{
                     \\{s}        std.debug.print("Shift: matched '{{s}}', transitioning to state_{d}\n", .{{
                 , .{ indent, indent, indent, action.state });

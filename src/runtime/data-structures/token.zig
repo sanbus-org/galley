@@ -7,7 +7,7 @@ fn ByteAlignedUnsigned(comptime maximum: usize) type {
     while (maximum > (@as(comptime_int, 1) << @intCast(bits)) - 1) {
         bits += 8;
     }
-    return std.meta.Int(.unsigned, bits);
+    return @Int(.unsigned, bits);
 }
 
 pub const Token = struct {

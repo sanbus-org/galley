@@ -22,7 +22,7 @@ jobs:
       - name: Install Zig
         uses: mlugg/setup-zig@v2
         with:
-          version: 0.16.0
+          version: 0.17.0
 
       - name: Verify package consumer
         run: zig build -j1 test-package-consumer --summary all
@@ -69,7 +69,7 @@ jobs:
       - name: Install Zig
         uses: mlugg/setup-zig@v2
         with:
-          version: 0.16.0
+          version: 0.17.0
           # Matrix legs share nothing else: isolate their Zig caches.
           cache-key: ${{ matrix.case }}
 
@@ -106,7 +106,7 @@ jobs:
       - name: Install Zig
         uses: mlugg/setup-zig@v2
         with:
-          version: 0.16.0
+          version: 0.17.0
           # Matrix legs share nothing else: isolate their Zig caches.
           cache-key: ${{ matrix.language }}
 
@@ -455,7 +455,7 @@ jobs:
       - name: Install Zig
         uses: mlugg/setup-zig@v2
         with:
-          version: 0.16.0
+          version: 0.17.0
 
       - name: Install Go
         uses: actions/setup-go@v6
@@ -639,7 +639,7 @@ jobs:
           cp examples/c/ll.grm "$work/lr.grm"
           cp examples/c/config.zig examples/c/procedures.c "$work/"
           ./zig-out/bin/galley --parser-type lr --emit-metadata "$work" >/dev/null
-          zig build --build-file bindings/c/consumer/build.zig \
+          zig build --build-file "$PWD/bindings/c/consumer/build.zig" \
             "-Dparser-source=$work/_lr-parser.zig" \
             -Dlib-name=keyvalue-lr -Doutput=libkeyvalue-lr.so \
             --prefix "$work" install
@@ -764,7 +764,7 @@ jobs:
       - name: Install Zig
         uses: mlugg/setup-zig@v2
         with:
-          version: 0.16.0
+          version: 0.17.0
 
       - name: Install Go
         uses: actions/setup-go@v6
@@ -848,7 +848,7 @@ jobs:
       - name: Install Zig
         uses: mlugg/setup-zig@v2
         with:
-          version: 0.16.0
+          version: 0.17.0
 
       - name: Install Node
         uses: actions/setup-node@v6
@@ -1025,7 +1025,7 @@ jobs:
       - name: Install Zig
         uses: mlugg/setup-zig@v2
         with:
-          version: 0.16.0
+          version: 0.17.0
 
       - name: Install Node
         uses: actions/setup-node@v6

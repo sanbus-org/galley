@@ -5,7 +5,7 @@ Native runtime of the same key/value demo and JSON throughput program as
 `--bootstrap-zig-project` writes a stub runner for *your* grammar and is not a
 second API.
 
-Requires `zig` 0.16+. This directory is meant to be run from a Galley checkout
+Requires `zig` 0.17+. This directory is meant to be run from a Galley checkout
 (the `build.zig.zon` path dependency points at `../..`). Copied out of the
 repository, change that dependency to a `url` and `hash`.
 

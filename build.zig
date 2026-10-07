@@ -20,15 +20,16 @@ pub fn build(b: *std.Build) !void {
         "test-package-consumer",
         "Build and run an external project using galley_generator",
     );
+    // Run from the consumer's directory: `zig build --build-file` from
+    // outside the build root mis-resolves dependency package paths in
+    // configure dependencies (ziglang/zig PathDep double-prefix bug).
     const package_consumer = b.addSystemCommand(&.{
         b.graph.zig_exe,
         "build",
-        "--build-file",
-        b.pathFromRoot("tests/package-consumer/build.zig"),
     });
-    if (b.graph.max_jobs) |max_jobs| {
-        package_consumer.addArg(b.fmt("-j{d}", .{max_jobs}));
-    }
+    package_consumer.setCwd(b.path("tests/package-consumer"));
+    // 0.17 dropped b.graph.max_jobs: the nested build no longer inherits
+    // the outer -j limit, so `-j1` here serializes only this build.
     package_consumer_step.dependOn(&package_consumer.step);
 
     const test_filters = b.option([]const []const u8, "test-filter", "Select tests by suite:, case:, and name:") orelse &.{};
@@ -66,12 +67,18 @@ pub fn build(b: *std.Build) !void {
         generator.ast_memory_benchmark,
     );
 
-    var dir = try b.build_root.handle.openDir(b.graph.io, common.languages_path, .{ .iterate = true });
+    var dir = try b.root.openDir(b.graph.io, common.languages_path, .{ .iterate = true });
     defer dir.close(b.graph.io);
+    // Language discovery observes directory entry names at configure time.
+    b.dependOnDirectoryContents(b.path(common.languages_path));
 
     var walker = try dir.walk(b.allocator);
     defer walker.deinit();
     while (try walker.next(b.graph.io)) |entry| {
+        if (entry.kind == .directory) {
+            // The walk descends into this directory, observing its entries.
+            b.dependOnDirectoryContents(b.path(b.pathJoin(&.{ common.languages_path, entry.path })));
+        }
         if (entry.kind != .directory and entry.kind != .sym_link) continue;
 
         inline for ([_][]const u8{ "ll", "lr" }) |parser_type| {

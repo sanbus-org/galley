@@ -97,7 +97,7 @@ pub fn StaticIntMap(comptime K: type, comptime V: type) type {
         entries: []const Entry,
 
         pub fn initComptime(comptime kvs: []const Entry) Self {
-            comptime if (builtin.mode == .ReleaseSafe) {
+            comptime if (builtin.mode == .safe) {
                 var i: usize = 0;
                 while (i + 1 < kvs.len) : (i += 1) {
                     if (kvs[i][0] >= kvs[i + 1][0]) {
@@ -147,7 +147,7 @@ pub fn StaticStringMap(comptime V: type) type {
             var min: usize = std.math.maxInt(usize);
             var max: usize = 0;
 
-            comptime if (builtin.mode == .ReleaseSafe) {
+            comptime if (builtin.mode == .safe) {
                 var i: usize = 0;
                 while (i + 1 < kvs.len) : (i += 1) {
                     if (std.mem.order(u8, kvs[i][0], kvs[i + 1][0]) != .lt) {

@@ -28,7 +28,7 @@
  * generator's watch loop and never compile.
  *
  * Environment: `ZIG_EXECUTABLE` names an explicit zig (else `zig` on
- * `PATH`, else `uvx` provisioning zig 0.16.0); `GALLEY_CLI` names an
+ * `PATH`, else `uvx` provisioning zig 0.17.0); `GALLEY_CLI` names an
  * explicit generator binary. Generating the parser needs no checkout
  * (prebuilt CLI from the installed platform package, else `GALLEY_CLI`,
  * else a `GALLEY_CHECKOUT` bootstrap); compiling it needs no checkout

@@ -38,7 +38,7 @@
  * language directory.
  *
  * Environment: `ZIG_EXECUTABLE` names an explicit zig; else `zig` on
- * `PATH`; else `uvx` provisioning the pinned ziglang (0.16.0). Neither
+ * `PATH`; else `uvx` provisioning the pinned ziglang (0.17.0). Neither
  * installed is a loud error naming both install pages. Compiling the
  * generated parser needs no checkout: the published core package carries
  * `compile-kit/` (the consumer build plus every source it reads), while
@@ -136,7 +136,7 @@ function probe(command, argumentList) {
 /**
  * The zig command prefix. Explicit `ZIG_EXECUTABLE` wins; else `zig` on
  * `PATH`; else `uvx` provisioning the pinned ziglang. Anything else names
- * both installs loudly: zig 0.16.0 on PATH, or uvx so this tool provisions
+ * both installs loudly: zig 0.17.0 on PATH, or uvx so this tool provisions
  * zig itself.
  */
 function zigCommand() {
@@ -145,14 +145,14 @@ function zigCommand() {
   if (explicit) return (cachedZigCommand = [explicit]);
   if (probe("zig", ["version"])) return (cachedZigCommand = ["zig"]);
   if (probe("uvx", ["--version"])) {
-    console.error("galley-bindings: no zig on PATH; provisioning zig 0.16.0 via uvx");
-    return (cachedZigCommand = ["uvx", "--from", "ziglang==0.16.0", "python-zig"]);
+    console.error("galley-bindings: no zig on PATH; provisioning zig 0.17.0 via uvx");
+    return (cachedZigCommand = ["uvx", "--from", "ziglang==0.17.0", "python-zig"]);
   }
   fatal(
-    "need zig to compile the generated parser: install zig 0.16.0 and put it on PATH " +
+    "need zig to compile the generated parser: install zig 0.17.0 and put it on PATH " +
       "(https://ziglang.org/learn/getting-started/) " +
       "or install uvx (https://docs.astral.sh/uv/getting-started/installation/) " +
-      "and this tool provisions zig 0.16.0 itself via `uvx --from ziglang==0.16.0 python-zig`.",
+      "and this tool provisions zig 0.17.0 itself via `uvx --from ziglang==0.17.0 python-zig`.",
   );
 }
 

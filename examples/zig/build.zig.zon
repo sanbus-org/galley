@@ -2,7 +2,7 @@
     .name = .galley_zig_example,
     .version = "0.0.0",
     .fingerprint = 0x11e1d02da80d49d,
-    .minimum_zig_version = "0.16.0",
+    .minimum_zig_version = "0.17.0",
     .dependencies = .{
         .galley = .{
             .path = "../..",

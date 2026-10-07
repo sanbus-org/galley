@@ -119,11 +119,11 @@ test "protected call restores signal handlers and alternate stack" {
 
     try std.testing.expectEqual(actionHandlerAddress(&sigsegv_before), actionHandlerAddress(&sigsegv_after));
     try std.testing.expectEqual(actionHandlerAddress(&sigbus_before), actionHandlerAddress(&sigbus_after));
-    try std.testing.expectEqual(sigsegv_before.sa_flags, sigsegv_after.sa_flags);
-    try std.testing.expectEqual(sigbus_before.sa_flags, sigbus_after.sa_flags);
-    try std.testing.expectEqual(alternate_stack_before.ss_sp, alternate_stack_after.ss_sp);
-    try std.testing.expectEqual(alternate_stack_before.ss_size, alternate_stack_after.ss_size);
-    try std.testing.expectEqual(alternate_stack_before.ss_flags, alternate_stack_after.ss_flags);
+    try std.testing.expectEqual(sigsegv_before.flags, sigsegv_after.flags);
+    try std.testing.expectEqual(sigbus_before.flags, sigbus_after.flags);
+    try std.testing.expectEqual(alternate_stack_before.sp, alternate_stack_after.sp);
+    try std.testing.expectEqual(alternate_stack_before.size, alternate_stack_after.size);
+    try std.testing.expectEqual(alternate_stack_before.flags, alternate_stack_after.flags);
 }
 
 test "protected call converts a real guard-page fault to the overflow error" {
@@ -157,8 +157,8 @@ fn expectUnrelatedFaultChained() !void {
     var previous: c.struct_sigaction = undefined;
     var action = std.mem.zeroes(c.struct_sigaction);
     signals.Signals.setSiginfoHandler(&action, TestCallbacks.recordSignal);
-    try std.testing.expectEqual(@as(c_int, 0), c.sigemptyset(&action.sa_mask));
-    action.sa_flags = c.SA_SIGINFO;
+    try std.testing.expectEqual(@as(c_int, 0), c.sigemptyset(&action.mask));
+    action.flags = c.SA_SIGINFO;
     try std.testing.expectEqual(@as(c_int, 0), c.sigaction(c.SIGSEGV, &action, &previous));
     defer _ = c.sigaction(c.SIGSEGV, &previous, null);
 
@@ -236,17 +236,13 @@ const TestCallbacks = if (is_supported) struct {
 } else struct {};
 
 fn actionHandlerAddress(action: *const signals.Signals.c.struct_sigaction) usize {
-    if ((action.sa_flags & signals.Signals.c.SA_SIGINFO) != 0) {
-        const handler = if (comptime builtin.target.os.tag == .macos)
-            action.__sigaction_u.__sa_sigaction
-        else
-            action.__sigaction_handler.sa_sigaction;
+    // The handler union and its members carry the same names on every
+    // supported libc (std.c.Sigaction), so no per-platform probing.
+    if ((action.flags & signals.Signals.c.SA_SIGINFO) != 0) {
+        const handler = action.handler.sigaction;
         return if (handler) |function| @intFromPtr(function) else 0;
     }
-    const handler = if (comptime builtin.target.os.tag == .macos)
-        action.__sigaction_u.__sa_handler
-    else
-        action.__sigaction_handler.sa_handler;
+    const handler = action.handler.handler;
     return if (handler) |function| @intFromPtr(function) else 0;
 }
 
@@ -374,18 +370,18 @@ test "stack overflow diagnostic captures parser location and token" {
         context.token.len = 2;
         break :token "45";
     };
-    if (comptime builtin.mode != .ReleaseFast) {
+    if (comptime builtin.mode != .fast) {
         context.line = 7;
         context.column = 9;
     }
 
     const diagnostic = stackOverflowDiagnostic(&context);
     try std.testing.expectEqual(
-        @as(u32, if (builtin.mode != .ReleaseFast) 7 else 0),
+        @as(u32, if (builtin.mode != .fast) 7 else 0),
         diagnostic.line,
     );
     try std.testing.expectEqual(
-        @as(u32, if (builtin.mode != .ReleaseFast) 9 else 0),
+        @as(u32, if (builtin.mode != .fast) 9 else 0),
         diagnostic.column,
     );
     try std.testing.expectEqualStrings(expected_token, diagnostic.token);

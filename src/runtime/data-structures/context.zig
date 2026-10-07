@@ -133,11 +133,11 @@ pub const RuntimeContext = struct {
         // Address-take silencer: stays legal whether the unrolled loop
         // below touches the value or not.
         _ = &values;
-        inline for (@typeInfo(Messages).@"struct".fields) |field| {
+        inline for (@typeInfo(Messages).@"struct".field_names) |field_name| {
             // String literals give fields pointer-to-array types, so no
             // exact-type guard here — implicit coercion to the slice return
             // type accepts them.
-            if (std.mem.eql(u8, field.name, name)) return @field(values, field.name);
+            if (std.mem.eql(u8, field_name, name)) return @field(values, field_name);
         }
         return null;
     }
@@ -223,7 +223,7 @@ pub const max_syntax_error_stack_depth = 64;
 /// Consecutive repeats of the same variable are suppressed so self-recursive
 /// rules (for example `DigitTail -> digit DigitTail`) occupy a single slot.
 pub const SyntaxErrorStack = struct {
-    entries: [max_syntax_error_stack_depth][]const u8 = .{""} ** max_syntax_error_stack_depth,
+    entries: [max_syntax_error_stack_depth][]const u8 = @splat(""),
     depth: usize = 0,
     head: usize = 0,
 
@@ -338,7 +338,7 @@ pub const Context = struct {
     generation: usize = 0,
 
     // These fields are defined based on build mode and generated-parser options.
-    verbosity: if (builtin.mode == .Debug) usize else void = if (builtin.mode == .Debug) 0 else {},
+    verbosity: if (builtin.mode == .debug) usize else void = if (builtin.mode == .debug) 0 else {},
 
     line: if (root.position_tracking_enabled) u32 else void = if (root.position_tracking_enabled) 1 else {},
     column: if (root.position_tracking_enabled) u32 else void = if (root.position_tracking_enabled) 1 else {},
@@ -372,7 +372,7 @@ pub const Context = struct {
         if (comptime !newlineAfterBlockEndEnabled()) return;
         while (self.head(u8, 0) == 3) {
             @branchHint(.unlikely);
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (self.verbosityLevel() > 1) {
                     std.debug.print("Dropping leftover block-end newline (\\x03)\n", .{});
                 }
@@ -403,7 +403,7 @@ pub const Context = struct {
     }
 
     pub inline fn verbosityLevel(self: *const Self) usize {
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             return self.verbosity;
         }
         return 0;
@@ -1155,7 +1155,7 @@ pub const Context = struct {
             }
         }
         self.token.pop(length);
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (self.verbosityLevel() > 1) {
                 std.debug.print("\n{d}:{d}:\"{f}\"\n", .{
                     if (comptime root.position_tracking_enabled) self.line else 0,
@@ -1360,7 +1360,7 @@ pub const Context = struct {
             self.token.appendNoCopy();
         }
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (self.verbosityLevel() > 1) {
                 std.debug.print("\n{d}:{d}:\"{f}\"\n", .{
                     if (comptime root.position_tracking_enabled) self.line else 0,

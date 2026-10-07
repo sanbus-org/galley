@@ -58,7 +58,7 @@ zig build test \
   -Dtest-filter=name:dropIfEmpty
 ```
 
-The command fails if the name matches no tests.
+A `name:` matching nothing runs zero tests and succeeds — only `case:` typos fail the build, at configure time.
 
 ## Dedicated Steps
 

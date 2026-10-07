@@ -13,7 +13,7 @@
 
 ## What You Need
 
-- [Zig 0.16+](https://ziglang.org/download/) — the supported build toolchain
+- [Zig 0.17+](https://ziglang.org/download/) — the supported build toolchain
 - A terminal or shell
 
 ---

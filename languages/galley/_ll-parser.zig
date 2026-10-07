@@ -19,7 +19,7 @@ pub const has_recovery_annotations = true;
 pub const error_recovery_mode: ErrorRecoveryMode =
     if (!is_error_recovery_enabled) .disabled else if (has_recovery_annotations) .explicit else .automatic;
 pub const is_position_tracking_enabled =
-    if (config.position_tracking) |enabled| enabled else builtin.mode != .ReleaseFast;
+    if (config.position_tracking) |enabled| enabled else builtin.mode != .fast;
 pub const is_input_streaming_enabled = config.input_streaming;
 pub const syntax_error_stack_depth = root.syntax_error_stack_depth;
 pub const is_syntax_error_stack_enabled = syntax_error_stack_depth > 1;
@@ -1282,7 +1282,7 @@ fn runProcedureSequence(sequence: ?*const ProcedureSequenceNode, args: *data_str
 
 pub const rule_procedures = rule_procedures: {
     @setEvalBranchQuota(1000);
-    var arr: [76]?*const data_structures.Procedure = .{null} ** 76;
+    var arr: [76]?*const data_structures.Procedure = @splat(null);
 
     for (rules, 0..) |rule, index| {
         const procedure_name = "reduction_" ++ variables[rule.header] ++ "_" ++ rule.right_hand_side_index;
@@ -1296,7 +1296,7 @@ pub const rule_procedures = rule_procedures: {
 
 pub const symbol_procedures = symbol_procedures: {
     @setEvalBranchQuota(1000);
-    var arr: [78]?*const data_structures.Procedure = .{null} ** 78;
+    var arr: [78]?*const data_structures.Procedure = @splat(null);
 
     for (symbols, 0..) |symbol, index| {
         const procedure_name = "reduction_" ++ symbol;
@@ -1359,7 +1359,7 @@ pub const user_hook_names = [_][]const u8{
 
 pub const variable_procedures = variable_procedures: {
     @setEvalBranchQuota(1000);
-    var arr: [43]?*const ProcedureSequenceNode = .{null} ** 43;
+    var arr: [43]?*const ProcedureSequenceNode = @splat(null);
 
     for (variable_procedure_names, 0..) |procedure_names, index| {
         arr[index] = makeProcedureSequence(procedure_names);
@@ -1567,7 +1567,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         10, 35, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\n', '#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Start -> Rules\n", .{});
                 }
@@ -1607,7 +1607,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for Start: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -1616,7 +1616,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Start <~ Rules\n", .{});
                 }
@@ -1644,7 +1644,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         10, 35, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\n', '#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Start -> Rules\n", .{});
                 }
@@ -1664,7 +1664,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Start <~ Rules\n", .{});
                 }
@@ -1692,12 +1692,12 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         10, 35, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\n', '#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Start -> Rules\n", .{});
                 }
             }
-            var child_nodes: [1]?data_structures.Node = .{null} ** 1;
+            var child_nodes: [1]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_Rules(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -1734,7 +1734,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Start <~ Rules\n", .{});
                 }
@@ -1760,7 +1760,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         10, 35, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\n', '#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Start -> Rules\n", .{});
                 }
@@ -1774,7 +1774,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Start <~ Rules\n", .{});
                 }
@@ -1805,7 +1805,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         10, 35, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\n', '#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Rules -> Comment, OptionalNewLineMany, Rule, RulesTail\n", .{});
                 }
@@ -1887,7 +1887,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for Rules: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -1896,7 +1896,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Rules <~ Comment, OptionalNewLineMany, Rule, RulesTail\n", .{});
                 }
@@ -1924,7 +1924,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         10, 35, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\n', '#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Rules -> Comment, OptionalNewLineMany, Rule, RulesTail\n", .{});
                 }
@@ -1986,7 +1986,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Rules <~ Comment, OptionalNewLineMany, Rule, RulesTail\n", .{});
                 }
@@ -2014,12 +2014,12 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         10, 35, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\n', '#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Rules -> Comment, OptionalNewLineMany, Rule, RulesTail\n", .{});
                 }
             }
-            var child_nodes: [4]?data_structures.Node = .{null} ** 4;
+            var child_nodes: [4]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_Comment(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -2101,7 +2101,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Rules <~ Comment, OptionalNewLineMany, Rule, RulesTail\n", .{});
                 }
@@ -2127,7 +2127,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         10, 35, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\n', '#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Rules -> Comment, OptionalNewLineMany, Rule, RulesTail\n", .{});
                 }
@@ -2168,7 +2168,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     },
                     else => return err,
                 }; // child 3
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Rules <~ Comment, OptionalNewLineMany, Rule, RulesTail\n", .{});
                 }
@@ -2204,7 +2204,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             break :blk byte;
         }) {
             35 => { // '#'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: Comment -> CommentLine, Comment\n", .{});
                     }
@@ -2252,7 +2252,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: Comment <~ CommentLine, Comment\n", .{});
             }
@@ -2279,7 +2279,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             try procedure(&args);
         }
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 2) {
                 std.debug.print("Procedure outcome for Comment: {f}\n", .{
                     string_utilities.fmtNode(args.node_address, context),
@@ -2320,7 +2320,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             break :blk byte;
         }) {
             35 => { // '#'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: Comment -> CommentLine, Comment\n", .{});
                     }
@@ -2368,7 +2368,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: Comment <~ CommentLine, Comment\n", .{});
             }
@@ -2399,7 +2399,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             break :blk byte;
         }) {
             35 => { // '#'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: Comment -> CommentLine, Comment\n", .{});
                     }
@@ -2407,7 +2407,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const frame = try semantic_allocator.create(SemanticReductionFrame);
                 frame.* = .{
                     .node = .{ .text_start = context.currentTokenSourceOffset(), .variable = 2, .payload = .{} },
-                    .children = .{null} ** 2,
+                    .children = @splat(null),
                 };
                 try frames.append(semantic_allocator, frame);
                 {
@@ -2447,7 +2447,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             frame.node.appendTemporaryChild(&frame.children[1].?);
         }
         frame.node.text_length = context.currentTokenSourceOffset() - frame.node.text_start;
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: Comment <~ CommentLine, Comment\n", .{});
             }
@@ -2489,7 +2489,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             break :blk byte;
         }) {
             35 => { // '#'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: Comment -> CommentLine, Comment\n", .{});
                     }
@@ -2537,7 +2537,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         0, 10, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95, 124 => { // '\x00', '\n', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_', '|'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Comment -> \n", .{});
                 }
@@ -2563,7 +2563,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for Comment: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -2572,13 +2572,13 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Comment <~ \n", .{});
                 }
             }        },
         35 => { // '#'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Comment -> CommentLine, Comment\n", .{});
                 }
@@ -2632,7 +2632,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for Comment: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -2641,7 +2641,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Comment <~ CommentLine, Comment\n", .{});
                 }
@@ -2669,19 +2669,19 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         0, 10, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95, 124 => { // '\x00', '\n', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_', '|'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Comment -> \n", .{});
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Comment <~ \n", .{});
                 }
             }        },
         35 => { // '#'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Comment -> CommentLine, Comment\n", .{});
                 }
@@ -2715,7 +2715,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Comment <~ CommentLine, Comment\n", .{});
                 }
@@ -2743,7 +2743,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         0, 10, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95, 124 => { // '\x00', '\n', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_', '|'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Comment -> \n", .{});
                 }
@@ -2769,19 +2769,19 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Comment <~ \n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         35 => { // '#'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Comment -> CommentLine, Comment\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_CommentLine(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -2833,7 +2833,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Comment <~ CommentLine, Comment\n", .{});
                 }
@@ -2859,18 +2859,18 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         0, 10, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95, 124 => { // '\x00', '\n', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_', '|'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Comment -> \n", .{});
                 }
             }
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Comment <~ \n", .{});
                 }
             }        },
         35 => { // '#'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Comment -> CommentLine, Comment\n", .{});
                 }
@@ -2893,7 +2893,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Comment <~ CommentLine, Comment\n", .{});
                 }
@@ -2928,7 +2928,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             break :blk byte;
         }) {
             10 => { // '\n'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: OptionalNewLineMany -> NewLine, OptionalNewLineMany\n", .{});
                     }
@@ -2976,7 +2976,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: OptionalNewLineMany <~ NewLine, OptionalNewLineMany\n", .{});
             }
@@ -3003,7 +3003,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             try procedure(&args);
         }
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 2) {
                 std.debug.print("Procedure outcome for OptionalNewLineMany: {f}\n", .{
                     string_utilities.fmtNode(args.node_address, context),
@@ -3043,7 +3043,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             break :blk byte;
         }) {
             10 => { // '\n'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: OptionalNewLineMany -> NewLine, OptionalNewLineMany\n", .{});
                     }
@@ -3091,7 +3091,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: OptionalNewLineMany <~ NewLine, OptionalNewLineMany\n", .{});
             }
@@ -3121,7 +3121,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             break :blk byte;
         }) {
             10 => { // '\n'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: OptionalNewLineMany -> NewLine, OptionalNewLineMany\n", .{});
                     }
@@ -3129,7 +3129,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const frame = try semantic_allocator.create(SemanticReductionFrame);
                 frame.* = .{
                     .node = .{ .text_start = context.currentTokenSourceOffset(), .variable = 3, .payload = .{} },
-                    .children = .{null} ** 2,
+                    .children = @splat(null),
                 };
                 try frames.append(semantic_allocator, frame);
                 {
@@ -3169,7 +3169,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             frame.node.appendTemporaryChild(&frame.children[1].?);
         }
         frame.node.text_length = context.currentTokenSourceOffset() - frame.node.text_start;
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: OptionalNewLineMany <~ NewLine, OptionalNewLineMany\n", .{});
             }
@@ -3210,7 +3210,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             break :blk byte;
         }) {
             10 => { // '\n'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: OptionalNewLineMany -> NewLine, OptionalNewLineMany\n", .{});
                     }
@@ -3258,7 +3258,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         10 => { // '\n'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: OptionalNewLineMany -> NewLine, OptionalNewLineMany\n", .{});
                 }
@@ -3312,7 +3312,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for OptionalNewLineMany: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -3321,13 +3321,13 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: OptionalNewLineMany <~ NewLine, OptionalNewLineMany\n", .{});
                 }
             }        },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: OptionalNewLineMany -> \n", .{});
                 }
@@ -3353,7 +3353,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for OptionalNewLineMany: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -3362,7 +3362,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: OptionalNewLineMany <~ \n", .{});
                 }
@@ -3390,7 +3390,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         10 => { // '\n'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: OptionalNewLineMany -> NewLine, OptionalNewLineMany\n", .{});
                 }
@@ -3424,19 +3424,19 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: OptionalNewLineMany <~ NewLine, OptionalNewLineMany\n", .{});
                 }
             }        },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: OptionalNewLineMany -> \n", .{});
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: OptionalNewLineMany <~ \n", .{});
                 }
@@ -3464,12 +3464,12 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         10 => { // '\n'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: OptionalNewLineMany -> NewLine, OptionalNewLineMany\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_NewLine(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -3521,14 +3521,14 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: OptionalNewLineMany <~ NewLine, OptionalNewLineMany\n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: OptionalNewLineMany -> \n", .{});
                 }
@@ -3554,7 +3554,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: OptionalNewLineMany <~ \n", .{});
                 }
@@ -3580,7 +3580,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         10 => { // '\n'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: OptionalNewLineMany -> NewLine, OptionalNewLineMany\n", .{});
                 }
@@ -3603,18 +3603,18 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: OptionalNewLineMany <~ NewLine, OptionalNewLineMany\n", .{});
                 }
             }        },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: OptionalNewLineMany -> \n", .{});
                 }
             }
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: OptionalNewLineMany <~ \n", .{});
                 }
@@ -3646,7 +3646,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Rule -> VariableSymbol, AnnotationTail, NewLine, RightHandSides\n", .{});
                 }
@@ -3728,7 +3728,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for Rule: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -3737,7 +3737,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Rule <~ VariableSymbol, AnnotationTail, NewLine, RightHandSides\n", .{});
                 }
@@ -3766,7 +3766,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Rule -> VariableSymbol, AnnotationTail, NewLine, RightHandSides\n", .{});
                 }
@@ -3828,7 +3828,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Rule <~ VariableSymbol, AnnotationTail, NewLine, RightHandSides\n", .{});
                 }
@@ -3857,12 +3857,12 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Rule -> VariableSymbol, AnnotationTail, NewLine, RightHandSides\n", .{});
                 }
             }
-            var child_nodes: [4]?data_structures.Node = .{null} ** 4;
+            var child_nodes: [4]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_VariableSymbol(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -3944,7 +3944,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Rule <~ VariableSymbol, AnnotationTail, NewLine, RightHandSides\n", .{});
                 }
@@ -3971,7 +3971,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Rule -> VariableSymbol, AnnotationTail, NewLine, RightHandSides\n", .{});
                 }
@@ -4012,7 +4012,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     },
                     else => return err,
                 }; // child 3
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Rule <~ VariableSymbol, AnnotationTail, NewLine, RightHandSides\n", .{});
                 }
@@ -4048,7 +4048,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             break :blk byte;
         }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: RulesTail -> Rule, RulesTail\n", .{});
                     }
@@ -4096,7 +4096,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: RulesTail <~ Rule, RulesTail\n", .{});
             }
@@ -4123,7 +4123,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             try procedure(&args);
         }
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 2) {
                 std.debug.print("Procedure outcome for RulesTail: {f}\n", .{
                     string_utilities.fmtNode(args.node_address, context),
@@ -4164,7 +4164,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             break :blk byte;
         }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: RulesTail -> Rule, RulesTail\n", .{});
                     }
@@ -4212,7 +4212,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: RulesTail <~ Rule, RulesTail\n", .{});
             }
@@ -4243,7 +4243,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             break :blk byte;
         }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: RulesTail -> Rule, RulesTail\n", .{});
                     }
@@ -4251,7 +4251,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const frame = try semantic_allocator.create(SemanticReductionFrame);
                 frame.* = .{
                     .node = .{ .text_start = context.currentTokenSourceOffset(), .variable = 5, .payload = .{} },
-                    .children = .{null} ** 2,
+                    .children = @splat(null),
                 };
                 try frames.append(semantic_allocator, frame);
                 {
@@ -4291,7 +4291,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             frame.node.appendTemporaryChild(&frame.children[1].?);
         }
         frame.node.text_length = context.currentTokenSourceOffset() - frame.node.text_start;
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: RulesTail <~ Rule, RulesTail\n", .{});
             }
@@ -4333,7 +4333,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             break :blk byte;
         }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: RulesTail -> Rule, RulesTail\n", .{});
                     }
@@ -4385,7 +4385,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             break :blk byte;
         }) {
             10 => { // '\n'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: RulesTail -> NewLine, RulesTail\n", .{});
                     }
@@ -4433,7 +4433,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: RulesTail <~ NewLine, RulesTail\n", .{});
             }
@@ -4460,7 +4460,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             try procedure(&args);
         }
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 2) {
                 std.debug.print("Procedure outcome for RulesTail: {f}\n", .{
                     string_utilities.fmtNode(args.node_address, context),
@@ -4500,7 +4500,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             break :blk byte;
         }) {
             10 => { // '\n'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: RulesTail -> NewLine, RulesTail\n", .{});
                     }
@@ -4548,7 +4548,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: RulesTail <~ NewLine, RulesTail\n", .{});
             }
@@ -4578,7 +4578,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             break :blk byte;
         }) {
             10 => { // '\n'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: RulesTail -> NewLine, RulesTail\n", .{});
                     }
@@ -4586,7 +4586,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const frame = try semantic_allocator.create(SemanticReductionFrame);
                 frame.* = .{
                     .node = .{ .text_start = context.currentTokenSourceOffset(), .variable = 5, .payload = .{} },
-                    .children = .{null} ** 2,
+                    .children = @splat(null),
                 };
                 try frames.append(semantic_allocator, frame);
                 {
@@ -4626,7 +4626,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             frame.node.appendTemporaryChild(&frame.children[1].?);
         }
         frame.node.text_length = context.currentTokenSourceOffset() - frame.node.text_start;
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: RulesTail <~ NewLine, RulesTail\n", .{});
             }
@@ -4667,7 +4667,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             break :blk byte;
         }) {
             10 => { // '\n'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: RulesTail -> NewLine, RulesTail\n", .{});
                     }
@@ -4715,7 +4715,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         0 => { // '\x00'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RulesTail -> \n", .{});
                 }
@@ -4741,7 +4741,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for RulesTail: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -4750,13 +4750,13 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RulesTail <~ \n", .{});
                 }
             }        },
         10 => { // '\n'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RulesTail -> NewLine, RulesTail\n", .{});
                 }
@@ -4810,7 +4810,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for RulesTail: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -4819,13 +4819,13 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RulesTail <~ NewLine, RulesTail\n", .{});
                 }
             }        },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RulesTail -> Rule, RulesTail\n", .{});
                 }
@@ -4879,7 +4879,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for RulesTail: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -4888,7 +4888,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RulesTail <~ Rule, RulesTail\n", .{});
                 }
@@ -4916,19 +4916,19 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         0 => { // '\x00'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RulesTail -> \n", .{});
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RulesTail <~ \n", .{});
                 }
             }        },
         10 => { // '\n'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RulesTail -> NewLine, RulesTail\n", .{});
                 }
@@ -4962,13 +4962,13 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RulesTail <~ NewLine, RulesTail\n", .{});
                 }
             }        },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RulesTail -> Rule, RulesTail\n", .{});
                 }
@@ -5002,7 +5002,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RulesTail <~ Rule, RulesTail\n", .{});
                 }
@@ -5030,7 +5030,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         0 => { // '\x00'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RulesTail -> \n", .{});
                 }
@@ -5056,19 +5056,19 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RulesTail <~ \n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         10 => { // '\n'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RulesTail -> NewLine, RulesTail\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_NewLine(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -5120,19 +5120,19 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RulesTail <~ NewLine, RulesTail\n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RulesTail -> Rule, RulesTail\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_Rule(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -5184,7 +5184,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RulesTail <~ Rule, RulesTail\n", .{});
                 }
@@ -5210,18 +5210,18 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         0 => { // '\x00'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RulesTail -> \n", .{});
                 }
             }
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RulesTail <~ \n", .{});
                 }
             }        },
         10 => { // '\n'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RulesTail -> NewLine, RulesTail\n", .{});
                 }
@@ -5244,13 +5244,13 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RulesTail <~ NewLine, RulesTail\n", .{});
                 }
             }        },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RulesTail -> Rule, RulesTail\n", .{});
                 }
@@ -5273,7 +5273,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RulesTail <~ Rule, RulesTail\n", .{});
                 }
@@ -5304,7 +5304,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10 => { // '\n'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: NewLine -> 'new_line', Comment\n", .{});
                 }
@@ -5358,7 +5358,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for NewLine: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -5367,7 +5367,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: NewLine <~ 'new_line', Comment\n", .{});
                 }
@@ -5395,7 +5395,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10 => { // '\n'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: NewLine -> 'new_line', Comment\n", .{});
                 }
@@ -5444,7 +5444,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for NewLine: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -5453,7 +5453,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: NewLine <~ 'new_line', Comment\n", .{});
                 }
@@ -5481,7 +5481,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10 => { // '\n'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: NewLine -> 'new_line', Comment\n", .{});
                 }
@@ -5515,7 +5515,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: NewLine <~ 'new_line', Comment\n", .{});
                 }
@@ -5543,7 +5543,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10 => { // '\n'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: NewLine -> 'new_line', Comment\n", .{});
                 }
@@ -5572,7 +5572,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: NewLine <~ 'new_line', Comment\n", .{});
                 }
@@ -5600,12 +5600,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10 => { // '\n'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: NewLine -> 'new_line', Comment\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_generative_terminal_new_line(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -5657,7 +5657,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: NewLine <~ 'new_line', Comment\n", .{});
                 }
@@ -5685,12 +5685,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10 => { // '\n'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: NewLine -> 'new_line', Comment\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             _ = parse_generative_terminal_new_line(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_31(context, occurrence_recovery)) {
@@ -5736,7 +5736,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: NewLine <~ 'new_line', Comment\n", .{});
                 }
@@ -5762,7 +5762,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10 => { // '\n'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: NewLine -> 'new_line', Comment\n", .{});
                 }
@@ -5785,7 +5785,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: NewLine <~ 'new_line', Comment\n", .{});
                 }
@@ -5817,7 +5817,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VariableSymbol -> UppercaseId\n", .{});
                 }
@@ -5857,7 +5857,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for VariableSymbol: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -5866,13 +5866,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VariableSymbol <~ UppercaseId\n", .{});
                 }
             }        },
         95 => { // '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VariableSymbol -> '_', UppercaseId\n", .{});
                 }
@@ -5926,7 +5926,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for VariableSymbol: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -5935,7 +5935,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VariableSymbol <~ '_', UppercaseId\n", .{});
                 }
@@ -5964,7 +5964,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VariableSymbol -> UppercaseId\n", .{});
                 }
@@ -6004,7 +6004,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for VariableSymbol: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -6013,13 +6013,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VariableSymbol <~ UppercaseId\n", .{});
                 }
             }        },
         95 => { // '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VariableSymbol -> '_', UppercaseId\n", .{});
                 }
@@ -6068,7 +6068,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for VariableSymbol: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -6077,7 +6077,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VariableSymbol <~ '_', UppercaseId\n", .{});
                 }
@@ -6106,7 +6106,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VariableSymbol -> UppercaseId\n", .{});
                 }
@@ -6126,13 +6126,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VariableSymbol <~ UppercaseId\n", .{});
                 }
             }        },
         95 => { // '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VariableSymbol -> '_', UppercaseId\n", .{});
                 }
@@ -6166,7 +6166,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VariableSymbol <~ '_', UppercaseId\n", .{});
                 }
@@ -6195,7 +6195,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VariableSymbol -> UppercaseId\n", .{});
                 }
@@ -6215,13 +6215,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VariableSymbol <~ UppercaseId\n", .{});
                 }
             }        },
         95 => { // '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VariableSymbol -> '_', UppercaseId\n", .{});
                 }
@@ -6250,7 +6250,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VariableSymbol <~ '_', UppercaseId\n", .{});
                 }
@@ -6279,12 +6279,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VariableSymbol -> UppercaseId\n", .{});
                 }
             }
-            var child_nodes: [1]?data_structures.Node = .{null} ** 1;
+            var child_nodes: [1]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_UppercaseId(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -6321,19 +6321,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VariableSymbol <~ UppercaseId\n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         95 => { // '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VariableSymbol -> '_', UppercaseId\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_terminal__(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -6385,7 +6385,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VariableSymbol <~ '_', UppercaseId\n", .{});
                 }
@@ -6414,12 +6414,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VariableSymbol -> UppercaseId\n", .{});
                 }
             }
-            var child_nodes: [1]?data_structures.Node = .{null} ** 1;
+            var child_nodes: [1]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_UppercaseId(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -6456,19 +6456,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VariableSymbol <~ UppercaseId\n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         95 => { // '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VariableSymbol -> '_', UppercaseId\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             _ = parse_terminal__(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_62(context, occurrence_recovery)) {
@@ -6514,7 +6514,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VariableSymbol <~ '_', UppercaseId\n", .{});
                 }
@@ -6541,7 +6541,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VariableSymbol -> UppercaseId\n", .{});
                 }
@@ -6555,13 +6555,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VariableSymbol <~ UppercaseId\n", .{});
                 }
             }        },
         95 => { // '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VariableSymbol -> '_', UppercaseId\n", .{});
                 }
@@ -6584,7 +6584,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VariableSymbol <~ '_', UppercaseId\n", .{});
                 }
@@ -6620,7 +6620,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             64 => { // '@'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: AnnotationTail -> '@', Annotation, AnnotationTail\n", .{});
                     }
@@ -6682,7 +6682,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: AnnotationTail <~ '@', Annotation, AnnotationTail\n", .{});
             }
@@ -6709,7 +6709,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             try procedure(&args);
         }
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 2) {
                 std.debug.print("Procedure outcome for AnnotationTail: {f}\n", .{
                     string_utilities.fmtNode(args.node_address, context),
@@ -6750,7 +6750,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             64 => { // '@'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: AnnotationTail -> '@', Annotation, AnnotationTail\n", .{});
                     }
@@ -6807,7 +6807,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: AnnotationTail <~ '@', Annotation, AnnotationTail\n", .{});
             }
@@ -6834,7 +6834,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             try procedure(&args);
         }
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 2) {
                 std.debug.print("Procedure outcome for AnnotationTail: {f}\n", .{
                     string_utilities.fmtNode(args.node_address, context),
@@ -6875,7 +6875,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             64 => { // '@'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: AnnotationTail -> '@', Annotation, AnnotationTail\n", .{});
                     }
@@ -6937,7 +6937,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: AnnotationTail <~ '@', Annotation, AnnotationTail\n", .{});
             }
@@ -6966,7 +6966,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             64 => { // '@'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: AnnotationTail -> '@', Annotation, AnnotationTail\n", .{});
                     }
@@ -7023,7 +7023,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: AnnotationTail <~ '@', Annotation, AnnotationTail\n", .{});
             }
@@ -7054,7 +7054,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             64 => { // '@'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: AnnotationTail -> '@', Annotation, AnnotationTail\n", .{});
                     }
@@ -7062,7 +7062,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const frame = try semantic_allocator.create(SemanticReductionFrame);
                 frame.* = .{
                     .node = .{ .text_start = context.currentTokenSourceOffset(), .variable = 8, .payload = .{} },
-                    .children = .{null} ** 3,
+                    .children = @splat(null),
                 };
                 try frames.append(semantic_allocator, frame);
                 {
@@ -7117,7 +7117,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             frame.node.appendTemporaryChild(&frame.children[2].?);
         }
         frame.node.text_length = context.currentTokenSourceOffset() - frame.node.text_start;
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: AnnotationTail <~ '@', Annotation, AnnotationTail\n", .{});
             }
@@ -7166,7 +7166,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             64 => { // '@'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: AnnotationTail -> '@', Annotation, AnnotationTail\n", .{});
                     }
@@ -7174,7 +7174,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const frame = try semantic_allocator.create(SemanticReductionFrame);
                 frame.* = .{
                     .node = .{ .text_start = context.currentTokenSourceOffset(), .variable = 8, .payload = .{} },
-                    .children = .{null} ** 3,
+                    .children = @splat(null),
                 };
                 try frames.append(semantic_allocator, frame);
                 _ = parse_terminal__x64(context, null) catch |err| switch (err) {
@@ -7223,7 +7223,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             frame.node.appendTemporaryChild(&frame.children[2].?);
         }
         frame.node.text_length = context.currentTokenSourceOffset() - frame.node.text_start;
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: AnnotationTail <~ '@', Annotation, AnnotationTail\n", .{});
             }
@@ -7265,7 +7265,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             64 => { // '@'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: AnnotationTail -> '@', Annotation, AnnotationTail\n", .{});
                     }
@@ -7322,7 +7322,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32 => { // '\n', ' '
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnnotationTail -> \n", .{});
                 }
@@ -7348,7 +7348,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for AnnotationTail: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -7357,13 +7357,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnnotationTail <~ \n", .{});
                 }
             }        },
         64 => { // '@'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnnotationTail -> '@', Annotation, AnnotationTail\n", .{});
                 }
@@ -7431,7 +7431,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for AnnotationTail: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -7440,7 +7440,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnnotationTail <~ '@', Annotation, AnnotationTail\n", .{});
                 }
@@ -7468,7 +7468,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32 => { // '\n', ' '
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnnotationTail -> \n", .{});
                 }
@@ -7494,7 +7494,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for AnnotationTail: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -7503,13 +7503,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnnotationTail <~ \n", .{});
                 }
             }        },
         64 => { // '@'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnnotationTail -> '@', Annotation, AnnotationTail\n", .{});
                 }
@@ -7572,7 +7572,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for AnnotationTail: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -7581,7 +7581,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnnotationTail <~ '@', Annotation, AnnotationTail\n", .{});
                 }
@@ -7609,19 +7609,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32 => { // '\n', ' '
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnnotationTail -> \n", .{});
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnnotationTail <~ \n", .{});
                 }
             }        },
         64 => { // '@'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnnotationTail -> '@', Annotation, AnnotationTail\n", .{});
                 }
@@ -7669,7 +7669,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnnotationTail <~ '@', Annotation, AnnotationTail\n", .{});
                 }
@@ -7697,19 +7697,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32 => { // '\n', ' '
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnnotationTail -> \n", .{});
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnnotationTail <~ \n", .{});
                 }
             }        },
         64 => { // '@'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnnotationTail -> '@', Annotation, AnnotationTail\n", .{});
                 }
@@ -7752,7 +7752,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnnotationTail <~ '@', Annotation, AnnotationTail\n", .{});
                 }
@@ -7780,7 +7780,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32 => { // '\n', ' '
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnnotationTail -> \n", .{});
                 }
@@ -7806,19 +7806,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnnotationTail <~ \n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         64 => { // '@'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnnotationTail -> '@', Annotation, AnnotationTail\n", .{});
                 }
             }
-            var child_nodes: [3]?data_structures.Node = .{null} ** 3;
+            var child_nodes: [3]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_terminal__x64(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -7885,7 +7885,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnnotationTail <~ '@', Annotation, AnnotationTail\n", .{});
                 }
@@ -7913,7 +7913,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32 => { // '\n', ' '
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnnotationTail -> \n", .{});
                 }
@@ -7939,19 +7939,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnnotationTail <~ \n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         64 => { // '@'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnnotationTail -> '@', Annotation, AnnotationTail\n", .{});
                 }
             }
-            var child_nodes: [3]?data_structures.Node = .{null} ** 3;
+            var child_nodes: [3]?data_structures.Node = @splat(null);
             _ = parse_terminal__x64(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_4(context, occurrence_recovery)) {
@@ -8012,7 +8012,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnnotationTail <~ '@', Annotation, AnnotationTail\n", .{});
                 }
@@ -8038,18 +8038,18 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32 => { // '\n', ' '
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnnotationTail -> \n", .{});
                 }
             }
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnnotationTail <~ \n", .{});
                 }
             }        },
         64 => { // '@'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnnotationTail -> '@', Annotation, AnnotationTail\n", .{});
                 }
@@ -8081,7 +8081,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 2
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnnotationTail <~ '@', Annotation, AnnotationTail\n", .{});
                 }
@@ -8113,7 +8113,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         124 => { // '|'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSides -> RightHandSideLine, RightHandSides_Tail\n", .{});
                 }
@@ -8143,14 +8143,14 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 break :blk byte;
             }) {
                 0, 10, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\x00', '\n', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: RightHandSides_Tail -> \n", .{});
                         }
                     }
                 },
                 124 => { // '|'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: RightHandSides_Tail -> RightHandSides\n", .{});
                         }
@@ -8196,7 +8196,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for RightHandSides: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -8205,7 +8205,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSides <~ RightHandSideLine, RightHandSides_Tail\n", .{});
                 }
@@ -8234,7 +8234,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         124 => { // '|'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSides -> RightHandSideLine, RightHandSides_Tail\n", .{});
                 }
@@ -8264,14 +8264,14 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 break :blk byte;
             }) {
                 0, 10, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\x00', '\n', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: RightHandSides_Tail -> \n", .{});
                         }
                     }
                 },
                 124 => { // '|'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: RightHandSides_Tail -> RightHandSides\n", .{});
                         }
@@ -8297,7 +8297,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     return context.keepRecoveredNode(node_address);
                 },
             }            context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSides <~ RightHandSideLine, RightHandSides_Tail\n", .{});
                 }
@@ -8326,12 +8326,12 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         124 => { // '|'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSides -> RightHandSideLine, RightHandSides_Tail\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_RightHandSideLine(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -8358,14 +8358,14 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 break :blk byte;
             }) {
                 0, 10, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\x00', '\n', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: RightHandSides_Tail -> \n", .{});
                         }
                     }
                 },
                 124 => { // '|'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: RightHandSides_Tail -> RightHandSides\n", .{});
                         }
@@ -8411,7 +8411,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSides <~ RightHandSideLine, RightHandSides_Tail\n", .{});
                 }
@@ -8438,7 +8438,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         124 => { // '|'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSides -> RightHandSideLine, RightHandSides_Tail\n", .{});
                 }
@@ -8463,14 +8463,14 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 break :blk byte;
             }) {
                 0, 10, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\x00', '\n', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: RightHandSides_Tail -> \n", .{});
                         }
                     }
                 },
                 124 => { // '|'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: RightHandSides_Tail -> RightHandSides\n", .{});
                         }
@@ -8489,7 +8489,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     @branchHint(.unlikely);
                     return ll_syntax_error_79(context, occurrence_recovery);
                 },
-            }            if (comptime builtin.mode == .Debug) {
+            }            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSides <~ RightHandSideLine, RightHandSides_Tail\n", .{});
                 }
@@ -8521,7 +8521,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         124 => { // '|'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSideLine -> '|', AnnotationTail, RightHandSide, NewLine\n", .{});
                 }
@@ -8603,7 +8603,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for RightHandSideLine: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -8612,7 +8612,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSideLine <~ '|', AnnotationTail, RightHandSide, NewLine\n", .{});
                 }
@@ -8641,7 +8641,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         124 => { // '|'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSideLine -> '|', AnnotationTail, RightHandSide, NewLine\n", .{});
                 }
@@ -8718,7 +8718,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for RightHandSideLine: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -8727,7 +8727,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSideLine <~ '|', AnnotationTail, RightHandSide, NewLine\n", .{});
                 }
@@ -8756,7 +8756,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         124 => { // '|'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSideLine -> '|', AnnotationTail, RightHandSide, NewLine\n", .{});
                 }
@@ -8818,7 +8818,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSideLine <~ '|', AnnotationTail, RightHandSide, NewLine\n", .{});
                 }
@@ -8847,7 +8847,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         124 => { // '|'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSideLine -> '|', AnnotationTail, RightHandSide, NewLine\n", .{});
                 }
@@ -8904,7 +8904,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSideLine <~ '|', AnnotationTail, RightHandSide, NewLine\n", .{});
                 }
@@ -8933,12 +8933,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         124 => { // '|'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSideLine -> '|', AnnotationTail, RightHandSide, NewLine\n", .{});
                 }
             }
-            var child_nodes: [4]?data_structures.Node = .{null} ** 4;
+            var child_nodes: [4]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_terminal__x124(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -9020,7 +9020,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSideLine <~ '|', AnnotationTail, RightHandSide, NewLine\n", .{});
                 }
@@ -9049,12 +9049,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         124 => { // '|'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSideLine -> '|', AnnotationTail, RightHandSide, NewLine\n", .{});
                 }
             }
-            var child_nodes: [4]?data_structures.Node = .{null} ** 4;
+            var child_nodes: [4]?data_structures.Node = @splat(null);
             _ = parse_terminal__x124(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_40(context, occurrence_recovery)) {
@@ -9130,7 +9130,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSideLine <~ '|', AnnotationTail, RightHandSide, NewLine\n", .{});
                 }
@@ -9157,7 +9157,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         124 => { // '|'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSideLine -> '|', AnnotationTail, RightHandSide, NewLine\n", .{});
                 }
@@ -9198,7 +9198,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 3
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSideLine <~ '|', AnnotationTail, RightHandSide, NewLine\n", .{});
                 }
@@ -9359,7 +9359,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             32 => { // ' '
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: RightHandSide -> 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
                     }
@@ -9435,7 +9435,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: RightHandSide <~ 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
             }
@@ -9462,7 +9462,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             try procedure(&args);
         }
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 2) {
                 std.debug.print("Procedure outcome for RightHandSide: {f}\n", .{
                     string_utilities.fmtNode(args.node_address, context),
@@ -9503,7 +9503,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             32 => { // ' '
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: RightHandSide -> 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
                     }
@@ -9574,7 +9574,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: RightHandSide <~ 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
             }
@@ -9601,7 +9601,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             try procedure(&args);
         }
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 2) {
                 std.debug.print("Procedure outcome for RightHandSide: {f}\n", .{
                     string_utilities.fmtNode(args.node_address, context),
@@ -9642,7 +9642,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             32 => { // ' '
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: RightHandSide -> 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
                     }
@@ -9718,7 +9718,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: RightHandSide <~ 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
             }
@@ -9747,7 +9747,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             32 => { // ' '
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: RightHandSide -> 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
                     }
@@ -9818,7 +9818,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: RightHandSide <~ 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
             }
@@ -9849,7 +9849,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             32 => { // ' '
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: RightHandSide -> 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
                     }
@@ -9857,7 +9857,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const frame = try semantic_allocator.create(SemanticReductionFrame);
                 frame.* = .{
                     .node = .{ .text_start = context.currentTokenSourceOffset(), .variable = 11, .payload = .{} },
-                    .children = .{null} ** 4,
+                    .children = @splat(null),
                 };
                 try frames.append(semantic_allocator, frame);
                 {
@@ -9927,7 +9927,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             frame.node.appendTemporaryChild(&frame.children[3].?);
         }
         frame.node.text_length = context.currentTokenSourceOffset() - frame.node.text_start;
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: RightHandSide <~ 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
             }
@@ -9976,7 +9976,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             32 => { // ' '
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: RightHandSide -> 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
                     }
@@ -9984,7 +9984,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const frame = try semantic_allocator.create(SemanticReductionFrame);
                 frame.* = .{
                     .node = .{ .text_start = context.currentTokenSourceOffset(), .variable = 11, .payload = .{} },
-                    .children = .{null} ** 4,
+                    .children = @splat(null),
                 };
                 try frames.append(semantic_allocator, frame);
                 _ = parse_generative_terminal_space(context, null) catch |err| switch (err) {
@@ -10048,7 +10048,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             frame.node.appendTemporaryChild(&frame.children[3].?);
         }
         frame.node.text_length = context.currentTokenSourceOffset() - frame.node.text_start;
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: RightHandSide <~ 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
             }
@@ -10090,7 +10090,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             32 => { // ' '
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: RightHandSide -> 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
                     }
@@ -10156,7 +10156,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10 => { // '\n'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSide -> \n", .{});
                 }
@@ -10182,7 +10182,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for RightHandSide: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -10191,13 +10191,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSide <~ \n", .{});
                 }
             }        },
         32 => { // ' '
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSide -> 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
                 }
@@ -10279,7 +10279,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for RightHandSide: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -10288,7 +10288,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSide <~ 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
                 }
@@ -10316,7 +10316,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10 => { // '\n'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSide -> \n", .{});
                 }
@@ -10342,7 +10342,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for RightHandSide: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -10351,13 +10351,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSide <~ \n", .{});
                 }
             }        },
         32 => { // ' '
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSide -> 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
                 }
@@ -10434,7 +10434,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for RightHandSide: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -10443,7 +10443,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSide <~ 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
                 }
@@ -10471,19 +10471,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10 => { // '\n'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSide -> \n", .{});
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSide <~ \n", .{});
                 }
             }        },
         32 => { // ' '
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSide -> 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
                 }
@@ -10545,7 +10545,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSide <~ 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
                 }
@@ -10573,19 +10573,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10 => { // '\n'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSide -> \n", .{});
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSide <~ \n", .{});
                 }
             }        },
         32 => { // ' '
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSide -> 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
                 }
@@ -10642,7 +10642,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSide <~ 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
                 }
@@ -10670,7 +10670,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10 => { // '\n'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSide -> \n", .{});
                 }
@@ -10696,19 +10696,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSide <~ \n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         32 => { // ' '
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSide -> 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
                 }
             }
-            var child_nodes: [4]?data_structures.Node = .{null} ** 4;
+            var child_nodes: [4]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_generative_terminal_space(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -10790,7 +10790,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSide <~ 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
                 }
@@ -10818,7 +10818,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10 => { // '\n'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSide -> \n", .{});
                 }
@@ -10844,19 +10844,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSide <~ \n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         32 => { // ' '
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSide -> 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
                 }
             }
-            var child_nodes: [4]?data_structures.Node = .{null} ** 4;
+            var child_nodes: [4]?data_structures.Node = @splat(null);
             _ = parse_generative_terminal_space(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_39(context, occurrence_recovery)) {
@@ -10932,7 +10932,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSide <~ 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
                 }
@@ -10958,18 +10958,18 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10 => { // '\n'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSide -> \n", .{});
                 }
             }
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSide <~ \n", .{});
                 }
             }        },
         32 => { // ' '
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSide -> 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
                 }
@@ -11010,7 +11010,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 3
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSide <~ 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
                 }
@@ -11167,7 +11167,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Symbol -> TerminalSymbol\n", .{});
                 }
@@ -11207,7 +11207,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for Symbol: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -11216,13 +11216,13 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Symbol <~ TerminalSymbol\n", .{});
                 }
             }        },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Symbol -> VariableSymbol\n", .{});
                 }
@@ -11262,7 +11262,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for Symbol: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -11271,7 +11271,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Symbol <~ VariableSymbol\n", .{});
                 }
@@ -11279,7 +11279,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: Symbol -> TerminalSymbol\n", .{});
                         }
@@ -11319,7 +11319,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                         try procedure(&args);
                     }
 
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 2) {
                             std.debug.print("Procedure outcome for Symbol: {f}\n", .{
                                 string_utilities.fmtNode(args.node_address, context),
@@ -11328,7 +11328,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     }
                     node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: Symbol <~ TerminalSymbol\n", .{});
                         }
@@ -11341,7 +11341,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }
         },
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Symbol -> GenerativeTerminalSymbol\n", .{});
                 }
@@ -11381,7 +11381,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for Symbol: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -11390,7 +11390,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Symbol <~ GenerativeTerminalSymbol\n", .{});
                 }
@@ -11419,7 +11419,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Symbol -> TerminalSymbol\n", .{});
                 }
@@ -11439,13 +11439,13 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Symbol <~ TerminalSymbol\n", .{});
                 }
             }        },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Symbol -> VariableSymbol\n", .{});
                 }
@@ -11465,7 +11465,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Symbol <~ VariableSymbol\n", .{});
                 }
@@ -11473,7 +11473,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: Symbol -> TerminalSymbol\n", .{});
                         }
@@ -11493,7 +11493,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                         }
                     }
                     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: Symbol <~ TerminalSymbol\n", .{});
                         }
@@ -11506,7 +11506,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }
         },
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Symbol -> GenerativeTerminalSymbol\n", .{});
                 }
@@ -11526,7 +11526,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Symbol <~ GenerativeTerminalSymbol\n", .{});
                 }
@@ -11555,12 +11555,12 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Symbol -> TerminalSymbol\n", .{});
                 }
             }
-            var child_nodes: [1]?data_structures.Node = .{null} ** 1;
+            var child_nodes: [1]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -11597,19 +11597,19 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Symbol <~ TerminalSymbol\n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Symbol -> VariableSymbol\n", .{});
                 }
             }
-            var child_nodes: [1]?data_structures.Node = .{null} ** 1;
+            var child_nodes: [1]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_VariableSymbol(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -11646,7 +11646,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Symbol <~ VariableSymbol\n", .{});
                 }
@@ -11655,12 +11655,12 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: Symbol -> TerminalSymbol\n", .{});
                         }
                     }
-                    var child_nodes: [1]?data_structures.Node = .{null} ** 1;
+                    var child_nodes: [1]?data_structures.Node = @splat(null);
                     {
                         const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
@@ -11697,7 +11697,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                         try procedure(&args);
                     }
 
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: Symbol <~ TerminalSymbol\n", .{});
                         }
@@ -11710,12 +11710,12 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }
         },
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Symbol -> GenerativeTerminalSymbol\n", .{});
                 }
             }
-            var child_nodes: [1]?data_structures.Node = .{null} ** 1;
+            var child_nodes: [1]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_GenerativeTerminalSymbol(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -11752,7 +11752,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Symbol <~ GenerativeTerminalSymbol\n", .{});
                 }
@@ -11779,7 +11779,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Symbol -> TerminalSymbol\n", .{});
                 }
@@ -11793,13 +11793,13 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Symbol <~ TerminalSymbol\n", .{});
                 }
             }        },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Symbol -> VariableSymbol\n", .{});
                 }
@@ -11813,7 +11813,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Symbol <~ VariableSymbol\n", .{});
                 }
@@ -11821,7 +11821,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: Symbol -> TerminalSymbol\n", .{});
                         }
@@ -11835,7 +11835,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                             },
                             else => return err,
                         }; // child 0
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: Symbol <~ TerminalSymbol\n", .{});
                         }
@@ -11847,7 +11847,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }
         },
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Symbol -> GenerativeTerminalSymbol\n", .{});
                 }
@@ -11861,7 +11861,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Symbol <~ GenerativeTerminalSymbol\n", .{});
                 }
@@ -11893,7 +11893,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: TerminalSymbol -> '\"', SimpleStringContent, '\"'\n", .{});
                 }
@@ -11961,7 +11961,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for TerminalSymbol: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -11970,7 +11970,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalSymbol <~ '\"', SimpleStringContent, '\"'\n", .{});
                 }
@@ -11978,7 +11978,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: TerminalSymbol -> RawString\n", .{});
                         }
@@ -12018,7 +12018,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         try procedure(&args);
                     }
 
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 2) {
                             std.debug.print("Procedure outcome for TerminalSymbol: {f}\n", .{
                                 string_utilities.fmtNode(args.node_address, context),
@@ -12027,7 +12027,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     }
                     node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: TerminalSymbol <~ RawString\n", .{});
                         }
@@ -12063,7 +12063,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: TerminalSymbol -> '\"', SimpleStringContent, '\"'\n", .{});
                 }
@@ -12121,7 +12121,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for TerminalSymbol: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -12130,7 +12130,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalSymbol <~ '\"', SimpleStringContent, '\"'\n", .{});
                 }
@@ -12138,7 +12138,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: TerminalSymbol -> RawString\n", .{});
                         }
@@ -12178,7 +12178,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         try procedure(&args);
                     }
 
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 2) {
                             std.debug.print("Procedure outcome for TerminalSymbol: {f}\n", .{
                                 string_utilities.fmtNode(args.node_address, context),
@@ -12187,7 +12187,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     }
                     node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: TerminalSymbol <~ RawString\n", .{});
                         }
@@ -12223,7 +12223,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: TerminalSymbol -> '\"', SimpleStringContent, '\"'\n", .{});
                 }
@@ -12271,7 +12271,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalSymbol <~ '\"', SimpleStringContent, '\"'\n", .{});
                 }
@@ -12279,7 +12279,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: TerminalSymbol -> RawString\n", .{});
                         }
@@ -12299,7 +12299,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         }
                     }
                     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: TerminalSymbol <~ RawString\n", .{});
                         }
@@ -12335,7 +12335,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: TerminalSymbol -> '\"', SimpleStringContent, '\"'\n", .{});
                 }
@@ -12373,7 +12373,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     else => return err,
                 }; // child 2
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalSymbol <~ '\"', SimpleStringContent, '\"'\n", .{});
                 }
@@ -12381,7 +12381,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: TerminalSymbol -> RawString\n", .{});
                         }
@@ -12401,7 +12401,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         }
                     }
                     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: TerminalSymbol <~ RawString\n", .{});
                         }
@@ -12437,12 +12437,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: TerminalSymbol -> '\"', SimpleStringContent, '\"'\n", .{});
                 }
             }
-            var child_nodes: [3]?data_structures.Node = .{null} ** 3;
+            var child_nodes: [3]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_terminal__x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -12509,7 +12509,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalSymbol <~ '\"', SimpleStringContent, '\"'\n", .{});
                 }
@@ -12518,12 +12518,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: TerminalSymbol -> RawString\n", .{});
                         }
                     }
-                    var child_nodes: [1]?data_structures.Node = .{null} ** 1;
+                    var child_nodes: [1]?data_structures.Node = @splat(null);
                     {
                         const child_node = parse_RawString(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
@@ -12560,7 +12560,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         try procedure(&args);
                     }
 
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: TerminalSymbol <~ RawString\n", .{});
                         }
@@ -12595,12 +12595,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: TerminalSymbol -> '\"', SimpleStringContent, '\"'\n", .{});
                 }
             }
-            var child_nodes: [3]?data_structures.Node = .{null} ** 3;
+            var child_nodes: [3]?data_structures.Node = @splat(null);
             _ = parse_terminal__x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_59(context, occurrence_recovery)) {
@@ -12655,7 +12655,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalSymbol <~ '\"', SimpleStringContent, '\"'\n", .{});
                 }
@@ -12664,12 +12664,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: TerminalSymbol -> RawString\n", .{});
                         }
                     }
-                    var child_nodes: [1]?data_structures.Node = .{null} ** 1;
+                    var child_nodes: [1]?data_structures.Node = @splat(null);
                     {
                         const child_node = parse_RawString(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
@@ -12706,7 +12706,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         try procedure(&args);
                     }
 
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: TerminalSymbol <~ RawString\n", .{});
                         }
@@ -12739,7 +12739,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: TerminalSymbol -> '\"', SimpleStringContent, '\"'\n", .{});
                 }
@@ -12771,7 +12771,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 2
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalSymbol <~ '\"', SimpleStringContent, '\"'\n", .{});
                 }
@@ -12779,7 +12779,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: TerminalSymbol -> RawString\n", .{});
                         }
@@ -12793,7 +12793,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                             },
                             else => return err,
                         }; // child 0
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: TerminalSymbol <~ RawString\n", .{});
                         }
@@ -12831,7 +12831,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: GenerativeTerminalSymbol -> LowercaseId, GenerativeTerminalExceptions\n", .{});
                 }
@@ -12885,7 +12885,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for GenerativeTerminalSymbol: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -12894,7 +12894,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalSymbol <~ LowercaseId, GenerativeTerminalExceptions\n", .{});
                 }
@@ -12923,7 +12923,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: GenerativeTerminalSymbol -> LowercaseId, GenerativeTerminalExceptions\n", .{});
                 }
@@ -12957,7 +12957,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalSymbol <~ LowercaseId, GenerativeTerminalExceptions\n", .{});
                 }
@@ -12986,12 +12986,12 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: GenerativeTerminalSymbol -> LowercaseId, GenerativeTerminalExceptions\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_LowercaseId(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -13043,7 +13043,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalSymbol <~ LowercaseId, GenerativeTerminalExceptions\n", .{});
                 }
@@ -13070,7 +13070,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: GenerativeTerminalSymbol -> LowercaseId, GenerativeTerminalExceptions\n", .{});
                 }
@@ -13093,7 +13093,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalSymbol <~ LowercaseId, GenerativeTerminalExceptions\n", .{});
                 }
@@ -13125,7 +13125,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: UppercaseId -> 'uppercase_letter', IdTail\n", .{});
                 }
@@ -13179,7 +13179,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for UppercaseId: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -13188,7 +13188,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: UppercaseId <~ 'uppercase_letter', IdTail\n", .{});
                 }
@@ -13217,7 +13217,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: UppercaseId -> 'uppercase_letter', IdTail\n", .{});
                 }
@@ -13266,7 +13266,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for UppercaseId: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -13275,7 +13275,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: UppercaseId <~ 'uppercase_letter', IdTail\n", .{});
                 }
@@ -13304,7 +13304,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: UppercaseId -> 'uppercase_letter', IdTail\n", .{});
                 }
@@ -13338,7 +13338,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: UppercaseId <~ 'uppercase_letter', IdTail\n", .{});
                 }
@@ -13367,7 +13367,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: UppercaseId -> 'uppercase_letter', IdTail\n", .{});
                 }
@@ -13396,7 +13396,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: UppercaseId <~ 'uppercase_letter', IdTail\n", .{});
                 }
@@ -13425,12 +13425,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: UppercaseId -> 'uppercase_letter', IdTail\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_generative_terminal_uppercase_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -13482,7 +13482,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: UppercaseId <~ 'uppercase_letter', IdTail\n", .{});
                 }
@@ -13511,12 +13511,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: UppercaseId -> 'uppercase_letter', IdTail\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             _ = parse_generative_terminal_uppercase_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_60(context, occurrence_recovery)) {
@@ -13562,7 +13562,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: UppercaseId <~ 'uppercase_letter', IdTail\n", .{});
                 }
@@ -13589,7 +13589,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: UppercaseId -> 'uppercase_letter', IdTail\n", .{});
                 }
@@ -13612,7 +13612,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: UppercaseId <~ 'uppercase_letter', IdTail\n", .{});
                 }
@@ -13760,7 +13760,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     context.skipLeftoverBlockEndNewlines();
     switch (context.head(u16, 0)) {
         23586 => { // '\\\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RawString -> '\\\\\"', RawIndicator, '\"'\n", .{});
                 }
@@ -13834,7 +13834,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for RawString: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -13843,7 +13843,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RawString <~ '\\\\\"', RawIndicator, '\"'\n", .{});
                 }
@@ -13863,7 +13863,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     context.skipLeftoverBlockEndNewlines();
     switch (context.head(u16, 0)) {
         23586 => { // '\\\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RawString -> '\\\\\"', RawIndicator, '\"'\n", .{});
                 }
@@ -13927,7 +13927,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for RawString: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -13936,7 +13936,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RawString <~ '\\\\\"', RawIndicator, '\"'\n", .{});
                 }
@@ -13956,7 +13956,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     context.skipLeftoverBlockEndNewlines();
     switch (context.head(u16, 0)) {
         23586 => { // '\\\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RawString -> '\\\\\"', RawIndicator, '\"'\n", .{});
                 }
@@ -14010,7 +14010,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RawString <~ '\\\\\"', RawIndicator, '\"'\n", .{});
                 }
@@ -14030,7 +14030,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     context.skipLeftoverBlockEndNewlines();
     switch (context.head(u16, 0)) {
         23586 => { // '\\\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RawString -> '\\\\\"', RawIndicator, '\"'\n", .{});
                 }
@@ -14074,7 +14074,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     else => return err,
                 }; // child 2
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RawString <~ '\\\\\"', RawIndicator, '\"'\n", .{});
                 }
@@ -14094,12 +14094,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     context.skipLeftoverBlockEndNewlines();
     switch (context.head(u16, 0)) {
         23586 => { // '\\\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RawString -> '\\\\\"', RawIndicator, '\"'\n", .{});
                 }
             }
-            var child_nodes: [3]?data_structures.Node = .{null} ** 3;
+            var child_nodes: [3]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_terminal__x92_x92_x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -14170,7 +14170,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RawString <~ '\\\\\"', RawIndicator, '\"'\n", .{});
                 }
@@ -14190,12 +14190,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     context.skipLeftoverBlockEndNewlines();
     switch (context.head(u16, 0)) {
         23586 => { // '\\\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RawString -> '\\\\\"', RawIndicator, '\"'\n", .{});
                 }
             }
-            var child_nodes: [3]?data_structures.Node = .{null} ** 3;
+            var child_nodes: [3]?data_structures.Node = @splat(null);
             _ = parse_terminal__x92_x92_x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_36(context, occurrence_recovery)) {
@@ -14254,7 +14254,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RawString <~ '\\\\\"', RawIndicator, '\"'\n", .{});
                 }
@@ -14272,7 +14272,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     context.skipLeftoverBlockEndNewlines();
     switch (context.head(u16, 0)) {
         23586 => { // '\\\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RawString -> '\\\\\"', RawIndicator, '\"'\n", .{});
                 }
@@ -14307,7 +14307,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 2
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RawString <~ '\\\\\"', RawIndicator, '\"'\n", .{});
                 }
@@ -14467,7 +14467,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: SimpleStringContent -> 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
                     }
@@ -14515,7 +14515,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: SimpleStringContent <~ 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
             }
@@ -14542,7 +14542,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             try procedure(&args);
         }
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 2) {
                 std.debug.print("Procedure outcome for SimpleStringContent: {f}\n", .{
                     string_utilities.fmtNode(args.node_address, context),
@@ -14582,7 +14582,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: SimpleStringContent -> 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
                     }
@@ -14625,7 +14625,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: SimpleStringContent <~ 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
             }
@@ -14652,7 +14652,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             try procedure(&args);
         }
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 2) {
                 std.debug.print("Procedure outcome for SimpleStringContent: {f}\n", .{
                     string_utilities.fmtNode(args.node_address, context),
@@ -14692,7 +14692,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: SimpleStringContent -> 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
                     }
@@ -14740,7 +14740,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: SimpleStringContent <~ 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
             }
@@ -14768,7 +14768,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: SimpleStringContent -> 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
                     }
@@ -14811,7 +14811,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: SimpleStringContent <~ 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
             }
@@ -14841,7 +14841,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: SimpleStringContent -> 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
                     }
@@ -14849,7 +14849,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const frame = try semantic_allocator.create(SemanticReductionFrame);
                 frame.* = .{
                     .node = .{ .text_start = context.currentTokenSourceOffset(), .variable = 17, .payload = .{} },
-                    .children = .{null} ** 2,
+                    .children = @splat(null),
                 };
                 try frames.append(semantic_allocator, frame);
                 {
@@ -14889,7 +14889,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             frame.node.appendTemporaryChild(&frame.children[1].?);
         }
         frame.node.text_length = context.currentTokenSourceOffset() - frame.node.text_start;
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: SimpleStringContent <~ 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
             }
@@ -14937,7 +14937,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: SimpleStringContent -> 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
                     }
@@ -14945,7 +14945,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const frame = try semantic_allocator.create(SemanticReductionFrame);
                 frame.* = .{
                     .node = .{ .text_start = context.currentTokenSourceOffset(), .variable = 17, .payload = .{} },
-                    .children = .{null} ** 2,
+                    .children = @splat(null),
                 };
                 try frames.append(semantic_allocator, frame);
                 _ = parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34(context, null) catch |err| switch (err) {
@@ -14979,7 +14979,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             frame.node.appendTemporaryChild(&frame.children[1].?);
         }
         frame.node.text_length = context.currentTokenSourceOffset() - frame.node.text_start;
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: SimpleStringContent <~ 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
             }
@@ -15020,7 +15020,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: SimpleStringContent -> 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
                     }
@@ -15073,7 +15073,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             break :blk byte;
         }) {
             194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf', '\xe0', '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xed', '\xee', '\xef', '\xf0', '\xf1', '\xf2', '\xf3', '\xf4'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: SimpleStringContent -> _Utf8Scalar, SimpleStringContent\n", .{});
                     }
@@ -15116,7 +15116,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: SimpleStringContent <~ _Utf8Scalar, SimpleStringContent\n", .{});
             }
@@ -15143,7 +15143,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             try procedure(&args);
         }
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 2) {
                 std.debug.print("Procedure outcome for SimpleStringContent: {f}\n", .{
                     string_utilities.fmtNode(args.node_address, context),
@@ -15184,7 +15184,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             break :blk byte;
         }) {
             194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf', '\xe0', '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xed', '\xee', '\xef', '\xf0', '\xf1', '\xf2', '\xf3', '\xf4'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: SimpleStringContent -> _Utf8Scalar, SimpleStringContent\n", .{});
                     }
@@ -15227,7 +15227,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: SimpleStringContent <~ _Utf8Scalar, SimpleStringContent\n", .{});
             }
@@ -15258,7 +15258,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             break :blk byte;
         }) {
             194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf', '\xe0', '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xed', '\xee', '\xef', '\xf0', '\xf1', '\xf2', '\xf3', '\xf4'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: SimpleStringContent -> _Utf8Scalar, SimpleStringContent\n", .{});
                     }
@@ -15266,7 +15266,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 const frame = try semantic_allocator.create(SemanticReductionFrame);
                 frame.* = .{
                     .node = .{ .text_start = context.currentTokenSourceOffset(), .variable = 17, .payload = .{} },
-                    .children = .{null} ** 2,
+                    .children = @splat(null),
                 };
                 try frames.append(semantic_allocator, frame);
                 _ = parse__Utf8Scalar_(context, null) catch |err| switch (err) {
@@ -15300,7 +15300,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             frame.node.appendTemporaryChild(&frame.children[1].?);
         }
         frame.node.text_length = context.currentTokenSourceOffset() - frame.node.text_start;
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: SimpleStringContent <~ _Utf8Scalar, SimpleStringContent\n", .{});
             }
@@ -15342,7 +15342,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             break :blk byte;
         }) {
             194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf', '\xe0', '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xed', '\xee', '\xef', '\xf0', '\xf1', '\xf2', '\xf3', '\xf4'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: SimpleStringContent -> _Utf8Scalar, SimpleStringContent\n", .{});
                     }
@@ -15390,7 +15390,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: SimpleStringContent -> 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
                 }
@@ -15444,7 +15444,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for SimpleStringContent: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -15453,13 +15453,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
                 }
             }        },
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: SimpleStringContent -> \n", .{});
                 }
@@ -15485,7 +15485,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for SimpleStringContent: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -15494,13 +15494,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ \n", .{});
                 }
             }        },
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf', '\xe0', '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xed', '\xee', '\xef', '\xf0', '\xf1', '\xf2', '\xf3', '\xf4'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: SimpleStringContent -> _Utf8Scalar, SimpleStringContent\n", .{});
                 }
@@ -15549,7 +15549,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for SimpleStringContent: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -15558,7 +15558,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ _Utf8Scalar, SimpleStringContent\n", .{});
                 }
@@ -15586,7 +15586,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: SimpleStringContent -> 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
                 }
@@ -15635,7 +15635,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for SimpleStringContent: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -15644,13 +15644,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
                 }
             }        },
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: SimpleStringContent -> \n", .{});
                 }
@@ -15676,7 +15676,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for SimpleStringContent: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -15685,13 +15685,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ \n", .{});
                 }
             }        },
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf', '\xe0', '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xed', '\xee', '\xef', '\xf0', '\xf1', '\xf2', '\xf3', '\xf4'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: SimpleStringContent -> _Utf8Scalar, SimpleStringContent\n", .{});
                 }
@@ -15740,7 +15740,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for SimpleStringContent: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -15749,7 +15749,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ _Utf8Scalar, SimpleStringContent\n", .{});
                 }
@@ -15777,7 +15777,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: SimpleStringContent -> 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
                 }
@@ -15811,25 +15811,25 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
                 }
             }        },
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: SimpleStringContent -> \n", .{});
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ \n", .{});
                 }
             }        },
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf', '\xe0', '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xed', '\xee', '\xef', '\xf0', '\xf1', '\xf2', '\xf3', '\xf4'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: SimpleStringContent -> _Utf8Scalar, SimpleStringContent\n", .{});
                 }
@@ -15858,7 +15858,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ _Utf8Scalar, SimpleStringContent\n", .{});
                 }
@@ -15886,7 +15886,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: SimpleStringContent -> 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
                 }
@@ -15915,25 +15915,25 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
                 }
             }        },
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: SimpleStringContent -> \n", .{});
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ \n", .{});
                 }
             }        },
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf', '\xe0', '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xed', '\xee', '\xef', '\xf0', '\xf1', '\xf2', '\xf3', '\xf4'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: SimpleStringContent -> _Utf8Scalar, SimpleStringContent\n", .{});
                 }
@@ -15962,7 +15962,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ _Utf8Scalar, SimpleStringContent\n", .{});
                 }
@@ -15990,12 +15990,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: SimpleStringContent -> 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -16047,14 +16047,14 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: SimpleStringContent -> \n", .{});
                 }
@@ -16080,19 +16080,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ \n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf', '\xe0', '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xed', '\xee', '\xef', '\xf0', '\xf1', '\xf2', '\xf3', '\xf4'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: SimpleStringContent -> _Utf8Scalar, SimpleStringContent\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             _ = parse__Utf8Scalar_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_51(context, occurrence_recovery)) {
@@ -16138,7 +16138,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ _Utf8Scalar, SimpleStringContent\n", .{});
                 }
@@ -16166,12 +16166,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: SimpleStringContent -> 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             _ = parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_50(context, occurrence_recovery)) {
@@ -16217,14 +16217,14 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: SimpleStringContent -> \n", .{});
                 }
@@ -16250,19 +16250,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ \n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf', '\xe0', '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xed', '\xee', '\xef', '\xf0', '\xf1', '\xf2', '\xf3', '\xf4'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: SimpleStringContent -> _Utf8Scalar, SimpleStringContent\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             _ = parse__Utf8Scalar_(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_51(context, occurrence_recovery)) {
@@ -16308,7 +16308,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ _Utf8Scalar, SimpleStringContent\n", .{});
                 }
@@ -16334,7 +16334,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: SimpleStringContent -> 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
                 }
@@ -16357,24 +16357,24 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
                 }
             }        },
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: SimpleStringContent -> \n", .{});
                 }
             }
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ \n", .{});
                 }
             }        },
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf', '\xe0', '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xed', '\xee', '\xef', '\xf0', '\xf1', '\xf2', '\xf3', '\xf4'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: SimpleStringContent -> _Utf8Scalar, SimpleStringContent\n", .{});
                 }
@@ -16397,7 +16397,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ _Utf8Scalar, SimpleStringContent\n", .{});
                 }
@@ -16518,7 +16518,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         9, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RawIndicator -> 'character^\"\\\\u{{22}}\"^\"\\\\n\"^\"\\\\u{{5c}}\"'\n", .{});
                 }
@@ -16558,7 +16558,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for RawIndicator: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -16567,7 +16567,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RawIndicator <~ 'character^\"\\\\u{{22}}\"^\"\\\\n\"^\"\\\\u{{5c}}\"'\n", .{});
                 }
@@ -16596,7 +16596,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         9, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RawIndicator -> 'character^\"\\\\u{{22}}\"^\"\\\\n\"^\"\\\\u{{5c}}\"'\n", .{});
                 }
@@ -16631,7 +16631,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for RawIndicator: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -16640,7 +16640,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RawIndicator <~ 'character^\"\\\\u{{22}}\"^\"\\\\n\"^\"\\\\u{{5c}}\"'\n", .{});
                 }
@@ -16669,7 +16669,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         9, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RawIndicator -> 'character^\"\\\\u{{22}}\"^\"\\\\n\"^\"\\\\u{{5c}}\"'\n", .{});
                 }
@@ -16689,7 +16689,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RawIndicator <~ 'character^\"\\\\u{{22}}\"^\"\\\\n\"^\"\\\\u{{5c}}\"'\n", .{});
                 }
@@ -16718,7 +16718,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         9, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RawIndicator -> 'character^\"\\\\u{{22}}\"^\"\\\\n\"^\"\\\\u{{5c}}\"'\n", .{});
                 }
@@ -16733,7 +16733,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     else => return err,
                 }; // child 0
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RawIndicator <~ 'character^\"\\\\u{{22}}\"^\"\\\\n\"^\"\\\\u{{5c}}\"'\n", .{});
                 }
@@ -16762,12 +16762,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         9, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RawIndicator -> 'character^\"\\\\u{{22}}\"^\"\\\\n\"^\"\\\\u{{5c}}\"'\n", .{});
                 }
             }
-            var child_nodes: [1]?data_structures.Node = .{null} ** 1;
+            var child_nodes: [1]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_generative_terminal_character_x94_x34_x92_x92u_x12322_x125_x34_x94_x34_x92_x92n_x34_x94_x34_x92_x92u_x1235c_x125_x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -16804,7 +16804,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RawIndicator <~ 'character^\"\\\\u{{22}}\"^\"\\\\n\"^\"\\\\u{{5c}}\"'\n", .{});
                 }
@@ -16833,7 +16833,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         9, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RawIndicator -> 'character^\"\\\\u{{22}}\"^\"\\\\n\"^\"\\\\u{{5c}}\"'\n", .{});
                 }
@@ -16868,7 +16868,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RawIndicator <~ 'character^\"\\\\u{{22}}\"^\"\\\\n\"^\"\\\\u{{5c}}\"'\n", .{});
                 }
@@ -16895,7 +16895,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         9, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RawIndicator -> 'character^\"\\\\u{{22}}\"^\"\\\\n\"^\"\\\\u{{5c}}\"'\n", .{});
                 }
@@ -16909,7 +16909,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RawIndicator <~ 'character^\"\\\\u{{22}}\"^\"\\\\n\"^\"\\\\u{{5c}}\"'\n", .{});
                 }
@@ -17066,7 +17066,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: LowercaseId -> 'lowercase_letter', IdTail\n", .{});
                 }
@@ -17120,7 +17120,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for LowercaseId: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -17129,7 +17129,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: LowercaseId <~ 'lowercase_letter', IdTail\n", .{});
                 }
@@ -17158,7 +17158,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: LowercaseId -> 'lowercase_letter', IdTail\n", .{});
                 }
@@ -17207,7 +17207,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for LowercaseId: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -17216,7 +17216,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: LowercaseId <~ 'lowercase_letter', IdTail\n", .{});
                 }
@@ -17245,7 +17245,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: LowercaseId -> 'lowercase_letter', IdTail\n", .{});
                 }
@@ -17279,7 +17279,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: LowercaseId <~ 'lowercase_letter', IdTail\n", .{});
                 }
@@ -17308,7 +17308,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: LowercaseId -> 'lowercase_letter', IdTail\n", .{});
                 }
@@ -17337,7 +17337,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: LowercaseId <~ 'lowercase_letter', IdTail\n", .{});
                 }
@@ -17366,12 +17366,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: LowercaseId -> 'lowercase_letter', IdTail\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_generative_terminal_lowercase_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -17423,7 +17423,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: LowercaseId <~ 'lowercase_letter', IdTail\n", .{});
                 }
@@ -17452,12 +17452,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: LowercaseId -> 'lowercase_letter', IdTail\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             _ = parse_generative_terminal_lowercase_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_30(context, occurrence_recovery)) {
@@ -17503,7 +17503,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: LowercaseId <~ 'lowercase_letter', IdTail\n", .{});
                 }
@@ -17530,7 +17530,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: LowercaseId -> 'lowercase_letter', IdTail\n", .{});
                 }
@@ -17553,7 +17553,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: LowercaseId <~ 'lowercase_letter', IdTail\n", .{});
                 }
@@ -17589,7 +17589,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             94 => { // '^'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: GenerativeTerminalExceptions -> '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
                     }
@@ -17651,7 +17651,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: GenerativeTerminalExceptions <~ '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
             }
@@ -17678,7 +17678,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             try procedure(&args);
         }
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 2) {
                 std.debug.print("Procedure outcome for GenerativeTerminalExceptions: {f}\n", .{
                     string_utilities.fmtNode(args.node_address, context),
@@ -17719,7 +17719,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             94 => { // '^'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: GenerativeTerminalExceptions -> '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
                     }
@@ -17776,7 +17776,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: GenerativeTerminalExceptions <~ '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
             }
@@ -17803,7 +17803,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             try procedure(&args);
         }
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 2) {
                 std.debug.print("Procedure outcome for GenerativeTerminalExceptions: {f}\n", .{
                     string_utilities.fmtNode(args.node_address, context),
@@ -17844,7 +17844,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             94 => { // '^'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: GenerativeTerminalExceptions -> '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
                     }
@@ -17906,7 +17906,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: GenerativeTerminalExceptions <~ '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
             }
@@ -17935,7 +17935,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             94 => { // '^'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: GenerativeTerminalExceptions -> '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
                     }
@@ -17992,7 +17992,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: GenerativeTerminalExceptions <~ '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
             }
@@ -18023,7 +18023,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             94 => { // '^'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: GenerativeTerminalExceptions -> '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
                     }
@@ -18031,7 +18031,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const frame = try semantic_allocator.create(SemanticReductionFrame);
                 frame.* = .{
                     .node = .{ .text_start = context.currentTokenSourceOffset(), .variable = 20, .payload = .{} },
-                    .children = .{null} ** 3,
+                    .children = @splat(null),
                 };
                 try frames.append(semantic_allocator, frame);
                 {
@@ -18086,7 +18086,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             frame.node.appendTemporaryChild(&frame.children[2].?);
         }
         frame.node.text_length = context.currentTokenSourceOffset() - frame.node.text_start;
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: GenerativeTerminalExceptions <~ '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
             }
@@ -18135,7 +18135,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             94 => { // '^'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: GenerativeTerminalExceptions -> '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
                     }
@@ -18143,7 +18143,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const frame = try semantic_allocator.create(SemanticReductionFrame);
                 frame.* = .{
                     .node = .{ .text_start = context.currentTokenSourceOffset(), .variable = 20, .payload = .{} },
-                    .children = .{null} ** 3,
+                    .children = @splat(null),
                 };
                 try frames.append(semantic_allocator, frame);
                 _ = parse_terminal__x94(context, null) catch |err| switch (err) {
@@ -18192,7 +18192,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             frame.node.appendTemporaryChild(&frame.children[2].?);
         }
         frame.node.text_length = context.currentTokenSourceOffset() - frame.node.text_start;
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: GenerativeTerminalExceptions <~ '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
             }
@@ -18234,7 +18234,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             94 => { // '^'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: GenerativeTerminalExceptions -> '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
                     }
@@ -18291,7 +18291,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32, 64 => { // '\n', ' ', '@'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: GenerativeTerminalExceptions -> \n", .{});
                 }
@@ -18317,7 +18317,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for GenerativeTerminalExceptions: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -18326,13 +18326,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalExceptions <~ \n", .{});
                 }
             }        },
         94 => { // '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: GenerativeTerminalExceptions -> '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
                 }
@@ -18400,7 +18400,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for GenerativeTerminalExceptions: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -18409,7 +18409,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalExceptions <~ '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
                 }
@@ -18437,7 +18437,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32, 64 => { // '\n', ' ', '@'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: GenerativeTerminalExceptions -> \n", .{});
                 }
@@ -18463,7 +18463,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for GenerativeTerminalExceptions: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -18472,13 +18472,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalExceptions <~ \n", .{});
                 }
             }        },
         94 => { // '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: GenerativeTerminalExceptions -> '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
                 }
@@ -18541,7 +18541,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for GenerativeTerminalExceptions: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -18550,7 +18550,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalExceptions <~ '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
                 }
@@ -18578,19 +18578,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32, 64 => { // '\n', ' ', '@'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: GenerativeTerminalExceptions -> \n", .{});
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalExceptions <~ \n", .{});
                 }
             }        },
         94 => { // '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: GenerativeTerminalExceptions -> '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
                 }
@@ -18638,7 +18638,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalExceptions <~ '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
                 }
@@ -18666,19 +18666,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32, 64 => { // '\n', ' ', '@'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: GenerativeTerminalExceptions -> \n", .{});
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalExceptions <~ \n", .{});
                 }
             }        },
         94 => { // '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: GenerativeTerminalExceptions -> '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
                 }
@@ -18721,7 +18721,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalExceptions <~ '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
                 }
@@ -18749,7 +18749,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32, 64 => { // '\n', ' ', '@'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: GenerativeTerminalExceptions -> \n", .{});
                 }
@@ -18775,19 +18775,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalExceptions <~ \n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         94 => { // '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: GenerativeTerminalExceptions -> '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
                 }
             }
-            var child_nodes: [3]?data_structures.Node = .{null} ** 3;
+            var child_nodes: [3]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_terminal__x94(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -18854,7 +18854,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalExceptions <~ '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
                 }
@@ -18882,7 +18882,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32, 64 => { // '\n', ' ', '@'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: GenerativeTerminalExceptions -> \n", .{});
                 }
@@ -18908,19 +18908,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalExceptions <~ \n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         94 => { // '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: GenerativeTerminalExceptions -> '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
                 }
             }
-            var child_nodes: [3]?data_structures.Node = .{null} ** 3;
+            var child_nodes: [3]?data_structures.Node = @splat(null);
             _ = parse_terminal__x94(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_24(context, occurrence_recovery)) {
@@ -18981,7 +18981,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalExceptions <~ '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
                 }
@@ -19007,18 +19007,18 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32, 64 => { // '\n', ' ', '@'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: GenerativeTerminalExceptions -> \n", .{});
                 }
             }
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalExceptions <~ \n", .{});
                 }
             }        },
         94 => { // '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: GenerativeTerminalExceptions -> '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
                 }
@@ -19050,7 +19050,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 2
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalExceptions <~ '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
                 }
@@ -19332,7 +19332,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         33 => { // '!'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Annotation -> '!', RecoveryPoint\n", .{});
                 }
@@ -19386,7 +19386,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for Annotation: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -19395,13 +19395,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Annotation <~ '!', RecoveryPoint\n", .{});
                 }
             }        },
         62 => { // '>'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Annotation -> '>', VerbatimMarker\n", .{});
                 }
@@ -19455,7 +19455,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for Annotation: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -19464,13 +19464,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Annotation <~ '>', VerbatimMarker\n", .{});
                 }
             }        },
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Annotation -> Procedure\n", .{});
                 }
@@ -19510,7 +19510,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for Annotation: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -19519,7 +19519,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Annotation <~ Procedure\n", .{});
                 }
@@ -19548,7 +19548,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         33 => { // '!'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Annotation -> '!', RecoveryPoint\n", .{});
                 }
@@ -19597,7 +19597,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for Annotation: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -19606,13 +19606,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Annotation <~ '!', RecoveryPoint\n", .{});
                 }
             }        },
         62 => { // '>'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Annotation -> '>', VerbatimMarker\n", .{});
                 }
@@ -19661,7 +19661,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for Annotation: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -19670,13 +19670,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Annotation <~ '>', VerbatimMarker\n", .{});
                 }
             }        },
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Annotation -> Procedure\n", .{});
                 }
@@ -19716,7 +19716,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for Annotation: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -19725,7 +19725,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Annotation <~ Procedure\n", .{});
                 }
@@ -19754,7 +19754,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         33 => { // '!'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Annotation -> '!', RecoveryPoint\n", .{});
                 }
@@ -19788,13 +19788,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Annotation <~ '!', RecoveryPoint\n", .{});
                 }
             }        },
         62 => { // '>'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Annotation -> '>', VerbatimMarker\n", .{});
                 }
@@ -19828,13 +19828,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Annotation <~ '>', VerbatimMarker\n", .{});
                 }
             }        },
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Annotation -> Procedure\n", .{});
                 }
@@ -19854,7 +19854,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Annotation <~ Procedure\n", .{});
                 }
@@ -19883,7 +19883,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         33 => { // '!'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Annotation -> '!', RecoveryPoint\n", .{});
                 }
@@ -19912,13 +19912,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Annotation <~ '!', RecoveryPoint\n", .{});
                 }
             }        },
         62 => { // '>'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Annotation -> '>', VerbatimMarker\n", .{});
                 }
@@ -19947,13 +19947,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Annotation <~ '>', VerbatimMarker\n", .{});
                 }
             }        },
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Annotation -> Procedure\n", .{});
                 }
@@ -19973,7 +19973,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Annotation <~ Procedure\n", .{});
                 }
@@ -20002,12 +20002,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         33 => { // '!'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Annotation -> '!', RecoveryPoint\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_terminal__x33(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -20059,19 +20059,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Annotation <~ '!', RecoveryPoint\n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         62 => { // '>'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Annotation -> '>', VerbatimMarker\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_terminal__x62(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -20123,19 +20123,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Annotation <~ '>', VerbatimMarker\n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Annotation -> Procedure\n", .{});
                 }
             }
-            var child_nodes: [1]?data_structures.Node = .{null} ** 1;
+            var child_nodes: [1]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_Procedure(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -20172,7 +20172,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Annotation <~ Procedure\n", .{});
                 }
@@ -20201,12 +20201,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         33 => { // '!'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Annotation -> '!', RecoveryPoint\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             _ = parse_terminal__x33(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_1(context, occurrence_recovery)) {
@@ -20252,19 +20252,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Annotation <~ '!', RecoveryPoint\n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         62 => { // '>'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Annotation -> '>', VerbatimMarker\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             _ = parse_terminal__x62(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_2(context, occurrence_recovery)) {
@@ -20310,19 +20310,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Annotation <~ '>', VerbatimMarker\n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Annotation -> Procedure\n", .{});
                 }
             }
-            var child_nodes: [1]?data_structures.Node = .{null} ** 1;
+            var child_nodes: [1]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_Procedure(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -20359,7 +20359,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Annotation <~ Procedure\n", .{});
                 }
@@ -20386,7 +20386,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         33 => { // '!'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Annotation -> '!', RecoveryPoint\n", .{});
                 }
@@ -20409,13 +20409,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Annotation <~ '!', RecoveryPoint\n", .{});
                 }
             }        },
         62 => { // '>'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Annotation -> '>', VerbatimMarker\n", .{});
                 }
@@ -20438,13 +20438,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Annotation <~ '>', VerbatimMarker\n", .{});
                 }
             }        },
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Annotation -> Procedure\n", .{});
                 }
@@ -20458,7 +20458,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Annotation <~ Procedure\n", .{});
                 }
@@ -20490,7 +20490,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Procedure -> CamelCaseId\n", .{});
                 }
@@ -20530,7 +20530,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for Procedure: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -20539,7 +20539,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Procedure <~ CamelCaseId\n", .{});
                 }
@@ -20568,7 +20568,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Procedure -> CamelCaseId\n", .{});
                 }
@@ -20588,7 +20588,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Procedure <~ CamelCaseId\n", .{});
                 }
@@ -20617,12 +20617,12 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Procedure -> CamelCaseId\n", .{});
                 }
             }
-            var child_nodes: [1]?data_structures.Node = .{null} ** 1;
+            var child_nodes: [1]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_CamelCaseId(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -20659,7 +20659,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Procedure <~ CamelCaseId\n", .{});
                 }
@@ -20686,7 +20686,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Procedure -> CamelCaseId\n", .{});
                 }
@@ -20700,7 +20700,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Procedure <~ CamelCaseId\n", .{});
                 }
@@ -20857,7 +20857,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         34, 94 => { // '\"', '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RecoveryPoint -> TerminalAndCursor\n", .{});
                 }
@@ -20897,7 +20897,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for RecoveryPoint: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -20906,7 +20906,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RecoveryPoint <~ TerminalAndCursor\n", .{});
                 }
@@ -20914,7 +20914,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: RecoveryPoint -> TerminalAndCursor\n", .{});
                         }
@@ -20954,7 +20954,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                         try procedure(&args);
                     }
 
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 2) {
                             std.debug.print("Procedure outcome for RecoveryPoint: {f}\n", .{
                                 string_utilities.fmtNode(args.node_address, context),
@@ -20963,7 +20963,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     }
                     node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: RecoveryPoint <~ TerminalAndCursor\n", .{});
                         }
@@ -20999,7 +20999,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         34, 94 => { // '\"', '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RecoveryPoint -> TerminalAndCursor\n", .{});
                 }
@@ -21019,7 +21019,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RecoveryPoint <~ TerminalAndCursor\n", .{});
                 }
@@ -21027,7 +21027,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: RecoveryPoint -> TerminalAndCursor\n", .{});
                         }
@@ -21047,7 +21047,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                         }
                     }
                     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: RecoveryPoint <~ TerminalAndCursor\n", .{});
                         }
@@ -21083,12 +21083,12 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         34, 94 => { // '\"', '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RecoveryPoint -> TerminalAndCursor\n", .{});
                 }
             }
-            var child_nodes: [1]?data_structures.Node = .{null} ** 1;
+            var child_nodes: [1]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_TerminalAndCursor(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -21125,7 +21125,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RecoveryPoint <~ TerminalAndCursor\n", .{});
                 }
@@ -21134,12 +21134,12 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: RecoveryPoint -> TerminalAndCursor\n", .{});
                         }
                     }
-                    var child_nodes: [1]?data_structures.Node = .{null} ** 1;
+                    var child_nodes: [1]?data_structures.Node = @splat(null);
                     {
                         const child_node = parse_TerminalAndCursor(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
@@ -21176,7 +21176,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                         try procedure(&args);
                     }
 
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: RecoveryPoint <~ TerminalAndCursor\n", .{});
                         }
@@ -21209,7 +21209,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         34, 94 => { // '\"', '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RecoveryPoint -> TerminalAndCursor\n", .{});
                 }
@@ -21223,7 +21223,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RecoveryPoint <~ TerminalAndCursor\n", .{});
                 }
@@ -21231,7 +21231,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: RecoveryPoint -> TerminalAndCursor\n", .{});
                         }
@@ -21245,7 +21245,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                             },
                             else => return err,
                         }; // child 0
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: RecoveryPoint <~ TerminalAndCursor\n", .{});
                         }
@@ -21408,7 +21408,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         34, 94 => { // '\"', '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VerbatimMarker -> TerminalAndCursor\n", .{});
                 }
@@ -21448,7 +21448,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for VerbatimMarker: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -21457,13 +21457,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VerbatimMarker <~ TerminalAndCursor\n", .{});
                 }
             }        },
         62 => { // '>'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VerbatimMarker -> '>'\n", .{});
                 }
@@ -21503,7 +21503,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for VerbatimMarker: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -21512,7 +21512,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VerbatimMarker <~ '>'\n", .{});
                 }
@@ -21520,7 +21520,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: VerbatimMarker -> TerminalAndCursor\n", .{});
                         }
@@ -21560,7 +21560,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         try procedure(&args);
                     }
 
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 2) {
                             std.debug.print("Procedure outcome for VerbatimMarker: {f}\n", .{
                                 string_utilities.fmtNode(args.node_address, context),
@@ -21569,7 +21569,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     }
                     node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: VerbatimMarker <~ TerminalAndCursor\n", .{});
                         }
@@ -21605,7 +21605,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         34, 94 => { // '\"', '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VerbatimMarker -> TerminalAndCursor\n", .{});
                 }
@@ -21645,7 +21645,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for VerbatimMarker: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -21654,13 +21654,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VerbatimMarker <~ TerminalAndCursor\n", .{});
                 }
             }        },
         62 => { // '>'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VerbatimMarker -> '>'\n", .{});
                 }
@@ -21695,7 +21695,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for VerbatimMarker: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -21704,7 +21704,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VerbatimMarker <~ '>'\n", .{});
                 }
@@ -21712,7 +21712,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: VerbatimMarker -> TerminalAndCursor\n", .{});
                         }
@@ -21752,7 +21752,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         try procedure(&args);
                     }
 
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 2) {
                             std.debug.print("Procedure outcome for VerbatimMarker: {f}\n", .{
                                 string_utilities.fmtNode(args.node_address, context),
@@ -21761,7 +21761,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     }
                     node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: VerbatimMarker <~ TerminalAndCursor\n", .{});
                         }
@@ -21797,7 +21797,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         34, 94 => { // '\"', '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VerbatimMarker -> TerminalAndCursor\n", .{});
                 }
@@ -21817,13 +21817,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VerbatimMarker <~ TerminalAndCursor\n", .{});
                 }
             }        },
         62 => { // '>'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VerbatimMarker -> '>'\n", .{});
                 }
@@ -21843,7 +21843,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VerbatimMarker <~ '>'\n", .{});
                 }
@@ -21851,7 +21851,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: VerbatimMarker -> TerminalAndCursor\n", .{});
                         }
@@ -21871,7 +21871,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         }
                     }
                     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: VerbatimMarker <~ TerminalAndCursor\n", .{});
                         }
@@ -21907,7 +21907,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         34, 94 => { // '\"', '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VerbatimMarker -> TerminalAndCursor\n", .{});
                 }
@@ -21927,13 +21927,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VerbatimMarker <~ TerminalAndCursor\n", .{});
                 }
             }        },
         62 => { // '>'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VerbatimMarker -> '>'\n", .{});
                 }
@@ -21948,7 +21948,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     else => return err,
                 }; // child 0
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VerbatimMarker <~ '>'\n", .{});
                 }
@@ -21956,7 +21956,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: VerbatimMarker -> TerminalAndCursor\n", .{});
                         }
@@ -21976,7 +21976,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         }
                     }
                     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: VerbatimMarker <~ TerminalAndCursor\n", .{});
                         }
@@ -22012,12 +22012,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         34, 94 => { // '\"', '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VerbatimMarker -> TerminalAndCursor\n", .{});
                 }
             }
-            var child_nodes: [1]?data_structures.Node = .{null} ** 1;
+            var child_nodes: [1]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_TerminalAndCursor(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -22054,19 +22054,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VerbatimMarker <~ TerminalAndCursor\n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         62 => { // '>'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VerbatimMarker -> '>'\n", .{});
                 }
             }
-            var child_nodes: [1]?data_structures.Node = .{null} ** 1;
+            var child_nodes: [1]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_terminal__x62(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -22103,7 +22103,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VerbatimMarker <~ '>'\n", .{});
                 }
@@ -22112,12 +22112,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: VerbatimMarker -> TerminalAndCursor\n", .{});
                         }
                     }
-                    var child_nodes: [1]?data_structures.Node = .{null} ** 1;
+                    var child_nodes: [1]?data_structures.Node = @splat(null);
                     {
                         const child_node = parse_TerminalAndCursor(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
@@ -22154,7 +22154,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         try procedure(&args);
                     }
 
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: VerbatimMarker <~ TerminalAndCursor\n", .{});
                         }
@@ -22189,12 +22189,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         34, 94 => { // '\"', '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VerbatimMarker -> TerminalAndCursor\n", .{});
                 }
             }
-            var child_nodes: [1]?data_structures.Node = .{null} ** 1;
+            var child_nodes: [1]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_TerminalAndCursor(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -22231,14 +22231,14 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VerbatimMarker <~ TerminalAndCursor\n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         62 => { // '>'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VerbatimMarker -> '>'\n", .{});
                 }
@@ -22273,7 +22273,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VerbatimMarker <~ '>'\n", .{});
                 }
@@ -22282,12 +22282,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: VerbatimMarker -> TerminalAndCursor\n", .{});
                         }
                     }
-                    var child_nodes: [1]?data_structures.Node = .{null} ** 1;
+                    var child_nodes: [1]?data_structures.Node = @splat(null);
                     {
                         const child_node = parse_TerminalAndCursor(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
@@ -22324,7 +22324,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         try procedure(&args);
                     }
 
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: VerbatimMarker <~ TerminalAndCursor\n", .{});
                         }
@@ -22357,7 +22357,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         34, 94 => { // '\"', '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VerbatimMarker -> TerminalAndCursor\n", .{});
                 }
@@ -22371,13 +22371,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VerbatimMarker <~ TerminalAndCursor\n", .{});
                 }
             }        },
         62 => { // '>'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VerbatimMarker -> '>'\n", .{});
                 }
@@ -22391,7 +22391,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VerbatimMarker <~ '>'\n", .{});
                 }
@@ -22399,7 +22399,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: VerbatimMarker -> TerminalAndCursor\n", .{});
                         }
@@ -22413,7 +22413,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                             },
                             else => return err,
                         }; // child 0
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: VerbatimMarker <~ TerminalAndCursor\n", .{});
                         }
@@ -22451,7 +22451,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseId -> 'lowercase_letter', CamelCaseIdTail\n", .{});
                 }
@@ -22505,7 +22505,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for CamelCaseId: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -22514,7 +22514,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseId <~ 'lowercase_letter', CamelCaseIdTail\n", .{});
                 }
@@ -22543,7 +22543,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseId -> 'lowercase_letter', CamelCaseIdTail\n", .{});
                 }
@@ -22592,7 +22592,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for CamelCaseId: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -22601,7 +22601,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseId <~ 'lowercase_letter', CamelCaseIdTail\n", .{});
                 }
@@ -22630,7 +22630,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseId -> 'lowercase_letter', CamelCaseIdTail\n", .{});
                 }
@@ -22664,7 +22664,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseId <~ 'lowercase_letter', CamelCaseIdTail\n", .{});
                 }
@@ -22693,7 +22693,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseId -> 'lowercase_letter', CamelCaseIdTail\n", .{});
                 }
@@ -22722,7 +22722,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseId <~ 'lowercase_letter', CamelCaseIdTail\n", .{});
                 }
@@ -22751,12 +22751,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseId -> 'lowercase_letter', CamelCaseIdTail\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_generative_terminal_lowercase_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -22808,7 +22808,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseId <~ 'lowercase_letter', CamelCaseIdTail\n", .{});
                 }
@@ -22837,12 +22837,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseId -> 'lowercase_letter', CamelCaseIdTail\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             _ = parse_generative_terminal_lowercase_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_13(context, occurrence_recovery)) {
@@ -22888,7 +22888,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseId <~ 'lowercase_letter', CamelCaseIdTail\n", .{});
                 }
@@ -22915,7 +22915,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseId -> 'lowercase_letter', CamelCaseIdTail\n", .{});
                 }
@@ -22938,7 +22938,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseId <~ 'lowercase_letter', CamelCaseIdTail\n", .{});
                 }
@@ -22970,7 +22970,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: TerminalAndCursor -> TerminalSymbol, '^'\n", .{});
                 }
@@ -23024,7 +23024,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for TerminalAndCursor: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -23033,7 +23033,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalAndCursor <~ TerminalSymbol, '^'\n", .{});
                 }
@@ -23041,7 +23041,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: TerminalAndCursor -> TerminalSymbol, '^'\n", .{});
                         }
@@ -23095,7 +23095,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         try procedure(&args);
                     }
 
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 2) {
                             std.debug.print("Procedure outcome for TerminalAndCursor: {f}\n", .{
                                 string_utilities.fmtNode(args.node_address, context),
@@ -23104,7 +23104,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     }
                     node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: TerminalAndCursor <~ TerminalSymbol, '^'\n", .{});
                         }
@@ -23117,7 +23117,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
         },
         94 => { // '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: TerminalAndCursor -> '^', TerminalSymbol\n", .{});
                 }
@@ -23171,7 +23171,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for TerminalAndCursor: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -23180,7 +23180,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalAndCursor <~ '^', TerminalSymbol\n", .{});
                 }
@@ -23209,7 +23209,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: TerminalAndCursor -> TerminalSymbol, '^'\n", .{});
                 }
@@ -23258,7 +23258,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for TerminalAndCursor: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -23267,7 +23267,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalAndCursor <~ TerminalSymbol, '^'\n", .{});
                 }
@@ -23275,7 +23275,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: TerminalAndCursor -> TerminalSymbol, '^'\n", .{});
                         }
@@ -23324,7 +23324,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         try procedure(&args);
                     }
 
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 2) {
                             std.debug.print("Procedure outcome for TerminalAndCursor: {f}\n", .{
                                 string_utilities.fmtNode(args.node_address, context),
@@ -23333,7 +23333,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     }
                     node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: TerminalAndCursor <~ TerminalSymbol, '^'\n", .{});
                         }
@@ -23346,7 +23346,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
         },
         94 => { // '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: TerminalAndCursor -> '^', TerminalSymbol\n", .{});
                 }
@@ -23395,7 +23395,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for TerminalAndCursor: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -23404,7 +23404,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalAndCursor <~ '^', TerminalSymbol\n", .{});
                 }
@@ -23433,7 +23433,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: TerminalAndCursor -> TerminalSymbol, '^'\n", .{});
                 }
@@ -23467,7 +23467,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalAndCursor <~ TerminalSymbol, '^'\n", .{});
                 }
@@ -23475,7 +23475,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: TerminalAndCursor -> TerminalSymbol, '^'\n", .{});
                         }
@@ -23509,7 +23509,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         }
                     }
                     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: TerminalAndCursor <~ TerminalSymbol, '^'\n", .{});
                         }
@@ -23522,7 +23522,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
         },
         94 => { // '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: TerminalAndCursor -> '^', TerminalSymbol\n", .{});
                 }
@@ -23556,7 +23556,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalAndCursor <~ '^', TerminalSymbol\n", .{});
                 }
@@ -23585,7 +23585,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: TerminalAndCursor -> TerminalSymbol, '^'\n", .{});
                 }
@@ -23614,7 +23614,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     else => return err,
                 }; // child 1
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalAndCursor <~ TerminalSymbol, '^'\n", .{});
                 }
@@ -23622,7 +23622,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: TerminalAndCursor -> TerminalSymbol, '^'\n", .{});
                         }
@@ -23651,7 +23651,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                             else => return err,
                         }; // child 1
                     context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: TerminalAndCursor <~ TerminalSymbol, '^'\n", .{});
                         }
@@ -23664,7 +23664,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
         },
         94 => { // '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: TerminalAndCursor -> '^', TerminalSymbol\n", .{});
                 }
@@ -23693,7 +23693,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalAndCursor <~ '^', TerminalSymbol\n", .{});
                 }
@@ -23722,12 +23722,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: TerminalAndCursor -> TerminalSymbol, '^'\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -23779,7 +23779,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalAndCursor <~ TerminalSymbol, '^'\n", .{});
                 }
@@ -23788,12 +23788,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: TerminalAndCursor -> TerminalSymbol, '^'\n", .{});
                         }
                     }
-                    var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+                    var child_nodes: [2]?data_structures.Node = @splat(null);
                     {
                         const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
@@ -23845,7 +23845,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         try procedure(&args);
                     }
 
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: TerminalAndCursor <~ TerminalSymbol, '^'\n", .{});
                         }
@@ -23858,12 +23858,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
         },
         94 => { // '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: TerminalAndCursor -> '^', TerminalSymbol\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_terminal__x94(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -23915,7 +23915,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalAndCursor <~ '^', TerminalSymbol\n", .{});
                 }
@@ -23944,12 +23944,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: TerminalAndCursor -> TerminalSymbol, '^'\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -23995,7 +23995,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalAndCursor <~ TerminalSymbol, '^'\n", .{});
                 }
@@ -24004,12 +24004,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: TerminalAndCursor -> TerminalSymbol, '^'\n", .{});
                         }
                     }
-                    var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+                    var child_nodes: [2]?data_structures.Node = @splat(null);
                     {
                         const child_node = parse_TerminalSymbol(context, null) catch |err| switch (err) {
                             error.ExplicitSyntaxRecovery => {
@@ -24055,7 +24055,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                         try procedure(&args);
                     }
 
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: TerminalAndCursor <~ TerminalSymbol, '^'\n", .{});
                         }
@@ -24068,12 +24068,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
         },
         94 => { // '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: TerminalAndCursor -> '^', TerminalSymbol\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             _ = parse_terminal__x94(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_57(context, occurrence_recovery)) {
@@ -24119,7 +24119,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalAndCursor <~ '^', TerminalSymbol\n", .{});
                 }
@@ -24146,7 +24146,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: TerminalAndCursor -> TerminalSymbol, '^'\n", .{});
                 }
@@ -24169,7 +24169,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalAndCursor <~ TerminalSymbol, '^'\n", .{});
                 }
@@ -24177,7 +24177,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: TerminalAndCursor -> TerminalSymbol, '^'\n", .{});
                         }
@@ -24200,7 +24200,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                             },
                             else => return err,
                         }; // child 1
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: TerminalAndCursor <~ TerminalSymbol, '^'\n", .{});
                         }
@@ -24212,7 +24212,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
         },
         94 => { // '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: TerminalAndCursor -> '^', TerminalSymbol\n", .{});
                 }
@@ -24235,7 +24235,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalAndCursor <~ '^', TerminalSymbol\n", .{});
                 }
@@ -24385,7 +24385,7 @@ fn parse__Utf8Scalar(context: *data_structures.Context, occurrence_recovery: ?*c
         break :blk byte;
     }) {
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: _Utf8Scalar -> _Utf8TwoByte\n", .{});
                 }
@@ -24399,13 +24399,13 @@ fn parse__Utf8Scalar(context: *data_structures.Context, occurrence_recovery: ?*c
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8Scalar <~ _Utf8TwoByte\n", .{});
                 }
             }        },
         224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239 => { // '\xe0', '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xed', '\xee', '\xef'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: _Utf8Scalar -> _Utf8ThreeByte\n", .{});
                 }
@@ -24419,13 +24419,13 @@ fn parse__Utf8Scalar(context: *data_structures.Context, occurrence_recovery: ?*c
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8Scalar <~ _Utf8ThreeByte\n", .{});
                 }
             }        },
         240, 241, 242, 243, 244 => { // '\xf0', '\xf1', '\xf2', '\xf3', '\xf4'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: _Utf8Scalar -> _Utf8FourByte\n", .{});
                 }
@@ -24439,7 +24439,7 @@ fn parse__Utf8Scalar(context: *data_structures.Context, occurrence_recovery: ?*c
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8Scalar <~ _Utf8FourByte\n", .{});
                 }
@@ -24467,7 +24467,7 @@ fn parse__Utf8TwoByte(context: *data_structures.Context, occurrence_recovery: ?*
         break :blk byte;
     }) {
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: _Utf8TwoByte -> 'utf8_lead_two', 'utf8_continuation'\n", .{});
                 }
@@ -24490,7 +24490,7 @@ fn parse__Utf8TwoByte(context: *data_structures.Context, occurrence_recovery: ?*
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8TwoByte <~ 'utf8_lead_two', 'utf8_continuation'\n", .{});
                 }
@@ -24518,7 +24518,7 @@ fn parse__Utf8ThreeByte(context: *data_structures.Context, occurrence_recovery: 
         break :blk byte;
     }) {
         224 => { // '\xe0'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: _Utf8ThreeByte -> '\\xe0', 'utf8_continuation_a0_bf', 'utf8_continuation'\n", .{});
                 }
@@ -24550,13 +24550,13 @@ fn parse__Utf8ThreeByte(context: *data_structures.Context, occurrence_recovery: 
                     },
                     else => return err,
                 }; // child 2
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8ThreeByte <~ '\\xe0', 'utf8_continuation_a0_bf', 'utf8_continuation'\n", .{});
                 }
             }        },
         225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 238, 239 => { // '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xee', '\xef'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: _Utf8ThreeByte -> 'utf8_lead_three_general', 'utf8_continuation', 'utf8_continuation'\n", .{});
                 }
@@ -24588,13 +24588,13 @@ fn parse__Utf8ThreeByte(context: *data_structures.Context, occurrence_recovery: 
                     },
                     else => return err,
                 }; // child 2
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8ThreeByte <~ 'utf8_lead_three_general', 'utf8_continuation', 'utf8_continuation'\n", .{});
                 }
             }        },
         237 => { // '\xed'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: _Utf8ThreeByte -> '\\xed', 'utf8_continuation_80_9f', 'utf8_continuation'\n", .{});
                 }
@@ -24626,7 +24626,7 @@ fn parse__Utf8ThreeByte(context: *data_structures.Context, occurrence_recovery: 
                     },
                     else => return err,
                 }; // child 2
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8ThreeByte <~ '\\xed', 'utf8_continuation_80_9f', 'utf8_continuation'\n", .{});
                 }
@@ -24654,7 +24654,7 @@ fn parse__Utf8FourByte(context: *data_structures.Context, occurrence_recovery: ?
         break :blk byte;
     }) {
         240 => { // '\xf0'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: _Utf8FourByte -> '\\xf0', 'utf8_continuation_90_bf', 'utf8_continuation', 'utf8_continuation'\n", .{});
                 }
@@ -24695,13 +24695,13 @@ fn parse__Utf8FourByte(context: *data_structures.Context, occurrence_recovery: ?
                     },
                     else => return err,
                 }; // child 3
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8FourByte <~ '\\xf0', 'utf8_continuation_90_bf', 'utf8_continuation', 'utf8_continuation'\n", .{});
                 }
             }        },
         241, 242, 243 => { // '\xf1', '\xf2', '\xf3'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: _Utf8FourByte -> 'utf8_lead_four_general', 'utf8_continuation', 'utf8_continuation', 'utf8_continuation'\n", .{});
                 }
@@ -24742,13 +24742,13 @@ fn parse__Utf8FourByte(context: *data_structures.Context, occurrence_recovery: ?
                     },
                     else => return err,
                 }; // child 3
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8FourByte <~ 'utf8_lead_four_general', 'utf8_continuation', 'utf8_continuation', 'utf8_continuation'\n", .{});
                 }
             }        },
         244 => { // '\xf4'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: _Utf8FourByte -> '\\xf4', 'utf8_continuation_80_8f', 'utf8_continuation', 'utf8_continuation'\n", .{});
                 }
@@ -24789,7 +24789,7 @@ fn parse__Utf8FourByte(context: *data_structures.Context, occurrence_recovery: ?
                     },
                     else => return err,
                 }; // child 3
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8FourByte <~ '\\xf4', 'utf8_continuation_80_8f', 'utf8_continuation', 'utf8_continuation'\n", .{});
                 }
@@ -26320,7 +26320,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         1 => { // '\x01'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: ControlCharacter -> '\\x01'\n", .{});
                 }
@@ -26360,7 +26360,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for ControlCharacter: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -26369,13 +26369,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ControlCharacter <~ '\\x01'\n", .{});
                 }
             }        },
         2 => { // '\x02'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: ControlCharacter -> '\\x02'\n", .{});
                 }
@@ -26415,7 +26415,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for ControlCharacter: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -26424,7 +26424,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ControlCharacter <~ '\\x02'\n", .{});
                 }
@@ -26453,7 +26453,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         1 => { // '\x01'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: ControlCharacter -> '\\x01'\n", .{});
                 }
@@ -26488,7 +26488,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for ControlCharacter: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -26497,13 +26497,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ControlCharacter <~ '\\x01'\n", .{});
                 }
             }        },
         2 => { // '\x02'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: ControlCharacter -> '\\x02'\n", .{});
                 }
@@ -26538,7 +26538,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for ControlCharacter: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -26547,7 +26547,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ControlCharacter <~ '\\x02'\n", .{});
                 }
@@ -26576,7 +26576,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         1 => { // '\x01'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: ControlCharacter -> '\\x01'\n", .{});
                 }
@@ -26596,13 +26596,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ControlCharacter <~ '\\x01'\n", .{});
                 }
             }        },
         2 => { // '\x02'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: ControlCharacter -> '\\x02'\n", .{});
                 }
@@ -26622,7 +26622,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ControlCharacter <~ '\\x02'\n", .{});
                 }
@@ -26651,7 +26651,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         1 => { // '\x01'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: ControlCharacter -> '\\x01'\n", .{});
                 }
@@ -26666,13 +26666,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     else => return err,
                 }; // child 0
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ControlCharacter <~ '\\x01'\n", .{});
                 }
             }        },
         2 => { // '\x02'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: ControlCharacter -> '\\x02'\n", .{});
                 }
@@ -26687,7 +26687,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     else => return err,
                 }; // child 0
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ControlCharacter <~ '\\x02'\n", .{});
                 }
@@ -26716,12 +26716,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         1 => { // '\x01'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: ControlCharacter -> '\\x01'\n", .{});
                 }
             }
-            var child_nodes: [1]?data_structures.Node = .{null} ** 1;
+            var child_nodes: [1]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_terminal__x92x01(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -26758,19 +26758,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ControlCharacter <~ '\\x01'\n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         2 => { // '\x02'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: ControlCharacter -> '\\x02'\n", .{});
                 }
             }
-            var child_nodes: [1]?data_structures.Node = .{null} ** 1;
+            var child_nodes: [1]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_terminal__x92x02(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -26807,7 +26807,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ControlCharacter <~ '\\x02'\n", .{});
                 }
@@ -26836,7 +26836,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         1 => { // '\x01'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: ControlCharacter -> '\\x01'\n", .{});
                 }
@@ -26871,14 +26871,14 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ControlCharacter <~ '\\x01'\n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         2 => { // '\x02'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: ControlCharacter -> '\\x02'\n", .{});
                 }
@@ -26913,7 +26913,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ControlCharacter <~ '\\x02'\n", .{});
                 }
@@ -26940,7 +26940,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         1 => { // '\x01'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: ControlCharacter -> '\\x01'\n", .{});
                 }
@@ -26954,13 +26954,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ControlCharacter <~ '\\x01'\n", .{});
                 }
             }        },
         2 => { // '\x02'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: ControlCharacter -> '\\x02'\n", .{});
                 }
@@ -26974,7 +26974,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ControlCharacter <~ '\\x02'\n", .{});
                 }
@@ -27256,7 +27256,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         1, 2 => { // '\x01', '\x02'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnyContent -> ControlCharacter, AnyContent_Tail\n", .{});
                 }
@@ -27287,7 +27287,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 break :blk byte;
             }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: AnyContent_Tail -> AnyContent\n", .{});
                         }
@@ -27333,7 +27333,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for AnyContent: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -27342,13 +27342,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContent <~ ControlCharacter, AnyContent_Tail\n", .{});
                 }
             }        },
         9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnyContent -> 'character^\"\\\\n\"', AnyContent_Tail0\n", .{});
                 }
@@ -27379,7 +27379,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 break :blk byte;
             }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: AnyContent_Tail0 -> AnyContent\n", .{});
                         }
@@ -27425,7 +27425,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for AnyContent: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -27434,7 +27434,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContent <~ 'character^\"\\\\n\"', AnyContent_Tail0\n", .{});
                 }
@@ -27463,7 +27463,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         1, 2 => { // '\x01', '\x02'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnyContent -> ControlCharacter, AnyContent_Tail\n", .{});
                 }
@@ -27494,7 +27494,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 break :blk byte;
             }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: AnyContent_Tail -> AnyContent\n", .{});
                         }
@@ -27540,7 +27540,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for AnyContent: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -27549,13 +27549,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContent <~ ControlCharacter, AnyContent_Tail\n", .{});
                 }
             }        },
         9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnyContent -> 'character^\"\\\\n\"', AnyContent_Tail0\n", .{});
                 }
@@ -27581,7 +27581,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 break :blk byte;
             }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: AnyContent_Tail0 -> AnyContent\n", .{});
                         }
@@ -27627,7 +27627,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for AnyContent: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -27636,7 +27636,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContent <~ 'character^\"\\\\n\"', AnyContent_Tail0\n", .{});
                 }
@@ -27665,7 +27665,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         1, 2 => { // '\x01', '\x02'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnyContent -> ControlCharacter, AnyContent_Tail\n", .{});
                 }
@@ -27696,7 +27696,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 break :blk byte;
             }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: AnyContent_Tail -> AnyContent\n", .{});
                         }
@@ -27722,13 +27722,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     return context.keepRecoveredNode(node_address);
                 },
             }            context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContent <~ ControlCharacter, AnyContent_Tail\n", .{});
                 }
             }        },
         9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnyContent -> 'character^\"\\\\n\"', AnyContent_Tail0\n", .{});
                 }
@@ -27759,7 +27759,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 break :blk byte;
             }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: AnyContent_Tail0 -> AnyContent\n", .{});
                         }
@@ -27785,7 +27785,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     return context.keepRecoveredNode(node_address);
                 },
             }            context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContent <~ 'character^\"\\\\n\"', AnyContent_Tail0\n", .{});
                 }
@@ -27814,7 +27814,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         1, 2 => { // '\x01', '\x02'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnyContent -> ControlCharacter, AnyContent_Tail\n", .{});
                 }
@@ -27845,7 +27845,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 break :blk byte;
             }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: AnyContent_Tail -> AnyContent\n", .{});
                         }
@@ -27871,13 +27871,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     return context.keepRecoveredNode(node_address);
                 },
             }            context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContent <~ ControlCharacter, AnyContent_Tail\n", .{});
                 }
             }        },
         9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnyContent -> 'character^\"\\\\n\"', AnyContent_Tail0\n", .{});
                 }
@@ -27903,7 +27903,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 break :blk byte;
             }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: AnyContent_Tail0 -> AnyContent\n", .{});
                         }
@@ -27929,7 +27929,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     return context.keepRecoveredNode(node_address);
                 },
             }            context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContent <~ 'character^\"\\\\n\"', AnyContent_Tail0\n", .{});
                 }
@@ -27958,12 +27958,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         1, 2 => { // '\x01', '\x02'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnyContent -> ControlCharacter, AnyContent_Tail\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_ControlCharacter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -27991,7 +27991,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 break :blk byte;
             }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: AnyContent_Tail -> AnyContent\n", .{});
                         }
@@ -28037,19 +28037,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContent <~ ControlCharacter, AnyContent_Tail\n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnyContent -> 'character^\"\\\\n\"', AnyContent_Tail0\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_generative_terminal_character_x94_x34_x92_x92n_x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -28077,7 +28077,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 break :blk byte;
             }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: AnyContent_Tail0 -> AnyContent\n", .{});
                         }
@@ -28123,7 +28123,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContent <~ 'character^\"\\\\n\"', AnyContent_Tail0\n", .{});
                 }
@@ -28152,12 +28152,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         1, 2 => { // '\x01', '\x02'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnyContent -> ControlCharacter, AnyContent_Tail\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_ControlCharacter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -28185,7 +28185,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 break :blk byte;
             }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: AnyContent_Tail -> AnyContent\n", .{});
                         }
@@ -28231,19 +28231,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContent <~ ControlCharacter, AnyContent_Tail\n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnyContent -> 'character^\"\\\\n\"', AnyContent_Tail0\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             _ = parse_generative_terminal_character_x94_x34_x92_x92n_x34(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_6(context, occurrence_recovery)) {
@@ -28265,7 +28265,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 break :blk byte;
             }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: AnyContent_Tail0 -> AnyContent\n", .{});
                         }
@@ -28311,7 +28311,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContent <~ 'character^\"\\\\n\"', AnyContent_Tail0\n", .{});
                 }
@@ -28338,7 +28338,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         1, 2 => { // '\x01', '\x02'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnyContent -> ControlCharacter, AnyContent_Tail\n", .{});
                 }
@@ -28364,7 +28364,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 break :blk byte;
             }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: AnyContent_Tail -> AnyContent\n", .{});
                         }
@@ -28383,13 +28383,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     @branchHint(.unlikely);
                     return ll_syntax_error_80(context, occurrence_recovery);
                 },
-            }            if (comptime builtin.mode == .Debug) {
+            }            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContent <~ ControlCharacter, AnyContent_Tail\n", .{});
                 }
             }        },
         9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnyContent -> 'character^\"\\\\n\"', AnyContent_Tail0\n", .{});
                 }
@@ -28415,7 +28415,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 break :blk byte;
             }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: AnyContent_Tail0 -> AnyContent\n", .{});
                         }
@@ -28434,7 +28434,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     @branchHint(.unlikely);
                     return ll_syntax_error_81(context, occurrence_recovery);
                 },
-            }            if (comptime builtin.mode == .Debug) {
+            }            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContent <~ 'character^\"\\\\n\"', AnyContent_Tail0\n", .{});
                 }
@@ -28595,7 +28595,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             95 => { // '_'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: IdTail -> '_', IdTail\n", .{});
                     }
@@ -28643,7 +28643,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: IdTail <~ '_', IdTail\n", .{});
             }
@@ -28670,7 +28670,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             try procedure(&args);
         }
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 2) {
                 std.debug.print("Procedure outcome for IdTail: {f}\n", .{
                     string_utilities.fmtNode(args.node_address, context),
@@ -28711,7 +28711,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             95 => { // '_'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: IdTail -> '_', IdTail\n", .{});
                     }
@@ -28754,7 +28754,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: IdTail <~ '_', IdTail\n", .{});
             }
@@ -28781,7 +28781,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             try procedure(&args);
         }
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 2) {
                 std.debug.print("Procedure outcome for IdTail: {f}\n", .{
                     string_utilities.fmtNode(args.node_address, context),
@@ -28822,7 +28822,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             95 => { // '_'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: IdTail -> '_', IdTail\n", .{});
                     }
@@ -28870,7 +28870,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: IdTail <~ '_', IdTail\n", .{});
             }
@@ -28899,7 +28899,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             95 => { // '_'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: IdTail -> '_', IdTail\n", .{});
                     }
@@ -28942,7 +28942,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: IdTail <~ '_', IdTail\n", .{});
             }
@@ -28973,7 +28973,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             95 => { // '_'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: IdTail -> '_', IdTail\n", .{});
                     }
@@ -28981,7 +28981,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const frame = try semantic_allocator.create(SemanticReductionFrame);
                 frame.* = .{
                     .node = .{ .text_start = context.currentTokenSourceOffset(), .variable = 33, .payload = .{} },
-                    .children = .{null} ** 2,
+                    .children = @splat(null),
                 };
                 try frames.append(semantic_allocator, frame);
                 {
@@ -29021,7 +29021,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             frame.node.appendTemporaryChild(&frame.children[1].?);
         }
         frame.node.text_length = context.currentTokenSourceOffset() - frame.node.text_start;
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: IdTail <~ '_', IdTail\n", .{});
             }
@@ -29070,7 +29070,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             95 => { // '_'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: IdTail -> '_', IdTail\n", .{});
                     }
@@ -29078,7 +29078,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const frame = try semantic_allocator.create(SemanticReductionFrame);
                 frame.* = .{
                     .node = .{ .text_start = context.currentTokenSourceOffset(), .variable = 33, .payload = .{} },
-                    .children = .{null} ** 2,
+                    .children = @splat(null),
                 };
                 try frames.append(semantic_allocator, frame);
                 _ = parse_terminal__(context, null) catch |err| switch (err) {
@@ -29112,7 +29112,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             frame.node.appendTemporaryChild(&frame.children[1].?);
         }
         frame.node.text_length = context.currentTokenSourceOffset() - frame.node.text_start;
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: IdTail <~ '_', IdTail\n", .{});
             }
@@ -29154,7 +29154,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             95 => { // '_'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: IdTail -> '_', IdTail\n", .{});
                     }
@@ -29207,7 +29207,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: IdTail -> 'letter', IdTail\n", .{});
                     }
@@ -29255,7 +29255,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: IdTail <~ 'letter', IdTail\n", .{});
             }
@@ -29282,7 +29282,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             try procedure(&args);
         }
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 2) {
                 std.debug.print("Procedure outcome for IdTail: {f}\n", .{
                     string_utilities.fmtNode(args.node_address, context),
@@ -29323,7 +29323,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: IdTail -> 'letter', IdTail\n", .{});
                     }
@@ -29366,7 +29366,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: IdTail <~ 'letter', IdTail\n", .{});
             }
@@ -29393,7 +29393,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             try procedure(&args);
         }
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 2) {
                 std.debug.print("Procedure outcome for IdTail: {f}\n", .{
                     string_utilities.fmtNode(args.node_address, context),
@@ -29434,7 +29434,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: IdTail -> 'letter', IdTail\n", .{});
                     }
@@ -29482,7 +29482,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: IdTail <~ 'letter', IdTail\n", .{});
             }
@@ -29511,7 +29511,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: IdTail -> 'letter', IdTail\n", .{});
                     }
@@ -29554,7 +29554,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: IdTail <~ 'letter', IdTail\n", .{});
             }
@@ -29585,7 +29585,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: IdTail -> 'letter', IdTail\n", .{});
                     }
@@ -29593,7 +29593,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const frame = try semantic_allocator.create(SemanticReductionFrame);
                 frame.* = .{
                     .node = .{ .text_start = context.currentTokenSourceOffset(), .variable = 33, .payload = .{} },
-                    .children = .{null} ** 2,
+                    .children = @splat(null),
                 };
                 try frames.append(semantic_allocator, frame);
                 {
@@ -29633,7 +29633,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             frame.node.appendTemporaryChild(&frame.children[1].?);
         }
         frame.node.text_length = context.currentTokenSourceOffset() - frame.node.text_start;
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: IdTail <~ 'letter', IdTail\n", .{});
             }
@@ -29682,7 +29682,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: IdTail -> 'letter', IdTail\n", .{});
                     }
@@ -29690,7 +29690,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const frame = try semantic_allocator.create(SemanticReductionFrame);
                 frame.* = .{
                     .node = .{ .text_start = context.currentTokenSourceOffset(), .variable = 33, .payload = .{} },
-                    .children = .{null} ** 2,
+                    .children = @splat(null),
                 };
                 try frames.append(semantic_allocator, frame);
                 _ = parse_generative_terminal_letter(context, null) catch |err| switch (err) {
@@ -29724,7 +29724,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             frame.node.appendTemporaryChild(&frame.children[1].?);
         }
         frame.node.text_length = context.currentTokenSourceOffset() - frame.node.text_start;
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: IdTail <~ 'letter', IdTail\n", .{});
             }
@@ -29766,7 +29766,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: IdTail -> 'letter', IdTail\n", .{});
                     }
@@ -29819,7 +29819,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: IdTail -> 'digit', IdTail\n", .{});
                     }
@@ -29867,7 +29867,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: IdTail <~ 'digit', IdTail\n", .{});
             }
@@ -29894,7 +29894,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             try procedure(&args);
         }
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 2) {
                 std.debug.print("Procedure outcome for IdTail: {f}\n", .{
                     string_utilities.fmtNode(args.node_address, context),
@@ -29935,7 +29935,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: IdTail -> 'digit', IdTail\n", .{});
                     }
@@ -29978,7 +29978,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: IdTail <~ 'digit', IdTail\n", .{});
             }
@@ -30005,7 +30005,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             try procedure(&args);
         }
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 2) {
                 std.debug.print("Procedure outcome for IdTail: {f}\n", .{
                     string_utilities.fmtNode(args.node_address, context),
@@ -30046,7 +30046,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: IdTail -> 'digit', IdTail\n", .{});
                     }
@@ -30094,7 +30094,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: IdTail <~ 'digit', IdTail\n", .{});
             }
@@ -30123,7 +30123,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: IdTail -> 'digit', IdTail\n", .{});
                     }
@@ -30166,7 +30166,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: IdTail <~ 'digit', IdTail\n", .{});
             }
@@ -30197,7 +30197,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: IdTail -> 'digit', IdTail\n", .{});
                     }
@@ -30205,7 +30205,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const frame = try semantic_allocator.create(SemanticReductionFrame);
                 frame.* = .{
                     .node = .{ .text_start = context.currentTokenSourceOffset(), .variable = 33, .payload = .{} },
-                    .children = .{null} ** 2,
+                    .children = @splat(null),
                 };
                 try frames.append(semantic_allocator, frame);
                 {
@@ -30245,7 +30245,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             frame.node.appendTemporaryChild(&frame.children[1].?);
         }
         frame.node.text_length = context.currentTokenSourceOffset() - frame.node.text_start;
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: IdTail <~ 'digit', IdTail\n", .{});
             }
@@ -30294,7 +30294,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: IdTail -> 'digit', IdTail\n", .{});
                     }
@@ -30302,7 +30302,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const frame = try semantic_allocator.create(SemanticReductionFrame);
                 frame.* = .{
                     .node = .{ .text_start = context.currentTokenSourceOffset(), .variable = 33, .payload = .{} },
-                    .children = .{null} ** 2,
+                    .children = @splat(null),
                 };
                 try frames.append(semantic_allocator, frame);
                 _ = parse_generative_terminal_digit(context, null) catch |err| switch (err) {
@@ -30336,7 +30336,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             frame.node.appendTemporaryChild(&frame.children[1].?);
         }
         frame.node.text_length = context.currentTokenSourceOffset() - frame.node.text_start;
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: IdTail <~ 'digit', IdTail\n", .{});
             }
@@ -30378,7 +30378,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: IdTail -> 'digit', IdTail\n", .{});
                     }
@@ -30426,7 +30426,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32, 64, 94 => { // '\n', ' ', '@', '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> \n", .{});
                 }
@@ -30452,7 +30452,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for IdTail: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -30461,13 +30461,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ \n", .{});
                 }
             }        },
         48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> 'digit', IdTail\n", .{});
                 }
@@ -30521,7 +30521,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for IdTail: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -30530,13 +30530,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ 'digit', IdTail\n", .{});
                 }
             }        },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> 'letter', IdTail\n", .{});
                 }
@@ -30590,7 +30590,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for IdTail: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -30599,13 +30599,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ 'letter', IdTail\n", .{});
                 }
             }        },
         95 => { // '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> '_', IdTail\n", .{});
                 }
@@ -30659,7 +30659,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for IdTail: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -30668,7 +30668,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ '_', IdTail\n", .{});
                 }
@@ -30696,7 +30696,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32, 64, 94 => { // '\n', ' ', '@', '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> \n", .{});
                 }
@@ -30722,7 +30722,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for IdTail: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -30731,13 +30731,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ \n", .{});
                 }
             }        },
         48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> 'digit', IdTail\n", .{});
                 }
@@ -30786,7 +30786,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for IdTail: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -30795,13 +30795,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ 'digit', IdTail\n", .{});
                 }
             }        },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> 'letter', IdTail\n", .{});
                 }
@@ -30850,7 +30850,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for IdTail: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -30859,13 +30859,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ 'letter', IdTail\n", .{});
                 }
             }        },
         95 => { // '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> '_', IdTail\n", .{});
                 }
@@ -30914,7 +30914,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for IdTail: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -30923,7 +30923,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ '_', IdTail\n", .{});
                 }
@@ -30951,19 +30951,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32, 64, 94 => { // '\n', ' ', '@', '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> \n", .{});
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ \n", .{});
                 }
             }        },
         48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> 'digit', IdTail\n", .{});
                 }
@@ -30997,13 +30997,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ 'digit', IdTail\n", .{});
                 }
             }        },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> 'letter', IdTail\n", .{});
                 }
@@ -31037,13 +31037,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ 'letter', IdTail\n", .{});
                 }
             }        },
         95 => { // '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> '_', IdTail\n", .{});
                 }
@@ -31077,7 +31077,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ '_', IdTail\n", .{});
                 }
@@ -31105,19 +31105,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32, 64, 94 => { // '\n', ' ', '@', '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> \n", .{});
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ \n", .{});
                 }
             }        },
         48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> 'digit', IdTail\n", .{});
                 }
@@ -31146,13 +31146,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ 'digit', IdTail\n", .{});
                 }
             }        },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> 'letter', IdTail\n", .{});
                 }
@@ -31181,13 +31181,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ 'letter', IdTail\n", .{});
                 }
             }        },
         95 => { // '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> '_', IdTail\n", .{});
                 }
@@ -31216,7 +31216,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ '_', IdTail\n", .{});
                 }
@@ -31244,7 +31244,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32, 64, 94 => { // '\n', ' ', '@', '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> \n", .{});
                 }
@@ -31270,19 +31270,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ \n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> 'digit', IdTail\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_generative_terminal_digit(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -31334,19 +31334,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ 'digit', IdTail\n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> 'letter', IdTail\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_generative_terminal_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -31398,19 +31398,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ 'letter', IdTail\n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         95 => { // '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> '_', IdTail\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_terminal__(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -31462,7 +31462,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ '_', IdTail\n", .{});
                 }
@@ -31490,7 +31490,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32, 64, 94 => { // '\n', ' ', '@', '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> \n", .{});
                 }
@@ -31516,19 +31516,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ \n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> 'digit', IdTail\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             _ = parse_generative_terminal_digit(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_29(context, occurrence_recovery)) {
@@ -31574,19 +31574,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ 'digit', IdTail\n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> 'letter', IdTail\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             _ = parse_generative_terminal_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_28(context, occurrence_recovery)) {
@@ -31632,19 +31632,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ 'letter', IdTail\n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         95 => { // '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> '_', IdTail\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             _ = parse_terminal__(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_27(context, occurrence_recovery)) {
@@ -31690,7 +31690,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ '_', IdTail\n", .{});
                 }
@@ -31716,18 +31716,18 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32, 64, 94 => { // '\n', ' ', '@', '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> \n", .{});
                 }
             }
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ \n", .{});
                 }
             }        },
         48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> 'digit', IdTail\n", .{});
                 }
@@ -31750,13 +31750,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ 'digit', IdTail\n", .{});
                 }
             }        },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> 'letter', IdTail\n", .{});
                 }
@@ -31779,13 +31779,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ 'letter', IdTail\n", .{});
                 }
             }        },
         95 => { // '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> '_', IdTail\n", .{});
                 }
@@ -31808,7 +31808,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ '_', IdTail\n", .{});
                 }
@@ -32344,7 +32344,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: CamelCaseIdTail -> 'letter', CamelCaseIdTail\n", .{});
                     }
@@ -32392,7 +32392,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: CamelCaseIdTail <~ 'letter', CamelCaseIdTail\n", .{});
             }
@@ -32419,7 +32419,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             try procedure(&args);
         }
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 2) {
                 std.debug.print("Procedure outcome for CamelCaseIdTail: {f}\n", .{
                     string_utilities.fmtNode(args.node_address, context),
@@ -32460,7 +32460,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: CamelCaseIdTail -> 'letter', CamelCaseIdTail\n", .{});
                     }
@@ -32503,7 +32503,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: CamelCaseIdTail <~ 'letter', CamelCaseIdTail\n", .{});
             }
@@ -32530,7 +32530,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             try procedure(&args);
         }
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 2) {
                 std.debug.print("Procedure outcome for CamelCaseIdTail: {f}\n", .{
                     string_utilities.fmtNode(args.node_address, context),
@@ -32571,7 +32571,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: CamelCaseIdTail -> 'letter', CamelCaseIdTail\n", .{});
                     }
@@ -32619,7 +32619,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: CamelCaseIdTail <~ 'letter', CamelCaseIdTail\n", .{});
             }
@@ -32648,7 +32648,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: CamelCaseIdTail -> 'letter', CamelCaseIdTail\n", .{});
                     }
@@ -32691,7 +32691,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: CamelCaseIdTail <~ 'letter', CamelCaseIdTail\n", .{});
             }
@@ -32722,7 +32722,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: CamelCaseIdTail -> 'letter', CamelCaseIdTail\n", .{});
                     }
@@ -32730,7 +32730,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const frame = try semantic_allocator.create(SemanticReductionFrame);
                 frame.* = .{
                     .node = .{ .text_start = context.currentTokenSourceOffset(), .variable = 34, .payload = .{} },
-                    .children = .{null} ** 2,
+                    .children = @splat(null),
                 };
                 try frames.append(semantic_allocator, frame);
                 {
@@ -32770,7 +32770,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             frame.node.appendTemporaryChild(&frame.children[1].?);
         }
         frame.node.text_length = context.currentTokenSourceOffset() - frame.node.text_start;
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: CamelCaseIdTail <~ 'letter', CamelCaseIdTail\n", .{});
             }
@@ -32819,7 +32819,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: CamelCaseIdTail -> 'letter', CamelCaseIdTail\n", .{});
                     }
@@ -32827,7 +32827,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const frame = try semantic_allocator.create(SemanticReductionFrame);
                 frame.* = .{
                     .node = .{ .text_start = context.currentTokenSourceOffset(), .variable = 34, .payload = .{} },
-                    .children = .{null} ** 2,
+                    .children = @splat(null),
                 };
                 try frames.append(semantic_allocator, frame);
                 _ = parse_generative_terminal_letter(context, null) catch |err| switch (err) {
@@ -32861,7 +32861,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             frame.node.appendTemporaryChild(&frame.children[1].?);
         }
         frame.node.text_length = context.currentTokenSourceOffset() - frame.node.text_start;
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: CamelCaseIdTail <~ 'letter', CamelCaseIdTail\n", .{});
             }
@@ -32903,7 +32903,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: CamelCaseIdTail -> 'letter', CamelCaseIdTail\n", .{});
                     }
@@ -32956,7 +32956,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: CamelCaseIdTail -> 'digit', CamelCaseIdTail\n", .{});
                     }
@@ -33004,7 +33004,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: CamelCaseIdTail <~ 'digit', CamelCaseIdTail\n", .{});
             }
@@ -33031,7 +33031,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             try procedure(&args);
         }
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 2) {
                 std.debug.print("Procedure outcome for CamelCaseIdTail: {f}\n", .{
                     string_utilities.fmtNode(args.node_address, context),
@@ -33072,7 +33072,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: CamelCaseIdTail -> 'digit', CamelCaseIdTail\n", .{});
                     }
@@ -33115,7 +33115,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: CamelCaseIdTail <~ 'digit', CamelCaseIdTail\n", .{});
             }
@@ -33142,7 +33142,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             try procedure(&args);
         }
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 2) {
                 std.debug.print("Procedure outcome for CamelCaseIdTail: {f}\n", .{
                     string_utilities.fmtNode(args.node_address, context),
@@ -33183,7 +33183,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: CamelCaseIdTail -> 'digit', CamelCaseIdTail\n", .{});
                     }
@@ -33231,7 +33231,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: CamelCaseIdTail <~ 'digit', CamelCaseIdTail\n", .{});
             }
@@ -33260,7 +33260,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: CamelCaseIdTail -> 'digit', CamelCaseIdTail\n", .{});
                     }
@@ -33303,7 +33303,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
     }
     while (repeating_node_address != data_structures.Node.invalid_pointer) {
 
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: CamelCaseIdTail <~ 'digit', CamelCaseIdTail\n", .{});
             }
@@ -33334,7 +33334,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: CamelCaseIdTail -> 'digit', CamelCaseIdTail\n", .{});
                     }
@@ -33342,7 +33342,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const frame = try semantic_allocator.create(SemanticReductionFrame);
                 frame.* = .{
                     .node = .{ .text_start = context.currentTokenSourceOffset(), .variable = 34, .payload = .{} },
-                    .children = .{null} ** 2,
+                    .children = @splat(null),
                 };
                 try frames.append(semantic_allocator, frame);
                 {
@@ -33382,7 +33382,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             frame.node.appendTemporaryChild(&frame.children[1].?);
         }
         frame.node.text_length = context.currentTokenSourceOffset() - frame.node.text_start;
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: CamelCaseIdTail <~ 'digit', CamelCaseIdTail\n", .{});
             }
@@ -33431,7 +33431,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: CamelCaseIdTail -> 'digit', CamelCaseIdTail\n", .{});
                     }
@@ -33439,7 +33439,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 const frame = try semantic_allocator.create(SemanticReductionFrame);
                 frame.* = .{
                     .node = .{ .text_start = context.currentTokenSourceOffset(), .variable = 34, .payload = .{} },
-                    .children = .{null} ** 2,
+                    .children = @splat(null),
                 };
                 try frames.append(semantic_allocator, frame);
                 _ = parse_generative_terminal_digit(context, null) catch |err| switch (err) {
@@ -33473,7 +33473,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             frame.node.appendTemporaryChild(&frame.children[1].?);
         }
         frame.node.text_length = context.currentTokenSourceOffset() - frame.node.text_start;
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             if (context.verbosityLevel() > 1) {
                 std.debug.print("Reduction: CamelCaseIdTail <~ 'digit', CamelCaseIdTail\n", .{});
             }
@@ -33515,7 +33515,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             break :blk byte;
         }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: CamelCaseIdTail -> 'digit', CamelCaseIdTail\n", .{});
                     }
@@ -33563,7 +33563,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32, 64 => { // '\n', ' ', '@'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseIdTail -> \n", .{});
                 }
@@ -33589,7 +33589,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for CamelCaseIdTail: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -33598,13 +33598,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ \n", .{});
                 }
             }        },
         48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseIdTail -> 'digit', CamelCaseIdTail\n", .{});
                 }
@@ -33658,7 +33658,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for CamelCaseIdTail: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -33667,13 +33667,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ 'digit', CamelCaseIdTail\n", .{});
                 }
             }        },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseIdTail -> 'letter', CamelCaseIdTail\n", .{});
                 }
@@ -33727,7 +33727,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for CamelCaseIdTail: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -33736,7 +33736,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ 'letter', CamelCaseIdTail\n", .{});
                 }
@@ -33764,7 +33764,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32, 64 => { // '\n', ' ', '@'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseIdTail -> \n", .{});
                 }
@@ -33790,7 +33790,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for CamelCaseIdTail: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -33799,13 +33799,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ \n", .{});
                 }
             }        },
         48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseIdTail -> 'digit', CamelCaseIdTail\n", .{});
                 }
@@ -33854,7 +33854,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for CamelCaseIdTail: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -33863,13 +33863,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ 'digit', CamelCaseIdTail\n", .{});
                 }
             }        },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseIdTail -> 'letter', CamelCaseIdTail\n", .{});
                 }
@@ -33918,7 +33918,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for CamelCaseIdTail: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -33927,7 +33927,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ 'letter', CamelCaseIdTail\n", .{});
                 }
@@ -33955,19 +33955,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32, 64 => { // '\n', ' ', '@'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseIdTail -> \n", .{});
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ \n", .{});
                 }
             }        },
         48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseIdTail -> 'digit', CamelCaseIdTail\n", .{});
                 }
@@ -34001,13 +34001,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ 'digit', CamelCaseIdTail\n", .{});
                 }
             }        },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseIdTail -> 'letter', CamelCaseIdTail\n", .{});
                 }
@@ -34041,7 +34041,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ 'letter', CamelCaseIdTail\n", .{});
                 }
@@ -34069,19 +34069,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32, 64 => { // '\n', ' ', '@'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseIdTail -> \n", .{});
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ \n", .{});
                 }
             }        },
         48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseIdTail -> 'digit', CamelCaseIdTail\n", .{});
                 }
@@ -34110,13 +34110,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ 'digit', CamelCaseIdTail\n", .{});
                 }
             }        },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseIdTail -> 'letter', CamelCaseIdTail\n", .{});
                 }
@@ -34145,7 +34145,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ 'letter', CamelCaseIdTail\n", .{});
                 }
@@ -34173,7 +34173,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32, 64 => { // '\n', ' ', '@'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseIdTail -> \n", .{});
                 }
@@ -34199,19 +34199,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ \n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseIdTail -> 'digit', CamelCaseIdTail\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_generative_terminal_digit(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -34263,19 +34263,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ 'digit', CamelCaseIdTail\n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseIdTail -> 'letter', CamelCaseIdTail\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_generative_terminal_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -34327,7 +34327,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ 'letter', CamelCaseIdTail\n", .{});
                 }
@@ -34355,7 +34355,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32, 64 => { // '\n', ' ', '@'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseIdTail -> \n", .{});
                 }
@@ -34381,19 +34381,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ \n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseIdTail -> 'digit', CamelCaseIdTail\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             _ = parse_generative_terminal_digit(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_16(context, occurrence_recovery)) {
@@ -34439,19 +34439,19 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ 'digit', CamelCaseIdTail\n", .{});
                 }
             }            node.clearTemporaryChildren();
         },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseIdTail -> 'letter', CamelCaseIdTail\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             _ = parse_generative_terminal_letter(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_15(context, occurrence_recovery)) {
@@ -34497,7 +34497,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ 'letter', CamelCaseIdTail\n", .{});
                 }
@@ -34523,18 +34523,18 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         10, 32, 64 => { // '\n', ' ', '@'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseIdTail -> \n", .{});
                 }
             }
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ \n", .{});
                 }
             }        },
         48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseIdTail -> 'digit', CamelCaseIdTail\n", .{});
                 }
@@ -34557,13 +34557,13 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ 'digit', CamelCaseIdTail\n", .{});
                 }
             }        },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseIdTail -> 'letter', CamelCaseIdTail\n", .{});
                 }
@@ -34586,7 +34586,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ 'letter', CamelCaseIdTail\n", .{});
                 }
@@ -34739,7 +34739,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         1 => { // '\x01'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: BlockStart -> 'block_start', Comment\n", .{});
                 }
@@ -34793,7 +34793,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for BlockStart: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -34802,7 +34802,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: BlockStart <~ 'block_start', Comment\n", .{});
                 }
@@ -34831,7 +34831,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         1 => { // '\x01'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: BlockStart -> 'block_start', Comment\n", .{});
                 }
@@ -34880,7 +34880,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for BlockStart: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -34889,7 +34889,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: BlockStart <~ 'block_start', Comment\n", .{});
                 }
@@ -34918,7 +34918,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         1 => { // '\x01'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: BlockStart -> 'block_start', Comment\n", .{});
                 }
@@ -34952,7 +34952,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: BlockStart <~ 'block_start', Comment\n", .{});
                 }
@@ -34981,7 +34981,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         1 => { // '\x01'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: BlockStart -> 'block_start', Comment\n", .{});
                 }
@@ -35010,7 +35010,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: BlockStart <~ 'block_start', Comment\n", .{});
                 }
@@ -35039,12 +35039,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         1 => { // '\x01'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: BlockStart -> 'block_start', Comment\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_generative_terminal_block_start(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -35096,7 +35096,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: BlockStart <~ 'block_start', Comment\n", .{});
                 }
@@ -35125,12 +35125,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         1 => { // '\x01'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: BlockStart -> 'block_start', Comment\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             _ = parse_generative_terminal_block_start(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_12(context, occurrence_recovery)) {
@@ -35176,7 +35176,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: BlockStart <~ 'block_start', Comment\n", .{});
                 }
@@ -35203,7 +35203,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         1 => { // '\x01'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: BlockStart -> 'block_start', Comment\n", .{});
                 }
@@ -35226,7 +35226,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: BlockStart <~ 'block_start', Comment\n", .{});
                 }
@@ -35383,7 +35383,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         2 => { // '\x02'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: BlockEnd -> 'block_end', Comment\n", .{});
                 }
@@ -35437,7 +35437,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for BlockEnd: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -35446,7 +35446,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: BlockEnd <~ 'block_end', Comment\n", .{});
                 }
@@ -35475,7 +35475,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         2 => { // '\x02'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: BlockEnd -> 'block_end', Comment\n", .{});
                 }
@@ -35524,7 +35524,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for BlockEnd: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -35533,7 +35533,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: BlockEnd <~ 'block_end', Comment\n", .{});
                 }
@@ -35562,7 +35562,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         2 => { // '\x02'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: BlockEnd -> 'block_end', Comment\n", .{});
                 }
@@ -35596,7 +35596,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: BlockEnd <~ 'block_end', Comment\n", .{});
                 }
@@ -35625,7 +35625,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         2 => { // '\x02'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: BlockEnd -> 'block_end', Comment\n", .{});
                 }
@@ -35654,7 +35654,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: BlockEnd <~ 'block_end', Comment\n", .{});
                 }
@@ -35683,12 +35683,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         2 => { // '\x02'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: BlockEnd -> 'block_end', Comment\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 const child_node = parse_generative_terminal_block_end(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -35740,7 +35740,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: BlockEnd <~ 'block_end', Comment\n", .{});
                 }
@@ -35769,12 +35769,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         2 => { // '\x02'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: BlockEnd -> 'block_end', Comment\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             _ = parse_generative_terminal_block_end(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
                         if (try llTryRecoveryRule_11(context, occurrence_recovery)) {
@@ -35820,7 +35820,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: BlockEnd <~ 'block_end', Comment\n", .{});
                 }
@@ -35847,7 +35847,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         2 => { // '\x02'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: BlockEnd -> 'block_end', Comment\n", .{});
                 }
@@ -35870,7 +35870,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: BlockEnd <~ 'block_end', Comment\n", .{});
                 }
@@ -36027,7 +36027,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         35 => { // '#'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CommentLine -> '#', 'new_line'\n", .{});
                 }
@@ -36085,7 +36085,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for CommentLine: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -36094,7 +36094,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CommentLine <~ '#', 'new_line'\n", .{});
                 }
@@ -36123,7 +36123,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         35 => { // '#'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CommentLine -> '#', 'new_line'\n", .{});
                 }
@@ -36168,7 +36168,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 2) {
                     std.debug.print("Procedure outcome for CommentLine: {f}\n", .{
                         string_utilities.fmtNode(args.node_address, context),
@@ -36177,7 +36177,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
             }
             node_address = args.node_address orelse data_structures.Node.invalid_pointer;
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CommentLine <~ '#', 'new_line'\n", .{});
                 }
@@ -36206,7 +36206,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         35 => { // '#'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CommentLine -> '#', 'new_line'\n", .{});
                 }
@@ -36244,7 +36244,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 }
             }
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CommentLine <~ '#', 'new_line'\n", .{});
                 }
@@ -36273,7 +36273,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         35 => { // '#'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CommentLine -> '#', 'new_line'\n", .{});
                 }
@@ -36298,7 +36298,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     else => return err,
                 }; // child 1
             context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CommentLine <~ '#', 'new_line'\n", .{});
                 }
@@ -36327,12 +36327,12 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         35 => { // '#'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CommentLine -> '#', 'new_line'\n", .{});
                 }
             }
-            var child_nodes: [2]?data_structures.Node = .{null} ** 2;
+            var child_nodes: [2]?data_structures.Node = @splat(null);
             {
                 var child_node = parse_terminal__x35(context, null) catch |err| switch (err) {
                     error.ExplicitSyntaxRecovery => {
@@ -36386,7 +36386,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CommentLine <~ '#', 'new_line'\n", .{});
                 }
@@ -36415,7 +36415,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         35 => { // '#'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CommentLine -> '#', 'new_line'\n", .{});
                 }
@@ -36460,7 +36460,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                 try procedure(&args);
             }
 
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CommentLine <~ '#', 'new_line'\n", .{});
                 }
@@ -36487,7 +36487,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
         break :blk byte;
     }) {
         35 => { // '#'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CommentLine -> '#', 'new_line'\n", .{});
                 }
@@ -36511,7 +36511,7 @@ if (comptime is_ast_enabled and are_procedures_enabled and ast_for_terminals) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CommentLine <~ '#', 'new_line'\n", .{});
                 }
@@ -36664,7 +36664,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         10, 35, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\n', '#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: _AugmentedStart -> Start, '\\x00'\n", .{});
                 }
@@ -36692,7 +36692,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _AugmentedStart <~ Start, '\\x00'\n", .{});
                 }
@@ -36715,7 +36715,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         10, 35, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\n', '#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: _AugmentedStart -> Start, '\\x00'\n", .{});
                 }
@@ -36742,7 +36742,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _AugmentedStart <~ Start, '\\x00'\n", .{});
                 }
@@ -36765,7 +36765,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         10, 35, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\n', '#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: _AugmentedStart -> Start, '\\x00'\n", .{});
                 }
@@ -36790,7 +36790,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _AugmentedStart <~ Start, '\\x00'\n", .{});
                 }
@@ -36813,7 +36813,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
         break :blk byte;
     }) {
         10, 35, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\n', '#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: _AugmentedStart -> Start, '\\x00'\n", .{});
                 }
@@ -36836,7 +36836,7 @@ if (comptime is_ast_enabled and are_procedures_enabled) {
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _AugmentedStart <~ Start, '\\x00'\n", .{});
                 }
@@ -36890,7 +36890,7 @@ fn parse_Comment_0_1_(context: *data_structures.Context, occurrence_recovery: ?*
             break :blk byte;
         }) {
             35 => { // '#'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: Comment -> CommentLine, Comment\n", .{});
                     }
@@ -36934,18 +36934,18 @@ fn parse_Comment_(context: *data_structures.Context, occurrence_recovery: ?*cons
         break :blk byte;
     }) {
         0, 10, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95, 124 => { // '\x00', '\n', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_', '|'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Comment -> \n", .{});
                 }
             }
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Comment <~ \n", .{});
                 }
             }        },
         35 => { // '#'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Comment -> CommentLine, Comment\n", .{});
                 }
@@ -36968,7 +36968,7 @@ fn parse_Comment_(context: *data_structures.Context, occurrence_recovery: ?*cons
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Comment <~ CommentLine, Comment\n", .{});
                 }
@@ -36995,7 +36995,7 @@ fn parse_NewLine_(context: *data_structures.Context, occurrence_recovery: ?*cons
         break :blk byte;
     }) {
         10 => { // '\n'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: NewLine -> 'new_line', Comment\n", .{});
                 }
@@ -37018,7 +37018,7 @@ fn parse_NewLine_(context: *data_structures.Context, occurrence_recovery: ?*cons
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: NewLine <~ 'new_line', Comment\n", .{});
                 }
@@ -37046,7 +37046,7 @@ fn parse_VariableSymbol_(context: *data_structures.Context, occurrence_recovery:
         break :blk byte;
     }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VariableSymbol -> UppercaseId\n", .{});
                 }
@@ -37060,13 +37060,13 @@ fn parse_VariableSymbol_(context: *data_structures.Context, occurrence_recovery:
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VariableSymbol <~ UppercaseId\n", .{});
                 }
             }        },
         95 => { // '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VariableSymbol -> '_', UppercaseId\n", .{});
                 }
@@ -37089,7 +37089,7 @@ fn parse_VariableSymbol_(context: *data_structures.Context, occurrence_recovery:
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VariableSymbol <~ '_', UppercaseId\n", .{});
                 }
@@ -37118,7 +37118,7 @@ fn parse_AnnotationTail_0_2_(context: *data_structures.Context, occurrence_recov
             break :blk byte;
         }) {
             64 => { // '@'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: AnnotationTail -> '@', Annotation, AnnotationTail\n", .{});
                     }
@@ -37171,18 +37171,18 @@ fn parse_AnnotationTail_(context: *data_structures.Context, occurrence_recovery:
         break :blk byte;
     }) {
         10, 32 => { // '\n', ' '
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnnotationTail -> \n", .{});
                 }
             }
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnnotationTail <~ \n", .{});
                 }
             }        },
         64 => { // '@'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnnotationTail -> '@', Annotation, AnnotationTail\n", .{});
                 }
@@ -37214,7 +37214,7 @@ fn parse_AnnotationTail_(context: *data_structures.Context, occurrence_recovery:
                     },
                     else => return err,
                 }; // child 2
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnnotationTail <~ '@', Annotation, AnnotationTail\n", .{});
                 }
@@ -37242,7 +37242,7 @@ fn parse_RightHandSides_(context: *data_structures.Context, occurrence_recovery:
         break :blk byte;
     }) {
         124 => { // '|'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSides -> RightHandSideLine, RightHandSides_Tail\n", .{});
                 }
@@ -37267,14 +37267,14 @@ fn parse_RightHandSides_(context: *data_structures.Context, occurrence_recovery:
                 break :blk byte;
             }) {
                 0, 10, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // '\x00', '\n', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: RightHandSides_Tail -> \n", .{});
                         }
                     }
                 },
                 124 => { // '|'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: RightHandSides_Tail -> RightHandSides\n", .{});
                         }
@@ -37293,7 +37293,7 @@ fn parse_RightHandSides_(context: *data_structures.Context, occurrence_recovery:
                     @branchHint(.unlikely);
                     return ll_syntax_error_150(context, occurrence_recovery);
                 },
-            }            if (comptime builtin.mode == .Debug) {
+            }            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSides <~ RightHandSideLine, RightHandSides_Tail\n", .{});
                 }
@@ -37321,7 +37321,7 @@ fn parse_RightHandSideLine_(context: *data_structures.Context, occurrence_recove
         break :blk byte;
     }) {
         124 => { // '|'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSideLine -> '|', AnnotationTail, RightHandSide, NewLine\n", .{});
                 }
@@ -37362,7 +37362,7 @@ fn parse_RightHandSideLine_(context: *data_structures.Context, occurrence_recove
                     },
                     else => return err,
                 }; // child 3
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSideLine <~ '|', AnnotationTail, RightHandSide, NewLine\n", .{});
                 }
@@ -37414,7 +37414,7 @@ fn parse_RightHandSide_0_3_(context: *data_structures.Context, occurrence_recove
             break :blk byte;
         }) {
             32 => { // ' '
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: RightHandSide -> 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
                     }
@@ -37476,18 +37476,18 @@ fn parse_RightHandSide_(context: *data_structures.Context, occurrence_recovery: 
         break :blk byte;
     }) {
         10 => { // '\n'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSide -> \n", .{});
                 }
             }
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSide <~ \n", .{});
                 }
             }        },
         32 => { // ' '
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RightHandSide -> 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
                 }
@@ -37528,7 +37528,7 @@ fn parse_RightHandSide_(context: *data_structures.Context, occurrence_recovery: 
                     },
                     else => return err,
                 }; // child 3
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RightHandSide <~ 'space', Symbol, AnnotationTail, RightHandSide\n", .{});
                 }
@@ -37579,7 +37579,7 @@ fn parse_Symbol_(context: *data_structures.Context, occurrence_recovery: ?*const
         break :blk byte;
     }) {
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Symbol -> TerminalSymbol\n", .{});
                 }
@@ -37593,13 +37593,13 @@ fn parse_Symbol_(context: *data_structures.Context, occurrence_recovery: ?*const
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Symbol <~ TerminalSymbol\n", .{});
                 }
             }        },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 95 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Symbol -> VariableSymbol\n", .{});
                 }
@@ -37613,7 +37613,7 @@ fn parse_Symbol_(context: *data_structures.Context, occurrence_recovery: ?*const
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Symbol <~ VariableSymbol\n", .{});
                 }
@@ -37621,7 +37621,7 @@ fn parse_Symbol_(context: *data_structures.Context, occurrence_recovery: ?*const
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: Symbol -> TerminalSymbol\n", .{});
                         }
@@ -37635,7 +37635,7 @@ fn parse_Symbol_(context: *data_structures.Context, occurrence_recovery: ?*const
                             },
                             else => return err,
                         }; // child 0
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: Symbol <~ TerminalSymbol\n", .{});
                         }
@@ -37647,7 +37647,7 @@ fn parse_Symbol_(context: *data_structures.Context, occurrence_recovery: ?*const
             }
         },
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Symbol -> GenerativeTerminalSymbol\n", .{});
                 }
@@ -37661,7 +37661,7 @@ fn parse_Symbol_(context: *data_structures.Context, occurrence_recovery: ?*const
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Symbol <~ GenerativeTerminalSymbol\n", .{});
                 }
@@ -37689,7 +37689,7 @@ fn parse_TerminalSymbol_(context: *data_structures.Context, occurrence_recovery:
         break :blk byte;
     }) {
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: TerminalSymbol -> '\"', SimpleStringContent, '\"'\n", .{});
                 }
@@ -37721,7 +37721,7 @@ fn parse_TerminalSymbol_(context: *data_structures.Context, occurrence_recovery:
                     },
                     else => return err,
                 }; // child 2
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalSymbol <~ '\"', SimpleStringContent, '\"'\n", .{});
                 }
@@ -37729,7 +37729,7 @@ fn parse_TerminalSymbol_(context: *data_structures.Context, occurrence_recovery:
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: TerminalSymbol -> RawString\n", .{});
                         }
@@ -37743,7 +37743,7 @@ fn parse_TerminalSymbol_(context: *data_structures.Context, occurrence_recovery:
                             },
                             else => return err,
                         }; // child 0
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: TerminalSymbol <~ RawString\n", .{});
                         }
@@ -37777,7 +37777,7 @@ fn parse_GenerativeTerminalSymbol_(context: *data_structures.Context, occurrence
         break :blk byte;
     }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: GenerativeTerminalSymbol -> LowercaseId, GenerativeTerminalExceptions\n", .{});
                 }
@@ -37800,7 +37800,7 @@ fn parse_GenerativeTerminalSymbol_(context: *data_structures.Context, occurrence
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalSymbol <~ LowercaseId, GenerativeTerminalExceptions\n", .{});
                 }
@@ -37828,7 +37828,7 @@ fn parse_UppercaseId_(context: *data_structures.Context, occurrence_recovery: ?*
         break :blk byte;
     }) {
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: UppercaseId -> 'uppercase_letter', IdTail\n", .{});
                 }
@@ -37851,7 +37851,7 @@ fn parse_UppercaseId_(context: *data_structures.Context, occurrence_recovery: ?*
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: UppercaseId <~ 'uppercase_letter', IdTail\n", .{});
                 }
@@ -37893,7 +37893,7 @@ fn parse_RawString_(context: *data_structures.Context, occurrence_recovery: ?*co
     context.skipLeftoverBlockEndNewlines();
     switch (context.head(u16, 0)) {
         23586 => { // '\\\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RawString -> '\\\\\"', RawIndicator, '\"'\n", .{});
                 }
@@ -37928,7 +37928,7 @@ fn parse_RawString_(context: *data_structures.Context, occurrence_recovery: ?*co
                     },
                     else => return err,
                 }; // child 2
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RawString <~ '\\\\\"', RawIndicator, '\"'\n", .{});
                 }
@@ -37979,7 +37979,7 @@ fn parse_SimpleStringContent_0_1_(context: *data_structures.Context, occurrence_
             break :blk byte;
         }) {
             9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: SimpleStringContent -> 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
                     }
@@ -38025,7 +38025,7 @@ fn parse_SimpleStringContent_1_1_(context: *data_structures.Context, occurrence_
             break :blk byte;
         }) {
             194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf', '\xe0', '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xed', '\xee', '\xef', '\xf0', '\xf1', '\xf2', '\xf3', '\xf4'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: SimpleStringContent -> _Utf8Scalar, SimpleStringContent\n", .{});
                     }
@@ -38069,7 +38069,7 @@ fn parse_SimpleStringContent_(context: *data_structures.Context, occurrence_reco
         break :blk byte;
     }) {
         9, 10, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\n', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: SimpleStringContent -> 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
                 }
@@ -38092,24 +38092,24 @@ fn parse_SimpleStringContent_(context: *data_structures.Context, occurrence_reco
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ 'character^\"\\\\u{{22}}\"', SimpleStringContent\n", .{});
                 }
             }        },
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: SimpleStringContent -> \n", .{});
                 }
             }
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ \n", .{});
                 }
             }        },
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf', '\xe0', '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xed', '\xee', '\xef', '\xf0', '\xf1', '\xf2', '\xf3', '\xf4'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: SimpleStringContent -> _Utf8Scalar, SimpleStringContent\n", .{});
                 }
@@ -38132,7 +38132,7 @@ fn parse_SimpleStringContent_(context: *data_structures.Context, occurrence_reco
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: SimpleStringContent <~ _Utf8Scalar, SimpleStringContent\n", .{});
                 }
@@ -38174,7 +38174,7 @@ fn parse_RawIndicator_(context: *data_structures.Context, occurrence_recovery: ?
         break :blk byte;
     }) {
         9, 11, 12, 13, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RawIndicator -> 'character^\"\\\\u{{22}}\"^\"\\\\n\"^\"\\\\u{{5c}}\"'\n", .{});
                 }
@@ -38188,7 +38188,7 @@ fn parse_RawIndicator_(context: *data_structures.Context, occurrence_recovery: ?
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RawIndicator <~ 'character^\"\\\\u{{22}}\"^\"\\\\n\"^\"\\\\u{{5c}}\"'\n", .{});
                 }
@@ -38239,7 +38239,7 @@ fn parse_LowercaseId_(context: *data_structures.Context, occurrence_recovery: ?*
         break :blk byte;
     }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: LowercaseId -> 'lowercase_letter', IdTail\n", .{});
                 }
@@ -38262,7 +38262,7 @@ fn parse_LowercaseId_(context: *data_structures.Context, occurrence_recovery: ?*
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: LowercaseId <~ 'lowercase_letter', IdTail\n", .{});
                 }
@@ -38291,7 +38291,7 @@ fn parse_GenerativeTerminalExceptions_0_2_(context: *data_structures.Context, oc
             break :blk byte;
         }) {
             94 => { // '^'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: GenerativeTerminalExceptions -> '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
                     }
@@ -38344,18 +38344,18 @@ fn parse_GenerativeTerminalExceptions_(context: *data_structures.Context, occurr
         break :blk byte;
     }) {
         10, 32, 64 => { // '\n', ' ', '@'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: GenerativeTerminalExceptions -> \n", .{});
                 }
             }
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalExceptions <~ \n", .{});
                 }
             }        },
         94 => { // '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: GenerativeTerminalExceptions -> '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
                 }
@@ -38387,7 +38387,7 @@ fn parse_GenerativeTerminalExceptions_(context: *data_structures.Context, occurr
                     },
                     else => return err,
                 }; // child 2
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: GenerativeTerminalExceptions <~ '^', TerminalSymbol, GenerativeTerminalExceptions\n", .{});
                 }
@@ -38461,7 +38461,7 @@ fn parse_Annotation_(context: *data_structures.Context, occurrence_recovery: ?*c
         break :blk byte;
     }) {
         33 => { // '!'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Annotation -> '!', RecoveryPoint\n", .{});
                 }
@@ -38484,13 +38484,13 @@ fn parse_Annotation_(context: *data_structures.Context, occurrence_recovery: ?*c
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Annotation <~ '!', RecoveryPoint\n", .{});
                 }
             }        },
         62 => { // '>'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Annotation -> '>', VerbatimMarker\n", .{});
                 }
@@ -38513,13 +38513,13 @@ fn parse_Annotation_(context: *data_structures.Context, occurrence_recovery: ?*c
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Annotation <~ '>', VerbatimMarker\n", .{});
                 }
             }        },
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Annotation -> Procedure\n", .{});
                 }
@@ -38533,7 +38533,7 @@ fn parse_Annotation_(context: *data_structures.Context, occurrence_recovery: ?*c
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Annotation <~ Procedure\n", .{});
                 }
@@ -38561,7 +38561,7 @@ fn parse_Procedure_(context: *data_structures.Context, occurrence_recovery: ?*co
         break :blk byte;
     }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: Procedure -> CamelCaseId\n", .{});
                 }
@@ -38575,7 +38575,7 @@ fn parse_Procedure_(context: *data_structures.Context, occurrence_recovery: ?*co
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: Procedure <~ CamelCaseId\n", .{});
                 }
@@ -38626,7 +38626,7 @@ fn parse_RecoveryPoint_(context: *data_structures.Context, occurrence_recovery: 
         break :blk byte;
     }) {
         34, 94 => { // '\"', '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: RecoveryPoint -> TerminalAndCursor\n", .{});
                 }
@@ -38640,7 +38640,7 @@ fn parse_RecoveryPoint_(context: *data_structures.Context, occurrence_recovery: 
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: RecoveryPoint <~ TerminalAndCursor\n", .{});
                 }
@@ -38648,7 +38648,7 @@ fn parse_RecoveryPoint_(context: *data_structures.Context, occurrence_recovery: 
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: RecoveryPoint -> TerminalAndCursor\n", .{});
                         }
@@ -38662,7 +38662,7 @@ fn parse_RecoveryPoint_(context: *data_structures.Context, occurrence_recovery: 
                             },
                             else => return err,
                         }; // child 0
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: RecoveryPoint <~ TerminalAndCursor\n", .{});
                         }
@@ -38719,7 +38719,7 @@ fn parse_VerbatimMarker_(context: *data_structures.Context, occurrence_recovery:
         break :blk byte;
     }) {
         34, 94 => { // '\"', '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VerbatimMarker -> TerminalAndCursor\n", .{});
                 }
@@ -38733,13 +38733,13 @@ fn parse_VerbatimMarker_(context: *data_structures.Context, occurrence_recovery:
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VerbatimMarker <~ TerminalAndCursor\n", .{});
                 }
             }        },
         62 => { // '>'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: VerbatimMarker -> '>'\n", .{});
                 }
@@ -38753,7 +38753,7 @@ fn parse_VerbatimMarker_(context: *data_structures.Context, occurrence_recovery:
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: VerbatimMarker <~ '>'\n", .{});
                 }
@@ -38761,7 +38761,7 @@ fn parse_VerbatimMarker_(context: *data_structures.Context, occurrence_recovery:
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: VerbatimMarker -> TerminalAndCursor\n", .{});
                         }
@@ -38775,7 +38775,7 @@ fn parse_VerbatimMarker_(context: *data_structures.Context, occurrence_recovery:
                             },
                             else => return err,
                         }; // child 0
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: VerbatimMarker <~ TerminalAndCursor\n", .{});
                         }
@@ -38809,7 +38809,7 @@ fn parse_CamelCaseId_(context: *data_structures.Context, occurrence_recovery: ?*
         break :blk byte;
     }) {
         97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseId -> 'lowercase_letter', CamelCaseIdTail\n", .{});
                 }
@@ -38832,7 +38832,7 @@ fn parse_CamelCaseId_(context: *data_structures.Context, occurrence_recovery: ?*
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseId <~ 'lowercase_letter', CamelCaseIdTail\n", .{});
                 }
@@ -38860,7 +38860,7 @@ fn parse_TerminalAndCursor_(context: *data_structures.Context, occurrence_recove
         break :blk byte;
     }) {
         34 => { // '\"'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: TerminalAndCursor -> TerminalSymbol, '^'\n", .{});
                 }
@@ -38883,7 +38883,7 @@ fn parse_TerminalAndCursor_(context: *data_structures.Context, occurrence_recove
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalAndCursor <~ TerminalSymbol, '^'\n", .{});
                 }
@@ -38891,7 +38891,7 @@ fn parse_TerminalAndCursor_(context: *data_structures.Context, occurrence_recove
         92 => { // '\\'
             switch (context.head(u8, 1)) {
                 34 => { // '\"'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: TerminalAndCursor -> TerminalSymbol, '^'\n", .{});
                         }
@@ -38914,7 +38914,7 @@ fn parse_TerminalAndCursor_(context: *data_structures.Context, occurrence_recove
                             },
                             else => return err,
                         }; // child 1
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Reduction: TerminalAndCursor <~ TerminalSymbol, '^'\n", .{});
                         }
@@ -38926,7 +38926,7 @@ fn parse_TerminalAndCursor_(context: *data_structures.Context, occurrence_recove
             }
         },
         94 => { // '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: TerminalAndCursor -> '^', TerminalSymbol\n", .{});
                 }
@@ -38949,7 +38949,7 @@ fn parse_TerminalAndCursor_(context: *data_structures.Context, occurrence_recove
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: TerminalAndCursor <~ '^', TerminalSymbol\n", .{});
                 }
@@ -38999,7 +38999,7 @@ fn parse__Utf8Scalar_(context: *data_structures.Context, occurrence_recovery: ?*
         break :blk byte;
     }) {
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: _Utf8Scalar -> _Utf8TwoByte\n", .{});
                 }
@@ -39013,13 +39013,13 @@ fn parse__Utf8Scalar_(context: *data_structures.Context, occurrence_recovery: ?*
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8Scalar <~ _Utf8TwoByte\n", .{});
                 }
             }        },
         224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239 => { // '\xe0', '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xed', '\xee', '\xef'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: _Utf8Scalar -> _Utf8ThreeByte\n", .{});
                 }
@@ -39033,13 +39033,13 @@ fn parse__Utf8Scalar_(context: *data_structures.Context, occurrence_recovery: ?*
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8Scalar <~ _Utf8ThreeByte\n", .{});
                 }
             }        },
         240, 241, 242, 243, 244 => { // '\xf0', '\xf1', '\xf2', '\xf3', '\xf4'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: _Utf8Scalar -> _Utf8FourByte\n", .{});
                 }
@@ -39053,7 +39053,7 @@ fn parse__Utf8Scalar_(context: *data_structures.Context, occurrence_recovery: ?*
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8Scalar <~ _Utf8FourByte\n", .{});
                 }
@@ -39081,7 +39081,7 @@ fn parse__Utf8TwoByte_(context: *data_structures.Context, occurrence_recovery: ?
         break :blk byte;
     }) {
         194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223 => { // '\xc2', '\xc3', '\xc4', '\xc5', '\xc6', '\xc7', '\xc8', '\xc9', '\xca', '\xcb', '\xcc', '\xcd', '\xce', '\xcf', '\xd0', '\xd1', '\xd2', '\xd3', '\xd4', '\xd5', '\xd6', '\xd7', '\xd8', '\xd9', '\xda', '\xdb', '\xdc', '\xdd', '\xde', '\xdf'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: _Utf8TwoByte -> 'utf8_lead_two', 'utf8_continuation'\n", .{});
                 }
@@ -39104,7 +39104,7 @@ fn parse__Utf8TwoByte_(context: *data_structures.Context, occurrence_recovery: ?
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8TwoByte <~ 'utf8_lead_two', 'utf8_continuation'\n", .{});
                 }
@@ -39132,7 +39132,7 @@ fn parse__Utf8ThreeByte_(context: *data_structures.Context, occurrence_recovery:
         break :blk byte;
     }) {
         224 => { // '\xe0'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: _Utf8ThreeByte -> '\\xe0', 'utf8_continuation_a0_bf', 'utf8_continuation'\n", .{});
                 }
@@ -39164,13 +39164,13 @@ fn parse__Utf8ThreeByte_(context: *data_structures.Context, occurrence_recovery:
                     },
                     else => return err,
                 }; // child 2
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8ThreeByte <~ '\\xe0', 'utf8_continuation_a0_bf', 'utf8_continuation'\n", .{});
                 }
             }        },
         225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 238, 239 => { // '\xe1', '\xe2', '\xe3', '\xe4', '\xe5', '\xe6', '\xe7', '\xe8', '\xe9', '\xea', '\xeb', '\xec', '\xee', '\xef'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: _Utf8ThreeByte -> 'utf8_lead_three_general', 'utf8_continuation', 'utf8_continuation'\n", .{});
                 }
@@ -39202,13 +39202,13 @@ fn parse__Utf8ThreeByte_(context: *data_structures.Context, occurrence_recovery:
                     },
                     else => return err,
                 }; // child 2
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8ThreeByte <~ 'utf8_lead_three_general', 'utf8_continuation', 'utf8_continuation'\n", .{});
                 }
             }        },
         237 => { // '\xed'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: _Utf8ThreeByte -> '\\xed', 'utf8_continuation_80_9f', 'utf8_continuation'\n", .{});
                 }
@@ -39240,7 +39240,7 @@ fn parse__Utf8ThreeByte_(context: *data_structures.Context, occurrence_recovery:
                     },
                     else => return err,
                 }; // child 2
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8ThreeByte <~ '\\xed', 'utf8_continuation_80_9f', 'utf8_continuation'\n", .{});
                 }
@@ -39268,7 +39268,7 @@ fn parse__Utf8FourByte_(context: *data_structures.Context, occurrence_recovery: 
         break :blk byte;
     }) {
         240 => { // '\xf0'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: _Utf8FourByte -> '\\xf0', 'utf8_continuation_90_bf', 'utf8_continuation', 'utf8_continuation'\n", .{});
                 }
@@ -39309,13 +39309,13 @@ fn parse__Utf8FourByte_(context: *data_structures.Context, occurrence_recovery: 
                     },
                     else => return err,
                 }; // child 3
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8FourByte <~ '\\xf0', 'utf8_continuation_90_bf', 'utf8_continuation', 'utf8_continuation'\n", .{});
                 }
             }        },
         241, 242, 243 => { // '\xf1', '\xf2', '\xf3'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: _Utf8FourByte -> 'utf8_lead_four_general', 'utf8_continuation', 'utf8_continuation', 'utf8_continuation'\n", .{});
                 }
@@ -39356,13 +39356,13 @@ fn parse__Utf8FourByte_(context: *data_structures.Context, occurrence_recovery: 
                     },
                     else => return err,
                 }; // child 3
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8FourByte <~ 'utf8_lead_four_general', 'utf8_continuation', 'utf8_continuation', 'utf8_continuation'\n", .{});
                 }
             }        },
         244 => { // '\xf4'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: _Utf8FourByte -> '\\xf4', 'utf8_continuation_80_8f', 'utf8_continuation', 'utf8_continuation'\n", .{});
                 }
@@ -39403,7 +39403,7 @@ fn parse__Utf8FourByte_(context: *data_structures.Context, occurrence_recovery: 
                     },
                     else => return err,
                 }; // child 3
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: _Utf8FourByte <~ '\\xf4', 'utf8_continuation_80_8f', 'utf8_continuation', 'utf8_continuation'\n", .{});
                 }
@@ -39707,7 +39707,7 @@ fn parse_ControlCharacter_(context: *data_structures.Context, occurrence_recover
         break :blk byte;
     }) {
         1 => { // '\x01'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: ControlCharacter -> '\\x01'\n", .{});
                 }
@@ -39721,13 +39721,13 @@ fn parse_ControlCharacter_(context: *data_structures.Context, occurrence_recover
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ControlCharacter <~ '\\x01'\n", .{});
                 }
             }        },
         2 => { // '\x02'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: ControlCharacter -> '\\x02'\n", .{});
                 }
@@ -39741,7 +39741,7 @@ fn parse_ControlCharacter_(context: *data_structures.Context, occurrence_recover
                     },
                     else => return err,
                 }; // child 0
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: ControlCharacter <~ '\\x02'\n", .{});
                 }
@@ -39815,7 +39815,7 @@ fn parse_AnyContent_(context: *data_structures.Context, occurrence_recovery: ?*c
         break :blk byte;
     }) {
         1, 2 => { // '\x01', '\x02'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnyContent -> ControlCharacter, AnyContent_Tail\n", .{});
                 }
@@ -39841,7 +39841,7 @@ fn parse_AnyContent_(context: *data_structures.Context, occurrence_recovery: ?*c
                 break :blk byte;
             }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: AnyContent_Tail -> AnyContent\n", .{});
                         }
@@ -39860,13 +39860,13 @@ fn parse_AnyContent_(context: *data_structures.Context, occurrence_recovery: ?*c
                     @branchHint(.unlikely);
                     return ll_syntax_error_151(context, occurrence_recovery);
                 },
-            }            if (comptime builtin.mode == .Debug) {
+            }            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContent <~ ControlCharacter, AnyContent_Tail\n", .{});
                 }
             }        },
         9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: AnyContent -> 'character^\"\\\\n\"', AnyContent_Tail0\n", .{});
                 }
@@ -39892,7 +39892,7 @@ fn parse_AnyContent_(context: *data_structures.Context, occurrence_recovery: ?*c
                 break :blk byte;
             }) {
                 1, 2, 9, 11, 12, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126 => { // '\x01', '\x02', '\t', '\x0b', '\x0c', '\r', ' ', '!', '\"', '#', '$', '%', '&', ''', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'
-                    if (comptime builtin.mode == .Debug) {
+                    if (comptime builtin.mode == .debug) {
                         if (context.verbosityLevel() > 1) {
                             std.debug.print("Rule expansion: AnyContent_Tail0 -> AnyContent\n", .{});
                         }
@@ -39911,7 +39911,7 @@ fn parse_AnyContent_(context: *data_structures.Context, occurrence_recovery: ?*c
                     @branchHint(.unlikely);
                     return ll_syntax_error_152(context, occurrence_recovery);
                 },
-            }            if (comptime builtin.mode == .Debug) {
+            }            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: AnyContent <~ 'character^\"\\\\n\"', AnyContent_Tail0\n", .{});
                 }
@@ -39963,7 +39963,7 @@ fn parse_IdTail_2_1_(context: *data_structures.Context, occurrence_recovery: ?*c
             break :blk byte;
         }) {
             95 => { // '_'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: IdTail -> '_', IdTail\n", .{});
                     }
@@ -40009,7 +40009,7 @@ fn parse_IdTail_0_1_(context: *data_structures.Context, occurrence_recovery: ?*c
             break :blk byte;
         }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: IdTail -> 'letter', IdTail\n", .{});
                     }
@@ -40055,7 +40055,7 @@ fn parse_IdTail_1_1_(context: *data_structures.Context, occurrence_recovery: ?*c
             break :blk byte;
         }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: IdTail -> 'digit', IdTail\n", .{});
                     }
@@ -40099,18 +40099,18 @@ fn parse_IdTail_(context: *data_structures.Context, occurrence_recovery: ?*const
         break :blk byte;
     }) {
         10, 32, 64, 94 => { // '\n', ' ', '@', '^'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> \n", .{});
                 }
             }
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ \n", .{});
                 }
             }        },
         48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> 'digit', IdTail\n", .{});
                 }
@@ -40133,13 +40133,13 @@ fn parse_IdTail_(context: *data_structures.Context, occurrence_recovery: ?*const
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ 'digit', IdTail\n", .{});
                 }
             }        },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> 'letter', IdTail\n", .{});
                 }
@@ -40162,13 +40162,13 @@ fn parse_IdTail_(context: *data_structures.Context, occurrence_recovery: ?*const
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ 'letter', IdTail\n", .{});
                 }
             }        },
         95 => { // '_'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: IdTail -> '_', IdTail\n", .{});
                 }
@@ -40191,7 +40191,7 @@ fn parse_IdTail_(context: *data_structures.Context, occurrence_recovery: ?*const
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: IdTail <~ '_', IdTail\n", .{});
                 }
@@ -40312,7 +40312,7 @@ fn parse_CamelCaseIdTail_0_1_(context: *data_structures.Context, occurrence_reco
             break :blk byte;
         }) {
             65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: CamelCaseIdTail -> 'letter', CamelCaseIdTail\n", .{});
                     }
@@ -40358,7 +40358,7 @@ fn parse_CamelCaseIdTail_1_1_(context: *data_structures.Context, occurrence_reco
             break :blk byte;
         }) {
             48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-                if (comptime builtin.mode == .Debug) {
+                if (comptime builtin.mode == .debug) {
                     if (context.verbosityLevel() > 1) {
                         std.debug.print("Rule expansion: CamelCaseIdTail -> 'digit', CamelCaseIdTail\n", .{});
                     }
@@ -40402,18 +40402,18 @@ fn parse_CamelCaseIdTail_(context: *data_structures.Context, occurrence_recovery
         break :blk byte;
     }) {
         10, 32, 64 => { // '\n', ' ', '@'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseIdTail -> \n", .{});
                 }
             }
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ \n", .{});
                 }
             }        },
         48, 49, 50, 51, 52, 53, 54, 55, 56, 57 => { // '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseIdTail -> 'digit', CamelCaseIdTail\n", .{});
                 }
@@ -40436,13 +40436,13 @@ fn parse_CamelCaseIdTail_(context: *data_structures.Context, occurrence_recovery
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ 'digit', CamelCaseIdTail\n", .{});
                 }
             }        },
         65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122 => { // 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CamelCaseIdTail -> 'letter', CamelCaseIdTail\n", .{});
                 }
@@ -40465,7 +40465,7 @@ fn parse_CamelCaseIdTail_(context: *data_structures.Context, occurrence_recovery
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CamelCaseIdTail <~ 'letter', CamelCaseIdTail\n", .{});
                 }
@@ -40515,7 +40515,7 @@ fn parse_CommentLine_(context: *data_structures.Context, occurrence_recovery: ?*
         break :blk byte;
     }) {
         35 => { // '#'
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Rule expansion: CommentLine -> '#', 'new_line'\n", .{});
                 }
@@ -40539,7 +40539,7 @@ fn parse_CommentLine_(context: *data_structures.Context, occurrence_recovery: ?*
                     },
                     else => return err,
                 }; // child 1
-            if (comptime builtin.mode == .Debug) {
+            if (comptime builtin.mode == .debug) {
                 if (context.verbosityLevel() > 1) {
                     std.debug.print("Reduction: CommentLine <~ '#', 'new_line'\n", .{});
                 }

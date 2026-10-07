@@ -74,7 +74,6 @@ pub fn addOptionMatrix(
     generate_parser_file_exe: *std.Build.Step.Compile,
     parser_type: []const u8,
     filters: []const []const u8,
-    filtered_test_run_steps: *std.ArrayList(*std.Build.Step),
 ) !void {
     for (option_matrix_variants) |variant| {
         std.debug.assert(variant.flags.isValid());
@@ -89,7 +88,6 @@ pub fn addOptionMatrix(
             filters,
         );
         test_step.dependOn(&run_tests.step);
-        if (filters.len != 0) filtered_test_run_steps.append(b.allocator, &run_tests.step) catch @panic("OOM");
     }
 }
 

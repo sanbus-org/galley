@@ -37,49 +37,29 @@ const UnsupportedSignals = struct {
 };
 
 const PosixSignals = struct {
-    pub const c = @cImport({
-        @cDefine("_GNU_SOURCE", "1");
-        @cInclude("pthread.h");
-        @cInclude("setjmp.h");
-        @cInclude("signal.h");
-        @cInclude("unistd.h");
-    });
+    // Hand-written POSIX bindings; see c.zig.
+    pub const c = @import("c");
 
-    // One name for the handler union on every libc: macOS calls it
-    // `__sigaction_u`, glibc `__sigaction_handler`, musl `__sa_handler`.
-    // The members match except for macOS's `__` prefix, handled below.
-    const handler_union_field = if (@hasField(c.struct_sigaction, "__sigaction_u"))
-        "__sigaction_u"
-    else if (@hasField(c.struct_sigaction, "__sigaction_handler"))
-        "__sigaction_handler"
-    else
-        "__sa_handler";
-
+    // The handler union (`action.handler`) has the same member names on
+    // every supported libc; the casts bridge ABI-compatible signature
+    // spellings (the C `int` signal number vs the std.c.SIG enum, C
+    // pointers vs C-ABI pointers).
     fn writeSigactionHandler(action: *c.struct_sigaction, handler: SignalHandler) void {
-        const slots = &@field(action.*, handler_union_field);
-        if (comptime @hasField(@TypeOf(slots.*), "sa_sigaction")) {
-            slots.sa_sigaction = handler;
-        } else {
-            slots.__sa_sigaction = handler;
-        }
+        const function: c.sigaction_fn = @ptrCast(handler);
+        action.handler.sigaction = function;
     }
 
     fn readSigactionHandler(action: *const c.struct_sigaction) ?SignalHandler {
-        const slots = &@field(action.*, handler_union_field);
-        if (comptime @hasField(@TypeOf(slots.*), "sa_sigaction")) {
-            return slots.sa_sigaction;
-        } else {
-            return slots.__sa_sigaction;
-        }
+        const function = action.handler.sigaction orelse return null;
+        const handler: SignalHandler = @ptrCast(function);
+        return handler;
     }
 
     fn readSimpleHandler(action: *const c.struct_sigaction) ?SimpleSignalHandler {
-        const slots = &@field(action.*, handler_union_field);
-        if (comptime @hasField(@TypeOf(slots.*), "sa_handler")) {
-            return slots.sa_handler;
-        } else {
-            return slots.__sa_handler;
-        }
+        const function = action.handler.handler orelse return null;
+        const widened: *align(1) const fn (c_int) callconv(.c) void = @ptrCast(function);
+        const handler: SimpleSignalHandler = @alignCast(widened);
+        return handler;
     }
 
     pub const SignalHandler = *const fn (c_int, [*c]c.siginfo_t, ?*anyopaque) callconv(.c) void;
@@ -161,12 +141,13 @@ const PosixSignals = struct {
             if (c.sigaltstack(null, &previous) != 0) return error.SignalStackSetupFailed;
 
             var replacement = std.mem.zeroes(c.stack_t);
-            replacement.ss_sp = memory.ptr;
-            replacement.ss_size = memory.len;
+            replacement.sp = memory.ptr;
+            replacement.size = @intCast(memory.len);
             // musl types SS_AUTODISARM as an unsigned bit that does not fit
-            // c_int; bit-cast to keep the pattern on every libc.
-            replacement.ss_flags = if (comptime @hasDecl(c, "SS_AUTODISARM"))
-                @as(@TypeOf(replacement.ss_flags), @bitCast(c.SS_AUTODISARM))
+            // c_int; bit-cast to keep the pattern on every libc. glibc does
+            // not define the extension, so it stays off there.
+            replacement.flags = if (comptime builtin.target.abi.isMusl())
+                @as(@TypeOf(replacement.flags), @bitCast(c.SS_AUTODISARM))
             else
                 0;
             if (c.sigaltstack(&replacement, null) != 0) return error.SignalStackSetupFailed;
@@ -383,13 +364,13 @@ const PosixSignals = struct {
 
     fn faultAddress(info: [*c]c.siginfo_t) ?*anyopaque {
         if (info == null) return null;
-        if (comptime @hasField(c.siginfo_t, "si_addr")) {
-            return info.*.si_addr;
+        // Linux keeps the fault address in the `sigfault` union of
+        // `fields`; Darwin's siginfo_t is flat and names it `addr`.
+        if (comptime @hasField(c.siginfo_t, "fields")) {
+            return info.*.fields.sigfault.addr;
+        } else {
+            return info.*.addr;
         }
-        if (comptime @hasField(c.siginfo_t, "_sifields")) {
-            return info.*._sifields._sigfault.si_addr;
-        }
-        return info.*.__si_fields.__sigfault.si_addr;
     }
 
     fn signalHandler(sig: c_int, info: [*c]c.siginfo_t, ucontext: ?*anyopaque) callconv(.c) void {
@@ -414,8 +395,8 @@ const PosixSignals = struct {
         if (handler_users == 0) {
             var action = std.mem.zeroes(c.struct_sigaction);
             setSiginfoHandler(&action, signalHandler);
-            if (c.sigemptyset(&action.sa_mask) != 0) return error.SignalHandlerSetupFailed;
-            action.sa_flags = c.SA_SIGINFO | c.SA_ONSTACK;
+            if (c.sigemptyset(&action.mask) != 0) return error.SignalHandlerSetupFailed;
+            action.flags = c.SA_SIGINFO | c.SA_ONSTACK;
 
             if (c.sigaction(c.SIGSEGV, &action, &previous_sigsegv) != 0) {
                 return error.SignalHandlerSetupFailed;
@@ -466,7 +447,7 @@ const PosixSignals = struct {
     }
 
     fn actionUsesOurHandler(action: *const c.struct_sigaction) bool {
-        if ((action.sa_flags & c.SA_SIGINFO) == 0) return false;
+        if ((action.flags & c.SA_SIGINFO) == 0) return false;
         const handler = readSigactionHandler(action);
         return handler != null and @intFromPtr(handler.?) == @intFromPtr(&signalHandler);
     }
@@ -477,7 +458,7 @@ const PosixSignals = struct {
         info: [*c]c.siginfo_t,
         ucontext: ?*anyopaque,
     ) void {
-        if ((action.sa_flags & c.SA_SIGINFO) != 0) {
+        if ((action.flags & c.SA_SIGINFO) != 0) {
             const handler: ?SignalHandler = readSigactionHandler(&action);
             if (handler) |function| {
                 const address = @intFromPtr(function);
@@ -503,7 +484,7 @@ const PosixSignals = struct {
 
     fn restoreDefaultAndReraise(sig: c_int) void {
         var action = std.mem.zeroes(c.struct_sigaction);
-        if (c.sigemptyset(&action.sa_mask) != 0) c._exit(128 + sig);
+        if (c.sigemptyset(&action.mask) != 0) c._exit(128 + sig);
         if (c.sigaction(sig, &action, null) != 0) c._exit(128 + sig);
         if (c.kill(c.getpid(), sig) != 0) c._exit(128 + sig);
     }

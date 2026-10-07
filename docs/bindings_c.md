@@ -460,7 +460,7 @@ Every green CI run uploads per-platform kits (`galley-c-<version>-<platform>.tar
 workflow artifacts (Actions → the run → Artifacts → `pkg-c`), holding
 the generator binary, `galley.h`, and the compile inputs — no repo
 checkout needed. Each kit ships a README with the two commands; you
-still need a Zig 0.16.0+ toolchain and a C compiler:
+still need a Zig 0.17.0+ toolchain and a C compiler:
 
 ```sh
 mkdir -p galley-c && tar xzf galley-c-<version>-linux-x64.tar.gz -C galley-c --strip-components=1

@@ -592,7 +592,7 @@ pub fn emitParserMetadata(
         \\pub const error_recovery_mode: ErrorRecoveryMode =
         \\    if (!is_error_recovery_enabled) .disabled else if (has_recovery_annotations) .explicit else .automatic;
         \\pub const is_position_tracking_enabled =
-        \\    if (config.position_tracking) |enabled| enabled else builtin.mode != .ReleaseFast;
+        \\    if (config.position_tracking) |enabled| enabled else builtin.mode != .fast;
         \\pub const is_input_streaming_enabled = config.input_streaming;
         \\pub const syntax_error_stack_depth = {s};
         \\pub const is_syntax_error_stack_enabled = {s};
@@ -714,7 +714,7 @@ pub fn emitProcedureSupport(
         \\
         \\pub const rule_procedures = rule_procedures: {{
         \\    @setEvalBranchQuota({d});
-        \\    var arr: [{d}]?*const data_structures.Procedure = .{{null}} ** {d};
+        \\    var arr: [{d}]?*const data_structures.Procedure = @splat(null);
         \\
         \\    for (rules, 0..) |rule, index| {{
         \\        const procedure_name = "reduction_" ++ variables[rule.header] ++ "_" ++ rule.right_hand_side_index;
@@ -728,7 +728,7 @@ pub fn emitProcedureSupport(
         \\
         \\pub const symbol_procedures = symbol_procedures: {{
         \\    @setEvalBranchQuota({d});
-        \\    var arr: [{d}]?*const data_structures.Procedure = .{{null}} ** {d};
+        \\    var arr: [{d}]?*const data_structures.Procedure = @splat(null);
         \\
         \\    for (symbols, 0..) |symbol, index| {{
         \\        const procedure_name = "reduction_" ++ symbol;
@@ -742,7 +742,7 @@ pub fn emitProcedureSupport(
         \\
         \\const variable_procedure_names = &[_][]const []const u8{{
         \\
-    , .{ rule_procedure_quota, rules.len, rules.len, symbol_procedure_quota, symbols.len, symbols.len });
+    , .{ rule_procedure_quota, rules.len, symbol_procedure_quota, symbols.len });
     for (variables) |symbol_index| {
         const symbol = symbols[symbol_index];
         try writer.writeAll("    &[_][]const u8{");
@@ -780,7 +780,7 @@ pub fn emitProcedureSupport(
         \\
         \\pub const variable_procedures = variable_procedures: {{
         \\    @setEvalBranchQuota({d});
-        \\    var arr: [{d}]?*const ProcedureSequenceNode = .{{null}} ** {d};
+        \\    var arr: [{d}]?*const ProcedureSequenceNode = @splat(null);
         \\
         \\    for (variable_procedure_names, 0..) |procedure_names, index| {{
         \\        arr[index] = makeProcedureSequence(procedure_names);
@@ -792,7 +792,7 @@ pub fn emitProcedureSupport(
         \\pub const reduction_procedure: ?*const data_structures.Procedure = if (@hasDecl(procedures, "reduction")) data_structures.wrap_procedure(data_structures.Procedure, @field(procedures, "reduction"), "reduction") else null;
         \\
         \\
-    , .{ variable_procedure_quota, variables.len, variables.len });
+    , .{ variable_procedure_quota, variables.len });
     try emitStrictReductionCheck(allocator, writer, rules, symbols, augmented_start, generative_terminal);
 }
 
@@ -1271,7 +1271,7 @@ pub fn emitRuleSymbolsForDebug(writer: *std.Io.Writer, symbols: []const common.S
 /// backends. The head symbol id is taken from the rule header.
 pub fn emitDebugReduction(writer: *std.Io.Writer, symbols: []const common.Symbol, rule: common.Rule, indent: []const u8) !void {
     try writer.print(
-        \\{s}if (comptime builtin.mode == .Debug) {{
+        \\{s}if (comptime builtin.mode == .debug) {{
         \\{s}    if (context.verbosityLevel() > 1) {{
         \\{s}        std.debug.print("Reduction:
     , .{ indent, indent, indent });

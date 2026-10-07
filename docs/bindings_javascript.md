@@ -78,7 +78,7 @@ Generator flags forward verbatim ahead of `--emit-host-procedures`: every flag
 (documented in [Configuration](/configuration)). Anything else is a
 usage error.
 
-Requires `zig` 0.16.0 to compile (`ZIG_EXECUTABLE` names an explicit
+Requires `zig` 0.17.0 to compile (`ZIG_EXECUTABLE` names an explicit
 binary, else `zig` on `PATH`, else `uvx` provisioning the pinned ziglang —
 neither installed is a loud error naming both install pages). No checkout:
 the compile inputs ride inside `@sanbus/galley-core` (`compile-kit/`).
@@ -436,7 +436,7 @@ parser.hasAst();
 ```
 
 `ZIG_EXECUTABLE` selects zig (else `zig` on `PATH`, else `uvx`
-provisioning zig 0.16.0). No checkout needed: contributors running from
+provisioning zig 0.17.0). No checkout needed: contributors running from
 the Galley repository without an assembled kit fall back to
 `GALLEY_CHECKOUT` pointing at the checkout — for convenience,
 `GALLEY_CHECKOUT=$(examples/scripts/fetch-galley.sh)` fetches one into

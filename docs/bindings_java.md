@@ -16,7 +16,7 @@ it is built and executed by CI on every push.
 
 ## Getting Started
 
-Requires `java` ≥ 22, `javac`, and `zig` 0.16 (`git` is only needed by `examples/scripts/fetch-galley.sh`).
+Requires `java` ≥ 22, `javac`, and `zig` 0.17 (`git` is only needed by `examples/scripts/fetch-galley.sh`).
 
 Build the bindings (no Maven, no JNA):
 

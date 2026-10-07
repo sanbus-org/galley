@@ -103,13 +103,16 @@ static bool get_i64(napi_env env, napi_value value, int64_t *out) {
 
 /* A parse generation: a plain JS Number (a counter, exact far below 2^53), so
  * it crosses without a BigInt on either side. */
-static bool get_generation(napi_env env, napi_value value, uint64_t *out) {
+/* `unsigned long long` matches the crossing ABI everywhere else in this
+ * file; `uint64_t` is a different type name on LP64 Linux (`unsigned
+ * long`), where clang rejects the pointer mismatch. */
+static bool get_generation(napi_env env, napi_value value, unsigned long long *out) {
   int64_t generation = 0;
   if (napi_get_value_int64(env, value, &generation) != napi_ok) {
     napi_throw_type_error(env, NULL, "expected generation");
     return false;
   }
-  *out = (uint64_t)generation;
+  *out = (unsigned long long)generation;
   return true;
 }
 
@@ -1926,8 +1929,8 @@ static napi_value method_galley_procedure_set_current_node(napi_env env, Lib *li
     napi_throw_type_error(env, NULL, "expected generation and node");
     return NULL;
   }
-  uint64_t generation = 0;
   uint64_t node = 0;
+  unsigned long long generation = 0;
   if (!get_generation(env, argv[1], &generation) || !get_u64(env, argv[2], &node)) return NULL;
   return make_number(env, ((fn_galley_procedure_set_current_node_t)lib->fn[SLOT_galley_procedure_set_current_node])(args, (unsigned long long)generation, (GalleyNodeAddress)node));
 }

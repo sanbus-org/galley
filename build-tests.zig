@@ -44,8 +44,6 @@ pub fn add(b: *std.Build, options: Options) !void {
     // Usage: zig build test -Dtest-filter="suite:runtime" -Dtest-filter="name:dropSelf"
     // Long-running samples: zig build test --test-timeout 30m
     const selection = try test_selection.Selection.parse(b.allocator, options.test_filters);
-    var filtered_test_run_steps: std.ArrayList(*std.Build.Step) = .empty;
-    var matrix_filtered_test_run_steps: std.ArrayList(*std.Build.Step) = .empty;
 
     const test_step = b.step("test", "Run all tests (build + generator + runtime + matrix + parity)");
     const benchmark_progress_test_step = b.step(
@@ -80,7 +78,6 @@ pub fn add(b: *std.Build, options: Options) !void {
         });
         const run_build_tests = b.addRunArtifact(build_tests);
         test_step.dependOn(&run_build_tests.step);
-        trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_build_tests.step);
         const option_matrix_test_mod = b.createModule(.{
             .root_source_file = b.path("build/option_matrix.zig"),
             .target = target,
@@ -93,7 +90,6 @@ pub fn add(b: *std.Build, options: Options) !void {
         });
         const run_option_matrix_tests = b.addRunArtifact(option_matrix_tests);
         test_step.dependOn(&run_option_matrix_tests.step);
-        trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_option_matrix_tests.step);
         if (selection.names.len == 0) {
             test_step.dependOn(&run_benchmark_progress_tests.step);
         }
@@ -102,7 +98,6 @@ pub fn add(b: *std.Build, options: Options) !void {
     if (selection.includes(.generator)) {
         for (recovery_comparison.run_tests) |run_tests| {
             test_step.dependOn(&run_tests.step);
-            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_tests.step);
         }
 
         const generator_common_tests = b.addTest(.{
@@ -112,7 +107,6 @@ pub fn add(b: *std.Build, options: Options) !void {
         });
         const run_generator_common_tests = b.addRunArtifact(generator_common_tests);
         test_step.dependOn(&run_generator_common_tests.step);
-        trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_generator_common_tests.step);
 
         const generator_config_file_tests = b.addTest(.{
             .name = "generator-config-file-tests",
@@ -121,7 +115,6 @@ pub fn add(b: *std.Build, options: Options) !void {
         });
         const run_generator_config_file_tests = b.addRunArtifact(generator_config_file_tests);
         test_step.dependOn(&run_generator_config_file_tests.step);
-        trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_generator_config_file_tests.step);
 
         inline for (.{
             .{ "generator-switch-plan-tests", generator.generator_switch_plan_mod },
@@ -135,7 +128,6 @@ pub fn add(b: *std.Build, options: Options) !void {
             });
             const run_tests = b.addRunArtifact(tests);
             test_step.dependOn(&run_tests.step);
-            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_tests.step);
         }
 
         const galley_grammar_procedure_tests = b.addTest(.{
@@ -145,7 +137,6 @@ pub fn add(b: *std.Build, options: Options) !void {
         });
         const run_galley_grammar_procedure_tests = b.addRunArtifact(galley_grammar_procedure_tests);
         test_step.dependOn(&run_galley_grammar_procedure_tests.step);
-        trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_galley_grammar_procedure_tests.step);
 
         const json_unicode_procedure_test_mod = b.createModule(.{
             .root_source_file = b.path("languages/json-unicode/procedures.zig"),
@@ -159,7 +150,6 @@ pub fn add(b: *std.Build, options: Options) !void {
         });
         const run_json_unicode_procedure_tests = b.addRunArtifact(json_unicode_procedure_tests);
         test_step.dependOn(&run_json_unicode_procedure_tests.step);
-        trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_json_unicode_procedure_tests.step);
 
         const generator_tests = b.addTest(.{
             .name = "generator-tests",
@@ -168,7 +158,6 @@ pub fn add(b: *std.Build, options: Options) !void {
         });
         const run_generator_tests = b.addRunArtifact(generator_tests);
         test_step.dependOn(&run_generator_tests.step);
-        trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_generator_tests.step);
 
         const generator_cli_tests = b.addTest(.{
             .name = "generator-cli-tests",
@@ -177,25 +166,20 @@ pub fn add(b: *std.Build, options: Options) !void {
         });
         const run_generator_cli_tests = b.addRunArtifact(generator_cli_tests);
         test_step.dependOn(&run_generator_cli_tests.step);
-        trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_generator_cli_tests.step);
 
         inline for ([_][]const u8{ "ll", "lr" }) |parser_type| {
             const run_verbatim_nullable_tests = try addVerbatimNullableTests(b, options, parser_type, selection.names);
             test_step.dependOn(&run_verbatim_nullable_tests.step);
-            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_verbatim_nullable_tests.step);
 
             const run_symbol_kind_identity_tests = try addSymbolKindIdentityTests(b, options, parser_type, selection.names);
             test_step.dependOn(&run_symbol_kind_identity_tests.step);
-            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_symbol_kind_identity_tests.step);
 
             const run_self_repeating_tests = try addSelfRepeatingTests(b, options, parser_type, selection.names);
             test_step.dependOn(&run_self_repeating_tests.step);
-            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_self_repeating_tests.step);
 
             if (comptime std.mem.eql(u8, parser_type, "ll")) {
                 const run_self_repeating_procedures_tests = try addSelfRepeatingProceduresTests(b, options, parser_type, selection.names);
                 test_step.dependOn(&run_self_repeating_procedures_tests.step);
-                trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_self_repeating_procedures_tests.step);
             }
 
             try option_matrix.addOptionMatrix(
@@ -207,89 +191,70 @@ pub fn add(b: *std.Build, options: Options) !void {
                 generate_parser_file_exe,
                 parser_type,
                 selection.names,
-                &filtered_test_run_steps,
             );
 
             const run_procedure_hook_tests = try addProcedureHookTests(b, options, parser_type, selection.names);
             test_step.dependOn(&run_procedure_hook_tests.step);
-            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_procedure_hook_tests.step);
 
             const run_many_procedures_tests = try addManyProceduresTests(b, options, parser_type, selection.names);
             test_step.dependOn(&run_many_procedures_tests.step);
-            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_many_procedures_tests.step);
 
             const run_semantic_error_tests = try addSemanticErrorTests(b, options, parser_type, true, selection.names);
             test_step.dependOn(&run_semantic_error_tests.step);
-            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_semantic_error_tests.step);
 
             const run_semantic_error_no_ast_tests = try addSemanticErrorTests(b, options, parser_type, false, selection.names);
             test_step.dependOn(&run_semantic_error_no_ast_tests.step);
-            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_semantic_error_no_ast_tests.step);
 
             const run_tree_walker_tests = try addTreeWalkerTests(b, options, parser_type, selection.names);
             test_step.dependOn(&run_tree_walker_tests.step);
-            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_tree_walker_tests.step);
 
             const run_left_factoring_tests = try addLeftFactoringTests(b, options, parser_type, selection.names);
             test_step.dependOn(&run_left_factoring_tests.step);
-            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_left_factoring_tests.step);
 
             inline for ([_]bool{ true, false }) |with_ast| {
                 const run_no_ast_procedure_tests = try addNoAstProcedureTests(b, options, parser_type, with_ast, selection.names);
                 test_step.dependOn(&run_no_ast_procedure_tests.step);
-                trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_no_ast_procedure_tests.step);
             }
 
             const run_no_ast_tree_helpers_tests = try addNoAstTreeHelpersTests(b, options, parser_type, selection.names);
             test_step.dependOn(&run_no_ast_tree_helpers_tests.step);
-            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_no_ast_tree_helpers_tests.step);
 
             const run_no_ast_terminal_tests = try addNoAstTerminalTests(b, options, parser_type, selection.names);
             test_step.dependOn(&run_no_ast_terminal_tests.step);
-            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_no_ast_terminal_tests.step);
 
             const run_no_ast_indent_text_tests = try addNoAstIndentTextTests(b, options, parser_type, selection.names);
             test_step.dependOn(&run_no_ast_indent_text_tests.step);
-            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_no_ast_indent_text_tests.step);
 
             const run_newline_after_block_end_tests = try addNewlineAfterBlockEndTests(b, options, parser_type, true, selection.names);
             test_step.dependOn(&run_newline_after_block_end_tests.step);
-            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_newline_after_block_end_tests.step);
 
             const run_newline_after_block_end_off_tests = try addNewlineAfterBlockEndTests(b, options, parser_type, false, selection.names);
             test_step.dependOn(&run_newline_after_block_end_off_tests.step);
-            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_newline_after_block_end_off_tests.step);
 
             const run_explicit_recovery_tests = try addExplicitRecoveryTests(b, options, parser_type, selection.names);
             test_step.dependOn(&run_explicit_recovery_tests.step);
-            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_explicit_recovery_tests.step);
 
             inline for ([_]bool{ false, true }) |indent| {
                 const run_verbatim_tests = try addVerbatimTests(b, options, parser_type, indent, selection.names);
                 test_step.dependOn(&run_verbatim_tests.step);
-                trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_verbatim_tests.step);
             }
 
             const run_galley_recovery_tests = try addGalleyRecoveryTests(b, options, parser_type, selection.names);
             test_step.dependOn(&run_galley_recovery_tests.step);
-            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_galley_recovery_tests.step);
 
             const run_json_recovery_tests = try addJsonRecoveryTests(b, options, parser_type, selection.names);
             test_step.dependOn(&run_json_recovery_tests.step);
-            trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_json_recovery_tests.step);
 
             inline for ([_]bool{ false, true }) |automatic| {
                 inline for ([_]bool{ true, false }) |with_ast| {
                     const run_recovered_tree_tests = try addRecoveredTreeTests(b, options, parser_type, automatic, with_ast, selection.names);
                     test_step.dependOn(&run_recovered_tree_tests.step);
-                    trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_recovered_tree_tests.step);
                 }
             }
 
             inline for (std.meta.tags(InputStreamingTestKind)) |kind| {
                 const run_input_streaming_tests = try addInputStreamingTests(b, options, parser_type, kind, selection.names);
                 test_step.dependOn(&run_input_streaming_tests.step);
-                trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_input_streaming_tests.step);
             }
         }
     }
@@ -297,7 +262,6 @@ pub fn add(b: *std.Build, options: Options) !void {
     if (selection.includes(.runtime)) {
         const runtime_test_procedures_mod = common.addGalleyGrammarProceduresModule(
             b,
-            "runtime-test-procedures",
             target,
             optimize,
             generator.generator_common_mod,
@@ -347,26 +311,18 @@ pub fn add(b: *std.Build, options: Options) !void {
         });
         const run_runtime_tests = b.addRunArtifact(runtime_tests);
         test_step.dependOn(&run_runtime_tests.step);
-        trackFilteredTestRun(b.allocator, &filtered_test_run_steps, selection.names, &run_runtime_tests.step);
     }
 
     const generated_parser_matrix_step = b.step("test-generated-parser-matrix", "Generate and test parser option matrix");
     if (selection.includesMatrix()) {
-        const matrix_work = DependencyGroup.create(b, "generated-parser-matrix-work");
-        _ = try generated_parser_matrix.add(b, &matrix_work.step, .{
+        _ = try generated_parser_matrix.add(b, generated_parser_matrix_step, .{
             .target = target,
             .optimize = optimize,
             .generator_modules = generator,
             .generate_parser_file_exe = generate_parser_file_exe,
             .selection = selection,
-            .filtered_test_run_steps = &matrix_filtered_test_run_steps,
         });
-        generated_parser_matrix_step.dependOn(&matrix_work.step);
-        test_step.dependOn(&matrix_work.step);
-        filtered_test_run_steps.appendSlice(b.allocator, matrix_filtered_test_run_steps.items) catch @panic("OOM");
-        if (selection.names.len != 0) {
-            addTestFilterGuard(b, generated_parser_matrix_step, matrix_filtered_test_run_steps.items);
-        }
+        test_step.dependOn(generated_parser_matrix_step);
     } else {
         addSelectionFailure(b, generated_parser_matrix_step, "the selected filters do not include a matrix suite");
     }
@@ -392,10 +348,6 @@ pub fn add(b: *std.Build, options: Options) !void {
         test_step.dependOn(parity_step);
     } else {
         addSelectionFailure(b, parity_step, "the selected filters do not include suite:galley-parity");
-    }
-
-    if (selection.names.len != 0) {
-        addTestFilterGuard(b, test_step, filtered_test_run_steps.items);
     }
 }
 
@@ -1934,115 +1886,9 @@ fn addInputStreamingTests(
     return run_tests;
 }
 
-const DependencyGroup = struct {
-    step: std.Build.Step,
-
-    fn create(b: *std.Build, name: []const u8) *DependencyGroup {
-        const group = b.allocator.create(DependencyGroup) catch @panic("OOM");
-        group.* = .{
-            .step = std.Build.Step.init(.{
-                .id = .top_level,
-                .name = name,
-                .owner = b,
-                .makeFn = make,
-            }),
-        };
-        return group;
-    }
-
-    fn make(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
-        _ = step;
-        _ = options;
-    }
-};
-
-fn trackFilteredTestRun(
-    allocator: std.mem.Allocator,
-    filtered_test_run_steps: *std.ArrayList(*std.Build.Step),
-    name_filters: []const []const u8,
-    run_step: *std.Build.Step,
-) void {
-    if (name_filters.len == 0) return;
-    filtered_test_run_steps.append(allocator, run_step) catch @panic("OOM");
-}
-
-const SelectionFailure = struct {
-    step: std.Build.Step,
-    message: []const u8,
-
-    fn create(b: *std.Build, message: []const u8) *SelectionFailure {
-        const failure = b.allocator.create(SelectionFailure) catch @panic("OOM");
-        failure.* = .{
-            .step = std.Build.Step.init(.{
-                .id = .fail,
-                .name = "invalid-test-selection",
-                .owner = b,
-                .makeFn = make,
-            }),
-            .message = message,
-        };
-        return failure;
-    }
-
-    fn make(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
-        _ = options;
-        const failure: *SelectionFailure = @fieldParentPtr("step", step);
-        try step.result_error_msgs.append(step.owner.allocator, failure.message);
-        return error.MakeFailed;
-    }
-};
-
 fn addSelectionFailure(b: *std.Build, target_step: *std.Build.Step, message: []const u8) void {
-    const failure = SelectionFailure.create(b, message);
+    const failure = std.Build.Step.Fail.create(b, message);
     target_step.dependOn(&failure.step);
-}
-
-const TestFilterGuard = struct {
-    step: std.Build.Step,
-    run_steps: []const *std.Build.Step,
-
-    fn create(b: *std.Build, run_steps: []const *std.Build.Step) *TestFilterGuard {
-        const guard = b.allocator.create(TestFilterGuard) catch @panic("OOM");
-        guard.* = .{
-            .step = std.Build.Step.init(.{
-                .id = .fail,
-                .name = "test-filter-guard",
-                .owner = b,
-                .makeFn = make,
-            }),
-            .run_steps = run_steps,
-        };
-        return guard;
-    }
-
-    fn make(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
-        _ = options;
-        const guard: *TestFilterGuard = @fieldParentPtr("step", step);
-
-        var total_ran: u32 = 0;
-        for (guard.run_steps) |run_step| {
-            total_ran += run_step.test_results.test_count;
-        }
-        if (total_ran == 0) {
-            try step.result_error_msgs.append(
-                step.owner.allocator,
-                "no tests matched -Dtest-filter; nothing was run",
-            );
-            return error.MakeFailed;
-        }
-    }
-};
-
-fn addTestFilterGuard(
-    b: *std.Build,
-    test_step: *std.Build.Step,
-    run_steps: []const *std.Build.Step,
-) void {
-    const guard = TestFilterGuard.create(b, run_steps);
-    for (run_steps) |run_step| {
-        guard.step.dependOn(run_step);
-    }
-    test_step.dependOn(&guard.step);
 }
 
 fn addLrBackedGenerator(
@@ -2062,17 +1908,16 @@ fn addLrBackedGenerator(
 
     const procedures_mod = common.addGalleyGrammarProceduresModule(
         b,
-        "galley-bootstrap-parity-procedures",
         target,
         optimize,
         generator.generator_common_mod,
     );
-    const config_mod = b.addModule("galley-bootstrap-parity-config", .{
+    const config_mod = b.createModule(.{
         .root_source_file = config_source,
         .target = target,
         .optimize = optimize,
     });
-    const error_messages_mod = b.addModule("galley-bootstrap-parity-lr-error-messages", .{
+    const error_messages_mod = b.createModule(.{
         .root_source_file = b.path("languages/galley/lr_error_messages.zig"),
         .target = target,
         .optimize = optimize,

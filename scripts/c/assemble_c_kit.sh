@@ -56,7 +56,7 @@ printf '%s\n' "$VERSION" >"$DEST/VERSION"
 cat >"$DEST/README.md" <<EOF
 # Galley C/C++ kit ($VERSION, $PLATFORM)
 Generate and compile a Galley parser with no repo checkout.
-Requires a Zig 0.16.0+ toolchain and a C compiler.
+Requires a Zig 0.17.0+ toolchain and a C compiler.
 One kit serves C and C++ (same C ABI).
 Reference integration: examples/c (CMake) and examples/cpp in the Galley repo.
 # 1. Generate the parser and metadata next to your grammar (ll.grm plus

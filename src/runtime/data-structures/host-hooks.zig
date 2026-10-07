@@ -29,7 +29,7 @@ pub const Dispatch = *const fn (handle: ?*anyopaque, index: u32, args: ?*anyopaq
 
 /// The hook state a session copies onto every parse `Context`.
 pub const HostHooks = struct {
-    enabled: [hook_count]bool = .{false} ** hook_count,
+    enabled: [hook_count]bool = @splat(false),
     /// Unused on WebAssembly, where the host provides `galley_host_dispatch`
     /// as an import instead.
     dispatch: ?Dispatch = null,

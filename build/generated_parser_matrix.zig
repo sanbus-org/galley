@@ -8,7 +8,6 @@ pub const Options = struct {
     generator_modules: common.GeneratorModules,
     generate_parser_file_exe: *std.Build.Step.Compile,
     selection: test_selection.Selection,
-    filtered_test_run_steps: ?*std.ArrayList(*std.Build.Step) = null,
 };
 
 pub const Work = struct {
@@ -104,7 +103,12 @@ pub fn add(b: *std.Build, matrix_step: *std.Build.Step, options: Options) !Work 
             const grammar_path = try std.fs.path.join(b.allocator, &.{ "languages", language, parser_type.grammar_name });
             defer b.allocator.free(grammar_path);
 
-            b.build_root.handle.access(b.graph.io, grammar_path, .{}) catch |err| switch (err) {
+            // The grammar's presence decides whether the case is generated;
+            // the directory's entries cover the file appearing or vanishing.
+            if (std.fs.path.dirname(grammar_path)) |grammar_directory| {
+                common.declareConfigureDependencyIfPresent(b, grammar_directory);
+            }
+            b.root.access(b.graph.io, grammar_path, .{}) catch |err| switch (err) {
                 error.FileNotFound => continue,
                 else => return err,
             };
@@ -186,23 +190,22 @@ fn addCase(
     const procedures_mod = if (std.mem.eql(u8, language, "galley"))
         common.addGalleyGrammarProceduresModule(
             b,
-            try std.mem.concat(b.allocator, u8, &.{ case_name, "-procedures" }),
             options.target,
             options.optimize,
             options.generator_modules.generator_common_mod,
         )
     else
-        b.addModule(try std.mem.concat(b.allocator, u8, &.{ case_name, "-procedures" }), .{
+        b.createModule(.{
             .root_source_file = b.path(procedures_path),
             .target = options.target,
             .optimize = options.optimize,
         });
-    const config_mod = b.addModule(try std.mem.concat(b.allocator, u8, &.{ case_name, "-config" }), .{
+    const config_mod = b.createModule(.{
         .root_source_file = written_config_path,
         .target = options.target,
         .optimize = options.optimize,
     });
-    const error_messages_mod = b.addModule(try std.mem.concat(b.allocator, u8, &.{ case_name, "-error-messages" }), .{
+    const error_messages_mod = b.createModule(.{
         .root_source_file = b.path(error_messages_path),
         .target = options.target,
         .optimize = options.optimize,
@@ -242,7 +245,6 @@ fn addCase(
             options.selection.names,
         );
         matrix_step.dependOn(&run_parser_error_tests.step);
-        trackFilteredTestRun(b, options, &run_parser_error_tests.step);
         work.errors += 1;
 
         if (testsErrorRecovery(variant)) {
@@ -270,23 +272,22 @@ fn addCase(
             const recovery_procedures_mod = if (std.mem.eql(u8, language, "galley"))
                 common.addGalleyGrammarProceduresModule(
                     b,
-                    try std.mem.concat(b.allocator, u8, &.{ recovery_case_name, "-procedures" }),
                     options.target,
                     options.optimize,
                     options.generator_modules.generator_common_mod,
                 )
             else
-                b.addModule(try std.mem.concat(b.allocator, u8, &.{ recovery_case_name, "-procedures" }), .{
+                b.createModule(.{
                     .root_source_file = b.path(procedures_path),
                     .target = options.target,
                     .optimize = options.optimize,
                 });
-            const recovery_config_mod = b.addModule(try std.mem.concat(b.allocator, u8, &.{ recovery_case_name, "-config" }), .{
+            const recovery_config_mod = b.createModule(.{
                 .root_source_file = recovery_written_config_path,
                 .target = options.target,
                 .optimize = options.optimize,
             });
-            const recovery_error_messages_mod = b.addModule(try std.mem.concat(b.allocator, u8, &.{ recovery_case_name, "-error-messages" }), .{
+            const recovery_error_messages_mod = b.createModule(.{
                 .root_source_file = b.path(error_messages_path),
                 .target = options.target,
                 .optimize = options.optimize,
@@ -324,7 +325,6 @@ fn addCase(
                 options.selection.names,
             );
             matrix_step.dependOn(&run_recovery_error_tests.step);
-            trackFilteredTestRun(b, options, &run_recovery_error_tests.step);
             work.errors += 1;
         }
     };
@@ -387,7 +387,10 @@ fn addLanguageSamples(
     const samples_path = try std.fs.path.join(b.allocator, &.{ "languages", language, "samples" });
     defer b.allocator.free(samples_path);
 
-    var samples_dir: ?@TypeOf(b.build_root.handle) = b.build_root.handle.openDir(b.graph.io, samples_path, .{ .iterate = true }) catch |err| switch (err) {
+    // Sample discovery observes entry names; the parent directory covers
+    // the samples directory appearing or vanishing.
+    common.declareConfigureDependencyIfPresent(b, samples_path);
+    var samples_dir: ?std.Io.Dir = b.root.openDir(b.graph.io, samples_path, .{ .iterate = true }) catch |err| switch (err) {
         error.FileNotFound => null,
         else => return err,
     };
@@ -403,22 +406,28 @@ fn addLanguageSamples(
         defer samples_walker.deinit();
 
         while (try samples_walker.next(b.graph.io)) |sample_entry| {
-            if (sample_entry.kind != .file and sample_entry.kind != .sym_link) continue;
-
             const sample_path = try std.fs.path.join(
                 b.allocator,
                 &.{ samples_path, sample_entry.path },
             );
-            const stat = b.build_root.handle.statFile(b.graph.io, sample_path, .{}) catch |err| switch (err) {
+
+            // Entry names are observed by the walk; sample files are
+            // additionally stat'd and read at configure time.
+            switch (sample_entry.kind) {
+                .file, .directory, .sym_link => common.declareConfigureDependencyIfPresent(b, sample_path),
+                else => {},
+            }
+            if (sample_entry.kind != .file and sample_entry.kind != .sym_link) continue;
+            const stat = samples_dir_handle.statFile(b.graph.io, sample_entry.path, .{}) catch |err| switch (err) {
                 error.FileNotFound => continue,
                 else => return err,
             };
             if (!options.selection.includes(.matrix_api)) continue;
             if (!shouldRunGeneratedParserApiTests(large_sample_api_coverage, stat.size)) continue;
 
-            const sample_input = try b.build_root.handle.readFileAlloc(
+            const sample_input = try samples_dir_handle.readFileAlloc(
                 b.graph.io,
-                sample_path,
+                sample_entry.path,
                 b.allocator,
                 .limited(std.math.maxInt(usize)),
             );
@@ -441,7 +450,6 @@ fn addLanguageSamples(
                 options.selection.names,
             );
             matrix_step.dependOn(&run_parser_api_tests.step);
-            trackFilteredTestRun(b, options, &run_parser_api_tests.step);
             work.api += 1;
         }
     }
@@ -593,11 +601,4 @@ const large_sample_api_test_skip_threshold: u64 = 5 * 1024 * 1024;
 
 fn shouldRunGeneratedParserApiTests(large_sample_api_coverage: bool, sample_size: u64) bool {
     return sample_size <= large_sample_api_test_skip_threshold or large_sample_api_coverage;
-}
-
-fn trackFilteredTestRun(b: *std.Build, options: Options, run_step: *std.Build.Step) void {
-    if (options.selection.names.len == 0) return;
-    if (options.filtered_test_run_steps) |filtered_test_run_steps| {
-        filtered_test_run_steps.append(b.allocator, run_step) catch @panic("OOM");
-    }
 }

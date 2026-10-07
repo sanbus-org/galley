@@ -15,11 +15,11 @@ else
     0;
 pub const syntax_error_stack_depth: usize = if (syntax_error_stack_depth_build_override > 0)
     syntax_error_stack_depth_build_override
-else if (builtin.mode == .Debug) 5 else 1;
+else if (builtin.mode == .debug) 5 else 1;
 pub const position_tracking_enabled = if (@hasDecl(parser, "is_position_tracking_enabled"))
     parser.is_position_tracking_enabled
 else
-    builtin.mode != .ReleaseFast;
+    builtin.mode != .fast;
 pub const input_streaming_enabled = if (@hasDecl(parser, "is_input_streaming_enabled"))
     parser.is_input_streaming_enabled
 else
@@ -598,7 +598,7 @@ pub const Session = struct {
     chunk_buffer: []u8,
     owned_input: ?[]u8 = null,
     node_allocator: if (parser.is_ast_enabled) data_structures.ASTAllocator else void,
-    verbosity: if (builtin.mode == .Debug) usize else void,
+    verbosity: if (builtin.mode == .debug) usize else void,
     stack_overflow_recovery: bool,
     ast_preallocation_ratio: if (parser.is_ast_enabled) f64 else void,
     ast_preallocation_cap: if (parser.is_ast_enabled) usize else void,
@@ -694,7 +694,7 @@ pub const Session = struct {
             .chunk_buffer = chunk_buffer,
             .node_allocator = node_allocator,
             .message_overrides = message_overrides,
-            .verbosity = if (builtin.mode == .Debug) options.verbosity else {},
+            .verbosity = if (builtin.mode == .debug) options.verbosity else {},
             .stack_overflow_recovery = options.stack_overflow_recovery,
             .ast_preallocation_ratio = if (parser.is_ast_enabled) options.ast_preallocation_ratio else {},
             .ast_preallocation_cap = if (parser.is_ast_enabled) options.ast_preallocation_cap else {},
@@ -1072,7 +1072,7 @@ pub const Session = struct {
             .user_data = self.user_data,
             .host_hooks = self.host_hooks,
         };
-        if (comptime builtin.mode == .Debug) {
+        if (comptime builtin.mode == .debug) {
             context_value.verbosity = self.verbosity;
         }
         return context_value;
@@ -1247,7 +1247,7 @@ test "syntax error stack activation is gated on build mode and build option" {
 }
 
 test "syntax error stack depth is configurable per session" {
-    if (builtin.mode != .Debug) return error.SkipZigTest;
+    if (builtin.mode != .debug) return error.SkipZigTest;
 
     const malformed =
         \\Start
@@ -1277,7 +1277,7 @@ test "syntax error stack depth is configurable per session" {
 }
 
 test "message overrides replace rendered syntax errors and beat hooks" {
-    if (builtin.mode != .Debug) return error.SkipZigTest;
+    if (builtin.mode != .debug) return error.SkipZigTest;
 
     const malformed =
         \\Start
@@ -1378,7 +1378,7 @@ test "message templates resolve session overrides then config entries" {
 }
 
 test "duplicate rule headers record a semantic diagnostic" {
-    if (builtin.mode != .Debug) return error.SkipZigTest;
+    if (builtin.mode != .debug) return error.SkipZigTest;
 
     const duplicated =
         \\A
@@ -1411,7 +1411,7 @@ test "duplicate rule headers record a semantic diagnostic" {
 }
 
 test "message override placeholders expand against the diagnostic" {
-    if (builtin.mode != .Debug) return error.SkipZigTest;
+    if (builtin.mode != .debug) return error.SkipZigTest;
 
     const malformed =
         \\Start

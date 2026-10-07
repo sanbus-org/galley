@@ -22,7 +22,7 @@ pub const Event = struct {
     variable: u16,
     text_start: usize,
     text_length: usize,
-    children: [3]u16 = .{root.data_structures.Node.invalid_variable} ** 3,
+    children: [3]u16 = @splat(root.data_structures.Node.invalid_variable),
     children_count: usize = 0,
 };
 

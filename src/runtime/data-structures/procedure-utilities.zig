@@ -88,13 +88,13 @@ pub fn wrapProcedure(comptime Signature: type, comptime procedure: anytype, comp
 
     const signature_fn_info = signature_type_info.@"fn";
 
-    if (signature_fn_info.params.len != 1) {
+    if (signature_fn_info.param_types.len != 1) {
         @compileError(std.fmt.comptimePrint("{s} procedure: Signature must take exactly one argument (a struct)", .{
             procedure_name,
         }));
     }
 
-    const ArgType = signature_fn_info.params[0].type orelse @compileError(std.fmt.comptimePrint("{s} procedure: Generic parameters not allwoed here", .{
+    const ArgType = signature_fn_info.param_types[0] orelse @compileError(std.fmt.comptimePrint("{s} procedure: Generic parameters not allwoed here", .{
         procedure_name,
     }));
 
@@ -110,7 +110,7 @@ pub fn wrapProcedure(comptime Signature: type, comptime procedure: anytype, comp
 
     const procedure_fn_info = procedure_type_info.@"fn";
 
-    if (procedure_fn_info.params.len > 1) {
+    if (procedure_fn_info.param_types.len > 1) {
         @compileError(std.fmt.comptimePrint("{s} procedure: Handler must take at most one argument (a struct)", .{
             procedure_name,
         }));
@@ -136,8 +136,8 @@ pub fn wrapProcedure(comptime Signature: type, comptime procedure: anytype, comp
         }));
     }
 
-    if (procedure_fn_info.params.len == 1) {
-        const ProcedureArgType = procedure_fn_info.params[0].type orelse @compileError(std.fmt.comptimePrint("{s} procedure: Generic parameters not allowed here", .{
+    if (procedure_fn_info.param_types.len == 1) {
+        const ProcedureArgType = procedure_fn_info.param_types[0] orelse @compileError(std.fmt.comptimePrint("{s} procedure: Generic parameters not allowed here", .{
             procedure_name,
         }));
 
@@ -151,7 +151,7 @@ pub fn wrapProcedure(comptime Signature: type, comptime procedure: anytype, comp
 
     const Wrapper = struct {
         fn call(args: ArgType) anyerror!void {
-            if (procedure_fn_info.params.len == 0) {
+            if (procedure_fn_info.param_types.len == 0) {
                 return procedure();
             }
 

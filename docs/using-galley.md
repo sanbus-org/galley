@@ -34,7 +34,7 @@ as a workflow artifact (Actions → the run → Artifacts → `pkg-zig`).
 Versioned releases carry the same tarball under versioned names for
 anything durable — `zig fetch --save` those URLs.
 
-Galley requires Zig 0.16 or newer.
+Galley requires Zig 0.17 or newer.
 
 ## Generate Parser Source from Zig
 

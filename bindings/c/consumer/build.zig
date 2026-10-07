@@ -68,7 +68,7 @@ pub fn build(b: *std.Build) !void {
         std.builtin.OptimizeMode,
         "optimize",
         "Build mode of the parser library (default: ReleaseFast); Debug enables the runtime's misuse checks",
-    ) orelse .ReleaseFast;
+    ) orelse .fast;
 
     const parser_source_option = b.option([]const u8, "parser-source", "Path to the generated parser Zig source (default: discovered from -Dlanguage-dir)");
     const language_dir_option = b.option([]const u8, "language-dir", "Language directory containing the generated parser (_ll-parser.zig or _lr-parser.zig; one library embeds one parser)");

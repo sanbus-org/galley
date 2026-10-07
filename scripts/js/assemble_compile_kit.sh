@@ -56,7 +56,7 @@ cat >"$DEST/build.zig.zon" <<EOF
     .name = .galley_compile_kit,
     .version = "0.0.0",
     .fingerprint = $KIT_FINGERPRINT,
-    .minimum_zig_version = "0.16.0",
+    .minimum_zig_version = "0.17.0",
     .dependencies = .{
         .galley = .{
             .path = "sources",
@@ -90,7 +90,7 @@ cat >"$DEST/sources/build.zig.zon" <<EOF
     .name = .galley,
     .version = "0.0.0",
     .fingerprint = $GALLEY_SRC_FINGERPRINT,
-    .minimum_zig_version = "0.16.0",
+    .minimum_zig_version = "0.17.0",
     .dependencies = .{},
     .paths = .{
         "build.zig",

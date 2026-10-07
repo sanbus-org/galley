@@ -1,9 +1,8 @@
 const std = @import("std");
 const generator = @import("galley_generator");
 const bootstrap_options = @import("cli_bootstrap_options");
-const ctime = @cImport({
-    @cInclude("time.h");
-});
+// Hand-written time.h declarations; see c.zig. Zig 0.17 removed @cImport.
+const ctime = @import("c");
 
 fn ignoreDiagnostic(_: []const u8) void {}
 

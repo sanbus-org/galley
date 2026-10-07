@@ -6,7 +6,7 @@ const procedures = parser.procedures;
 // build under the default Zig comptime branch quota.
 test "many procedures compile and all hooks run" {
     procedures.resetHookCallCount();
-    var input_buffer: [160]u8 = .{'a'} ** 160;
+    var input_buffer: [160]u8 = @splat('a');
     const input = input_buffer[0..];
     var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
     defer parsed.deinit();
