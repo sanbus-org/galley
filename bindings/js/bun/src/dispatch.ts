@@ -20,9 +20,9 @@ const callbacks = new WeakMap<BunPort, unknown>();
 export function installDispatch(port: BunPort): void {
   const callback = new JSCallback(
     (hookHandle: bigint, hookIndex: number, hook: bigint) => {
-      port.hookDispatch?.(Number(hookHandle), hookIndex, hook);
+      return port.hookDispatch?.(Number(hookHandle), hookIndex, hook) ?? 1;
     },
-    { args: [FFIType.u64, FFIType.u32, FFIType.u64], returns: FFIType.void },
+    { args: [FFIType.u64, FFIType.u32, FFIType.u64], returns: FFIType.i32 },
   );
   callbacks.set(port, callback);
   port.dispatchPointer = callback.ptr as number;

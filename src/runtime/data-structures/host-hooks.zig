@@ -26,7 +26,10 @@ pub const hook_count = hook_names.len;
 /// `Context.user_data`, `index` the position in `hook_names`, and `hook` the
 /// ticket of this call: the only way to reach its arguments, through the
 /// `galley_procedure_*` functions, and refused once the call has returned.
-pub const Dispatch = *const fn (handle: ?*anyopaque, index: u32, hook: u64) callconv(.c) void;
+/// Returns zero to let the parse go on, anything else to abort it: the hook
+/// failed, the host keeps the cause, and the core stops the parse with
+/// `error.HookFailed`.
+pub const Dispatch = *const fn (handle: ?*anyopaque, index: u32, hook: u64) callconv(.c) i32;
 
 /// The hook state a session copies onto every parse `Context`.
 pub const HostHooks = struct {
@@ -40,21 +43,27 @@ pub const HostHooks = struct {
 /// table index the host cannot mint, so wasm hosts receive hooks through
 /// this import and route by handle exactly like the native callback.
 const wasm_dispatch = struct {
-    extern "env" fn galley_host_dispatch(handle: ?*anyopaque, index: u32, hook: u64) void;
+    extern "env" fn galley_host_dispatch(handle: ?*anyopaque, index: u32, hook: u64) i32;
 };
 
 /// The one forwarding site of every host shim hook: the call runs under a
-/// fresh ticket that names its arguments for exactly as long as it runs.
-pub inline fn forward(comptime index: u32, args: *data_structures.ProcedureArguments) void {
+/// fresh ticket that names its arguments for exactly as long as it runs. A
+/// dispatch that reports failure aborts the parse; the ticket still exits.
+pub inline fn forward(comptime index: u32, args: *data_structures.ProcedureArguments) error{HookFailed}!void {
     const context = args.context;
     if (!context.host_hooks.enabled[index]) return;
     const runtime = context.runtime();
     const hook = runtime.enterHook(args);
     defer runtime.exitHook();
-    if (comptime builtin.cpu.arch.isWasm()) {
-        wasm_dispatch.galley_host_dispatch(context.user_data, index, hook);
-    } else if (context.host_hooks.dispatch) |dispatch| {
-        dispatch(context.user_data, index, hook);
+    const outcome: i32 = if (comptime builtin.cpu.arch.isWasm())
+        wasm_dispatch.galley_host_dispatch(context.user_data, index, hook)
+    else if (context.host_hooks.dispatch) |dispatch|
+        dispatch(context.user_data, index, hook)
+    else
+        0;
+    if (outcome != 0) {
+        args.recordHookFailure(hook_names[index]);
+        return error.HookFailed;
     }
 }
 

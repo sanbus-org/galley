@@ -62,12 +62,13 @@ static GalleySession *probed_session = NULL;
 static long long reserve_in_hook = galley_ok;
 static long long capacity_in_hook = galley_ok;
 
-static void probe_dispatch(void *handle, unsigned int index, unsigned long long hook) {
+static int probe_dispatch(void *handle, unsigned int index, unsigned long long hook) {
     (void)handle;
     (void)index;
     (void)hook;
     reserve_in_hook = galley_reserve_nodes(probed_session, 16);
     capacity_in_hook = galley_node_capacity(probed_session);
+    return 0;
 }
 
 static void test_reserve_is_refused_mid_parse(void) {
@@ -82,6 +83,55 @@ static void test_reserve_is_refused_mid_parse(void) {
     CHECK(reserve_in_hook == galley_error_session_in_use);
     CHECK(capacity_in_hook == galley_error_session_in_use);
     CHECK(galley_reserve_nodes(session, 16) == galley_ok);
+    galley_session_destroy(session);
+}
+
+/* A hook whose dispatch returns nonzero aborts the parse: the call returns
+ * galley_error_hook_failed, the diagnostic of the failed parse is of kind
+ * hook and positioned, nothing is published, the hook's ticket is dead, and
+ * the session parses again. */
+static unsigned long long failing_ticket = 0;
+static unsigned failing_calls = 0;
+
+static int failing_dispatch(void *handle, unsigned int index, unsigned long long hook) {
+    (void)handle;
+    (void)index;
+    failing_ticket = hook;
+    ++failing_calls;
+    return 1;
+}
+
+static void test_failing_hook_aborts_the_parse(void) {
+    GalleySession *session = galley_session_create();
+    size_t count = galley_hooks_count();
+    unsigned char enabled[256];
+    GalleyNodeAddress root = 0;
+    unsigned long long generation = 99;
+    unsigned line = 0, column = 0;
+    const char *message = NULL;
+    CHECK(session != NULL && count > 0 && count <= sizeof enabled);
+    memset(enabled, 1, count);
+    CHECK(galley_session_set_hooks(session, failing_dispatch, NULL, enabled, count) == galley_ok);
+
+    CHECK(galley_parse_sentinel(session, valid_sample) == galley_error_hook_failed);
+    CHECK(failing_calls == 1);
+    CHECK(strcmp(galley_status_string(galley_error_hook_failed), "hook failed") == 0);
+    CHECK(galley_diagnostic_kind(session) == galley_diagnostic_kind_hook);
+    CHECK(galley_diagnostic_position(session, &line, &column) == galley_ok);
+    CHECK(line >= 1 && column >= 1);
+    CHECK(galley_diagnostic_message(session, &message) == galley_ok);
+    CHECK(message != NULL && strstr(message, "HookError") != NULL);
+    CHECK(galley_root_node(session, &root, &generation) == galley_ok);
+    CHECK(root == GALLEY_INVALID_NODE && generation == 0);
+    CHECK(galley_last_position(session, &line, &column) == galley_error_stale_tree);
+    CHECK(galley_procedure_current_node(session, failing_ticket) == galley_error_stale_hook);
+
+    /* The session is reusable: a parse with no failing hook publishes. */
+    CHECK(galley_session_set_hooks(session, NULL, NULL, NULL, 0) == galley_ok);
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    CHECK(galley_diagnostic_kind(session) == galley_diagnostic_kind_none);
+    CHECK(galley_root_node(session, &root, &generation) == galley_ok);
+    CHECK(generation >= 1);
     galley_session_destroy(session);
 }
 
@@ -130,6 +180,7 @@ int main(void) {
 
     galley_session_destroy(session);
     test_reserve_is_refused_mid_parse();
+    test_failing_hook_aborts_the_parse();
     printf("%d tests, %d failures\n", ran, failures);
     return failures == 0 ? 0 : 1;
 }

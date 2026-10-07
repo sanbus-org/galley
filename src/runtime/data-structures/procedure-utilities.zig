@@ -27,6 +27,35 @@ pub const ProcedureArguments = struct {
         return self._temp_node;
     }
 
+    /// The variable this hook runs for: the current node's, else the rule's
+    /// header, else `*`.
+    pub fn variableName(self: *const @This()) []const u8 {
+        if (self.currentNode()) |node| {
+            if (node.variable != data_structures.Node.invalid_variable and
+                node.variable < root.parser.variables.len)
+            {
+                return root.parser.variables[node.variable];
+            }
+        }
+        if (self.rule) |rule| {
+            if (rule.header < root.parser.variables.len) return root.parser.variables[rule.header];
+        }
+        return "*";
+    }
+
+    /// Records where a host hook failed, for the diagnostic of the aborted
+    /// parse. Allocation failure drops only the diagnostic: the parse still
+    /// aborts with `HookFailed`.
+    pub fn recordHookFailure(self: *const @This(), hook_name: []const u8) void {
+        const runtime_context = self.context.runtime();
+        runtime_context.recorded_diagnostics.append(runtime_context.arena_allocator, .{ .hook = .{
+            .line = if (comptime root.position_tracking_enabled) self.context.line else 0,
+            .column = if (comptime root.position_tracking_enabled) self.context.column else 0,
+            .variable = self.variableName(),
+            .hook = hook_name,
+        } }) catch {};
+    }
+
     /// The single gate for consumer-reported semantic errors. Records an
     /// arena-backed diagnostic, marks the current node when one exists, and
     /// returns the total semantic error count so hooks can limit themselves.
@@ -37,27 +66,14 @@ pub const ProcedureArguments = struct {
         const arena = runtime_context.arena_allocator;
         const owned_message = try arena.dupe(u8, message);
 
-        var variable_name: []const u8 = "*";
         var text_start: usize = 0;
         var text_length: usize = 0;
         if (self.currentNode()) |node| {
             text_start = node.text_start;
             text_length = node.text_length;
-            if (node.variable != data_structures.Node.invalid_variable and
-                node.variable < root.parser.variables.len)
-            {
-                variable_name = root.parser.variables[node.variable];
-            } else if (self.rule) |rule| {
-                if (rule.header < root.parser.variables.len) {
-                    variable_name = root.parser.variables[rule.header];
-                }
-            }
             node.is_semantic_error = true;
-        } else if (self.rule) |rule| {
-            if (rule.header < root.parser.variables.len) {
-                variable_name = root.parser.variables[rule.header];
-            }
         }
+        const variable_name = self.variableName();
 
         try runtime_context.recorded_diagnostics.append(arena, .{
             .semantic = .{

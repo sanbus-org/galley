@@ -101,6 +101,7 @@ pub fn main(init: std.process.Init) !void {
                     .syntax => |syntax| .{ syntax.line, syntax.column },
                     .semantic => |semantic| .{ semantic.line, semantic.column },
                     .indentation => |indentation| .{ indentation.line, indentation.column },
+                    .hook => |hook| .{ hook.line, hook.column },
                 };
                 std.debug.print("{s}:{d}:{d}: {s}\n", .{ input_path, line, column, message });
             } else {
@@ -164,6 +165,9 @@ pub fn main(init: std.process.Init) !void {
             .semantic => |semantic| {
                 try stdout.print("diagnostic at {d}:{d}: {s}\n", .{ semantic.line, semantic.column, message });
             },
+            .hook => |hook| {
+                try stdout.print("diagnostic at {d}:{d}: {s}\n", .{ hook.line, hook.column, message });
+            },
         }
     }
 
@@ -199,6 +203,9 @@ pub fn main(init: std.process.Init) !void {
                         semantic.column,
                         semantic.variable,
                     });
+                },
+                .hook => |hook| {
+                    try stdout.print("  [{d}] hook {s} at {d}:{d}\n", .{ index, hook.hook, hook.line, hook.column });
                 },
             }
         }

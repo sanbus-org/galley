@@ -57,6 +57,26 @@ public final class Session implements AutoCloseable {
      * the session door.
      */
     private volatile Thread dispatchThread;
+    /**
+     * What one parse call keeps of its hooks: the throwable a hook threw. It
+     * belongs to the call that runs the parse, so another thread that starts a
+     * parse on this session the moment the core releases it can neither
+     * overwrite nor take it. Hooks run on the parsing thread, so the upcall
+     * finds its parse's holder through that thread's own chain (nested parses
+     * of other sessions stack up).
+     */
+    private static final class ParseHolder {
+        final Session session;
+        final ParseHolder outer;
+        Throwable failure;
+
+        ParseHolder(Session session, ParseHolder outer) {
+            this.session = session;
+            this.outer = outer;
+        }
+    }
+
+    private static final ThreadLocal<ParseHolder> INNERMOST_HOLDER = new ThreadLocal<>();
 
     public Session(Parser parser) {
         this(parser, SessionOptions.defaults());
@@ -235,11 +255,16 @@ public final class Session implements AutoCloseable {
      * parse's door alone. Parsing itself never throws merely because a
      * walker is open.
      */
-    private int completeParse(long status) {
+    private int completeParse(long status, ParseHolder holder) {
         if (status != StatusCode.ERROR_SESSION_IN_USE.getCode()) {
             parseDoor = null;
         }
-        if (status < 0) throw errorFromStatus(status);
+        Throwable cause = holder.failure;
+        if (status < 0) {
+            GalleyException failure = errorFromStatus(status);
+            if (status == StatusCode.ERROR_HOOK_FAILED.getCode() && cause != null) failure.initCause(cause);
+            throw failure;
+        }
         return (int) status;
     }
 
@@ -255,13 +280,18 @@ public final class Session implements AutoCloseable {
      */
     private int runParse(NativeParse nativeParse) {
         long status;
+        ParseHolder holder = new ParseHolder(this, INNERMOST_HOLDER.get());
+        INNERMOST_HOLDER.set(holder);
         try {
             status = nativeParse.run();
         } catch (Throwable thrown) {
             parseDoor = null;
             throw thrown;
+        } finally {
+            if (holder.outer == null) INNERMOST_HOLDER.remove();
+            else INNERMOST_HOLDER.set(holder.outer);
         }
-        return completeParse(status);
+        return completeParse(status, holder);
     }
 
     public boolean isClosed() { return closed || handle == null || handle.equals(MemorySegment.NULL); }
@@ -356,10 +386,22 @@ public final class Session implements AutoCloseable {
 
     /**
      * Runs hook {@code index} of the current parse, on the parsing thread.
-     * Hook throwables are logged and swallowed so a throwing hook never
-     * aborts the parse.
+     * Returns zero, or one when the hook threw: nothing may escape an upcall
+     * into the core, so the throwable is kept and the core aborts the parse.
      */
-    void dispatchHook(int index, long hook) {
+    int dispatchHook(int index, long hook) {
+        try {
+            runHook(index, hook);
+            return 0;
+        } catch (Throwable thrown) {
+            ParseHolder holder = INNERMOST_HOLDER.get();
+            while (holder != null && holder.session != this) holder = holder.outer;
+            if (holder != null) holder.failure = thrown;
+            return 1;
+        }
+    }
+
+    private void runHook(int index, long hook) {
         Consumer<ProcedureArguments> callback = hooksByIndex[index];
         if (callback == null) return;
         // The parse's native door and core generation are constant for the
@@ -385,8 +427,6 @@ public final class Session implements AutoCloseable {
         ProcedureArguments arguments = new ProcedureArguments(hook, lib, this, parseGeneration);
         try {
             callback.accept(arguments);
-        } catch (Throwable t) {
-            t.printStackTrace(System.err);
         } finally {
             // The hook's ticket stops naming anything in the core when this
             // call returns, so a kept reference is refused there; nothing to

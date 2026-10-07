@@ -27,6 +27,8 @@ public enum StatusCode {
     ERROR_STALE_TREE(-14),
     /** A hook's arguments were used after its hook returned. */
     ERROR_STALE_HOOK(-15),
+    /** A hook raised: the parse stopped there and published nothing; the failure's cause is the hook's exception. */
+    ERROR_HOOK_FAILED(-16),
     /** Fallback for codes this binding does not know (newer native builds). */
     UNKNOWN(Integer.MIN_VALUE);
 

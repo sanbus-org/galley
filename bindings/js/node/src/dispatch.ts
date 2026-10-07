@@ -16,7 +16,5 @@ import type { NodePort } from "./ffi.ts";
  * a reference to it for the library's lifetime.
  */
 export function installDispatch(port: NodePort): void {
-  port.ffi.api.install_dispatch((hookHandle, hookIndex, hook) => {
-    port.hookDispatch?.(hookHandle, hookIndex, hook);
-  });
+  port.ffi.api.install_dispatch((hookHandle, hookIndex, hook) => port.hookDispatch?.(hookHandle, hookIndex, hook) ?? 1);
 }

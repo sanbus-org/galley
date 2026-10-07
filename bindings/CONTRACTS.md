@@ -22,7 +22,7 @@ A binding has two interfaces, and each has its contract. **With the user**: what
 - Sessions close explicitly or through the host's scoped-resource form, and closing is idempotent. Use after close fails with an error that names the closed object and is distinct from the stale-tree error.
 - Sessions of one parser, and of different parsers, parse at the same time on different threads, and no hook or session state is shared between them.
 - A session serves one parse at a time. Any use that overlaps a running parse (another parse, close, a hook or message-override change, a node read or edit, a walk step, a snapshot, from another thread or from a hook) is refused with `session in use` and changes nothing: no node, walker or running hook loses its validity. The one exception is the running hook, on the thread that dispatches it, whose node reads, node edits and walk steps address the running parse's tree. Overlapping use never leaves a host with undefined behavior.
-- A parse started inside a hook is a parse of another session, with that session's hooks.
+- A parse belongs to one session and runs on one thread, from the start of its `parse` call to its end. It is never paused, moved to another thread, or resumed. A session has at most one parse at a time. A thread has at most one parse at a time, with one exception: a hook may start a parse of a different session on its own thread, with that session's hooks, and that parse ends before the hook returns. So the parses in progress on a thread form a chain in which no session appears twice.
 
 ### Hooks
 

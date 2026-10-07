@@ -1688,8 +1688,8 @@ fn writeHostProcedures(init: std.process.Init, language_dir: []const u8, hook_na
     for (hook_names, 0..) |hook_name, index| {
         try w.print(
             \\
-            \\pub fn {s}(args: {s}) void {{
-            \\    root.data_structures.host_hooks.forward({d}, args);
+            \\pub fn {s}(args: {s}) !void {{
+            \\    try root.data_structures.host_hooks.forward({d}, args);
             \\}}
             \\
         , .{ hook_name, procedure_arguments_type, index });

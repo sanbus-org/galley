@@ -217,6 +217,10 @@ if (count > 200) return;
 
 Parsing continues after each report, so one parse aggregates many errors. A syntax-clean parse with any semantic error returns `ParseError.SemanticError`; syntax errors keep precedence. Read diagnostics through `recordedDiagnostics()` / `lastDiagnostic()` and counts through `semanticErrorCount()`. In AST mode, parents stay unmarked — call `Node.hasSemanticErrorSubtree(address, allocator)` to check a subtree before emitting follow-on diagnostics. In no-AST mode, check child `is_semantic_error` flags directly during the hook call. A diagnostic survives even when a later hook phase drops its node. A parse that returns `ParseError.SemanticError` has run to its end, so its tree is published with the marked nodes: read it with `session.readCurrent()`, or walk it with `skip_semantic_error_subtrees` to see only the valid parts (the host bindings expose the same flag and skip option). Template overrides in `config.zig` and per-session `message_overrides` apply to syntax errors only.
 
+### Failing a hook
+
+A hook that returns an error aborts the parse: the error propagates out of `parse*` and the parse publishes nothing. Use it for failures the parse cannot continue after; a hook that wants the parse to go on reports a semantic error instead. A hook of a host binding (Python, Java, JavaScript) that raises is the same: the host shim returns `error.HookFailed`, the parse stops where the hook ran, and `lastDiagnostic()` is a `.hook` diagnostic carrying the position, the variable being parsed and the hook's name. The binding raises its own failure from `parse` with the hook's exception as the cause.
+
 ---
 
 ## Writing Hook Functions in Zig

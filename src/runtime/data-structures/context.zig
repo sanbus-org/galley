@@ -202,6 +202,7 @@ pub const RuntimeContext = struct {
                 else => {},
             },
             .semantic => |semantic| return semantic.variable,
+            .hook => |hook| return hook.variable,
             .indentation => {},
         }
         return null;
@@ -237,12 +238,14 @@ pub const RuntimeContext = struct {
                 .syntax => |syntax| syntax.line,
                 .semantic => |semantic| semantic.line,
                 .indentation => |indentation| indentation.line,
+                .hook => |hook| hook.line,
             }}) catch {};
         } else if (std.mem.eql(u8, placeholder, "column")) {
             writer.print("{d}", .{switch (diagnostic) {
                 .syntax => |syntax| syntax.column,
                 .semantic => |semantic| semantic.column,
                 .indentation => |indentation| indentation.column,
+                .hook => |hook| hook.column,
             }}) catch {};
         } else if (std.mem.eql(u8, placeholder, "unexpected")) {
             switch (diagnostic) {
@@ -251,7 +254,7 @@ pub const RuntimeContext = struct {
                     // token renders human-readable so control bytes escape.
                     writer.print("{f}", .{string_utilities.fmtToken(syntax.unexpected_token)}) catch {};
                 },
-                .semantic, .indentation => {},
+                .semantic, .indentation, .hook => {},
             }
         } else if (std.mem.eql(u8, placeholder, "expected")) {
             switch (diagnostic) {
@@ -261,12 +264,12 @@ pub const RuntimeContext = struct {
                         writer.print("'{f}'", .{string_utilities.fmtToken(token)}) catch {};
                     }
                 },
-                .semantic, .indentation => {},
+                .semantic, .indentation, .hook => {},
             }
         } else if (std.mem.eql(u8, placeholder, "message")) {
             switch (diagnostic) {
                 .semantic => |semantic| writer.writeAll(semantic.message) catch {},
-                .syntax, .indentation => {},
+                .syntax, .indentation, .hook => {},
             }
         } else if (std.mem.eql(u8, placeholder, "context")) {
             switch (diagnostic) {
@@ -280,6 +283,7 @@ pub const RuntimeContext = struct {
                     else => {},
                 },
                 .semantic => |semantic| writer.writeAll(semantic.variable) catch {},
+                .hook => |hook| writer.writeAll(hook.variable) catch {},
                 .indentation => {},
             }
         } else {
@@ -649,7 +653,7 @@ pub const Context = struct {
         const diagnostic = &records.items[records.items.len - 1];
         switch (diagnostic.*) {
             .syntax => |*syntax| syntax.recovery = recovery,
-            .semantic, .indentation => return error.MissingSyntaxDiagnostic,
+            .semantic, .indentation, .hook => return error.MissingSyntaxDiagnostic,
         }
     }
 

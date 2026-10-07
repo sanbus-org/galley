@@ -263,6 +263,9 @@ pub enum Error {
     StaleTree,
     /// A procedure call made with the arguments of a hook that has returned.
     StaleHook,
+    /// A host hook's dispatch reported failure and the parse stopped. Only a
+    /// library built with a host shim returns it; Rust hooks cannot fail yet.
+    HookFailed,
 }
 
 impl Error {
@@ -283,6 +286,7 @@ impl Error {
             -13 => Error::SessionInUse,
             -14 => Error::StaleTree,
             -15 => Error::StaleHook,
+            -16 => Error::HookFailed,
             _ => Error::Internal,
         }
     }
@@ -304,6 +308,7 @@ impl Error {
             Error::SessionInUse => -13,
             Error::StaleTree => -14,
             Error::StaleHook => -15,
+            Error::HookFailed => -16,
         }
     }
 
@@ -551,6 +556,7 @@ pub enum DiagnosticKind {
     Syntax,
     Semantic,
     Indentation,
+    Hook,
 }
 
 #[derive(Debug)]
@@ -935,6 +941,7 @@ impl Session {
                 1 => DiagnosticKind::Syntax,
                 2 => DiagnosticKind::Indentation,
                 3 => DiagnosticKind::Semantic,
+                4 => DiagnosticKind::Hook,
                 _ => DiagnosticKind::None,
             };
 

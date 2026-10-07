@@ -382,9 +382,9 @@ public final class GalleyLibrary {
         try { return (long) mh_galley_session_set_hooks.invoke(session, dispatch, handle, enabled, enabledCount); } catch (Throwable t) { throw new RuntimeException(t); }
     }
 
-    // Upcall stub management: (handle, hook index, hook ticket).
+    // Upcall stub management: (handle, hook index, hook ticket) -> zero to go on, nonzero when the hook failed.
     public MemorySegment createDispatchStub(java.lang.invoke.MethodHandle dispatchHandle, Arena arena) {
-        FunctionDescriptor desc = FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_LONG);
+        FunctionDescriptor desc = FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_LONG);
         return LINKER.upcallStub(dispatchHandle, desc, arena);
     }
 }

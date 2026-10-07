@@ -121,7 +121,13 @@ to C functions, per session. `galley_hooks_count()` and
 `galley_session_set_hooks(session, dispatch, handle, enabled, count)` gives one
 session its enabled set (one byte per hook), a dispatch callback and a handle.
 Each enabled hook then calls `dispatch(handle, index, hook)` on the parsing
-thread, with the ticket of that call; the others return before any call. The call takes the session's
+thread, with the ticket of that call; the others return before any call. `dispatch`
+returns an `int`: zero lets the parse go on, anything else means the hook failed. The host keeps
+the cause (a binding catches the exception at the upcall, never lets it cross into the core), the
+parse stops where the hook ran, publishes nothing, and the parse call returns
+`galley_error_hook_failed`. The diagnostic is of kind `galley_diagnostic_kind_hook`, with the
+position, and the session parses again. Hooks compiled into the library from C or C++ return `void` and
+cannot fail the parse yet. The call takes the session's
 exclusive lease, so it returns `galley_error_session_in_use` while a parse is
 in flight and the set a parse runs with is fixed for that parse. Sessions share
 no hook state, so sessions of one library, and of different libraries, may

@@ -31,8 +31,9 @@ export class GalleyError extends Error {
     message: string,
     code: Status,
     diagnostic: Diagnostic | null = null,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
     this.name = "GalleyError";
     this.code = code;
     this.diagnostic = diagnostic === null ? null : freezeSnapshot(diagnostic);

@@ -165,6 +165,13 @@ of an earlier parse throws `StaleTreeException` on a read, a link, an edit or a
 walk step, never null.
 `Node.equals` compares session, parse generation, and address.
 
+A hook that throws aborts the parse. `parse` throws a `GalleyException` with
+`ERROR_HOOK_FAILED`, the hook's throwable as its cause, and a `DiagnosticKind.HOOK`
+diagnostic of where the parse stopped; the parse publishes nothing, so `rootNode()`
+returns `null` and the nodes of that parse throw `StaleTreeException`. The session
+parses again afterwards. A hook that wants the parse to go on reports a semantic
+error instead.
+
 Mechanically, the build links the generator's host shim (`host_procedures.zig`,
 written by `--emit-host-procedures`), which forwards every hook to the parsing
 session's own dispatch. Each session hands the library its enabled set and one

@@ -17,11 +17,11 @@ const callbacks = new WeakMap<DenoPort, unknown>();
 /** Creates the port's callback and records its native address for `setSessionHooks`. */
 export function installDispatch(port: DenoPort): void {
   const callback = new Deno.UnsafeCallback(
-    { parameters: ["u64", "u32", "u64"], result: "void" },
+    { parameters: ["u64", "u32", "u64"], result: "i32" },
     (hookHandle, hookIndex, hook) => {
       // A "u64" crosses as a Number when it is a safe integer and as a
       // BigInt otherwise; the ticket is always a BigInt in the port.
-      port.hookDispatch?.(Number(hookHandle), hookIndex as number, BigInt(hook as number | bigint));
+      return port.hookDispatch?.(Number(hookHandle), hookIndex as number, BigInt(hook as number | bigint)) ?? 1;
     },
   );
   callbacks.set(port, callback);

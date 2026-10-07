@@ -49,6 +49,7 @@ class Kind(enum.IntEnum):
     SYNTAX = 1
     INDENTATION = 2
     SEMANTIC = 3
+    HOOK = 4
 
 class RecoveryTarget(enum.IntEnum):
     """Recovery targets."""
@@ -83,6 +84,7 @@ class Status(enum.IntEnum):
     ERROR_SESSION_IN_USE = -13
     ERROR_STALE_TREE = -14
     ERROR_STALE_HOOK = -15
+    ERROR_HOOK_FAILED = -16
 
 INVALID_NODE: Final[int]
 """``2**63 - 1``, the address marking an absent node link."""
@@ -97,6 +99,10 @@ class GalleyError(Exception):
     Attributes:
         code: Raw ``galley_status`` value (negative on failure).
         diagnostic: Snapshot of the session diagnostic at failure, or ``None``.
+
+    A hook that raised aborts the parse: ``parse`` raises a ``GalleyError``
+    with code ``ERROR_HOOK_FAILED``, a ``Kind.HOOK`` diagnostic, and the
+    hook's exception as ``__cause__``. Nothing is published.
 
     ``str(error)`` is the rendered diagnostic message when there is one,
     otherwise the status string.
@@ -497,7 +503,8 @@ class Session:
         """Parse ``data`` (may contain NUL bytes) and return bytes parsed.
 
         Copies ``data`` so node text stays valid after the call regardless
-        of the input object's lifetime. Raises ``GalleyError`` on failure.
+        of the input object's lifetime. Raises ``GalleyError`` on failure; a
+        hook that raised aborts the parse and is the failure's ``__cause__``.
         """
         ...
 

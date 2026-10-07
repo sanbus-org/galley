@@ -286,6 +286,13 @@ export class Session implements HookOwner {
    * is exactly a call inside a hook dispatch of the running parse.
    */
   #dispatching = false;
+
+  /**
+   * What the hook of the running parse threw, kept by the upcall that caught
+   * it; the parse that returns `ErrorHookFailed` raises its failure with this
+   * as the cause and drops it. A box, because a hook may throw `undefined`.
+   */
+  #hookFailure: { thrown: unknown } | null = null;
   /**
    * The newest generation's interned node handles, indexed by address (the
    * core's addresses are dense node indices), with the generation they
@@ -486,7 +493,7 @@ export class Session implements HookOwner {
    * catches it.
    * @internal
    */
-  errorFromStatus(status: number, fallback?: string): GalleyError {
+  errorFromStatus(status: number, fallback?: string, options?: ErrorOptions): GalleyError {
     if (status === Status.ErrorStaleTree) {
       return new StaleTreeError(STALE_TREE_MESSAGE);
     }
@@ -500,7 +507,7 @@ export class Session implements HookOwner {
     }
     const message = fallback ?? diag?.message ?? this.#statusMessage(status);
     // Boundary trust: `status` is the port's raw status, already known negative.
-    return new GalleyError(message, status as Status, diag);
+    return new GalleyError(message, status as Status, diag, options);
   }
 
   #checkStatus(status: number, fallback?: string): void {
@@ -565,43 +572,42 @@ export class Session implements HookOwner {
 
   /**
    * Runs hook `index` of the running parse, on the parsing thread, under the
-   * ticket the core issued for this call. Hook exceptions are logged and
-   * swallowed so a throwing hook never aborts the parse.
+   * ticket the core issued for this call. Answers zero, or one when the hook
+   * threw (or its door could not open): nothing may escape an upcall into the
+   * core, so the thrown value is kept and the core aborts the parse.
    * @internal
    */
-  dispatchHook(index: number, hook: HookTicket): void {
+  dispatchHook(index: number, hook: HookTicket): number {
     const fn = this.#hooksByIndex[index];
-    if (!fn) return;
-    const name = routerFor(this.#port).names[index];
+    if (!fn) return 0;
+    try {
+      this.#runHook(fn, hook);
+      return 0;
+    } catch (thrown) {
+      this.#hookFailure = { thrown };
+      return 1;
+    } finally {
+      this.#dispatching = false;
+    }
+  }
+
+  #runHook(fn: HookFn | (() => void), hook: HookTicket): void {
     // The parse's native door and core generation are constant for the
     // parse: read them on its first dispatch, drop them in the finish gate.
     // Only the "a hook is running" flag is set per dispatch, which is what
     // lets a call choose its door when it is made.
     if (this.#parseDoor === null) {
-      try {
-        const opened = this.#port.procDoor(this.#requireHandle(), hook);
-        if (opened.status < 0) throw this.errorFromStatus(opened.status);
-        const nativeDoor = opened.door;
-        const generation = this.#port.hookGeneration(nativeDoor);
-        if (generation < 0) throw this.errorFromStatus(generation);
-        this.#parseGeneration = generation;
-        this.#parseDoor = new Door(this, this.#port.hook, nativeDoor);
-      } catch (err) {
-        // A refused door: the hook cannot run correctly, so it is skipped
-        // like a throwing one, never run with a generation of 0.
-        console.error(`galley procedure ${name} could not open its door:`, err);
-        return;
-      }
+      const opened = this.#port.procDoor(this.#requireHandle(), hook);
+      if (opened.status < 0) throw this.errorFromStatus(opened.status);
+      const nativeDoor = opened.door;
+      const generation = this.#port.hookGeneration(nativeDoor);
+      if (generation < 0) throw this.errorFromStatus(generation);
+      this.#parseGeneration = generation;
+      this.#parseDoor = new Door(this, this.#port.hook, nativeDoor);
     }
     this.#dispatching = true;
     if (fn.length === 0) {
-      try {
-        (fn as () => void)();
-      } catch (err) {
-        console.error(`galley procedure ${name} threw:`, err);
-      } finally {
-        this.#dispatching = false;
-      }
+      (fn as () => void)();
       return;
     }
     const procedureArguments = new ProcedureArguments(
@@ -611,13 +617,7 @@ export class Session implements HookOwner {
       this.#port,
       (address) => this.#wrap(this.#parseGeneration, address),
     );
-    try {
-      fn(procedureArguments);
-    } catch (err) {
-      console.error(`galley procedure ${name} threw:`, err);
-    } finally {
-      this.#dispatching = false;
-    }
+    (fn as HookFn)(procedureArguments);
   }
 
   // -- lifecycle -------------------------------------------------------
@@ -688,15 +688,23 @@ export class Session implements HookOwner {
       status = nativeParse();
     } catch (error) {
       this.#parseDoor = null;
+      this.#hookFailure = null;
       throw error;
     }
+    let hookFailure: { thrown: unknown } | null = null;
     if (status !== Status.ErrorSessionInUse) {
-      // The parse is over: its door dies with it. A refused parse started
-      // nothing, so it leaves the running parse's door alone.
+      // The parse is over: its door dies with it, and so does the exception
+      // a hook of it raised once its failure carries it. A refused parse
+      // started nothing, so it leaves the running parse's state alone.
       this.#parseDoor = null;
+      hookFailure = this.#hookFailure;
+      this.#hookFailure = null;
     }
     if (status < 0) {
-      throw this.errorFromStatus(status);
+      const cause = status === Status.ErrorHookFailed && hookFailure !== null
+        ? { cause: hookFailure.thrown }
+        : undefined;
+      throw this.errorFromStatus(status, undefined, cause);
     }
     return status;
   }

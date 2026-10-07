@@ -524,19 +524,27 @@ static void clear_pending(napi_env env) {
   (void)thrown;
 }
 
-static void dispatch_call(napi_env env, void *handle, uint32_t index, unsigned long long hook) {
-  if (parse_depth == 0) return;
+/* Calls the JS dispatcher of the innermost parse frame and returns its
+ * answer: zero to let the parse go on, nonzero when the hook failed. The JS
+ * side catches whatever a hook throws and keeps it, so a pending exception
+ * here is a failure of the call itself; it is cleared and reported as a
+ * failed hook rather than escaping into the core. */
+static int dispatch_call(napi_env env, void *handle, uint32_t index, unsigned long long hook) {
+  if (parse_depth == 0) return 1;
   ParseFrame *frame = &parse_frames[parse_depth - 1];
   napi_value argv[3];
   napi_value result;
-  if (napi_create_double(env, (double)(uintptr_t)handle, &argv[0]) != napi_ok) return;
-  if (napi_create_uint32(env, index, &argv[1]) != napi_ok) return;
-  if (napi_create_bigint_uint64(env, (uint64_t)hook, &argv[2]) != napi_ok) return;
+  if (napi_create_double(env, (double)(uintptr_t)handle, &argv[0]) != napi_ok) return 1;
+  if (napi_create_uint32(env, index, &argv[1]) != napi_ok) return 1;
+  if (napi_create_bigint_uint64(env, (uint64_t)hook, &argv[2]) != napi_ok) return 1;
   if (napi_call_function(env, frame->receiver, frame->function, 3, argv, &result) != napi_ok) {
     clear_pending(env);
-    return;
+    return 1;
   }
   clear_pending(env);
+  int32_t outcome = 1;
+  if (napi_get_value_int32(env, result, &outcome) != napi_ok) return 1;
+  return outcome;
 }
 
 /* The environment of the parse running on this thread; NULL between
@@ -547,9 +555,9 @@ static _Thread_local napi_env active_env = NULL;
  * (handle, hook index, hook ticket) to the JS callback of this thread's
  * innermost parse frame, so nested parses across libraries reach the right
  * receiver. */
-static void hook_trampoline(void *handle, unsigned int index, unsigned long long hook) {
-  if (active_env == NULL) return;
-  dispatch_call(active_env, handle, index, hook);
+static int hook_trampoline(void *handle, unsigned int index, unsigned long long hook) {
+  if (active_env == NULL) return 1;
+  return dispatch_call(active_env, handle, index, hook);
 }
 
 /* Runs the parse body inside a frame carrying this library's dispatcher.

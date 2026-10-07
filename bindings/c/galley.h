@@ -113,6 +113,10 @@ enum {
     /* A galley_procedure_* call made with the ticket of a hook that has
      * returned: the arguments are valid only while their hook runs. */
     galley_error_stale_hook               = -15,
+    /* A hook's dispatch returned nonzero: the parse stopped where the hook ran
+     * and published nothing. The diagnostic is of kind
+     * galley_diagnostic_kind_hook; the host keeps the cause of the failure. */
+    galley_error_hook_failed              = -16,
 };
 
 /* Returns the build-supplied version string of this library. The pointer
@@ -203,8 +207,12 @@ long long galley_session_set_message_override(GalleySession *session,
  * given to galley_session_set_hooks, index a hook index below
  * galley_hooks_count, and hook the ticket of this call: pass it, with the
  * session, to the galley_procedure_* functions. It names the hook's arguments
- * only until the call returns. */
-typedef void (*GalleyHookDispatch)(void *handle, unsigned int index, unsigned long long hook);
+ * only until the call returns. Returns zero to let the parse go on. Any other
+ * value means the hook failed: the host keeps the cause, the parse stops where
+ * the hook ran, publishes nothing, and the parse call returns
+ * galley_error_hook_failed. A hook that wants the parse to go on reports a
+ * semantic error instead. */
+typedef int (*GalleyHookDispatch)(void *handle, unsigned int index, unsigned long long hook);
 
 /* Number of hooks the library forwards. Hook indexes run 0 .. count-1 and
  * are fixed for the library's lifetime. */
@@ -652,7 +660,8 @@ enum {
     galley_diagnostic_kind_none        = 0,
     galley_diagnostic_kind_syntax      = 1,
     galley_diagnostic_kind_indentation = 2,
-    galley_diagnostic_kind_semantic    = 3
+    galley_diagnostic_kind_semantic    = 3,
+    galley_diagnostic_kind_hook        = 4
 };
 
 enum {

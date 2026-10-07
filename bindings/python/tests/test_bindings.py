@@ -663,49 +663,135 @@ class HookDispatchTests(unittest.TestCase):
         self.session.close()
         _restore_procedures(self.saved_procedures)
 
-    def test_throwing_hook_never_aborts_parse(self) -> None:
-        # A hook-body failure is reported, never fatal: the parse
-        # completes and every reduction still ran its hook exactly once.
-        fired: list[int] = []
+    def test_raising_hook_aborts_the_parse_and_publishes_nothing(self) -> None:
+        # A hook that raises stops the parse at that hook: parse raises the
+        # binding's failure with the hook's own exception as its cause, the
+        # failure carries the status and the snapshot of where the parse
+        # stopped, and the parse publishes nothing.
+        fired: list[grammar.Node] = []
+        failure = ValueError("hook body failure")
 
         def reduction_Number(args: grammar.ProcedureArguments) -> None:
             node = args.current_node()
             assert node is not None
-            fired.append(node.address)
-            raise ValueError("hook body failure")
+            fired.append(node)
+            raise failure
+
+        self.session.parse("alpha:12,beta:3")
+        earlier = self.session.root_node()
+        assert earlier is not None
+        self.session.install_procedure("reduction_Number", reduction_Number)
+        with self.assertRaises(grammar.GalleyError) as raised:
+            self.session.parse("alpha:12,beta:3")
+        self.assertEqual(len(fired), 1)
+        self.assertIs(raised.exception.__cause__, failure)
+        self.assertEqual(raised.exception.code, grammar.Status.ERROR_HOOK_FAILED)
+        diagnostic = raised.exception.diagnostic
+        assert diagnostic is not None
+        self.assertEqual(diagnostic.kind, grammar.Kind.HOOK)
+        self.assertGreaterEqual(diagnostic.line, 1)
+        self.assertGreaterEqual(diagnostic.column, 1)
+        self.assertIn("reduction_Number", str(raised.exception))
+        self.assertIsNone(self.session.root_node())
+        with self.assertRaises(grammar.StaleTreeError):
+            self.session.node_count()
+        with self.assertRaises(grammar.StaleTreeError):
+            fired[0].text()
+        with self.assertRaises(grammar.StaleTreeError):
+            earlier.text()
+
+    def test_hook_failure_after_a_recovered_syntax_error_reports_the_hook(self) -> None:
+        # The message belongs to the failure's own diagnostic: the syntax
+        # error the parser recovered from earlier must not speak for it.
+        def reduction_Document(args: grammar.ProcedureArguments) -> None:
+            raise ValueError("late failure")
+
+        self.session.install_procedure("reduction_Document", reduction_Document)
+        with self.assertRaises(grammar.GalleyError) as raised:
+            self.session.parse("alpha:12,beta@3")
+        self.assertEqual(raised.exception.code, grammar.Status.ERROR_HOOK_FAILED)
+        diagnostic = raised.exception.diagnostic
+        assert diagnostic is not None
+        self.assertEqual(diagnostic.kind, grammar.Kind.HOOK)
+        self.assertIn("HookError", str(raised.exception))
+        assert diagnostic.message is not None and diagnostic.message_ansi is not None
+        self.assertIn("HookError", diagnostic.message)
+        self.assertNotIn("SyntaxError", diagnostic.message)
+        import re
+
+        self.assertEqual(
+            re.sub(r"\x1b\[[0-9;]*m", "", diagnostic.message_ansi), diagnostic.message
+        )
+
+    def test_session_is_reusable_after_a_hook_aborted_the_parse(self) -> None:
+        calls: list[int] = []
+
+        def reduction_Number(args: grammar.ProcedureArguments) -> None:
+            calls.append(1)
+            if len(calls) == 1:
+                raise RuntimeError("first parse only")
 
         self.session.install_procedure("reduction_Number", reduction_Number)
-        try:
-            self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
-        finally:
-            self.session.clear_procedures()
-        self.assertEqual(len(fired), 2)
-        self.assertEqual(len(set(fired)), 2)
+        with self.assertRaises(grammar.GalleyError) as raised:
+            self.session.parse("alpha:12,beta:3")
+        self.assertIsInstance(raised.exception.__cause__, RuntimeError)
+        self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
+        self.assertEqual(len(calls), 3)
+        root = self.session.root_node()
+        assert root is not None
+        self.assertEqual(root.text(), b"alpha:12,beta:3")
+        self.assertIsNone(self.session.diagnostic())
+
+    def test_hook_failure_does_not_leak_across_nested_sessions(self) -> None:
+        # A hook parses on another session whose own hook raises: that
+        # parse fails with that exception as its cause, the outer hook
+        # handles it, and the outer parse completes untouched.
+        inner_failure = KeyError("inner hook")
+        inner_errors: list[grammar.GalleyError] = []
+        outer_seen: list[bytes] = []
+        nested = False
+
+        def inner_number(args: grammar.ProcedureArguments) -> None:
+            raise inner_failure
+
+        def outer_pair(args: grammar.ProcedureArguments) -> None:
+            nonlocal nested
+            node = args.current_node()
+            assert node is not None
+            text = node.text()
+            assert text is not None
+            outer_seen.append(text)
+            if not nested:
+                nested = True
+                with grammar.Session() as inner_session:
+                    inner_session.install_procedure("reduction_Number", inner_number)
+                    try:
+                        inner_session.parse("alpha:9")
+                    except grammar.GalleyError as error:
+                        inner_errors.append(error)
+
+        self.session.install_procedure("reduction_Pair", outer_pair)
+        self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
+        self.assertEqual(outer_seen, [b"alpha:12", b"beta:3"])
+        self.assertEqual(len(inner_errors), 1)
+        self.assertIs(inner_errors[0].__cause__, inner_failure)
+        self.assertIsNotNone(self.session.root_node())
 
     def test_body_type_error_is_not_retried_without_args(self) -> None:
-        # A TypeError from inside the hook body must surface as-is: no
+        # A TypeError from inside the hook body aborts the parse as-is: no
         # silent retry with no arguments, no second invocation.
         calls: list[bool] = []
-        attempted: set[int] = set()
+        failure = TypeError("body boom")
 
         def reduction_Number(args: Any = None) -> None:
             calls.append(args is None)
-            if args is None:
-                return
-            node = args.current_node()
-            assert node is not None
-            if node.address not in attempted:
-                attempted.add(node.address)
-                raise TypeError("body boom")
+            raise failure
 
         self.session.install_procedure("reduction_Number", reduction_Number)
-        try:
-            self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
-        finally:
-            self.session.clear_procedures()
-        self.assertEqual(len(attempted), 2)
-        self.assertEqual(len(calls), 2)
-        self.assertFalse(any(calls))
+        with self.assertRaises(grammar.GalleyError) as raised:
+            self.session.parse("alpha:12,beta:3")
+        self.assertIs(raised.exception.__cause__, failure)
+        self.assertEqual(calls, [False])
 
     def test_zero_arg_hook_fires_once_per_reduction(self) -> None:
         # Hooks taking no arguments stay compatible: called empty, once

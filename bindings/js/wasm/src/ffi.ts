@@ -445,8 +445,8 @@ function makeImports(pending: PendingInstance): WebAssembly.Imports {
     env: {
       // Every hook of the module: the session's handle, the hook's index,
       // and the ticket of this hook call (a 64-bit value, so a BigInt).
-      galley_host_dispatch: (hookHandle: number, hookIndex: number, hook: bigint) => {
-        pending.port?.hookDispatch?.(hookHandle, hookIndex, hook);
+      galley_host_dispatch: (hookHandle: number, hookIndex: number, hook: bigint): number => {
+        return pending.port?.hookDispatch?.(hookHandle, hookIndex, hook) ?? 1;
       },
     },
   };

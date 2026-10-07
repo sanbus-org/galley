@@ -80,6 +80,10 @@ const (
 	// ErrStaleHook: a procedure call made with the arguments of a hook that
 	// has returned; the core refuses it, whatever the tree is now.
 	ErrStaleHook Error = -15
+	// ErrHookFailed: a host hook's dispatch reported failure and the parse
+	// stopped. Only a library built with a host shim returns it; Go hooks
+	// cannot fail yet.
+	ErrHookFailed Error = -16
 )
 
 var errorDescriptions = map[Error]string{
@@ -98,6 +102,7 @@ var errorDescriptions = map[Error]string{
 	ErrSessionInUse:         "session in use",
 	ErrStaleTree:            "stale tree",
 	ErrStaleHook:            "stale hook",
+	ErrHookFailed:           "hook failed",
 }
 
 func (e Error) Error() string {
@@ -720,6 +725,7 @@ const (
 	DiagnosticKindSyntax      DiagnosticKind = 1
 	DiagnosticKindIndentation DiagnosticKind = 2
 	DiagnosticKindSemantic    DiagnosticKind = 3
+	DiagnosticKindHook        DiagnosticKind = 4
 )
 
 // SemanticInfo carries the variable and message of a semantic diagnostic.

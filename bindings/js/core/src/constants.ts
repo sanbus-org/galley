@@ -28,6 +28,8 @@ export enum Status {
   ErrorSessionInUse = -13,
   ErrorStaleTree = -14,
   ErrorStaleHook = -15,
+  /** A hook threw: the parse stopped there and published nothing; the failure's `cause` is the thrown value. */
+  ErrorHookFailed = -16,
 }
 
 /** Parser families. */
@@ -49,6 +51,7 @@ export enum Kind {
   Syntax = 1,
   Indentation = 2,
   Semantic = 3,
+  Hook = 4,
 }
 
 /** Recovery targets. */

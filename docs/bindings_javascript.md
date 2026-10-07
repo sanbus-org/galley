@@ -252,6 +252,13 @@ with status `-13`) invalidates nothing. Inside a hook the core checks every
 node's generation on the hook door too: a node of an earlier parse throws
 `StaleTreeError` on a read, a link, an edit or a walk step, never `null`.
 
+A hook that throws aborts the parse. `parse` throws a `GalleyError` with code
+`Status.ErrorHookFailed`, the thrown value as `error.cause`, and a `Kind.Hook`
+diagnostic of where the parse stopped; the parse publishes nothing, so `rootNode()`
+returns `null` and the nodes of that parse throw `StaleTreeError`. The session
+parses again afterwards. A hook that wants the parse to go on reports a semantic
+error instead. The same holds on node, bun, deno and wasm.
+
 Every parser owns its hooks: the generated package entry (and the
 internal `openLanguageDirectory` behind it) statically imports the
 language directory's `procedures` file and installs that namespace

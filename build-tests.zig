@@ -249,6 +249,8 @@ pub fn add(b: *std.Build, options: Options) !void {
                 inline for ([_]bool{ true, false }) |with_ast| {
                     const run_recovered_tree_tests = try addRecoveredTreeTests(b, options, parser_type, automatic, with_ast, selection.names);
                     test_step.dependOn(&run_recovered_tree_tests.step);
+                    const run_hook_failure_tests = try addHookFailureTests(b, options, parser_type, automatic, with_ast, selection.names);
+                    test_step.dependOn(&run_hook_failure_tests.step);
                 }
             }
 
@@ -1768,6 +1770,78 @@ fn addRecoveredTreeTests(
     });
     const tests = b.addTest(.{
         .name = b.fmt("recovered-tree-{s}-{s}-tests", .{ mode, parser_type }),
+        .root_module = test_mod,
+        .filters = filters,
+    });
+    return b.addRunArtifact(tests);
+}
+
+/// Hook failures under every recovery mode, on the recovered-tree grammar
+/// with procedures: the failing hook aborts the parse and recovery never
+/// swallows it.
+fn addHookFailureTests(
+    b: *std.Build,
+    options: Options,
+    parser_type: []const u8,
+    automatic: bool,
+    with_ast: bool,
+    filters: []const []const u8,
+) !*std.Build.Step.Run {
+    const mode = b.fmt("{s}-{s}", .{ if (automatic) "automatic" else "explicit", if (with_ast) "ast" else "no-ast" });
+    const generate_parser = b.addRunArtifact(options.generate_parser_file_exe);
+    generate_parser.addArg("--grammar");
+    generate_parser.addFileArg(b.path("tests/recovered-tree/grammar.grm"));
+    generate_parser.addArg("--parser-type");
+    generate_parser.addArg(parser_type);
+    generate_parser.addArg("--output");
+    const parser_path = generate_parser.addOutputFileArg(b.fmt("hook-failure-{s}-{s}-parser.zig", .{ mode, parser_type }));
+    generate_parser.addArg("--config-output");
+    const config_path = generate_parser.addOutputFileArg(b.fmt("hook-failure-{s}-{s}-config.zig", .{ mode, parser_type }));
+    generate_parser.addArgs(&.{
+        if (with_ast) "--with-ast" else "--no-ast",
+        "--with-procedures",
+        "--with-error-recovery",
+    });
+    if (automatic) generate_parser.addArg("--strip-recovery-annotations");
+
+    const procedures_mod = b.createModule(.{
+        .root_source_file = b.path("tests/hook-failure/procedures.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const config_mod = b.createModule(.{
+        .root_source_file = config_path,
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const error_messages_mod = b.createModule(.{
+        .root_source_file = b.path("tests/recovered-tree/error_messages.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const generated_parser = common.addGeneratedParserModule(
+        b,
+        options.target,
+        options.optimize,
+        b.fmt("hook-failure-{s}-{s}", .{ mode, parser_type }),
+        b.fmt("hook-failure-{s}-{s}-source", .{ mode, parser_type }),
+        parser_path,
+        procedures_mod,
+        config_mod,
+        error_messages_mod,
+        options.generator.runtime_options_mod,
+        options.generator.signals_mod,
+    );
+    const test_mod = b.createModule(.{
+        .root_source_file = b.path("src/tests/hook_failure_test.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+        .imports = &.{
+            .{ .name = "parser-under-test", .module = generated_parser.runtime_mod },
+        },
+    });
+    const tests = b.addTest(.{
+        .name = b.fmt("hook-failure-{s}-{s}-tests", .{ mode, parser_type }),
         .root_module = test_mod,
         .filters = filters,
     });

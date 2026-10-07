@@ -6,7 +6,7 @@ const Syntax = root.SyntaxDiagnostic;
 fn syntax(args: root.SyntaxErrorMessageArgs) Syntax {
     return switch (args.diagnostic) {
         .syntax => |diagnostic| diagnostic,
-        .semantic, .indentation => unreachable,
+        .semantic, .indentation, .hook => unreachable,
     };
 }
 

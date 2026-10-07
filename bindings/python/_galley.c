@@ -178,59 +178,127 @@ static int hook_takes_no_arguments(PyObject *callable)
     return 0;
 }
 
+/* Takes the exception being raised as a normalized instance with its
+ * traceback attached, and clears the error indicator. */
+static PyObject *take_raised_exception(void)
+{
+#if PY_VERSION_HEX >= 0x030c0000
+    return PyErr_GetRaisedException();
+#else
+    PyObject *type = NULL;
+    PyObject *value = NULL;
+    PyObject *traceback = NULL;
+    PyErr_Fetch(&type, &value, &traceback);
+    PyErr_NormalizeException(&type, &value, &traceback);
+    if (value != NULL && traceback != NULL)
+        PyException_SetTraceback(value, traceback);
+    Py_XDECREF(type);
+    Py_XDECREF(traceback);
+    return value;
+#endif
+}
+
+/* Raises `instance` (a reference this takes) with `cause` as its __cause__
+ * (a reference this takes; may be NULL). */
+static void raise_with_cause(PyObject *instance, PyObject *cause)
+{
+    if (cause != NULL)
+        PyException_SetCause(instance, cause);
+    PyErr_SetObject((PyObject *)Py_TYPE(instance), instance);
+    Py_DECREF(instance);
+}
+
+#if defined(_MSC_VER)
+#define GALLEY_THREAD_LOCAL __declspec(thread)
+#else
+#define GALLEY_THREAD_LOCAL _Thread_local
+#endif
+
+/* What one parse call keeps of its hooks: the exception a hook raised. It
+ * lives on the C stack of the call that runs the parse, so another thread
+ * that starts a parse on the same session the moment the core releases it
+ * can neither overwrite it nor take it. Hooks run on the parsing thread, so
+ * the dispatch finds its parse's holder through the thread's own chain
+ * (nested parses of other sessions stack up). */
+typedef struct ParseHolder {
+    SessionObject *session;
+    PyObject *failure;
+    struct ParseHolder *outer;
+} ParseHolder;
+
+static GALLEY_THREAD_LOCAL ParseHolder *innermost_holder = NULL;
+
+static void holder_push(ParseHolder *holder, PyObject *session)
+{
+    holder->session = (SessionObject *)session;
+    holder->failure = NULL;
+    holder->outer = innermost_holder;
+    innermost_holder = holder;
+}
+
+static void holder_pop(ParseHolder *holder)
+{
+    innermost_holder = holder->outer;
+}
+
+/* Keeps the exception a hook just raised in its parse call's holder: the
+ * upcall never lets it reach the core. */
+static void keep_hook_failure(SessionObject *session)
+{
+    PyObject *exception = take_raised_exception();
+    ParseHolder *holder = innermost_holder;
+    while (holder != NULL && holder->session != session)
+        holder = holder->outer;
+    if (holder == NULL) {
+        Py_XDECREF(exception);
+        return;
+    }
+    Py_XSETREF(holder->failure, exception);
+}
+
 /* Runs hook `index` of `session`'s running parse, with the GIL held. The
  * hook table is the session's own, fixed for the whole parse, so nothing
- * here depends on any other session. */
-static void run_hook(SessionObject *session, unsigned int index, unsigned long long hook)
+ * here depends on any other session. Returns 0, or -1 when the hook raised:
+ * the exception is then kept on the session and the core aborts the parse. */
+static int run_hook(SessionObject *session, unsigned int index, unsigned long long hook)
 {
     if (session->hooks_by_index == NULL ||
         index >= (unsigned int)PyList_GET_SIZE(session->hooks_by_index))
-        return;
+        return 0;
     PyObject *callable = PyList_GET_ITEM(session->hooks_by_index, index);
     if (callable == Py_None)
-        return;
+        return 0;
     Py_INCREF(callable);
     /* The call shape is decided before invoking: no-arg hooks are
      * called empty, so a TypeError from a hook body is never mistaken
      * for an arity mismatch. Unknown shapes keep the legacy probe. */
     int no_arguments = hook_takes_no_arguments(callable);
+    PyObject *result;
     if (no_arguments > 0) {
-        PyObject *result = PyObject_CallNoArgs(callable);
-        if (result == NULL)
-            PyErr_Print();
-        else
-            Py_DECREF(result);
-        Py_DECREF(callable);
-        return;
-    }
-    PyObject *arg = make_procedure_args(hook, (PyObject *)session);
-    if (arg == NULL) {
-        PyErr_Clear();
-        Py_DECREF(callable);
-        return;
-    }
-    PyObject *result = PyObject_CallOneArg(callable, arg);
-    Py_DECREF(arg);
-    if (result == NULL) {
-        if (no_arguments == 0) {
-            /* Arity was decided up front: a genuine hook-body failure. */
-            PyErr_Print();
-        } else if (PyErr_ExceptionMatches(PyExc_TypeError)) {
-            /* Unknown shape (builtin, partial, callable object): allow
-             * hooks that take no args. */
-            PyErr_Clear();
-            result = PyObject_CallNoArgs(callable);
-            if (result == NULL)
-                PyErr_Print();
-            else
-                Py_DECREF(result);
-        } else {
-            PyErr_Print();
-        }
+        result = PyObject_CallNoArgs(callable);
     } else {
-        Py_DECREF(result);
+        PyObject *arg = make_procedure_args(hook, (PyObject *)session);
+        if (arg == NULL) {
+            result = NULL;
+        } else {
+            result = PyObject_CallOneArg(callable, arg);
+            Py_DECREF(arg);
+            if (result == NULL && no_arguments < 0 &&
+                PyErr_ExceptionMatches(PyExc_TypeError)) {
+                /* Unknown shape (builtin, partial, callable object): allow
+                 * hooks that take no args. */
+                PyErr_Clear();
+                result = PyObject_CallNoArgs(callable);
+            }
+        }
     }
     Py_DECREF(callable);
+    if (result == NULL) {
+        keep_hook_failure(session);
+        return -1;
+    }
+    Py_DECREF(result);
+    return 0;
 }
 
 /* The dispatch callback of every session (the handle is its SessionObject,
@@ -240,7 +308,7 @@ static void run_hook(SessionObject *session, unsigned int index, unsigned long l
  * kept until the parse's finish gate; each dispatch only records that a
  * hook is running and on which thread, which is what lets a call choose its
  * door when it is made. */
-static void py_dispatch_impl(void *handle, unsigned int index, unsigned long long hook)
+static int py_dispatch_impl(void *handle, unsigned int index, unsigned long long hook)
 {
     SessionObject *session = (SessionObject *)handle;
     PyGILState_STATE gil = PyGILState_Ensure();
@@ -257,9 +325,10 @@ static void py_dispatch_impl(void *handle, unsigned int index, unsigned long lon
         session->dispatch_thread = PyThread_get_thread_ident();
         session->dispatching = 1;
     }
-    run_hook(session, index, hook);
+    int failed = run_hook(session, index, hook);
     session->dispatching = 0;
     PyGILState_Release(gil);
+    return failed ? 1 : 0;
 }
 
 /* Sets ErrorException from a negative galley status code. The instance
@@ -520,6 +589,28 @@ static inline void finish_parse(PyObject *self, long long status)
     if (status == galley_error_session_in_use)
         return;
     session_object->parse_door = NULL;
+}
+
+/* The one exit of every parse call: closes the parse leg, then answers with
+ * the byte count or raises the core's failure. A parse a hook aborted
+ * (galley_error_hook_failed) raises its failure with the exception the hook
+ * raised as the cause; the kept exception is dropped either way, so no
+ * failure outlives its parse. */
+static PyObject *parse_outcome(PyObject *self, long long status, ParseHolder *holder)
+{
+    SessionObject *session_object = (SessionObject *)self;
+    PyObject *cause = holder->failure;
+    PyObject *result;
+
+    holder_pop(holder);
+    finish_parse(self, status);
+    result = status_to_parsed_with_session(status, session_object->session);
+    if (result == NULL && status == galley_error_hook_failed && cause != NULL) {
+        raise_with_cause(take_raised_exception(), cause);
+        return NULL;
+    }
+    Py_XDECREF(cause);
+    return result;
 }
 
 /* Single gate for Node creation: stamps the generation of the crossing the
@@ -904,6 +995,7 @@ static PyObject *Session_parse(PyObject *self, PyObject *input)
     Py_buffer view;
     int have_view = 0;
     long long status;
+    ParseHolder holder;
 
     if (session == NULL)
         return NULL;
@@ -925,13 +1017,13 @@ static PyObject *Session_parse(PyObject *self, PyObject *input)
      * released for the parse itself: the input stays alive (an immutable
      * str or bytes, or a buffer export that blocks resizing), and a hook
      * takes the GIL back for the length of its call. */
+    holder_push(&holder, self);
     Py_BEGIN_ALLOW_THREADS
     status = galley_parse(session, length > 0 ? data : "", (size_t)length);
     Py_END_ALLOW_THREADS
-    finish_parse(self, status);
     if (have_view)
         PyBuffer_Release(&view);
-    return status_to_parsed_with_session(status, session);
+    return parse_outcome(self, status, &holder);
 }
 
 PyDoc_STRVAR(parse_file_doc,
@@ -969,11 +1061,12 @@ static PyObject *Session_parse_file(PyObject *self, PyObject *path)
     }
     if (data != NULL) {
         long long status;
+        ParseHolder holder;
+        holder_push(&holder, self);
         Py_BEGIN_ALLOW_THREADS
         status = galley_parse_file(session, data);
         Py_END_ALLOW_THREADS
-        finish_parse(self, status);
-        result = status_to_parsed_with_session(status, session);
+        result = parse_outcome(self, status, &holder);
     }
     Py_DECREF(filesystem_path);
     return result;
@@ -1639,7 +1732,7 @@ static void Diagnostic_dealloc(DiagnosticObject *self)
 
 static PyMemberDef Diagnostic_members[] = {
     {"kind", T_LONG, offsetof(DiagnosticObject, kind), READONLY,
-     "diagnostic classification: Kind.NONE, Kind.SYNTAX, Kind.SEMANTIC, Kind.INDENTATION"},
+     "diagnostic classification: Kind.NONE, Kind.SYNTAX, Kind.SEMANTIC, Kind.INDENTATION, Kind.HOOK"},
     {"line", T_LONG, offsetof(DiagnosticObject, line), READONLY,
      "1-based line of the failure"},
     {"column", T_LONG, offsetof(DiagnosticObject, column), READONLY,
@@ -3789,10 +3882,11 @@ static int add_binding_enums(PyObject *module)
         galley_recovery_mode_disabled, galley_recovery_mode_automatic,
         galley_recovery_mode_explicit};
     static const char *const kind_members[] = {
-        "NONE", "SYNTAX", "INDENTATION", "SEMANTIC"};
+        "NONE", "SYNTAX", "INDENTATION", "SEMANTIC", "HOOK"};
     static const long long kind_values[] = {
         galley_diagnostic_kind_none, galley_diagnostic_kind_syntax,
-        galley_diagnostic_kind_indentation, galley_diagnostic_kind_semantic};
+        galley_diagnostic_kind_indentation, galley_diagnostic_kind_semantic,
+        galley_diagnostic_kind_hook};
     static const char *const recovery_target_members[] = {
         "NONE", "LHS_VARIABLE", "PRODUCTION", "OCCURRENCE"};
     static const long long recovery_target_values[] = {
@@ -3817,7 +3911,8 @@ static int add_binding_enums(PyObject *module)
         "ERROR_SEMANTIC",
         "ERROR_SESSION_IN_USE",
         "ERROR_STALE_TREE",
-        "ERROR_STALE_HOOK"};
+        "ERROR_STALE_HOOK",
+        "ERROR_HOOK_FAILED"};
     static const long long status_values[] = {
         galley_ok,
         galley_error_null_argument,
@@ -3834,7 +3929,8 @@ static int add_binding_enums(PyObject *module)
         galley_error_semantic,
         galley_error_session_in_use,
         galley_error_stale_tree,
-        galley_error_stale_hook};
+        galley_error_stale_hook,
+        galley_error_hook_failed};
 
     ENUM_ARRAYS_MATCH(parser_type);
     ENUM_ARRAYS_MATCH(recovery_mode);

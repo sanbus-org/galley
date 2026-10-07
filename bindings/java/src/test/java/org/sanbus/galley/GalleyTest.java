@@ -2471,14 +2471,104 @@ public class GalleyTest {
         }
 
         @Test
-        void hookThrowingDoesNotAbortParse() {
-            parser.installProcedure("reduction_Pair", args -> { throw new RuntimeException("boom"); });
-            Session sess = parser.openSession();
+        void hookThrowingAbortsTheParseAndKeepsTheCause() {
+            RuntimeException boom = new RuntimeException("boom");
+            List<Node> fired = new ArrayList<>();
+            parser.installProcedure("reduction_Number", args -> {
+                fired.add(args.currentNode());
+                throw boom;
+            });
+            Session openedSession = parser.openSession();
             try {
-                int parsed = sess.parse("alpha:12,beta:3");
-                assertTrue(parsed > 0);
+                GalleyException failure = assertThrows(GalleyException.class, () -> openedSession.parse("alpha:12,beta:3"));
+                // The parse stopped at the first hook; the failure carries the
+                // hook's own throwable, the status and where the parse stopped.
+                assertEquals(1, fired.size());
+                assertSame(boom, failure.getCause());
+                assertEquals(StatusCode.ERROR_HOOK_FAILED, failure.getCode());
+                Diagnostic diagnostic = failure.getDiagnostic();
+                assertNotNull(diagnostic);
+                assertEquals(DiagnosticKind.HOOK, diagnostic.getKind());
+                assertTrue(diagnostic.getLine() >= 1 && diagnostic.getColumn() >= 1);
+                assertTrue(failure.getMessage().contains("reduction_Number"));
+                // Nothing was published and the nodes of the parse are refused.
+                assertNull(openedSession.rootNode());
+                assertThrows(StaleTreeException.class, openedSession::nodeCount);
+                assertThrows(StaleTreeException.class, () -> fired.get(0).text());
             } finally {
-                sess.close();
+                openedSession.close();
+            }
+        }
+
+        @Test
+        void hookFailureAfterARecoveredSyntaxErrorReportsTheHook() {
+            parser.installProcedure("reduction_Document", args -> { throw new IllegalStateException("late failure"); });
+            Session openedSession = parser.openSession();
+            try {
+                GalleyException failure = assertThrows(GalleyException.class, () -> openedSession.parse("alpha:12,beta@3"));
+                assertEquals(StatusCode.ERROR_HOOK_FAILED, failure.getCode());
+                Diagnostic diagnostic = failure.getDiagnostic();
+                assertNotNull(diagnostic);
+                assertEquals(DiagnosticKind.HOOK, diagnostic.getKind());
+                assertTrue(failure.getMessage().contains("HookError"));
+                assertTrue(diagnostic.getMessage().contains("HookError"));
+                assertFalse(diagnostic.getMessage().contains("SyntaxError"));
+                assertEquals(diagnostic.getMessage(), diagnostic.getMessageAnsi().replaceAll("\u001b\\[[0-9;]*m", ""));
+            } finally {
+                openedSession.close();
+            }
+        }
+
+        @Test
+        void sessionParsesAgainAfterAHookAbortedTheParse() {
+            AtomicInteger calls = new AtomicInteger();
+            parser.installProcedure("reduction_Number", args -> {
+                if (calls.incrementAndGet() == 1) throw new IllegalStateException("first parse only");
+            });
+            Session openedSession = parser.openSession();
+            try {
+                GalleyException failure = assertThrows(GalleyException.class, () -> openedSession.parse("alpha:12,beta:3"));
+                assertInstanceOf(IllegalStateException.class, failure.getCause());
+                assertEquals(15, openedSession.parse("alpha:12,beta:3"));
+                assertEquals(3, calls.get());
+                Node root = openedSession.rootNode();
+                assertNotNull(root);
+                assertEquals("alpha:12,beta:3", new String(root.text(), StandardCharsets.UTF_8));
+                assertNull(openedSession.diagnostic());
+            } finally {
+                openedSession.close();
+            }
+        }
+
+        @Test
+        void hookFailureOfANestedSessionStaysWithThatSession() {
+            RuntimeException innerFailure = new RuntimeException("inner");
+            List<GalleyException> innerFailures = new ArrayList<>();
+            List<String> outerSeen = new ArrayList<>();
+            boolean[] nested = {false};
+            Session openedSession = parser.openSession();
+            try {
+                openedSession.installProcedure("reduction_Pair", args -> {
+                    outerSeen.add(new String(args.currentNode().text(), StandardCharsets.UTF_8));
+                    if (!nested[0]) {
+                        nested[0] = true;
+                        try (Session innerSession = parser.openSession()) {
+                            innerSession.installProcedure("reduction_Number", innerArgs -> { throw innerFailure; });
+                            try {
+                                innerSession.parse("alpha:9");
+                            } catch (GalleyException failure) {
+                                innerFailures.add(failure);
+                            }
+                        }
+                    }
+                });
+                assertEquals(15, openedSession.parse("alpha:12,beta:3"));
+                assertEquals(List.of("alpha:12", "beta:3"), outerSeen);
+                assertEquals(1, innerFailures.size());
+                assertSame(innerFailure, innerFailures.get(0).getCause());
+                assertNotNull(openedSession.rootNode());
+            } finally {
+                openedSession.close();
             }
         }
 

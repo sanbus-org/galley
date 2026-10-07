@@ -212,7 +212,7 @@ export interface AddonApi extends AddonDoorNames<""> , AddonDoorNames<"hook_"> {
 
   // host hooks: the addon's one callback per library, and the per-session
   // hook state (see galley_session_set_hooks in galley.h)
-  install_dispatch(callback: (hookHandle: number, hookIndex: number, hook: bigint) => void): void;
+  install_dispatch(callback: (hookHandle: number, hookIndex: number, hook: bigint) => number): void;
   galley_hooks_count(): number;
   galley_hooks_name(index: number): string | null;
   galley_session_set_hooks(session: bigint, hookHandle: number, enabled: Uint8Array): bigint;

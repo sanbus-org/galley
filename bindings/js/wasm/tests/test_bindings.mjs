@@ -24,6 +24,7 @@ import { runConcurrencyScenario } from "../../../js/core/build/concurrency.mjs";
 import { runGenerationScenarios } from "../../../js/core/build/generations.mjs";
 import { runRefusalScenarios } from "../../../js/core/build/refusals.mjs";
 import { runPublishedFailureScenarios } from "../../../js/core/build/published-failures.mjs";
+import { runHookFailureScenarios } from "../../../js/core/build/hook-failures.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const exampleLib = wasmArtifactFileName("galley-js-wasm");
@@ -1240,7 +1241,9 @@ await test("hook nodes outlive their hook and their parse", async () => {
     if (stashed.length === 0) stashed.push(args.currentNode());
   });
   parser.installProcedure("reduction_Document", () => {
-    seen.push(new TextDecoder().decode(stashed[0].text()));
+    // Only the first parse's hook reads the stash; the stash is stale by the
+    // second parse, and a hook that throws would abort that parse.
+    if (seen.length === 0) seen.push(new TextDecoder().decode(stashed[0].text()));
   });
   const s = await parser.openSession();
   try {
@@ -1366,19 +1369,6 @@ await test("parser installs serve later sessions", async () => {
     assert.equal(called, 3);
   } finally {
     c.close();
-  }
-});
-
-await test("hook throwing does not abort parse", async () => {
-  const parser = await newParser();
-  parser.installProcedure("reduction_Pair", () => { throw new Error("boom"); });
-  const s = await parser.openSession();
-  try {
-    // should not throw despite hook throwing; parse still succeeds
-    const parsed = s.parse("alpha:12,beta:3");
-    assert.ok(parsed > 0);
-  } finally {
-    s.close();
   }
 });
 
@@ -1601,6 +1591,7 @@ await test("two language directories parse independently", async () => {
 
 await runGenerationScenarios({ test, assert, newParser, SessionClosedError, StaleTreeError, GalleyError, Status, collect });
 await runPublishedFailureScenarios({ test, assert, newParser, StaleTreeError, GalleyError, Status });
+await runHookFailureScenarios({ test, assert, newParser, StaleTreeError, GalleyError, Status, Kind });
 await runRefusalScenarios({ test, assert, newParser, StaleTreeError, GalleyError, Status });
 
 await test("two parsers, two sessions each, four threads at once", async () => {

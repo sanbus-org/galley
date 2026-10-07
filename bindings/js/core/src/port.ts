@@ -79,9 +79,11 @@ export interface SnapshotColumns {
 /**
  * The one callback an adapter forwards every hook of its library to:
  * the handle the session registered, the hook's index, and the ticket of
- * this hook call.
+ * this hook call. Answers zero to let the parse go on, nonzero when the hook
+ * failed: the core then aborts the parse, and the session that kept the
+ * hook's exception raises it as the cause of its failure.
  */
-export type DispatchHandler = (hookHandle: number, hookIndex: number, hook: HookTicket) => void;
+export type DispatchHandler = (hookHandle: number, hookIndex: number, hook: HookTicket) => number;
 
 /**
  * One door's node and tree calls: the `galley_node_*` / `galley_tree_*` /

@@ -200,6 +200,13 @@ Inside a hook the core checks every node's generation on that door too: a node
 of an earlier parse raises `StaleTreeError` on a read, a link, an edit or a
 walk step, never `None`.
 
+A hook that raises aborts the parse. `parse` raises `GalleyError` with code
+`ERROR_HOOK_FAILED`, the hook's own exception as `__cause__`, and a `Kind.HOOK`
+diagnostic of where the parse stopped; the parse publishes nothing, so
+`root_node()` is `None` and the nodes of that parse raise `StaleTreeError`. The
+session parses again afterwards. A hook that wants the parse to go on reports a
+semantic error instead (see below).
+
 Mechanically, `python -m galley` links the generator's host shim
 (`host_procedures.zig`, written by `--emit-host-procedures`), which forwards
 every hook to the parsing session's own dispatch. The generated init registers

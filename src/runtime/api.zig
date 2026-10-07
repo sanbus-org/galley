@@ -50,6 +50,9 @@ pub const ParseError = error{
     StackOverflow,
     ASTCapacityExceeded,
     UnterminatedRawString,
+    /// A host hook reported failure: the parse stops where the hook ran and
+    /// publishes nothing.
+    HookFailed,
 };
 
 /// Named contention set for session access. Parse failures arrive through
@@ -134,10 +137,21 @@ pub const SemanticDiagnostic = struct {
     text_length: usize = 0,
 };
 
+/// A hook that failed: where the parse stopped, the variable being parsed
+/// and the hook's name. Recorded by the core when a host's dispatch reports
+/// the hook's failure; the host keeps the cause itself.
+pub const HookDiagnostic = struct {
+    line: u32,
+    column: u32,
+    variable: []const u8,
+    hook: []const u8,
+};
+
 pub const ParseDiagnostic = union(enum) {
     syntax: SyntaxDiagnostic,
     semantic: SemanticDiagnostic,
     indentation: IndentationDiagnostic,
+    hook: HookDiagnostic,
 };
 
 pub const DiagnosticStyle = enum {
@@ -524,6 +538,28 @@ pub fn formatParseDiagnostic(writer: *std.Io.Writer, diagnostic: ParseDiagnostic
                     indentation.column,
                     indentation.spaces,
                     indentation.indentation_width,
+                },
+            ),
+        },
+        .hook => |hook| switch (style) {
+            .plain => try writer.print(
+                \\HookError at {d}:{d}:
+                \\Hook {s} failed while parsing {f}.
+                \\
+            , .{
+                hook.line,
+                hook.column,
+                hook.hook,
+                string_utilities.fmtString(hook.variable),
+            }),
+            .ansi => try writer.print(
+                "\x1b[35mHookError at {d}:{d}:\n" ++
+                    "\x1b[37mHook \x1b[34m{s}\x1b[37m failed while parsing \x1b[34m{f}\x1b[0m.\n",
+                .{
+                    hook.line,
+                    hook.column,
+                    hook.hook,
+                    string_utilities.fmtString(hook.variable),
                 },
             ),
         },
@@ -1270,7 +1306,7 @@ test "syntax error stack depth is configurable per session" {
         const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
         const syntax = switch (diagnostic) {
             .syntax => |value| value,
-            .semantic, .indentation => return error.ExpectedSyntaxDiagnostic,
+            .semantic, .indentation, .hook => return error.ExpectedSyntaxDiagnostic,
         };
         try std.testing.expectEqual(depth, syntax.context.while_parsing.len);
     }

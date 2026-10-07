@@ -286,8 +286,12 @@ export function registryFor(port: FfiPort): ProcedureRegistry {
 
 /** What the router hands a hook to: the session that owns the handle. */
 export interface HookOwner {
-  /** Runs hook `index` of the owner's running parse, on the parsing thread. */
-  dispatchHook(index: number, hook: HookTicket): void;
+  /**
+   * Runs hook `index` of the owner's running parse, on the parsing thread.
+   * Answers zero, or nonzero when the hook failed: the owner keeps what it
+   * threw, and nothing escapes into the core.
+   */
+  dispatchHook(index: number, hook: HookTicket): number;
 }
 
 /**
@@ -309,7 +313,7 @@ export class HookRouter {
     this.names = port.hookNames();
     this.names.forEach((name, index) => this.#indexes.set(name, index));
     port.hookDispatch = (hookHandle, hookIndex, hook) => {
-      this.#owners.get(hookHandle)?.dispatchHook(hookIndex, hook);
+      return this.#owners.get(hookHandle)?.dispatchHook(hookIndex, hook) ?? 1;
     };
   }
 

@@ -92,12 +92,17 @@ pub const galley_error_stale_tree: i64 = -14;
 /// A `galley_procedure_*` call made with the ticket of a hook that has
 /// returned: the arguments are valid only while their hook runs.
 pub const galley_error_stale_hook: i64 = -15;
+/// A hook reported failure through its dispatch's return value: the parse
+/// stopped where the hook ran and published nothing. The diagnostic of the
+/// failed parse is of kind `galley_diagnostic_kind_hook`.
+pub const galley_error_hook_failed: i64 = -16;
 
 /// Diagnostic kinds returned by `galley_diagnostic_kind`.
 pub const galley_diagnostic_kind_none: i64 = 0;
 pub const galley_diagnostic_kind_syntax: i64 = 1;
 pub const galley_diagnostic_kind_indentation: i64 = 2;
 pub const galley_diagnostic_kind_semantic: i64 = 3;
+pub const galley_diagnostic_kind_hook: i64 = 4;
 
 /// Recovery target kinds returned by `galley_diagnostic_recovery_kind`.
 pub const galley_recovery_target_none: i64 = 0;
@@ -802,7 +807,7 @@ fn treeSnapshotCore(
 fn currentSyntaxDiagnostic(door: *const Door) ?root.SyntaxDiagnostic {
     return switch (door.runtime_context.lastDiagnostic() orelse return null) {
         .syntax => |syntax| syntax,
-        .semantic, .indentation => null,
+        .semantic, .indentation, .hook => null,
     };
 }
 
@@ -922,9 +927,15 @@ fn diagnosticMessageCore(
 ) error{OutOfMemory}![:0]u8 {
     var transient: ?[]const u8 = null;
     defer if (transient) |rendered| allocator.free(rendered);
-    // Prefer the message the grammar's error-message hooks rendered during
-    // the parse; fall back to the built-in generic renderer.
-    const source = door.runtime_context.last_rendered_message orelse blk: {
+    // A syntax diagnostic prefers the message the grammar's error-message
+    // hooks rendered during the parse; every other kind, and a syntax
+    // diagnostic without one, uses the built-in renderer, so a message always
+    // belongs to its own diagnostic.
+    const hook_rendered = switch (diagnostic) {
+        .syntax => door.runtime_context.last_rendered_message,
+        .semantic, .indentation, .hook => null,
+    };
+    const source = hook_rendered orelse blk: {
         const rendered = root.renderParseDiagnostic(allocator, diagnostic, .plain) catch return error.OutOfMemory;
         transient = rendered;
         break :blk rendered;
@@ -956,7 +967,7 @@ fn recordedDiagnostic(door: *const Door, diag_index: u64) ?root.ParseDiagnostic 
 fn recordedSyntaxDiagnostic(door: *const Door, diag_index: u64) ?root.SyntaxDiagnostic {
     return switch (recordedDiagnostic(door, diag_index) orelse return null) {
         .syntax => |syntax| syntax,
-        .semantic, .indentation => null,
+        .semantic, .indentation, .hook => null,
     };
 }
 
@@ -1124,6 +1135,7 @@ fn statusForError(err: anyerror) i64 {
         error.StaleTree => galley_error_stale_tree,
         error.NullArgument => galley_error_null_argument,
         error.StaleHook => galley_error_stale_hook,
+        error.HookFailed => galley_error_hook_failed,
         // A live hook's arguments live on the dispatching thread's stack: any
         // other thread is a concurrent use of a session mid-parse.
         error.OtherThread => galley_error_session_in_use,
@@ -1583,6 +1595,10 @@ fn writeDiagnosticPosition(
             out_line.?.* = indentation.line;
             out_column.?.* = indentation.column;
         },
+        .hook => |hook| {
+            out_line.?.* = hook.line;
+            out_column.?.* = hook.column;
+        },
     }
     return galley_ok;
 }
@@ -1641,7 +1657,7 @@ fn writeUnexpectedToken(diagnostic: ?root.ParseDiagnostic, out_data: ?*[*]const 
             out_len.?.* = syntax.unexpected_token.len;
             return galley_ok;
         },
-        .semantic, .indentation => return galley_error_no_diagnostic,
+        .semantic, .indentation, .hook => return galley_error_no_diagnostic,
     }
 }
 
@@ -1712,6 +1728,7 @@ export fn galley_status_string(status: i64) ?[*:0]const u8 {
         galley_error_session_in_use => "session in use",
         galley_error_stale_tree => "stale tree",
         galley_error_stale_hook => "stale hook",
+        galley_error_hook_failed => "hook failed",
         else => null,
     };
 }
@@ -1721,7 +1738,7 @@ export fn galley_status_string(status: i64) ?[*:0]const u8 {
 fn countExpectedTokens(diagnostic: ?root.ParseDiagnostic) i64 {
     switch (diagnostic orelse return galley_error_no_diagnostic) {
         .syntax => |syntax| return @intCast(syntax.expected_tokens.len),
-        .semantic, .indentation => return galley_error_no_diagnostic,
+        .semantic, .indentation, .hook => return galley_error_no_diagnostic,
     }
 }
 
@@ -1814,7 +1831,7 @@ fn writeExpectedToken(
             out_len.?.* = token.len;
             return galley_ok;
         },
-        .semantic, .indentation => return galley_error_no_diagnostic,
+        .semantic, .indentation, .hook => return galley_error_no_diagnostic,
     }
 }
 
@@ -1828,7 +1845,7 @@ fn countContextNames(diagnostic: ?root.ParseDiagnostic) i64 {
             else => return 0,
         },
         .semantic => return 1,
-        .indentation => return galley_error_no_diagnostic,
+        .indentation, .hook => return galley_error_no_diagnostic,
     }
 }
 
@@ -1929,7 +1946,7 @@ fn writeContextName(
             out_len.?.* = semantic.variable.len;
             return galley_ok;
         },
-        .indentation => return galley_error_no_diagnostic,
+        .indentation, .hook => return galley_error_no_diagnostic,
     }
 }
 
@@ -2272,6 +2289,7 @@ fn diagnosticKindValue(diagnostic: ?root.ParseDiagnostic) i64 {
         .syntax => return galley_diagnostic_kind_syntax,
         .semantic => return galley_diagnostic_kind_semantic,
         .indentation => return galley_diagnostic_kind_indentation,
+        .hook => return galley_diagnostic_kind_hook,
     }
 }
 
@@ -2344,7 +2362,7 @@ fn writeSemanticFields(
             if (out_message_len) |len| len.* = semantic.message.len;
             return galley_ok;
         },
-        .syntax, .indentation => return galley_error_no_diagnostic,
+        .syntax, .indentation, .hook => return galley_error_no_diagnostic,
     }
 }
 
@@ -2408,7 +2426,7 @@ fn writeIndentationFields(
             out_indentation_width.?.* = indentation.indentation_width;
             return galley_ok;
         },
-        .syntax, .semantic => return galley_error_no_diagnostic,
+        .syntax, .semantic, .hook => return galley_error_no_diagnostic,
     }
 }
 

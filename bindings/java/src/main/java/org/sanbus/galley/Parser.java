@@ -52,7 +52,7 @@ public final class Parser {
         }
         try {
             var handle = MethodHandles.lookup().findVirtual(Parser.class, "dispatch",
-                    java.lang.invoke.MethodType.methodType(void.class, MemorySegment.class, int.class, long.class));
+                    java.lang.invoke.MethodType.methodType(int.class, MemorySegment.class, int.class, long.class));
             this.dispatchStub = lib.createDispatchStub(handle.bindTo(this), Arena.global());
         } catch (NoSuchMethodException | IllegalAccessException e) {
             throw new RuntimeException(e);
@@ -180,13 +180,11 @@ public final class Parser {
     GalleyLibrary library() { return lib; }
 
     // Called by this parser's upcall stub on the parsing thread: routes the
-    // hook to the session whose handle the library passed.
-    private void dispatch(MemorySegment handle, int index, long hook) {
-        try {
-            Session session = sessions.get(handle.address());
-            if (session != null) session.dispatchHook(index, hook);
-        } catch (Throwable t) {
-            t.printStackTrace(System.err);
-        }
+    // hook to the session whose handle the library passed. Returns zero to
+    // let the parse go on and nonzero when the hook failed; nothing escapes
+    // into the core, because the session keeps what its hook threw.
+    private int dispatch(MemorySegment handle, int index, long hook) {
+        Session session = sessions.get(handle.address());
+        return session == null ? 1 : session.dispatchHook(index, hook);
     }
 }

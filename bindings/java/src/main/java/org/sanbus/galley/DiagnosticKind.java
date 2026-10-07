@@ -11,6 +11,8 @@ public enum DiagnosticKind {
     SYNTAX(1),
     INDENTATION(2),
     SEMANTIC(3),
+    /** A hook raised: the parse stopped at that hook. */
+    HOOK(4),
     /** Fallback for codes this binding does not know (newer native builds). */
     UNKNOWN(-1);
 

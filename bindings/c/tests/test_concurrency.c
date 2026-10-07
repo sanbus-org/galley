@@ -136,7 +136,7 @@ typedef struct Worker {
     long long parse_status;
 } Worker;
 
-static void dispatch(void *handle, unsigned int index, unsigned long long hook) {
+static int dispatch(void *handle, unsigned int index, unsigned long long hook) {
     Worker *worker = (Worker *)handle;
     (void)hook;
     if (!pthread_equal(pthread_self(), worker->thread)) ++worker->wrong_thread;
@@ -148,6 +148,7 @@ static void dispatch(void *handle, unsigned int index, unsigned long long hook) 
         worker->set_hooks_during_parse =
             worker->library->set_hooks(worker->session, dispatch, worker, worker->enabled, worker->library->count);
     }
+    return 0;
 }
 
 static void *parse_on_thread(void *argument) {
