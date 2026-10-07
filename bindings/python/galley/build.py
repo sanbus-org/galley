@@ -70,7 +70,7 @@ LIBRARY_NAME = "galley-python"
 # Inner extension name: the language directory is the package, so the
 # compiled module inside it carries this constant baked PyInit entry and
 # is imported relatively by the generated __init__.py. Single source in
-# galley._constants, shared with the loader's sys.modules key.
+# galley._constants, shared with the loader's module name.
 
 # Marker heading every generated __init__.py; the clobber guard refuses
 # to overwrite a file without it. The legacy marker covers directories
@@ -158,10 +158,13 @@ def extension_file_name() -> str:
 def emit_package_init(language_dir: Path) -> None:
     """Write the generated package init for the language directory.
 
-    The init re-exports the inner extension's surface, then imports the
-    sibling ``procedures`` submodule — stubbed here when the grammar
-    has none — and wires its hooks into the registry. This is the only
-    automatic wiring: bare ``galley.load()`` never executes it.
+    The init re-exports the inner extension's surface (the extension is
+    the package's one parser, with its own defaults and Session class),
+    then imports the sibling ``procedures`` submodule — stubbed here
+    when the grammar has none — and wires its hooks as this package's
+    defaults. This is the only automatic wiring: bare ``galley.load()``
+    never executes it, and every load hands out its own parser with no
+    hooks.
     """
     init_path = language_dir / "__init__.py"
     assert_generated_or_absent(init_path)
@@ -186,10 +189,6 @@ from . import {IMPL_MODULE_NAME} as _impl  # noqa: F401
 # The submodule import above also binds the bare submodule name on the
 # package; drop it so the namespace is exactly the public surface.
 del {IMPL_MODULE_NAME}
-
-# Type reprs show the inner extension name (galley_impl.Session); static
-# extension types are immutable, so no per-package rename. Behavior is
-# unaffected: same objects, same registry.
 
 # Bundled hooks: the sibling procedures submodule, imported by name like
 # any module — the build stubs an empty one when the grammar has none,

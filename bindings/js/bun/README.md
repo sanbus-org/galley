@@ -5,4 +5,4 @@ dependencies beyond the built parser library.
 
 See `docs/bindings_javascript.md` and `examples/js` for the consumer flow.
 
-One shared library embeds one parser; sessions are not thread-safe.
+A loaded library serves every parser of that artifact; parsers are never shared. Sessions are not thread-safe.

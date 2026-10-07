@@ -34,9 +34,7 @@ class ConcurrencyTest {
     private static final int BARRIER_TIMEOUT_SECONDS = 20;
 
     private static Parser load(String fixtureName) throws MissingArtifactException {
-        Parser parser = Galley.load(FixtureLibrary.path(fixtureName));
-        parser.clearProcedures();
-        return parser;
+        return Galley.load(FixtureLibrary.path(fixtureName));
     }
 
     /** One session's configuration and what its hooks saw. */

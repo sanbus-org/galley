@@ -49,12 +49,13 @@ const surface = [
 ];
 // The entry mirrors the parser's interface: derive the pin from the
 // Parser prototype chain (universal additions over core), excluding
-// the constructor and core's internal `port` accessor.
+// the constructor and core's internal `port` accessor and
+// `openSessionWith` session factory.
 const parserInterface = (() => {
   const names = new Set();
   for (let proto = Parser.prototype; proto !== Object.prototype; proto = Object.getPrototypeOf(proto)) {
     for (const name of Object.getOwnPropertyNames(proto)) {
-      if (name === "constructor" || name === "port") continue;
+      if (name === "constructor" || name === "port" || name === "openSessionWith") continue;
       names.add(name);
     }
   }

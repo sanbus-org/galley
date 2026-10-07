@@ -3,9 +3,8 @@
 ``python -m galley <language-dir>`` builds a language package
 whose inner extension (``galley_impl``) links the grammar statically.
 This loader binds that file directly: ``.so`` in, parser out. No scan,
-no hook wiring, no merging. Prefer the returned parser over importing
-``galley_impl``: the ``sys.modules`` key aliases the most recent load
-while every loaded parser stays alive in the cache.
+no hook wiring, no merging. The returned parser is the only handle:
+a load registers nothing in ``sys.modules``.
 
 ```python
 import galley
@@ -17,19 +16,23 @@ parser.install_procedure("reduction_Pair", lambda args: print("Pair"))
 Bundled ``procedures.py`` hooks wire only through direct package
 import (``import my_language``), never through this loader. A missing
 file raises ``MissingArtifactError`` naming the path and the build
-command; anything else surfaces the underlying error. Loaded parsers
-stay cached by real path for the process lifetime under the single
-``sys.modules`` key: last load wins the key, the cache holds every
-parser. A failed load restores the previous entry instead of evicting
-it. Loads are not thread-safe: load every artifact once at
-startup.
+command; anything else surfaces the underlying error.
+
+Every load hands out a new parser whose default hooks are its own
+(none after a bare load), so loading one artifact twice never shares
+hook state, and a dropped parser, its hooks and its sessions are freed.
+The native image itself is shared by every parser of one file: it
+cannot unload and holds no per-parser state, so the failure types
+(``GalleyError``, ``StaleTreeError``) are the same objects across
+those parsers. A failed load hands out no parser and leaves parsers
+already handed out untouched; retrying after the cause is fixed is a
+fresh attempt. Loads are safe from several threads at once.
 """
 
 from __future__ import annotations
 
 import importlib.util
 import os
-import sys
 from pathlib import Path
 from types import ModuleType
 
@@ -44,35 +47,33 @@ class MissingArtifactError(FileNotFoundError):
     code = "galley:missing-artifact"
 
 
-_artifact_cache: dict[str, ModuleType] = {}
-
-
 def _load_extension(path: Path) -> ModuleType:
-    """Exec the extension file at ``path`` under the constant stem."""
+    """Create and exec a fresh module from the extension file at ``path``.
+
+    The extension uses multi-phase initialisation, so the import system
+    builds a new module object for every call and keeps no copy of its
+    namespace: dropping the parser frees it. The module is never
+    registered in ``sys.modules``, so a failed load leaves nothing
+    behind. The failure types and the hook index exist once per loaded
+    image; the extension gives each module its own defaults and Session.
+    """
     spec = importlib.util.spec_from_file_location(_IMPL_MODULE_NAME, path)
     if spec is None or spec.loader is None:
         raise ImportError(f"not a loadable grammar extension: {path}")
     module = importlib.util.module_from_spec(spec)
-    previous = sys.modules.get(_IMPL_MODULE_NAME)
-    sys.modules[_IMPL_MODULE_NAME] = module
-    try:
-        spec.loader.exec_module(module)
-    except BaseException:
-        if previous is None:
-            sys.modules.pop(_IMPL_MODULE_NAME, None)
-        else:
-            sys.modules[_IMPL_MODULE_NAME] = previous
-        raise
+    spec.loader.exec_module(module)
     return module
 
 
 def load(path: str | Path) -> ModuleType:
     """Load the bare extension file at ``path`` and return its parser.
 
-    No ``procedures.py`` scan: hook wiring beyond the build goes
-    through the parser's ``install_procedure`` / ``install_procedures``
-    (the artifact's defaults, copied by sessions opened afterwards) or a
-    session's own methods of the same names.
+    Every call hands out a new parser: its default hooks are its own
+    and a bare load installs none, so loading one artifact twice never
+    shares hook state. No ``procedures.py`` scan: hook wiring beyond
+    the build goes through the parser's ``install_procedure`` /
+    ``install_procedures`` (the artifact's defaults, copied by sessions
+    opened afterwards) or a session's own methods of the same names.
 
     Paths with an interior NUL byte are rejected loudly instead of
     truncated: like ``Session.parse_file``, this entry never lets a
@@ -89,11 +90,4 @@ def load(path: str | Path) -> ModuleType:
             f"no compiled grammar at {candidate}; "
             "build it with `python -m galley <language-dir>`"
         )
-    key = str(candidate.resolve())
-    if key in _artifact_cache:
-        parser = _artifact_cache[key]
-        sys.modules[_IMPL_MODULE_NAME] = parser
-        return parser
-    parser = _load_extension(candidate)
-    _artifact_cache[key] = parser
-    return parser
+    return _load_extension(candidate)

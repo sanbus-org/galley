@@ -268,22 +268,6 @@ export class ProcedureRegistry {
   }
 }
 
-let sharedRegistries = new WeakMap<object, ProcedureRegistry>();
-
-/**
- * The one default hook table for a port: every parser handle built on the
- * port shares it, so separately constructed objects can never diverge onto
- * two default tables for one artifact. Sessions copy it when they open.
- */
-export function registryFor(port: FfiPort): ProcedureRegistry {
-  let registry = sharedRegistries.get(port);
-  if (registry === undefined) {
-    registry = new ProcedureRegistry();
-    sharedRegistries.set(port, registry);
-  }
-  return registry;
-}
-
 /** What the router hands a hook to: the session that owns the handle. */
 export interface HookOwner {
   /**
@@ -367,11 +351,6 @@ export function routerFor(port: FfiPort): HookRouter {
     holder[HOOK_ROUTER] = router;
   }
   return router;
-}
-
-/** Test-only: drop shared tables so suites isolate hook state. */
-export function __resetSharedRegistries(): void {
-  sharedRegistries = new WeakMap<object, ProcedureRegistry>();
 }
 
 /**

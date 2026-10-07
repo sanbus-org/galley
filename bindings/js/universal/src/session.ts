@@ -3,19 +3,23 @@
  *
  * Parsers come from `openLanguageDirectory` (a directory holding the
  * standard-named artifact, wired with the entry's bundled hooks) or from
- * the `galley` object (`load`, `loadBytes`, `loadUrl`). The same source
- * always yields the identical parser, so hook tables are stable per
- * artifact. Sessions open from the parser through `openSession` and
- * share its table. A factory either returns a usable parser or throws:
- * there is no unready state. Every factory is synchronous except
- * `loadUrl`, whose only async step is the fetch. `backend` reports
- * which leg serves the parser.
+ * the `galley` object (`load`, `loadBytes`, `loadUrl`). Every factory
+ * call hands out a new parser owning its defaults, so loading one
+ * artifact twice never shares hook state — the loaded native module
+ * beneath is shared (adapters cache ports and libraries) because it
+ * cannot unload and holds no per-parser state. A package import
+ * evaluates its entry once, so a package keeps one parser per process.
+ * Sessions open from the parser through `openSession` and start with a
+ * copy of its defaults. A factory either returns a usable parser or
+ * throws: there is no unready state. Every factory is synchronous
+ * except `loadUrl`, whose only async step is the fetch. `backend`
+ * reports which leg serves the parser.
  */
 
 import { Parser as CoreParser, Session as CoreSession } from "@sanbus/galley-core";
 import type { FfiPort, SessionOptions } from "@sanbus/galley-core";
-import { checkArtifactPath, checkLanguagePath, checkModuleBytes, checkModuleUrl, fetchModuleBytes, hashModuleBytes } from "@sanbus/galley-core/internal";
-import { rejectSessionOptions, __resetSharedRegistries } from "@sanbus/galley-core/internal";
+import { checkArtifactPath, checkLanguagePath, checkModuleBytes, checkModuleUrl, fetchModuleBytes, ProcedureRegistry } from "@sanbus/galley-core/internal";
+import { rejectSessionOptions } from "@sanbus/galley-core/internal";
 import {
   detectRuntime,
   resolveSync,
@@ -45,47 +49,14 @@ function requireLanguagePath(languagePath: string): string {
  */
 const NO_LOAD_OPTIONS: ReadonlySet<string> = new Set([]);
 
-let parserByPort = new WeakMap<FfiPort, Parser>();
-// Byte- and URL-fed parsers pin by source identity for the process
-// lifetime, matching the adapter caches beneath (ports, libraries,
-// compiled modules are likewise never evicted).
-const parserBySource = new Map<string, Parser>();
-
-/** Test-only: drop cached parsers so suites isolate hook tables. */
-export function __resetParserCache(): void {
-  parserByPort = new WeakMap<FfiPort, Parser>();
-  parserBySource.clear();
-  __resetSharedRegistries();
-}
-
-/**
- * Shared parser for a resolved port: adapters cache ports per
- * canonical artifact path, so port identity unifies every spelling of
- * one file (including symlinks) into one default hook table. Separate legs
- * resolve separate ports and therefore separate parsers.
- */
-function parserForPort(port: FfiPort, backend: Backend, bundledProcedures: unknown): Parser {
-  const hit = parserByPort.get(port);
-  if (hit !== undefined) {
-    // A directory open over an already-resolved parser (a bare load can
-    // precede it): wire the entry's namespace, filling only names
-    // never installed, so explicit installs keep winning. Bare loads
-    // pass null and wire nothing.
-    hit.installBundledProcedures(bundledProcedures);
-    return hit;
-  }
-  const made = Parser.create(port, backend, bundledProcedures);
-  parserByPort.set(port, made);
-  return made;
-}
-
 /**
  * Opens the parser at `languagePath`: resolves the backend and returns
- * the shared parser, wiring `bundledProcedures` (the generated entry's
+ * a fresh parser, wiring `bundledProcedures` (the generated entry's
  * statically imported hook namespace) into its defaults. Internal:
  * backs the generated package entry (its import-time wiring and
  * `openSession`); user code opens packages or files, never
- * directories directly.
+ * directories directly. The entry evaluates once per package, so the
+ * package holds one parser per process.
  */
 export function openLanguageDirectory(
   languagePath: string,
@@ -96,12 +67,11 @@ export function openLanguageDirectory(
   rejectSessionOptions(options as Record<string, unknown>, "openLanguageDirectory", NO_LOAD_OPTIONS);
   const resolved = resolveSync({ languagePath: directory }, detectRuntime());
   if (resolved.fallback) noteWasmFallback();
-  return parserForPort(resolved.port, resolved.backend, bundledProcedures);
+  return Parser.create(resolved.port, resolved.backend, bundledProcedures);
 }
 
 export class Parser extends CoreParser {
   readonly #backend: Backend;
-
   /** Which leg serves this parser (`"native"` or `"wasm"`). */
   get backend(): Backend {
     return this.#backend;
@@ -118,7 +88,9 @@ export class Parser extends CoreParser {
   }
 
   override openSession(options: SessionOptions = {}): Session {
-    return Session.create(this.port, options, this.backend);
+    return this.openSessionWith((defaults) =>
+      Session.create(this.port, options, this.backend, defaults),
+    );
   }
 }
 
@@ -130,20 +102,31 @@ export class Session extends CoreSession {
     return this.#backend;
   }
 
-  private constructor(port: FfiPort, options: SessionOptions, backend: Backend) {
-    super(port, options);
+  private constructor(
+    port: FfiPort,
+    options: SessionOptions,
+    backend: Backend,
+    defaults: ProcedureRegistry,
+  ) {
+    super(port, options, defaults);
     this.#backend = backend;
   }
 
   /** Backs `Parser.openSession`; user code never calls it. */
-  static create(port: FfiPort, options: SessionOptions, backend: Backend): Session {
-    return new Session(port, options, backend);
+  static create(
+    port: FfiPort,
+    options: SessionOptions,
+    backend: Backend,
+    defaults: ProcedureRegistry,
+  ): Session {
+    return new Session(port, options, backend, defaults);
   }
 }
 
 /**
  * Bare artifact loading: the only way to open an explicit file, raw
- * bytes, or a fetched module. Wires nothing; hooks arrive explicitly only.
+ * bytes, or a fetched module. Wires nothing; hooks arrive explicitly
+ * only. Each call returns a new parser with its own (empty) defaults.
  */
 export const galley = {
   load(filePath: string, options: UniversalFileOptions = {}): Parser {
@@ -151,32 +134,22 @@ export const galley = {
     rejectSessionOptions(options as Record<string, unknown>, "galley.load", NO_LOAD_OPTIONS);
     const resolved = resolveSync({ filePath: file }, detectRuntime());
     // Bare file loads wire nothing by contract; explicit installs only.
-    return parserForPort(resolved.port, resolved.backend, null);
+    return Parser.create(resolved.port, resolved.backend, null);
   },
 
   loadBytes(bytes: Uint8Array, options: UniversalWasmOptions = {}): Parser {
     const source = checkModuleBytes(bytes, "galley: galley.loadBytes");
     rejectSessionOptions(options as Record<string, unknown>, "galley.loadBytes", NO_LOAD_OPTIONS);
-    const key = `bytes:${hashModuleBytes(source)}`;
-    const hit = parserBySource.get(key);
-    if (hit !== undefined) return hit;
     const resolved = resolveSync({ bytes: source }, detectRuntime());
-    const made = Parser.create(resolved.port, resolved.backend, null);
-    parserBySource.set(key, made);
-    return made;
+    return Parser.create(resolved.port, resolved.backend, null);
   },
 
   async loadUrl(url: string | URL, options: UniversalWasmOptions = {}): Promise<Parser> {
     const source = checkModuleUrl(url, "galley: galley.loadUrl");
     rejectSessionOptions(options as Record<string, unknown>, "galley.loadUrl", NO_LOAD_OPTIONS);
-    const key = `url:${typeof source === "string" ? source : source.href}`;
-    const hit = parserBySource.get(key);
-    if (hit !== undefined) return hit;
     // The only async factory: the fetch. Compilation after it is synchronous.
     const bytes = await fetchModuleBytes(source, "galley: galley.loadUrl");
     const resolved = resolveSync({ bytes }, detectRuntime());
-    const made = Parser.create(resolved.port, resolved.backend, null);
-    parserBySource.set(key, made);
-    return made;
+    return Parser.create(resolved.port, resolved.backend, null);
   },
 };

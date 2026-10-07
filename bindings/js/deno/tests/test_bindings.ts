@@ -58,7 +58,7 @@ const {
   GalleyError,
 } = await import("../src/index.ts");
 
-const { galley, openLanguageDirectory, __resetParserCache } = await import("../../universal/src/index.ts");
+const { galley, openLanguageDirectory } = await import("../../universal/src/index.ts");
 
 // The fixture's hook module, passed the way the generated entry passes it.
 const bundledProcedures = await import(
@@ -78,7 +78,6 @@ let passed = 0;
 let failed = 0;
 
 async function test(name, fn) {
-  __resetParserCache();
   try {
     await fn();
     console.log(`✓ ${name}`);
@@ -1352,6 +1351,86 @@ await test("parser installs reach only later sessions", async () => {
   }
 });
 
+await test("bare load after package import has no bundled hooks", async () => {
+  // The generated entry's import-time step: one directory open over the
+  // fixture's procedures namespace.
+  const packaged = await newParser();
+  assert.equal(typeof packaged.procedureHook("hook_print"), "function");
+  const bare = await galley.load(path.join(languageDir, exampleLib));
+  // The bare load shares the loaded library but owns an empty table.
+  assert.notEqual(bare, packaged);
+  assert.deepEqual(bare.listProcedures(), {});
+  const explicit = () => {};
+  bare.installProcedure("reduction_Pair", explicit);
+  assert.equal(bare.procedureHook("reduction_Pair"), explicit);
+  assert.equal(typeof packaged.procedureHook("reduction_Pair"), "function");
+  assert.notEqual(packaged.procedureHook("reduction_Pair"), explicit);
+});
+
+await test("two loads of one artifact have independent defaults", async () => {
+  const artifact = path.join(languageDir, exampleLib);
+  const first = await galley.load(artifact);
+  const second = await galley.load(artifact);
+  assert.notEqual(second, first);
+  let firstCalls = 0;
+  first.installProcedure("reduction_Pair", () => { firstCalls++; });
+  // Installed on one: absent on the other.
+  assert.equal(second.procedureHook("reduction_Pair"), undefined);
+  const firstSession = first.openSession();
+  const secondSession = second.openSession();
+  try {
+    assert.equal(firstSession.parse("alpha:12,beta:3"), 15);
+    assert.equal(firstCalls, 2);
+    assert.equal(secondSession.parse("alpha:12,beta:3"), 15);
+    assert.equal(firstCalls, 2);
+  } finally {
+    firstSession.close();
+    secondSession.close();
+  }
+});
+
+await test("failed load leaves existing parsers untouched and retry works", async () => {
+  const artifact = path.join(languageDir, exampleLib);
+  const parser = await galley.load(artifact);
+  let calls = 0;
+  parser.installProcedure("reduction_Pair", () => { calls++; });
+  const corrupt = path.join(languageDir, `corrupt${path.extname(exampleLib)}`);
+  const good = parser.openSession();
+  try {
+    assert.equal(good.parse("alpha:12,beta:3"), 15);
+    assert.equal(calls, 2);
+    // A corrupt artifact fails loudly...
+    fs.writeFileSync(corrupt, "galley: not a shared library\n");
+    await assert.rejects(async () => await galley.load(corrupt));
+    // ...the existing parser keeps its defaults and its sessions...
+    const again = parser.openSession();
+    try {
+      assert.equal(again.parse("alpha:12,beta:3"), 15);
+      assert.equal(calls, 4);
+    } finally {
+      again.close();
+    }
+  } finally {
+    good.close();
+  }
+  // ...and once the same path holds the real artifact, retrying it hands
+  // out a fresh, empty parser that parses.
+  try {
+    fs.copyFileSync(artifact, corrupt);
+    const retry = await galley.load(corrupt);
+    assert.notEqual(retry, parser);
+    assert.deepEqual(retry.listProcedures(), {});
+    const retrySession = retry.openSession();
+    try {
+      assert.equal(retrySession.parse("alpha:12,beta:3"), 15);
+    } finally {
+      retrySession.close();
+    }
+  } finally {
+    fs.rmSync(corrupt, { force: true });
+  }
+});
+
 await test("changing hooks during a parse is refused", async () => {
   const parser = await newParser();
   parser.clearProcedures();
@@ -1414,12 +1493,15 @@ await test("nested parse across symlinked paths keeps hooks", async () => {
   fs.rmSync(linkDir, { force: true });
   fs.symlinkSync(languageDir, linkDir, "junction");
   try {
-    // Same file through two spellings: one shared port and one shared
-    // parser, so the inner parse must restore the outer
-    // session's gates on unwind.
+    // Same file through two spellings: one shared port over the
+    // loaded library, two parsers. The nested parse crosses that
+    // shared port, so it must restore the outer session's gates on
+    // unwind.
     const parser = await openLanguageDirectory(languageDir);
     const alias = await openLanguageDirectory(linkDir);
-    assert.equal(alias, parser);
+    assert.notEqual(alias, parser);
+    // The second open owns its own, still-empty table.
+    assert.deepEqual(alias.listProcedures(), {});
     let outerCalls = 0;
     let nested = false;
     let b = null;

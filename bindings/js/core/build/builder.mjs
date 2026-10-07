@@ -765,10 +765,10 @@ export {
 
 const LANGUAGE_DIR = fileURLToPath(new URL(".", import.meta.url));
 
-// Wired at import: this package's shared parser — artifact load plus
+// Wired at import: this package's own parser — artifact load plus
 // bundled-hook wiring from the statically imported procedures — before
-// the importer resumes. Sessions and explicit installs reuse it, and
-// the exports below mirror its interface.
+// the importer resumes. Sessions open from it and start with a copy of
+// its defaults; the exports below mirror its interface.
 const PARSER = openLanguageDirectory(LANGUAGE_DIR, {}, procedures);
 
 ${parserMembersJs}

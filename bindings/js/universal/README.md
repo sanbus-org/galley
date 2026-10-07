@@ -13,4 +13,4 @@ missing explains how to build an artifact.
 
 See `docs/bindings_javascript.md` for the consumer flow.
 
-One module embeds one parser; sessions are not thread-safe.
+A loaded module serves every parser of the artifact; every factory call returns a parser with its own hooks. Sessions are not thread-safe.

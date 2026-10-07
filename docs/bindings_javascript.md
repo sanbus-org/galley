@@ -11,8 +11,13 @@ dependencies beyond the built parser artifacts.
 Construct a `Session` and parse. Parsers come from the `galley`
 object — `load` (an explicit artifact file), `loadBytes` (raw wasm
 module bytes), `loadUrl` (fetched) — or from a generated package entry,
-which opens its own directory with bundled hooks. Sessions open from
-the parser through `openSession` and share its hook table. A factory
+which opens its own directory with bundled hooks. Every factory call
+hands out a new parser owning its defaults — two loads of one artifact
+are two parsers with independent hooks — while the loaded library or
+module beneath stays shared for the process (it cannot unload and holds
+no per-parser state); a package entry evaluates once, so a package
+keeps one parser per process. Sessions open from the parser through
+`openSession` and start with a copy of its defaults. A factory
 either returns a usable parser or throws — there is no unready
 state, and every factory is synchronous except `loadUrl` (the fetch
 is). A language directory with no native library falls back to the
@@ -164,11 +169,12 @@ The FFI boundary is the only overhead over the C API:
   Message texts accept strings or raw bytes, never silently re-encoded.
 - All calls are synchronous and hold no additional threads; sessions are not
   thread-safe. Use one session per thread or guard externally.
-- One artifact file loads one backend port shared by every session opened
-  from it (spellings included: symlinks resolve to the same port).
-  `close()` destroys the session only; ports stay cached for the process
-  lifetime, so opening many distinct artifacts accumulates one loaded
-  library or module instance each.
+- One artifact file loads one backend port, shared by every parser and
+  session built on that artifact (spellings included: symlinks resolve
+  to the same port). Parsers themselves are never cached: every factory
+  call returns a new one. `close()` destroys the session only; ports
+  stay cached for the process lifetime, so opening many distinct
+  artifacts accumulates one loaded library or module instance each.
 - A missing artifact reports `MissingArtifactError` with a build hint.
   An artifact that exists but cannot be read surfaces the underlying I/O
   error instead; it is never misreported as missing.
@@ -283,8 +289,8 @@ const session = kv.openSession();
 The build links the generator's host shim (`host_procedures.zig`), which
 forwards every grammar hook to the parsing session's own dispatch.
 Unregistered hooks are silent no-ops. Hooks never cross parsers: two
-parsers — even on two grammars in one process — resolve same-named
-hooks independently. Hooks installed on the parser are the artifact's
+parsers — even two loads of one artifact in one process — resolve
+same-named hooks independently. Hooks installed on the parser are the artifact's
 defaults: every session starts with a copy and owns it from then on, so a
 default installed later reaches only sessions opened later. A session has the
 same methods for its own hooks, and a change throws a `GalleyError`

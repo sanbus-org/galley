@@ -29,7 +29,7 @@
  * Sessions are not thread-safe: use one session per thread or guard it
  * externally. Parses release the GIL, so sessions on different threads
  * parse in parallel; a hook re-acquires it for the length of its call.
- * Each session owns its procedure hooks (a copy of the module's defaults
+ * Each session owns its procedure hooks (a copy of its parser's defaults
  * taken when it opens), so concurrent sessions share nothing. Node text,
  * diagnostic strings, and expected-token data remain valid until the next
  * parse on the same session; this module copies all of it before returning.
@@ -67,9 +67,6 @@ static PyObject *ErrorException = NULL;
  * addresses a generation the core does not hold live. A subclass of
  * GalleyError, so `except galley.GalleyError` still catches it. */
 static PyObject *StaleTreeException = NULL;
-/* The module's default hooks (name -> callable): each Session opened later
- * starts with a copy and owns it. */
-static PyObject *py_procedure_table = NULL;
 /* Hook name (str) -> hook index, from the library's own hook list, and the
  * number of hooks it forwards. Filled once at module init. */
 static PyObject *hook_indexes = NULL;
@@ -812,6 +809,32 @@ static PyObject *node_value(NodeObject *self,
 
 static int commit_hooks(SessionObject *self, GalleySession *session, PyObject *table);
 
+/* The defaults of the parser this session opens from. Module init gives
+ * each parser its own Session subclass carrying that parser's table under
+ * the private class attribute `_galley_defaults`, so the table comes from
+ * the type of `self`. The bare static type belongs to no parser, has no
+ * such attribute, and refuses construction: a session always opens from a
+ * parser and starts with a copy of that parser's defaults. New reference,
+ * or NULL with a TypeError set. */
+static PyObject *session_defaults(PyTypeObject *type)
+{
+    PyObject *table = PyObject_GetAttrString((PyObject *)type, "_galley_defaults");
+    if (table == NULL) {
+        if (PyErr_ExceptionMatches(PyExc_AttributeError)) {
+            PyErr_Clear();
+            PyErr_SetString(PyExc_TypeError,
+                            "Session opens from its parser: use parser.Session(...)");
+        }
+        return NULL;
+    }
+    if (!PyDict_Check(table)) {
+        Py_DECREF(table);
+        PyErr_SetString(PyExc_TypeError, "the parser's defaults must be a dict");
+        return NULL;
+    }
+    return table;
+}
+
 static int Session_init(SessionObject *self, PyObject *args, PyObject *keywords)
 {
     int max_errors = 10;
@@ -847,16 +870,24 @@ static int Session_init(SessionObject *self, PyObject *args, PyObject *keywords)
     options.ast_preallocation_ratio = ast_preallocation_ratio;
     options.ast_preallocation_cap = ast_preallocation_cap;
 
+    /* The session's own hooks start as a copy of its parser's defaults,
+     * taken now: a default installed on the parser later reaches only
+     * sessions opened later. */
+    PyObject *live_defaults = session_defaults(Py_TYPE(self));
+    if (live_defaults == NULL)
+        return -1;
+    PyObject *defaults = PyDict_Copy(live_defaults);
+    Py_DECREF(live_defaults);
+    if (defaults == NULL)
+        return -1;
     session = galley_session_create_ex(&options);
     if (session == NULL) {
         set_error_from_status(galley_error_out_of_memory);
+        Py_DECREF(defaults);
         return -1;
     }
-    /* The session's own hooks start as a copy of the module's defaults. */
-    PyObject *defaults = py_procedure_table != NULL ? PyDict_Copy(py_procedure_table)
-                                                    : PyDict_New();
-    if (defaults == NULL || commit_hooks(self, session, defaults) < 0) {
-        Py_XDECREF(defaults);
+    if (commit_hooks(self, session, defaults) < 0) {
+        Py_DECREF(defaults);
         galley_session_destroy(session);
         return -1;
     }
@@ -2500,11 +2531,31 @@ static PyObject *Session_variable_name_at(PyObject *self, PyObject *index)
 /* Procedure hooks: one table implementation, two owners               */
 /* ------------------------------------------------------------------ */
 
-/* The module owns the default table (`py_procedure_table`); every Session
- * owns its own copy. Both are plain name -> callable dicts and every
- * change to either goes through the three helpers below, so naming,
- * validation and warnings have one implementation. A session applies a
- * change to a copy and commits it, which tells the library first. */
+/* Each parser — the module object a bare load or a package import
+ * produces — owns its default table: the private `_galley_defaults` dict
+ * module init puts in that module's namespace, so two parsers over one loaded image never
+ * share hook state. Every Session owns a copy of its parser's table.
+ * Both are plain name -> callable dicts and every change to either goes
+ * through the three helpers below, so naming, validation and warnings
+ * have one implementation. A session applies a change to a copy and
+ * commits it, which tells the library first. */
+
+/* This module's default table: the `_galley_defaults` dict module init
+ * created in its namespace. New reference, or NULL with an exception set. */
+static PyObject *module_defaults(PyObject *module)
+{
+    PyObject *dict = PyModule_GetDict(module);
+    PyObject *table;
+
+    if (dict == NULL)
+        return NULL;
+    table = PyDict_GetItemString(dict, "_galley_defaults"); /* borrowed */
+    if (table == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "the parser's defaults are missing");
+        return NULL;
+    }
+    return Py_NewRef(table);
+}
 
 /* Registers one callable under `name`. -1 with an exception set when the
  * callable is not callable. */
@@ -2638,26 +2689,39 @@ static PyObject *hooks_lookup(PyObject *table, PyObject *name_obj)
     return Py_NewRef(callable);
 }
 
-/* Fills hook_indexes and hook_count from the library's hook list. */
+/* Fills hook_indexes and hook_count from the library's hook list, once
+ * per loaded image: a later module exec over the same image finds them
+ * filled. The table is built aside and published in one assignment, so
+ * two loads racing on a thread switch never see a half-filled table. */
 static int init_hook_indexes(void)
 {
-    hook_count = galley_hooks_count();
-    hook_indexes = PyDict_New();
-    if (hook_indexes == NULL)
+    if (hook_indexes != NULL)
+        return 0;
+    size_t count = galley_hooks_count();
+    PyObject *indexes = PyDict_New();
+    if (indexes == NULL)
         return -1;
-    for (size_t index = 0; index < hook_count; index++) {
+    for (size_t index = 0; index < count; index++) {
         PyObject *key = PyUnicode_FromStringAndSize(
             galley_hooks_name_data(index),
             (Py_ssize_t)galley_hooks_name_length(index));
         PyObject *value = PyLong_FromSize_t(index);
         int status = (key == NULL || value == NULL)
                          ? -1
-                         : PyDict_SetItem(hook_indexes, key, value);
+                         : PyDict_SetItem(indexes, key, value);
         Py_XDECREF(key);
         Py_XDECREF(value);
-        if (status < 0)
+        if (status < 0) {
+            Py_DECREF(indexes);
             return -1;
+        }
     }
+    if (hook_indexes != NULL) {
+        Py_DECREF(indexes);
+        return 0;
+    }
+    hook_count = count;
+    hook_indexes = indexes;
     return 0;
 }
 
@@ -2723,26 +2787,28 @@ PyDoc_STRVAR(install_procedure_doc,
 "Registers a default Python procedure hook. name is the hook name (for\n"
 "example \"reduction_Pair\" or \"hook_print\") and callable is a Python\n"
 "callable that will be invoked with a ProcedureArguments object (or with\n"
-"no args for compatibility). Each Session starts with a copy of the\n"
-"defaults, so an install here reaches sessions opened after it, never\n"
-"sessions already open: use Session.install_procedure for those.\n"
+"no args for compatibility). Each Session starts with a copy of this\n"
+"parser's defaults, so an install here reaches sessions opened after it,\n"
+"never sessions already open: use Session.install_procedure for those.\n"
 "Reinstalling replaces the previous callable.");
 
-static PyObject *module_install_procedure(PyObject *Py_UNUSED(module),
+static PyObject *module_install_procedure(PyObject *module,
                                           PyObject *args)
 {
     const char *name;
     Py_ssize_t name_len;
     PyObject *callable;
+    PyObject *table;
+    int status;
 
     if (!PyArg_ParseTuple(args, "s#O:install_procedure", &name, &name_len, &callable))
         return NULL;
-    if (py_procedure_table == NULL) {
-        py_procedure_table = PyDict_New();
-        if (py_procedure_table == NULL)
-            return NULL;
-    }
-    if (hooks_install_one(py_procedure_table, name, name_len, callable) < 0)
+    table = module_defaults(module);
+    if (table == NULL)
+        return NULL;
+    status = hooks_install_one(table, name, name_len, callable);
+    Py_DECREF(table);
+    if (status < 0)
         return NULL;
     Py_RETURN_NONE;
 }
@@ -2755,17 +2821,18 @@ PyDoc_STRVAR(install_procedures_doc,
 "`hook_<name>` callables. Returns the number of hooks installed. Reaches\n"
 "sessions opened after the call, like install_procedure.");
 
-static PyObject *module_install_procedures(PyObject *Py_UNUSED(module),
+static PyObject *module_install_procedures(PyObject *module,
                                            PyObject *source)
 {
     Py_ssize_t installed;
+    PyObject *table = module_defaults(module);
+    int status;
 
-    if (py_procedure_table == NULL) {
-        py_procedure_table = PyDict_New();
-        if (py_procedure_table == NULL)
-            return NULL;
-    }
-    if (hooks_install_many(py_procedure_table, source, &installed) < 0)
+    if (table == NULL)
+        return NULL;
+    status = hooks_install_many(table, source, &installed);
+    Py_DECREF(table);
+    if (status < 0)
         return NULL;
     return PyLong_FromSsize_t(installed);
 }
@@ -2773,28 +2840,37 @@ static PyObject *module_install_procedures(PyObject *Py_UNUSED(module),
 PyDoc_STRVAR(clear_procedures_doc,
 "clear_procedures()\n"
 "\n"
-"Clears the default procedure hooks. Sessions already open keep theirs.");
+"Clears this parser's default procedure hooks. Sessions already open\n"
+"keep theirs.");
 
-static PyObject *module_clear_procedures(PyObject *Py_UNUSED(module),
+static PyObject *module_clear_procedures(PyObject *module,
                                          PyObject *Py_UNUSED(ignored))
 {
-    if (py_procedure_table != NULL) {
-        PyDict_Clear(py_procedure_table);
-    }
+    PyObject *table = module_defaults(module);
+
+    if (table == NULL)
+        return NULL;
+    PyDict_Clear(table);
+    Py_DECREF(table);
     Py_RETURN_NONE;
 }
 
 PyDoc_STRVAR(list_procedures_doc,
 "list_procedures()\n"
 "\n"
-"Returns a dict of the default procedure hooks (name -> callable).");
+"Returns a dict of this parser's default procedure hooks (name -> callable).");
 
-static PyObject *module_list_procedures(PyObject *Py_UNUSED(module),
+static PyObject *module_list_procedures(PyObject *module,
                                         PyObject *Py_UNUSED(ignored))
 {
-    if (py_procedure_table == NULL)
-        return PyDict_New();
-    return PyDict_Copy(py_procedure_table);
+    PyObject *table = module_defaults(module);
+    PyObject *copy;
+
+    if (table == NULL)
+        return NULL;
+    copy = PyDict_Copy(table);
+    Py_DECREF(table);
+    return copy;
 }
 
 PyDoc_STRVAR(procedure_hook_doc,
@@ -2803,10 +2879,17 @@ PyDoc_STRVAR(procedure_hook_doc,
 "Returns the default callable registered for hook name, or None when no\n"
 "hook is installed under that name.");
 
-static PyObject *module_procedure_hook(PyObject *Py_UNUSED(module),
+static PyObject *module_procedure_hook(PyObject *module,
                                        PyObject *name_obj)
 {
-    return hooks_lookup(py_procedure_table, name_obj);
+    PyObject *table = module_defaults(module);
+    PyObject *callable;
+
+    if (table == NULL)
+        return NULL;
+    callable = hooks_lookup(table, name_obj);
+    Py_DECREF(table);
+    return callable;
 }
 
 /* The same five operations on a session's own hooks. */
@@ -3018,7 +3101,7 @@ PyDoc_STRVAR(session_doc,
 "default), ast_preallocation_cap=0.\n"
 "\n"
 "Sessions are not thread-safe: use one per thread or guard it externally.\n"
-"A session owns its procedure hooks, a copy of the module's defaults taken\n"
+"A session owns its procedure hooks, a copy of its parser's defaults taken\n"
 "when it opens (install_procedure and friends change only this session).\n"
 "Usable as a context manager; close() releases the underlying session and\n"
 "is safe to call more than once.");
@@ -3029,7 +3112,7 @@ static PyTypeObject Session_Type = {
     .tp_basicsize = sizeof(SessionObject),
     .tp_itemsize = 0,
     .tp_dealloc = (destructor)Session_dealloc,
-    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC | Py_TPFLAGS_BASETYPE,
     .tp_traverse = (traverseproc)Session_traverse,
     .tp_clear = (inquiry)Session_clear,
     .tp_doc = session_doc,
@@ -3806,14 +3889,6 @@ PyDoc_STRVAR(module_doc,
 "See Session for the parsing surface and the module constants for\n"
 "classification enums.");
 
-static struct PyModuleDef module_definition = {
-    PyModuleDef_HEAD_INIT,
-    .m_name = GALLEY_MODULE_STRING,
-    .m_doc = module_doc,
-    .m_size = -1,
-    .m_methods = module_methods,
-};
-
 static int add_int_enum(PyObject *module, const char *class_name,
                         const char *const *members, const long long *values,
                         size_t count)
@@ -3949,116 +4024,149 @@ static int add_binding_enums(PyObject *module)
     return 0;
 }
 
-PyMODINIT_FUNC GALLEY_INIT_FUNCTION(void)
+/* Multi-phase initialisation: every load of the file gets a fresh module
+ * object through the import system, with no per-name extension cache
+ * keeping a copy of its namespace alive. A module owns no native state
+ * (the failure types and the hook index belong to the loaded image and
+ * live as process globals), so its parser, hooks and Session subclass are
+ * collected with it. The static types and globals are shared by every
+ * module of one image, so the module cannot run in a subinterpreter of
+ * its own. */
+static int module_exec(PyObject *module)
 {
-    PyObject *module;
-
     if (PyType_Ready(&Session_Type) < 0)
-        return NULL;
+        return -1;
     if (PyType_Ready(&Node_Type) < 0)
-        return NULL;
+        return -1;
     if (PyType_Ready(&ProcedureArgs_Type) < 0)
-        return NULL;
+        return -1;
     if (PyType_Ready(&WalkStep_Type) < 0)
-        return NULL;
+        return -1;
     if (PyType_Ready(&Walker_Type) < 0)
-        return NULL;
+        return -1;
     if (PyType_Ready(&Snapshot_Type) < 0)
-        return NULL;
+        return -1;
     if (PyType_Ready(&Diagnostic_Type) < 0)
-        return NULL;
+        return -1;
 
-    module = PyModule_Create(&module_definition);
-    if (module == NULL)
-        return NULL;
-
-    ErrorException = PyErr_NewExceptionWithDoc(
-        GALLEY_MODULE_STRING ".GalleyError",
-        "Failure reported by a Galley operation. The raw status code is\n"
-        "available as the `code` attribute.",
-        NULL, NULL);
-    if (ErrorException == NULL)
-        goto fail;
-    Py_INCREF(ErrorException);
-    if (PyModule_AddObject(module, "GalleyError", ErrorException) < 0) {
-        Py_DECREF(ErrorException);
-        goto fail;
+    /* The failure types belong to the loaded library image, not to one
+     * module object: every parser over one image must raise one
+     * GalleyError. The first exec creates them (built aside and published
+     * in one assignment, so racing loads agree) and every exec binds them
+     * into its own module. */
+    if (ErrorException == NULL) {
+        PyObject *error = PyErr_NewExceptionWithDoc(
+            GALLEY_MODULE_STRING ".GalleyError",
+            "Failure reported by a Galley operation. The raw status code is\n"
+            "available as the `code` attribute.",
+            NULL, NULL);
+        if (error == NULL)
+            return -1;
+        if (ErrorException == NULL)
+            ErrorException = error;
+        else
+            Py_DECREF(error);
     }
+    if (PyModule_AddObjectRef(module, "GalleyError", ErrorException) < 0)
+        return -1;
 
     /* The one stale-tree error: a node, walk, or tree read addressed a
      * generation the core does not hold live. A subclass of GalleyError, so
      * existing `except GalleyError` sites keep working. */
-    StaleTreeException = PyErr_NewExceptionWithDoc(
-        GALLEY_MODULE_STRING ".StaleTreeError",
-        "The tree this handle belongs to is gone: the session parsed\n"
-        "again since, the last parse published nothing, or nothing was\n"
-        "ever published. Read root_node() and use the nodes it returns.",
-        ErrorException, NULL);
-    if (StaleTreeException == NULL)
-        goto fail;
-    Py_INCREF(StaleTreeException);
-    if (PyModule_AddObject(module, "StaleTreeError", StaleTreeException) < 0) {
-        Py_DECREF(StaleTreeException);
-        goto fail;
+    if (StaleTreeException == NULL) {
+        PyObject *stale = PyErr_NewExceptionWithDoc(
+            GALLEY_MODULE_STRING ".StaleTreeError",
+            "The tree this handle belongs to is gone: the session parsed\n"
+            "again since, the last parse published nothing, or nothing was\n"
+            "ever published. Read root_node() and use the nodes it returns.",
+            ErrorException, NULL);
+        if (stale == NULL)
+            return -1;
+        if (StaleTreeException == NULL)
+            StaleTreeException = stale;
+        else
+            Py_DECREF(stale);
     }
+    if (PyModule_AddObjectRef(module, "StaleTreeError", StaleTreeException) < 0)
+        return -1;
 
-    Py_INCREF(&Session_Type);
-    if (PyModule_AddObject(module, "Session", (PyObject *)&Session_Type) < 0) {
-        Py_DECREF(&Session_Type);
-        goto fail;
-    }
-    Py_INCREF(&Diagnostic_Type);
-    if (PyModule_AddObject(module, "Diagnostic",
-                           (PyObject *)&Diagnostic_Type) < 0) {
-        Py_DECREF(&Diagnostic_Type);
-        goto fail;
-    }
-    Py_INCREF(&Node_Type);
-    if (PyModule_AddObject(module, "Node", (PyObject *)&Node_Type) < 0) {
-        Py_DECREF(&Node_Type);
-        goto fail;
-    }
-    Py_INCREF(&ProcedureArgs_Type);
-    if (PyModule_AddObject(module, "ProcedureArguments",
-                           (PyObject *)&ProcedureArgs_Type) < 0) {
-        Py_DECREF(&ProcedureArgs_Type);
-        goto fail;
-    }
-    Py_INCREF(&WalkStep_Type);
-    if (PyModule_AddObject(module, "WalkStep", (PyObject *)&WalkStep_Type) < 0) {
-        Py_DECREF(&WalkStep_Type);
-        goto fail;
-    }
-    Py_INCREF(&Walker_Type);
-    if (PyModule_AddObject(module, "Walker", (PyObject *)&Walker_Type) < 0) {
-        Py_DECREF(&Walker_Type);
-        goto fail;
-    }
-    Py_INCREF(&Snapshot_Type);
-    if (PyModule_AddObject(module, "Snapshot", (PyObject *)&Snapshot_Type) < 0) {
-        Py_DECREF(&Snapshot_Type);
-        goto fail;
-    }
+    if (PyModule_AddObjectRef(module, "Diagnostic", (PyObject *)&Diagnostic_Type) < 0 ||
+        PyModule_AddObjectRef(module, "Node", (PyObject *)&Node_Type) < 0 ||
+        PyModule_AddObjectRef(module, "ProcedureArguments",
+                              (PyObject *)&ProcedureArgs_Type) < 0 ||
+        PyModule_AddObjectRef(module, "WalkStep", (PyObject *)&WalkStep_Type) < 0 ||
+        PyModule_AddObjectRef(module, "Walker", (PyObject *)&Walker_Type) < 0 ||
+        PyModule_AddObjectRef(module, "Snapshot", (PyObject *)&Snapshot_Type) < 0)
+        return -1;
 
     if (add_binding_enums(module) < 0)
-        goto fail;
+        return -1;
 
     PyObject *invalid_node = PyLong_FromUnsignedLongLong(GALLEY_INVALID_NODE);
     if (invalid_node == NULL ||
         PyModule_AddObject(module, "INVALID_NODE", invalid_node) < 0) {
         Py_XDECREF(invalid_node);
-        goto fail;
+        return -1;
     }
+
+    /* This parser's own default table, and the Session subclass that
+     * copies it when a session opens: the module is the parser, so no
+     * default table is process-wide. The subclass keeps the base's
+     * documentation. */
+    PyObject *defaults = PyDict_New();
+    if (defaults == NULL)
+        return -1;
+    if (PyModule_AddObjectRef(module, "_galley_defaults", defaults) < 0) {
+        Py_DECREF(defaults);
+        return -1;
+    }
+    PyObject *module_name = PyModule_GetNameObject(module);
+    PyObject *session_doc_text = PyObject_GetAttrString((PyObject *)&Session_Type, "__doc__");
+    PyObject *session_class = NULL;
+    if (module_name != NULL && session_doc_text != NULL) {
+        session_class = PyObject_CallFunction(
+            (PyObject *)&PyType_Type, "s(O){sOsOsO}", "Session", &Session_Type,
+            "__module__", module_name,
+            "__doc__", session_doc_text,
+            "_galley_defaults", defaults);
+    }
+    Py_XDECREF(module_name);
+    Py_XDECREF(session_doc_text);
+    Py_DECREF(defaults);
+    if (session_class == NULL)
+        return -1;
+    int status = PyModule_AddObjectRef(module, "Session", session_class);
+    Py_DECREF(session_class);
+    if (status < 0)
+        return -1;
 
     /* Python procedure hooks: learn the library's hook list. Hook
      * callables arrive through generated package init or explicit
      * registration, which own procedures.py scanning. */
-    if (init_hook_indexes() < 0)
-        goto fail;
+    return init_hook_indexes();
+}
 
-    return module;
+static PyModuleDef_Slot module_slots[] = {
+    {Py_mod_exec, module_exec},
+#ifdef Py_mod_multiple_interpreters
+    {Py_mod_multiple_interpreters, Py_MOD_MULTIPLE_INTERPRETERS_NOT_SUPPORTED},
+#endif
+#ifdef Py_mod_gil
+    {Py_mod_gil, Py_MOD_GIL_USED},
+#endif
+    {0, NULL}
+};
 
-fail:
-    Py_DECREF(module);
-    return NULL;
+static struct PyModuleDef module_definition = {
+    PyModuleDef_HEAD_INIT,
+    .m_name = GALLEY_MODULE_STRING,
+    .m_doc = module_doc,
+    .m_size = 0,
+    .m_methods = module_methods,
+    .m_slots = module_slots,
+};
+
+PyMODINIT_FUNC GALLEY_INIT_FUNCTION(void)
+{
+    return PyModuleDef_Init(&module_definition);
 }

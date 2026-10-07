@@ -32,7 +32,13 @@ grep -qF "<version>$VERSION</version>" "$work/pom.xml" || {
 }
 echo "build_jar: building galley@$VERSION"
 cd "$work"
-mvn -B -DskipTests package >/dev/null
+# The jar needs no tests, and the test sources reference generated fixture
+# classes that a fresh checkout does not have, so skip compiling them too.
+log="$work/mvn.log"
+mvn -B -Dmaven.test.skip=true package >"$log" 2>&1 || {
+	cat "$log" >&2
+	exit 1
+}
 mkdir -p "$DEST"
 cp "$work"/target/*.jar "$DEST/"
 trap - EXIT

@@ -13,8 +13,7 @@ import type { FfiPort } from "./port.ts";
 import type { ParserType, RecoveryMode } from "./constants.ts";
 import { Session } from "./session.ts";
 import type { SessionOptions } from "./session.ts";
-import { registryFor } from "./procedures.ts";
-import type { ProcedureRegistry } from "./procedures.ts";
+import { ProcedureRegistry } from "./procedures.ts";
 import type { HookFn } from "./procedures.ts";
 
 export class Parser {
@@ -24,22 +23,24 @@ export class Parser {
   /**
    * Takes a bound port: factories resolve the backend first, so a
    * constructed parser is always usable. There is no unready state.
-   * `bundledProcedures` carries the entry's statically imported hook
-   * namespace (or null for bare loads); it fills only hook names
-   * never installed, so explicit installs win regardless of order.
+   * Each parser owns its default hook table — two loads of one
+   * artifact never share one — and `bundledProcedures` carries the
+   * entry's statically imported hook namespace (or null for bare
+   * loads); it fills only hook names never installed, so explicit
+   * installs win regardless of order. The table lives here and nowhere
+   * else: a subclass that constructs sessions itself receives it
+   * through `openSessionWith`.
    */
   constructor(port: FfiPort, bundledProcedures: unknown = null) {
     if (!port) throw new TypeError("galley: Parser needs a bound port");
     this.#port = port;
-    this.#registry = registryFor(port);
+    this.#registry = new ProcedureRegistry();
     this.installBundledProcedures(bundledProcedures);
   }
 
   /**
-   * Wires the bundled namespace in bulk for names not yet installed:
-   * at parser creation and on a directory open over an existing parser
-   * (a bare load can precede it). Explicit installs win per hook name
-   * regardless of order.
+   * Wires the bundled namespace in bulk for names not yet installed.
+   * Explicit installs win per hook name regardless of order.
    */
   installBundledProcedures(value: unknown): void {
     this.#registry.installBundled(value, this.hasProcedures());
@@ -152,6 +153,15 @@ export class Parser {
    * the session's hooks start as a copy of this parser's defaults.
    */
   openSession(options: SessionOptions = {}): Session {
-    return new Session(this.#port, options);
+    return this.openSessionWith((defaults) => new Session(this.#port, options, defaults));
+  }
+
+  /**
+   * Hands this parser's default table to `create`, which builds the
+   * session that will copy it. The one way a subclass constructs its own
+   * session type, so no subclass keeps a reference to the table.
+   */
+  protected openSessionWith<S extends Session>(create: (defaults: ProcedureRegistry) => S): S {
+    return create(this.#registry);
   }
 }

@@ -45,7 +45,7 @@ const sharedDir = ensureTestLibrary({
   scope: "universal",
 });
 
-const { detectRuntime, galley, openLanguageDirectory, __resetParserCache } = await import("../dist/index.js");
+const { detectRuntime, galley, openLanguageDirectory } = await import("../dist/index.js");
 const browserEntry = await import("../dist/browser.js");
 const { __resetLoader: resetLoader } = await import("../dist/loader.js");
 
@@ -57,8 +57,6 @@ class SkipTest extends Error {}
 
 async function test(name, fn) {
   resetLoader();
-  __resetParserCache();
-  browserEntry.__resetLoader();
   try {
     await fn();
     console.log(`✓ ${name}`);
@@ -288,18 +286,26 @@ await test("browser entry parses from bytes", async () => {
   }
 });
 
-await test("browser entry caches identical bytes to one parser", async () => {
+await test("browser entry byte loads hold independent parsers", async () => {
   const bytes = new Uint8Array(fs.readFileSync(path.join(wasmDir, "libgalley-js-wasm.wasm")));
   const first = await browserEntry.galley.loadBytes(bytes);
   const second = await browserEntry.galley.loadBytes(bytes);
-  // Identical bytes resolve to the identical parser.
-  assert.equal(second, first);
-  const s1 = await first.openSession();
-  const s2 = await second.openSession();
-  assert.equal(s1.parse("alpha:12,beta:3"), 15);
-  assert.equal(s2.parse("alpha:12,beta:3"), 15);
-  s1.close();
-  s2.close();
+  // Identical bytes share the compiled module, never the parser.
+  assert.notEqual(second, first);
+  let firstCalls = 0;
+  first.installProcedure("reduction_Pair", () => { firstCalls++; });
+  assert.equal(second.procedureHook("reduction_Pair"), undefined);
+  const firstSession = await first.openSession();
+  const secondSession = await second.openSession();
+  try {
+    assert.equal(firstSession.parse("alpha:12,beta:3"), 15);
+    assert.equal(firstCalls, 2);
+    assert.equal(secondSession.parse("alpha:12,beta:3"), 15);
+    assert.equal(firstCalls, 2);
+  } finally {
+    firstSession.close();
+    secondSession.close();
+  }
 });
 
 await test("browser entry exposes galley without filesystem loads", () => {

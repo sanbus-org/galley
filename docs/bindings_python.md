@@ -96,10 +96,14 @@ Regenerate
 after changing the grammar; commit nothing the command generates. One
 package embeds one parser — split grammars across language directories.
 Two packages coexist in one process with
-independent hooks: each package import is its own parser. Bare
-loads share one `sys.modules` key with last-load-wins semantics while
-the loader cache holds every object; pickling across processes is
-unsupported. Rename non-identifier folders to import them directly:
+independent hooks: each package import is its own parser, and so is
+every `galley.load` call — loading one artifact twice hands out two
+parsers with independent default hooks. The compiled extension file
+beneath them stays loaded and cannot unload, but a load registers
+nothing in `sys.modules` and nothing caches a parser: drop the parser
+and its hooks and sessions are freed. Loads are safe from several
+threads at once. Pickling across processes is unsupported. Rename
+non-identifier folders to import them directly:
 standard rule, no hyphen support in the loader.
 
 ## Performance Notes

@@ -4,6 +4,8 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.function.Executable;
 import static org.junit.jupiter.api.Assertions.*;
 
+import org.sanbus.galley.internal.GalleyLibraryLoader;
+
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -17,6 +19,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -49,9 +52,7 @@ public class GalleyTest {
 
     private static Parser fixtureParser() {
         try {
-            Parser parser = Galley.load(fixtureLibraryPath());
-            parser.clearProcedures();
-            return parser;
+            return Galley.load(fixtureLibraryPath());
         } catch (MissingArtifactException e) {
             throw new IllegalStateException("fixture library missing: " + e.getMessage(), e);
         }
@@ -2618,23 +2619,160 @@ public class GalleyTest {
         }
 
         @Test
-        void loadCachesByCanonicalPath() throws Exception {
+        void everyLoadReturnsAFreshParserWithItsOwnDefaults() throws Exception {
             String path = fixtureLibraryPath();
             Parser first = Galley.load(path);
+            Parser second = Galley.load(path);
+            assertNotSame(first, second);
+            assertTrue(first.listProcedures().isEmpty());
+            assertTrue(second.listProcedures().isEmpty());
+
+            AtomicInteger firstCalls = new AtomicInteger(0);
+            first.installProcedure("reduction_Pair", args -> firstCalls.incrementAndGet());
+            assertNotNull(first.lookupProcedure("reduction_Pair"));
+            assertNull(second.lookupProcedure("reduction_Pair"));
+
+            // Each session sees its own parser's defaults only.
+            try (Session fromFirst = first.openSession(); Session fromSecond = second.openSession()) {
+                assertEquals(1, fromFirst.listProcedures().size());
+                assertEquals(0, fromSecond.listProcedures().size());
+                fromFirst.parse("alpha:12,beta:3");
+                fromSecond.parse("alpha:12,beta:3");
+                assertEquals(2, firstCalls.get());
+            }
+
+            // The real path of the same artifact is a fresh independent
+            // parser too, never the one already handed out.
+            Parser viaRealPath = Galley.load(Path.of(path).toRealPath().toString());
+            assertNotSame(first, viaRealPath);
+            assertNotSame(second, viaRealPath);
+            assertTrue(viaRealPath.listProcedures().isEmpty());
+            assertNull(viaRealPath.lookupProcedure("reduction_Pair"));
+
+            // So is a load through a symlink of that artifact.
+            Path dir = Files.createTempDirectory("galley-java-symlink");
+            Path link = dir.resolve("fixture-link");
+            Files.createSymbolicLink(link, Path.of(path));
             try {
-                assertSame(first, Galley.load(path));
-                assertSame(first, Galley.load(Path.of(path).toRealPath().toString()));
-                Path dir = Files.createTempDirectory("galley-java-symlink");
-                Path link = dir.resolve("fixture-link");
-                Files.createSymbolicLink(link, Path.of(path));
-                try {
-                    assertSame(first, Galley.load(link.toString()));
-                } finally {
-                    Files.deleteIfExists(link);
-                    Files.deleteIfExists(dir);
+                Parser viaLink = Galley.load(link.toString());
+                assertNotSame(first, viaLink);
+                assertNotSame(second, viaLink);
+                assertNotSame(viaRealPath, viaLink);
+                assertTrue(viaLink.listProcedures().isEmpty());
+                assertNull(viaLink.lookupProcedure("reduction_Pair"));
+            } finally {
+                Files.deleteIfExists(link);
+                Files.deleteIfExists(dir);
+            }
+        }
+
+        /** Loads a parser, runs a session with a hook, and returns weak references to both. */
+        private List<java.lang.ref.WeakReference<Object>> loadUseAndDrop() throws Exception {
+            Parser parser = Galley.load(fixtureLibraryPath());
+            Object marker = new Object();
+            parser.installProcedure("reduction_Number", args -> marker.hashCode());
+            try (Session session = parser.openSession()) {
+                session.parse("alpha:12");
+            }
+            return List.of(new java.lang.ref.WeakReference<>(parser), new java.lang.ref.WeakReference<>(marker));
+        }
+
+        @Test
+        void droppedParserIsCollectable() throws Exception {
+            List<java.lang.ref.WeakReference<Object>> references = loadUseAndDrop();
+            for (int attempt = 0; attempt < 100
+                    && (references.get(0).get() != null || references.get(1).get() != null); attempt++) {
+                System.gc();
+                Thread.sleep(20);
+            }
+            assertNull(references.get(0).get(), "a dropped parser must be collectable");
+            assertNull(references.get(1).get(), "a dropped parser's hooks must be collectable");
+        }
+
+        @Test
+        void severalLiveParsersRouteHooksToTheirOwnSessions() throws Exception {
+            int count = 5;
+            List<Parser> parsers = new ArrayList<>();
+            List<AtomicInteger> calls = new ArrayList<>();
+            for (int i = 0; i < count; i++) {
+                Parser parser = Galley.load(fixtureLibraryPath());
+                AtomicInteger counter = new AtomicInteger(0);
+                parser.installProcedure("reduction_Pair", args -> counter.incrementAndGet());
+                parsers.add(parser);
+                calls.add(counter);
+            }
+            List<Session> sessions = new ArrayList<>();
+            try {
+                for (Parser parser : parsers) sessions.add(parser.openSession());
+                // Parser i's session parses i + 1 times; each hook fires twice per parse.
+                for (int round = 0; round < count; round++) {
+                    for (int i = round; i < count; i++) sessions.get(i).parse("alpha:12,beta:3");
+                }
+                for (int i = 0; i < count; i++) {
+                    assertEquals(2 * (i + 1), calls.get(i).get(), "parser " + i);
                 }
             } finally {
-                first.clearProcedures();
+                for (Session session : sessions) session.close();
+            }
+        }
+
+        @Test
+        void bareLoadAfterPackageImportHasNoBundledHooks() throws Exception {
+            Parser packageParser = test_fixture.Parser.load(fixtureLibraryPath());
+            assertFalse(packageParser.listProcedures().isEmpty());
+
+            Parser bare = Galley.load(fixtureLibraryPath());
+            assertNotSame(packageParser, bare);
+            assertTrue(bare.listProcedures().isEmpty());
+            try (Session bareSession = bare.openSession()) {
+                assertTrue(bareSession.listProcedures().isEmpty());
+            }
+
+            // The package import keeps its one parser with its bundled hooks.
+            try (Session packageSession = packageParser.openSession()) {
+                assertEquals(packageParser.listProcedures(), packageSession.listProcedures());
+            }
+            assertFalse(packageParser.listProcedures().isEmpty());
+        }
+
+        @Test
+        void failedLoadLeavesExistingParsersUntouchedAndRetryWorks() throws Exception {
+            Parser existing = Galley.load(fixtureLibraryPath());
+            AtomicInteger calls = new AtomicInteger(0);
+            existing.installProcedure("reduction_Pair", args -> calls.incrementAndGet());
+
+            Path dir = Files.createTempDirectory("galley-java-failed-load");
+            try {
+                // A missing artifact hands out no parser.
+                String missing = dir.resolve("no-such-dir")
+                        .resolve(GalleyLibraryLoader.libFileName()).toString();
+                assertThrows(MissingArtifactException.class, () -> Galley.load(missing));
+
+                // A corrupt file at an existing path fails the load too.
+                Path corrupt = dir.resolve(GalleyLibraryLoader.libFileName());
+                Files.writeString(corrupt, "not a shared library");
+                assertThrows(IllegalArgumentException.class, () -> Galley.load(corrupt.toString()));
+
+                // The parser already handed out still answers and still has
+                // its hook.
+                assertNotNull(existing.version());
+                assertNotNull(existing.lookupProcedure("reduction_Pair"));
+                try (Session session = existing.openSession()) {
+                    assertEquals(1, session.listProcedures().size());
+                    session.parse("alpha:12,beta:3");
+                    assertEquals(2, calls.get());
+                }
+
+                // With the cause fixed the retry is a fresh attempt that
+                // hands out a new bare parser.
+                Files.copy(Path.of(fixtureLibraryPath()), corrupt, StandardCopyOption.REPLACE_EXISTING);
+                Parser retried = Galley.load(corrupt.toString());
+                assertNotSame(existing, retried);
+                assertTrue(retried.listProcedures().isEmpty());
+                assertNotNull(existing.lookupProcedure("reduction_Pair"));
+            } finally {
+                Files.deleteIfExists(dir.resolve(GalleyLibraryLoader.libFileName()));
+                Files.deleteIfExists(dir);
             }
         }
 

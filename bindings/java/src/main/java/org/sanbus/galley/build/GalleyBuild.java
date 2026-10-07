@@ -209,9 +209,12 @@ public final class GalleyBuild {
 
     // Per-grammar Parser class: banner-guarded, fixed class name, one
     // explicit installProcedure call per hook from the generator-owned
-    // metadata list (no reflection). Loading through it wires the bundled
-    // hooks; bare Galley.load wires nothing and later explicit installs
-    // win per hook name. Refuses to overwrite a file it did not generate.
+    // metadata list (no reflection). One package is one parser per
+    // process: load() memoizes it and wires the bundled hooks exactly
+    // once, storing the parser only after every install succeeded, so a
+    // failed first load caches nothing and a retry is a fresh attempt.
+    // Bare Galley.load wires nothing, and later installs win per hook
+    // name. Refuses to overwrite a file it did not generate.
     private static void emitParserClass(String packageName, String hookClass, List<String> hooks, Path languageDir) {
         Path packageDir = languageDir.resolve(packageName);
         Path outputPath = packageDir.resolve("Parser.java");
@@ -219,18 +222,24 @@ public final class GalleyBuild {
         List<String> lines = new ArrayList<>();
         lines.add(GENERATED_BANNER);
         lines.add("// Bundled hook wiring for this grammar, from metadata.json.");
-        lines.add("// Explicit installs after load() win per hook name.");
+        lines.add("// One parser per process for this package: load() wires the bundled hooks");
+        lines.add("// exactly once, and later installs win per hook name.");
         lines.add("package " + packageName + ";");
         lines.add("");
         lines.add("public final class Parser {");
         lines.add("");
         lines.add("    private Parser() {}");
         lines.add("");
-        lines.add("    public static org.sanbus.galley.Parser load(String libraryPath) throws org.sanbus.galley.MissingArtifactException {");
-        lines.add("        org.sanbus.galley.Parser parser = org.sanbus.galley.Galley.load(libraryPath);");
+        lines.add("    private static org.sanbus.galley.Parser parser;");
+        lines.add("");
+        lines.add("    public static synchronized org.sanbus.galley.Parser load(String libraryPath) throws org.sanbus.galley.MissingArtifactException {");
+        lines.add("        if (parser == null) {");
+        lines.add("            org.sanbus.galley.Parser loaded = org.sanbus.galley.Galley.load(libraryPath);");
         for (String hook : hooks) {
-            lines.add("        parser.installProcedure(\"" + hook + "\", " + hookClass + "::" + hook + ");");
+            lines.add("            loaded.installProcedure(\"" + hook + "\", " + hookClass + "::" + hook + ");");
         }
+        lines.add("            parser = loaded;");
+        lines.add("        }");
         lines.add("        return parser;");
         lines.add("    }");
         lines.add("}");

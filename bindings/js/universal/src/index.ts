@@ -6,7 +6,8 @@
  * come from the `galley` object — `load` (an explicit artifact file),
  * `loadBytes` (raw wasm), `loadUrl` (fetched) — or from a generated
  * package entry, which opens its own directory with bundled hooks.
- * Sessions open from a parser and share its hook table.
+ * Every factory call hands out a new parser owning its defaults;
+ * sessions open from a parser and start with a copy of them.
  */
 
 import { createRequire } from "node:module";
@@ -47,7 +48,7 @@ export {
   RecoveryTarget,
   Resume,
 } from "@sanbus/galley-core";
-export { galley, openLanguageDirectory, Parser, __resetParserCache } from "./session.ts";
+export { galley, openLanguageDirectory, Parser } from "./session.ts";
 export type { Session };
 export { detectRuntime, seedEngineLegs } from "./loader.ts";
 export type { Runtime, Backend, SessionSource, EngineLegs } from "./loader.ts";

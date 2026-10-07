@@ -17,7 +17,7 @@ import { checkArtifactPath, checkMessageBytes, checkParseInput } from "./sources
 import { rejectSessionOptions } from "./internal.ts";
 import { Node, createNode, installWalkStart, nodeAddress } from "./node.ts";
 import type { NodeDoor } from "./node.ts";
-import { ProcedureArguments, ProcedureRegistry, registryFor, routerFor } from "./procedures.ts";
+import { ProcedureArguments, ProcedureRegistry, routerFor } from "./procedures.ts";
 import type { HookFn, HookOwner } from "./procedures.ts";
 
 export interface SessionOptions {
@@ -310,10 +310,14 @@ export class Session implements HookOwner {
   /**
    * Takes a bound port: factories resolve the backend first, so a
    * constructed session is always usable. There is no unready state.
-   * The session's hooks start as a copy of the parser's defaults.
+   * The session's hooks start as a copy of the defaults of the parser
+   * it opens from — handed in, never read from shared state.
    */
-  constructor(port: FfiPort, options: SessionOptions = {}) {
+  constructor(port: FfiPort, options: SessionOptions = {}, defaults: ProcedureRegistry) {
     if (!port) throw new TypeError("galley: Session needs a bound port");
+    if (!defaults) {
+      throw new TypeError("galley: Session opens from a parser; use parser.openSession()");
+    }
     // Same boundary check as every load factory: a backend pin or a
     // typo'd tunable throws instead of being silently dropped.
     rejectSessionOptions(
@@ -359,7 +363,7 @@ export class Session implements HookOwner {
     this.#sessionDoor = new Door(this, port.session, handle);
     this.#hookHandle = routerFor(port).register(this);
     try {
-      this.#commitHooks(registryFor(port).copy());
+      this.#commitHooks(defaults.copy());
     } catch (error) {
       this.close();
       throw error;

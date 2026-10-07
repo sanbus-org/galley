@@ -18,7 +18,7 @@ export {
 } from "./artifact.ts";
 export { displayTokenName } from "./diagnostic.ts";
 export { linkOrStatus, GenerationBigInt } from "./crossing.ts";
-export { isProcedureName, registryFor, __resetSharedRegistries } from "./procedures.ts";
+export { isProcedureName, ProcedureRegistry } from "./procedures.ts";
 export {
   checkLanguagePath,
   checkArtifactPath,
@@ -51,10 +51,11 @@ export function rejectSessionOptions(
 }
 
 /**
- * Content hash for byte-fed parsers: the same bytes must resolve to the
- * identical parser, and bytes carry no path to key on. cyrb53 over
- * content plus length: fast number ops, no dependencies (`node:crypto`
- * would poison browser import graphs).
+ * Content hash for byte-fed loads: the loaded native module is cached
+ * by content — bytes carry no path to key on, and two byte loads of
+ * one artifact must share the module, never the parser built on it.
+ * cyrb53 over content plus length: fast number ops, no dependencies
+ * (`node:crypto` would poison browser import graphs).
  */
 export function hashModuleBytes(bytes: Uint8Array): string {
   let h1 = 0xdeadbeef;

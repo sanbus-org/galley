@@ -53,7 +53,7 @@ const sharedDir = ensureTestLibrary({
   scope: "universal",
 });
 
-import { detectRuntime, galley, openLanguageDirectory, __resetParserCache } from "../src/index.ts";
+import { detectRuntime, galley, openLanguageDirectory } from "../src/index.ts";
 import { __resetLoader as resetLoader } from "../src/loader.ts";
 
 let passed = 0;
@@ -64,7 +64,6 @@ class SkipTest extends Error {}
 
 async function test(name: string, fn: () => void | Promise<void>) {
   resetLoader();
-  __resetParserCache();
   try {
     await fn();
     console.log(`✓ ${name}`);

@@ -33,7 +33,7 @@ const wasmDir = ensureTestLibrary({
   scope: "wasm",
 });
 
-const { detectRuntime, galley, openLanguageDirectory, __resetParserCache } = await import("../dist/index.js");
+const { detectRuntime, galley, openLanguageDirectory } = await import("../dist/index.js");
 const browserEntry = await import("../dist/browser.js");
 const { __resetLoader: resetLoader, resolveSync } = await import("../dist/loader.js");
 
@@ -45,8 +45,6 @@ class SkipTest extends Error {}
 
 async function test(name, fn) {
   resetLoader();
-  __resetParserCache();
-  browserEntry.__resetLoader();
   try {
     await fn();
     console.log(`✓ ${name}`);
@@ -228,24 +226,93 @@ await test("missing everything explains how to build", () => {
   assert.throws(() => openLanguageDirectory(noSuchDir), missingArtifact(noSuchDir));
 });
 
-await test("bare load before directory open still wires bundled hooks", async () => {
-  const artifact = path.join(nativeDir, artifactFileName("galley-js-node", process.platform));
-  const bare = await galley.load(artifact);
-  assert.deepEqual(bare.listProcedures(), {});
-  const explicit = () => {};
-  bare.installProcedure("reduction_Pair", explicit);
-
+await test("bare load after package import has no bundled hooks", async () => {
+  // The generated entry's import-time step: one directory open over the
+  // statically imported procedures namespace.
   const procedures = await import(
     pathToFileURL(path.join(nativeDir, "procedures.ts")).href
   );
-  const { result: parser, lines } = await silenceWarnAsync(() =>
+  const { result: packaged, lines } = await silenceWarnAsync(() =>
     openLanguageDirectory(nativeDir, {}, procedures),
   );
   assert.equal(lines.length, 0);
-  assert.equal(parser, bare);
-  // The entry's namespace fills the uninstalled names but keeps the explicit one.
-  assert.equal(parser.procedureHook("reduction_Pair"), explicit);
-  assert.equal(typeof parser.procedureHook("hook_print"), "function");
+  assert.equal(typeof packaged.procedureHook("hook_print"), "function");
+
+  const artifact = path.join(nativeDir, artifactFileName("galley-js-node", process.platform));
+  const bare = await galley.load(artifact);
+  // The bare load shares the loaded library but owns an empty table.
+  assert.notEqual(bare, packaged);
+  assert.deepEqual(bare.listProcedures(), {});
+  const explicit = () => {};
+  bare.installProcedure("reduction_Pair", explicit);
+  // The install stays on the bare parser; the package's bundle is its own.
+  assert.equal(bare.procedureHook("reduction_Pair"), explicit);
+  assert.equal(typeof packaged.procedureHook("reduction_Pair"), "function");
+  assert.notEqual(packaged.procedureHook("reduction_Pair"), explicit);
+});
+
+await test("two loads of one artifact have independent defaults", async () => {
+  const artifact = path.join(nativeDir, artifactFileName("galley-js-node", process.platform));
+  const first = await galley.load(artifact);
+  const second = await galley.load(artifact);
+  assert.notEqual(second, first);
+  let firstCalls = 0;
+  first.installProcedure("reduction_Pair", () => { firstCalls++; });
+  // Installed on one: absent on the other.
+  assert.equal(second.procedureHook("reduction_Pair"), undefined);
+  const firstSession = await first.openSession();
+  const secondSession = await second.openSession();
+  try {
+    assert.equal(firstSession.parse("alpha:12,beta:3"), 15);
+    assert.equal(firstCalls, 2);
+    assert.equal(secondSession.parse("alpha:12,beta:3"), 15);
+    assert.equal(firstCalls, 2);
+  } finally {
+    firstSession.close();
+    secondSession.close();
+  }
+});
+
+await test("failed load leaves existing parsers untouched and retry works", async () => {
+  const artifact = path.join(nativeDir, artifactFileName("galley-js-node", process.platform));
+  const parser = await galley.load(artifact);
+  let calls = 0;
+  parser.installProcedure("reduction_Pair", () => { calls++; });
+  const corrupt = path.join(nativeDir, `corrupt${path.extname(artifact)}`);
+  const good = await parser.openSession();
+  try {
+    assert.equal(good.parse("alpha:12,beta:3"), 15);
+    assert.equal(calls, 2);
+    // A corrupt artifact fails loudly...
+    fs.writeFileSync(corrupt, "galley: not a shared library\n");
+    assert.throws(() => galley.load(corrupt));
+    // ...the existing parser keeps its defaults and its sessions...
+    const again = await parser.openSession();
+    try {
+      assert.equal(again.parse("alpha:12,beta:3"), 15);
+      assert.equal(calls, 4);
+    } finally {
+      again.close();
+    }
+  } finally {
+    good.close();
+  }
+  // ...and once the same path holds the real artifact, retrying it hands
+  // out a fresh, empty parser that parses.
+  try {
+    fs.copyFileSync(artifact, corrupt);
+    const retry = await galley.load(corrupt);
+    assert.notEqual(retry, parser);
+    assert.deepEqual(retry.listProcedures(), {});
+    const retrySession = await retry.openSession();
+    try {
+      assert.equal(retrySession.parse("alpha:12,beta:3"), 15);
+    } finally {
+      retrySession.close();
+    }
+  } finally {
+    fs.rmSync(corrupt, { force: true });
+  }
 });
 
 await test("native and wasm sessions parse interleaved", async () => {
@@ -331,18 +398,26 @@ await test("browser entry parses from bytes", async () => {
   }
 });
 
-await test("browser entry caches identical bytes to one parser", async () => {
+await test("browser entry byte loads hold independent parsers", async () => {
   const bytes = new Uint8Array(fs.readFileSync(path.join(wasmDir, "libgalley-js-wasm.wasm")));
   const first = await browserEntry.galley.loadBytes(bytes);
   const second = await browserEntry.galley.loadBytes(bytes);
-  // Identical bytes resolve to the identical parser.
-  assert.equal(second, first);
-  const s1 = await first.openSession();
-  const s2 = await second.openSession();
-  assert.equal(s1.parse("alpha:12,beta:3"), 15);
-  assert.equal(s2.parse("alpha:12,beta:3"), 15);
-  s1.close();
-  s2.close();
+  // Identical bytes share the compiled module, never the parser.
+  assert.notEqual(second, first);
+  let firstCalls = 0;
+  first.installProcedure("reduction_Pair", () => { firstCalls++; });
+  assert.equal(second.procedureHook("reduction_Pair"), undefined);
+  const firstSession = await first.openSession();
+  const secondSession = await second.openSession();
+  try {
+    assert.equal(firstSession.parse("alpha:12,beta:3"), 15);
+    assert.equal(firstCalls, 2);
+    assert.equal(secondSession.parse("alpha:12,beta:3"), 15);
+    assert.equal(firstCalls, 2);
+  } finally {
+    firstSession.close();
+    secondSession.close();
+  }
 });
 
 await test("browser entry exposes galley without filesystem loads", () => {

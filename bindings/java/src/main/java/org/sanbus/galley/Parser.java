@@ -3,6 +3,7 @@ package org.sanbus.galley;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.invoke.MethodHandles;
+import java.lang.ref.WeakReference;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -19,8 +20,10 @@ import org.sanbus.galley.internal.GalleyLibrary;
  * with a copy and owns that copy from then on (see {@link Session}), so
  * installs here reach sessions opened later, never sessions already open.
  * Acquire with {@link Galley#load}, install hooks, then open sessions.
- * Parsers are cached by canonical artifact path for the process lifetime
- * and the native library cannot unload, so a parser is not closeable.
+ * Every load yields a parser of its own, so two parsers of one artifact
+ * never share their default hook tables. The native library is shared
+ * across the parsers of one artifact and cannot unload, so a parser is not
+ * closeable.
  *
  * Threading: sessions are confined to one thread each. Sessions of one
  * parser may parse concurrently on different threads: each carries its own
@@ -37,7 +40,8 @@ public final class Parser {
     /** Open sessions by native handle, so the one dispatch stub routes each hook to its session. */
     private final ConcurrentHashMap<Long, Session> sessions = new ConcurrentHashMap<>();
     private final AtomicLong nextHandle = new AtomicLong(1);
-    // Reachability root: keeps this parser's upcall stub alive (the global arena pins it regardless).
+    // This parser's upcall stub, in an automatic arena the stub's segment keeps alive: the parser
+    // holds it, and the stub is freed once the parser is unreachable.
     private final MemorySegment dispatchStub;
 
     private Parser(String canonicalPath, GalleyLibrary lib) {
@@ -47,13 +51,10 @@ public final class Parser {
         long count = lib.galley_hooks_count();
         for (int index = 0; index < count; index++) indexes.put(lib.galley_hooks_name(index), index);
         this.hookIndexes = Map.copyOf(indexes);
-        if (count == 0) {
-            System.err.println("galley: " + canonicalPath + " forwards no hooks to the host; procedure hooks stay inert");
-        }
         try {
-            var handle = MethodHandles.lookup().findVirtual(Parser.class, "dispatch",
+            var handle = MethodHandles.lookup().findVirtual(Router.class, "dispatch",
                     java.lang.invoke.MethodType.methodType(int.class, MemorySegment.class, int.class, long.class));
-            this.dispatchStub = lib.createDispatchStub(handle.bindTo(this), Arena.global());
+            this.dispatchStub = lib.createDispatchStub(handle.bindTo(new Router(this)), Arena.ofAuto());
         } catch (NoSuchMethodException | IllegalAccessException e) {
             throw new RuntimeException(e);
         }
@@ -179,12 +180,30 @@ public final class Parser {
 
     GalleyLibrary library() { return lib; }
 
-    // Called by this parser's upcall stub on the parsing thread: routes the
-    // hook to the session whose handle the library passed. Returns zero to
-    // let the parse go on and nonzero when the hook failed; nothing escapes
-    // into the core, because the session keeps what its hook threw.
+    // Called through this parser's upcall stub on the parsing thread: routes
+    // the hook to the session whose handle the library passed. Returns zero
+    // to let the parse go on and nonzero when the hook failed; nothing
+    // escapes into the core, because the session keeps what its hook threw.
     private int dispatch(MemorySegment handle, int index, long hook) {
         Session session = sessions.get(handle.address());
         return session == null ? 1 : session.dispatchHook(index, hook);
+    }
+
+    /**
+     * The stub's call target. The runtime keeps a stub's target strongly
+     * reachable until the stub is freed, so the target must not own the
+     * parser or the stub would pin it forever. A hook can only arrive from
+     * an open session, which keeps its parser reachable, so the reference
+     * is live whenever a hook fires.
+     */
+    private static final class Router {
+        private final WeakReference<Parser> parser;
+
+        Router(Parser parser) { this.parser = new WeakReference<>(parser); }
+
+        int dispatch(MemorySegment handle, int index, long hook) {
+            Parser target = parser.get();
+            return target == null ? 1 : target.dispatch(handle, index, hook);
+        }
     }
 }

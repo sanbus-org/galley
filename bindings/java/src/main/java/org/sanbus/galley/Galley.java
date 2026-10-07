@@ -18,31 +18,36 @@ public final class Galley {
 
     private Galley() {}
 
-    private static final ConcurrentHashMap<String, Parser> PARSER_CACHE = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<String, Object> LOAD_LOCKS = new ConcurrentHashMap<>();
+    /** The loaded native library per canonical artifact path: shared, never unloaded. */
+    private static final ConcurrentHashMap<String, GalleyLibrary> LIBRARIES = new ConcurrentHashMap<>();
 
     /**
-     * Loads the parser artifact at {@code path} and returns the parser.
-     * Parsers are cached by canonical artifact path for the process
-     * lifetime: the same source always yields the identical object, and a
-     * failed load binds and caches nothing. The artifact path is explicit:
-     * a null or empty one is a loud error, never a search. Bare loads wire
-     * no hooks.
-     * Same-path loads serialize against each other; sessions opened from
-     * the parser stay confined to one thread each, and sessions on different
-     * threads parse concurrently (see {@link Parser}).
+     * Loads the parser artifact at {@code path} and returns a new parser.
+     * Every load returns a new parser whose default hooks are its own (none
+     * after a bare load): loading one artifact twice never shares hook
+     * state. A failed load hands out no parser and affects none already
+     * handed out; retrying after the cause is fixed is a fresh attempt. The
+     * loaded native library is shared across the parsers of one artifact
+     * and never unloads, so a parser is not closeable. The artifact path is
+     * explicit: a null or empty one is a loud error, never a search. Bare
+     * loads wire no hooks. Sessions opened from the parser stay confined to
+     * one thread each, and sessions on different threads parse concurrently
+     * (see {@link Parser}).
      *
      * @throws MissingArtifactException when no artifact is where it was told.
      */
     public static Parser load(String path) throws MissingArtifactException {
         String canonical = GalleyLibraryLoader.findLibrary(path);
-        Object lock = LOAD_LOCKS.computeIfAbsent(canonical, key -> new Object());
-        synchronized (lock) {
-            Parser existing = PARSER_CACHE.get(canonical);
-            if (existing != null) return existing;
-            Parser created = Parser.create(canonical, new GalleyLibrary(canonical));
-            PARSER_CACHE.put(canonical, created);
-            return created;
+        GalleyLibrary library = LIBRARIES.computeIfAbsent(canonical, Galley::openLibrary);
+        return Parser.create(canonical, library);
+    }
+
+    /** Opens the library once per artifact, with the one-time notice for a grammar that forwards no hooks. */
+    private static GalleyLibrary openLibrary(String canonical) {
+        GalleyLibrary library = new GalleyLibrary(canonical);
+        if (library.galley_hooks_count() == 0) {
+            System.err.println("galley: " + canonical + " forwards no hooks to the host; procedure hooks stay inert");
         }
+        return library;
     }
 }

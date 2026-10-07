@@ -48,9 +48,9 @@ def _fixture_impl_file() -> Path:
 
 
 def _restore_procedures(saved: dict[str, Any]) -> None:
-    """Return the global hook table to a snapshot.
+    """Return the package parser's hook table to a snapshot.
 
-    The module's default hooks outlive every session, so a test that
+    The parser's default hooks outlive every session, so a test that
     installs or clears them must not leak into the next one: snapshot in
     setUp, restore here.
     """
@@ -2318,11 +2318,49 @@ class LoaderTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             galley.load("no-such-grammar\0.so")
 
-    def test_same_path_returns_same_parser(self) -> None:
+    def test_same_path_holds_independent_parsers(self) -> None:
         impl = self._copy_impl()
         first = galley.load(impl)
         second = galley.load(impl)
-        self.assertIs(first, second)
+        self.assertIsNot(first, second)
+        self.assertEqual(first.list_procedures(), {})
+        self.assertEqual(second.list_procedures(), {})
+
+        calls: list[bool] = []
+
+        def probe(args: Any) -> None:
+            calls.append(True)
+
+        first.install_procedure("reduction_Number", probe)
+        try:
+            self.assertIs(first.list_procedures()["reduction_Number"], probe)
+            self.assertNotIn("reduction_Number", second.list_procedures())
+            with first.Session() as session:
+                self.assertIn("reduction_Number", session.list_procedures())
+                session.parse("alpha:12")
+            with second.Session() as session:
+                self.assertEqual(session.list_procedures(), {})
+                session.parse("alpha:12")
+            self.assertEqual(len(calls), 1)
+        finally:
+            first.clear_procedures()
+
+    def test_bare_load_after_package_import_has_no_bundled_hooks(self) -> None:
+        # `grammar` (imported at module scope) is the package's one
+        # parser, bundled hooks installed. A bare load of that very
+        # artifact hands out its own parser with no hooks at all, and
+        # neither parser disturbs the other.
+        self.assertIn("reduction_Number", grammar.list_procedures())
+        parser = galley.load(_fixture_impl_file())
+        try:
+            self.assertIsNot(parser, grammar)
+            self.assertEqual(parser.list_procedures(), {})
+            with parser.Session() as session:
+                self.assertEqual(session.list_procedures(), {})
+                session.parse("alpha:12")
+            self.assertIn("reduction_Number", grammar.list_procedures())
+        finally:
+            parser.clear_procedures()
 
     def test_two_files_hold_independent_tables(self) -> None:
         first = galley.load(self._copy_impl("first"))
@@ -2404,25 +2442,27 @@ class LoaderTests(unittest.TestCase):
         finally:
             parser.clear_procedures()
 
-    def test_failed_load_preserves_previous_entry(self) -> None:
+    def test_failed_load_hands_out_nothing_and_retries_fresh(self) -> None:
         import importlib.machinery
         import importlib.util
         from unittest import mock
 
         first_path = self._copy_impl("first")
+        modules_before = dict(sys.modules)
         first = galley.load(first_path)
-        self.assertIs(sys.modules[galley._constants.IMPL_MODULE_NAME], first)
+        self.assertEqual(sys.modules, modules_before)
 
-        marker = object()
-        saved = sys.modules.get(galley._constants.IMPL_MODULE_NAME, marker)
+        fired: list[bytes] = []
 
-        def restore_stem():
-            if saved is marker:
-                sys.modules.pop(galley._constants.IMPL_MODULE_NAME, None)
-            else:
-                sys.modules[galley._constants.IMPL_MODULE_NAME] = saved
+        def reduction_Number(args: Any) -> None:
+            node = args.current_node()
+            assert node is not None
+            text = node.text()
+            assert text is not None
+            fired.append(text)
 
-        self.addCleanup(restore_stem)
+        first.install_procedure("reduction_Number", reduction_Number)
+        self.addCleanup(first.clear_procedures)
 
         class _FailingLoader:
             def create_module(self, spec):
@@ -2444,8 +2484,121 @@ class LoaderTests(unittest.TestCase):
             self.assertRaises(ImportError),
         ):
             galley.load(other)
-        self.assertIs(sys.modules[galley._constants.IMPL_MODULE_NAME], first)
-        self.assertNotIn(str(other.resolve()), galley._artifact_cache)
+
+        # The failed load handed out no parser and registered nothing;
+        # the parser already handed out is untouched.
+        self.assertEqual(sys.modules, modules_before)
+        self.assertEqual(list(first.list_procedures()), ["reduction_Number"])
+        with first.Session() as session:
+            session.parse("alpha:12")
+        self.assertEqual(fired, [b"12"])
+
+        # A real failure behaves the same: a file that is not an
+        # extension fails, and repairing the cause makes the retry a
+        # fresh attempt — a new bare parser over the same file, hooks
+        # and all as after any bare load: none.
+        broken = self._copy_impl("broken")
+        broken.write_bytes(b"not an extension")
+        with self.assertRaises(ImportError):
+            galley.load(broken)
+        self.assertEqual(sys.modules, modules_before)
+
+        broken.write_bytes(first_path.read_bytes())
+        retry = galley.load(broken)
+        self.assertIsNot(retry, first)
+        self.assertEqual(retry.list_procedures(), {})
+        with retry.Session() as session:
+            session.parse("alpha:12")
+        self.assertEqual(fired, [b"12"])
+
+    def test_session_class_belongs_to_its_parser(self) -> None:
+        impl = self._copy_impl()
+        first = galley.load(impl)
+        second = galley.load(impl)
+        base = first.Session.__mro__[1]
+        self.assertIsNot(first.Session, second.Session)
+        self.assertIs(second.Session.__mro__[1], base)
+        self.assertIs(first.Session.__mro__[1], base)
+        self.assertEqual(first.Session.__doc__, base.__doc__)
+        self.assertIsNotNone(first.Session.__doc__)
+        with first.Session() as session:
+            self.assertIsInstance(session, first.Session)
+            self.assertIsInstance(session, base)
+            self.assertNotIsInstance(session, second.Session)
+        # A plain import of the extension is a parser too: no wiring step.
+        self.assertIsNot(grammar.Session, base)
+
+    def test_bare_static_session_refuses_construction(self) -> None:
+        parser = galley.load(self._copy_impl())
+        base = parser.Session.__mro__[1]
+        with self.assertRaises(TypeError):
+            base()
+
+    def test_dropped_parsers_and_hooks_are_collected(self) -> None:
+        impl = self._copy_impl()
+
+        class Sentinel:
+            pass
+
+        sentinel = Sentinel()
+        parser = galley.load(impl)
+        parser.install_procedure("reduction_Number", lambda args: sentinel)
+        with parser.Session() as session:
+            session.parse("alpha:12")
+        references = [weakref.ref(parser), weakref.ref(sentinel)]
+        del parser, session, sentinel
+        gc.collect()
+        self.assertEqual([reference() for reference in references], [None, None])
+
+    def test_repeated_loads_do_not_grow_the_heap(self) -> None:
+        impl = self._copy_impl()
+
+        def load_and_drop() -> None:
+            parser = galley.load(impl)
+            parser.install_procedure("reduction_Number", lambda args: None)
+            with parser.Session() as session:
+                session.parse("alpha:12")
+
+        for _ in range(5):  # settle caches before measuring
+            load_and_drop()
+        gc.collect()
+        before = len(gc.get_objects())
+        for _ in range(100):
+            load_and_drop()
+        gc.collect()
+        self.assertLess(len(gc.get_objects()) - before, 500)
+
+    def test_loads_share_failure_types_and_concurrent_loads_agree(self) -> None:
+        impl = self._copy_impl()
+        parsers: list[Any] = []
+        failures: list[BaseException] = []
+        barrier = threading.Barrier(8)
+
+        def load_once() -> None:
+            try:
+                barrier.wait(30)
+                parsers.append(galley.load(impl))
+            except BaseException as error:  # noqa: BLE001 - reported below
+                failures.append(error)
+
+        threads = [threading.Thread(target=load_once) for _ in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(60)
+        self.assertEqual(failures, [])
+        self.assertEqual(len(parsers), 8)
+        self.assertEqual(len({id(parser) for parser in parsers}), 8)
+        for parser in parsers:
+            self.assertIs(parser.GalleyError, parsers[0].GalleyError)
+            self.assertIs(parser.StaleTreeError, parsers[0].StaleTreeError)
+            self.assertTrue(
+                issubclass(parser.StaleTreeError, parser.GalleyError)
+            )
+            with parser.Session() as session:
+                session.parse("alpha:12")
+                with self.assertRaises(parsers[0].GalleyError):
+                    session.parse("alpha:")
 
     def _copy_package(self, target: Path) -> Path:
         target.mkdir(parents=True, exist_ok=True)
@@ -2602,6 +2755,30 @@ class SessionHookTests(unittest.TestCase):
                 later.parse("alpha:12,beta:3")
                 self.assertEqual(len(calls), 4)
                 self.assertEqual(grammar.list_procedures(), {})
+
+    def test_default_installed_later_never_reaches_an_open_session(self) -> None:
+        calls: list[int] = []
+        late: list[int] = []
+        with grammar.Session() as session:
+            grammar.install_procedure("reduction_Pair", lambda: late.append(1))
+            self.assertEqual(session.list_procedures(), {})
+            session.parse("alpha:12,beta:3")
+            self.assertEqual(late, [])
+            # The session's own install must not pull the late default in.
+            session.install_procedure("reduction_Number", lambda: calls.append(1))
+            self.assertEqual(list(session.list_procedures()), ["reduction_Number"])
+            session.parse("alpha:12,beta:3")
+            self.assertEqual((len(calls), late), (2, []))
+            self.assertIsNone(session.procedure_hook("reduction_Pair"))
+
+    def test_clearing_defaults_leaves_an_open_session_intact(self) -> None:
+        calls: list[int] = []
+        grammar.install_procedure("reduction_Pair", lambda: calls.append(1))
+        with grammar.Session() as session:
+            grammar.clear_procedures()
+            self.assertEqual(list(session.list_procedures()), ["reduction_Pair"])
+            session.parse("alpha:12,beta:3")
+            self.assertEqual(len(calls), 2)
 
     def test_session_install_procedures_follows_the_naming_rules(self) -> None:
         with grammar.Session() as session:

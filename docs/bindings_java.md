@@ -126,7 +126,10 @@ public final class procedures {
 }
 ```
 
-Then load the parser and register before opening sessions. Hooks installed on
+Then load the parser and register before opening sessions. Every
+`Galley.load` returns a fresh `Parser` with its own defaults: two loads
+of one artifact share the cached library, never hook state, and a
+dropped parser is garbage-collected with its hooks. Hooks installed on
 the parser are the artifact's defaults: every session starts with a copy and
 owns it from then on, so a default installed later reaches only sessions opened
 later. A session has the same install, list, look-up and clear methods for its
