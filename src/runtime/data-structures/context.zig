@@ -1643,14 +1643,26 @@ pub const Context = struct {
         }
     }
 
-    pub fn head(self: *@This(), comptime T: type, offset: data_structures.Token.Length) T {
+    /// Lexes until the token holds `needed_len` bytes.
+    fn fillToken(self: *@This(), needed_len: usize) void {
+        while (self.token.len < needed_len) {
+            self.advanceLexer();
+        }
+    }
+
+    /// Peeks `T` bytes at `offset` past the current token start. Every
+    /// generated decision calls this, so it is inline; lexing more input
+    /// happens in `fillToken`.
+    pub inline fn head(self: *@This(), comptime T: type, offset: data_structures.Token.Length) T {
         const bytes_needed = comptime @divExact(@bitSizeOf(T), 8);
         const needed_len = offset + bytes_needed;
         if (comptime root.input_streaming_enabled and !root.config.indentation_syntax) {
             self.ensureInputLoaded(needed_len);
         }
-        while (self.token.len < needed_len) {
-            self.advanceLexer();
+        if (self.token.len < needed_len) {
+            // Indentation lexing is heavy, so it stays out of line; otherwise
+            // filling only advances counters and inlines into the caller.
+            @call(if (root.config.indentation_syntax) .never_inline else .always_inline, fillToken, .{ self, needed_len });
         }
 
         const base_ptr = self.token.items().ptr + offset;
