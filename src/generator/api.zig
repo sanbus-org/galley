@@ -1814,3 +1814,32 @@ test "epsilon/epsilon ambiguity is rejected for LL and LR" {
     try std.testing.expectError(error.AmbiguousGrammar, generateParserAlloc(arena.allocator(), source, .ll, .{}));
     try std.testing.expectError(error.AmbiguousGrammar, generateParserAlloc(arena.allocator(), source, .lr, .{}));
 }
+
+test "LL hidden byte runs parse as one loop without decisions or repetition helpers" {
+    const source =
+        \\Start
+        \\| "." _Run ";" Kept "!"
+        \\
+        \\_Run
+        \\| letter _Run
+        \\| digit _Run
+        \\| "_" _Run
+        \\|
+        \\
+        \\Kept
+        \\| "k" Kept
+        \\|
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const output = try generateParserAlloc(arena.allocator(), source, .ll, .{ .with_ast = false, .with_procedures = false });
+    const run = fnBody(output, "fn parse__Run(") orelse return error.TestUnexpectedStructure;
+    try std.testing.expect(std.mem.indexOf(u8, run, "=> context.releaseToken(1),") != null);
+    try std.testing.expect(std.mem.indexOf(u8, run, "selected_rule") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "fn parse__Run_0_1(") == null);
+    // A visible repetition builds nodes per step, so it keeps the general shape.
+    try std.testing.expect(std.mem.indexOf(u8, output, "fn parse_Kept_0_1(") != null);
+}

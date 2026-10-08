@@ -195,7 +195,7 @@ fn assessSharedPrefix(
     // verbatim markers would have nowhere to fire once the alternatives
     // merge into one parent production.
     for (sharing.items) |rule_index| {
-        if (!ruleAnnotationsEmpty(grammar.rules.items[rule_index].annotations)) {
+        if (!annotationsEmpty(grammar.rules.items[rule_index].annotations)) {
             return .{
                 .prefix_len = prefix_len,
                 .refusal = .production_annotations,
@@ -358,7 +358,7 @@ fn annotationsEqual(a: common.Annotations, b: common.Annotations) bool {
     return std.mem.eql(u8, a.verbatim_literal.?, b.verbatim_literal.?);
 }
 
-fn ruleAnnotationsEmpty(annotations: common.Annotations) bool {
+pub fn annotationsEmpty(annotations: common.Annotations) bool {
     return annotations.procedures.items.len == 0 and
         annotations.recovery_points.items.len == 0 and
         !annotations.verbatim and

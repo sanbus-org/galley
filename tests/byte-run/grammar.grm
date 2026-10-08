@@ -1,0 +1,19 @@
+Start
+| Line _Lines
+
+_Lines
+| new_line Line _Lines
+|
+
+Line
+| Word
+| Word ":" block_start Line _Lines block_end
+
+Word
+| letter _Run
+
+_Run
+| letter _Run
+| digit _Run
+| "_" _Run
+|

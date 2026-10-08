@@ -367,6 +367,9 @@ const Generator = struct {
         const variable = params.variable;
         const skip_ast_construction = params.skip_ast_construction;
         const returns_node = self.symbolReturnsNode(variable, skip_ast_construction);
+        if (variable != self.plan.augmented_start and !returns_node) {
+            if (try self.byteRunBytes(variable)) |bytes| return self.emitByteRunLoop(writer, bytes);
+        }
         if (variable == self.plan.augmented_start) {
             try writer.writeAll("    root_reduction.* = .{};\n");
         }
@@ -408,6 +411,8 @@ const Generator = struct {
     }
 
     fn emitSelfRepeatingParsers(self: *Generator, writer: *std.Io.Writer, variable: usize, skip_ast_construction: bool) !void {
+        // A byte run parses as one loop in its own parser.
+        if (try self.byteRunBytes(variable) != null) return;
         for (self.rules.items, 0..) |rule, rule_index| {
             if (rule.header != variable) continue;
             for (rule.rhs.items, 0..) |symbol_index, child_index| {
@@ -1373,6 +1378,66 @@ const Generator = struct {
             try writer.print("{s}    }},\n", .{indent});
         }
         try writer.print("{s}    else => unreachable,\n{s}}}\n", .{ indent, indent });
+    }
+
+    /// The bytes a byte-run rule repeats, or null when `variable` is not one.
+    /// A byte run is a hidden rule `X | c1 X | c2 X | ... |` without
+    /// annotations, where every `ci` matches single ordinary bytes only: not
+    /// the lexer's synthetic tokens (0x00 to 0x03) nor a newline, whose
+    /// meaning depends on indentation. Its language is a run of those bytes.
+    fn byteRunBytes(self: *Generator, variable: usize) EmitError!?[]const u8 {
+        const symbol = self.symbols.items[variable];
+        if (symbol.kind != .variable or symbol.ast_enabled or symbol.synthetic_transparent) return null;
+        if (!planning.annotationsEmpty(symbol.annotations)) return null;
+        var repeated: [256]bool = @splat(false);
+        var has_empty = false;
+        var has_repetition = false;
+        for (self.rules.items) |rule| {
+            if (rule.header != variable) continue;
+            if (!planning.annotationsEmpty(rule.annotations)) return null;
+            for (rule.rhs_annotations.items) |annotations| {
+                if (!planning.annotationsEmpty(annotations)) return null;
+            }
+            switch (rule.rhs.items.len) {
+                0 => has_empty = true,
+                2 => {
+                    if (rule.rhs.items[1] != variable) return null;
+                    const terminal = self.symbols.items[rule.rhs.items[0]];
+                    if (terminal.kind != .terminal and terminal.kind != .generative_terminal) return null;
+                    if (terminal.terminals.items.len == 0) return null;
+                    for (terminal.terminals.items) |member| {
+                        if (member.len != 1) return null;
+                        switch (member[0]) {
+                            0...3, '\n' => return null,
+                            else => repeated[member[0]] = true,
+                        }
+                    }
+                    has_repetition = true;
+                },
+                else => return null,
+            }
+        }
+        if (!has_empty or !has_repetition) return null;
+        var bytes = std.ArrayList(u8).empty;
+        for (repeated, 0..) |is_repeated, byte| {
+            if (is_repeated) try bytes.append(self.allocator, @intCast(byte));
+        }
+        return try bytes.toOwnedSlice(self.allocator);
+    }
+
+    /// Consumes a byte run in one loop: one peek per byte, no decision and
+    /// no recursion. Any other byte ends the run, and the caller reports it if
+    /// it cannot follow. The loop needs no handling for the 0x03 the
+    /// indentation lexer may leave after a dedent: it is only ever emitted
+    /// right after block_end (0x02), which already ended the run.
+    fn emitByteRunLoop(self: *Generator, writer: *std.Io.Writer, bytes: []const u8) EmitError!void {
+        if (self.uses_explicit_recovery) try writer.writeAll("    _ = occurrence_recovery;\n");
+        try writer.writeAll("    while (true) {\n        switch (context.head(u8, 0)) {\n            ");
+        for (bytes, 0..) |byte, index| {
+            if (index != 0) try writer.writeAll(", ");
+            try writer.print("{d}", .{byte});
+        }
+        try writer.writeAll(" => context.releaseToken(1),\n            else => break,\n        }\n    }\n");
     }
 
     fn collectDecisionRules(allocator: std.mem.Allocator, node: *const switch_planning.Node, rule_indices: *std.ArrayList(usize)) EmitError!void {
