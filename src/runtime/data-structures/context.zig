@@ -551,8 +551,12 @@ pub const Context = struct {
         self.runtime().syntax_error_count += 1;
     }
 
+    /// The unexpected text at an error: the buffered bytes, up to the longest
+    /// terminal's length (how much is buffered depends on lexing, not on the
+    /// error), and at least one whole UTF-8 character.
     fn diagnosticTokenItems(self: *Self) []const u8 {
-        const original = self.token.items();
+        const buffered = self.token.items();
+        const original = buffered[0..@min(buffered.len, @max(root.parser.longest_terminal_length, 1))];
         if (original.len == 0 or original[0] < 0x80) return original;
 
         const sequence_length = std.unicode.utf8ByteSequenceLength(original[0]) catch return original;
@@ -588,7 +592,8 @@ pub const Context = struct {
 
     pub inline fn beginSyntaxRecovery(self: *Self) bool {
         const runtime_context = self.runtime();
-        const position: usize = self.pos();
+        // Where the parser stands; the indentation lexer may have read ahead.
+        const position: usize = self.currentTokenSourceOffset();
         if (runtime_context.syntax_recovery_position == position) return false;
         runtime_context.syntax_recovery_position = position;
         return true;
@@ -607,7 +612,8 @@ pub const Context = struct {
         if (self.syntaxErrorLimitReached() or points.len == 0) return false;
 
         const runtime_context = self.runtime();
-        const position: usize = self.pos();
+        // Where the parser stands; the indentation lexer may have read ahead.
+        const position: usize = self.currentTokenSourceOffset();
         if (runtime_context.explicit_recovery_position == position and
             runtime_context.explicit_recovery_target_id == target_id)
         {
@@ -1648,6 +1654,43 @@ pub const Context = struct {
         while (self.token.len < needed_len) {
             self.advanceLexer();
         }
+        if (comptime root.config.indentation_syntax and !root.input_streaming_enabled) self.lexRestOfLine();
+    }
+
+    /// Lexes the ordinary bytes that follow, up to the next newline, in one
+    /// pass, so the parser does not return here for every byte. Newlines keep
+    /// their indentation handling in `advanceLexer`; the run also stops at the
+    /// end of input, before the chunk boundary, and within the room left in
+    /// the token and position buffers.
+    fn lexRestOfLine(self: *@This()) void {
+        if (self.indentation_error) return;
+        var room = self.token.room();
+        if (comptime root.position_tracking_enabled) {
+            room = @min(room, self.line_offsets.room(), self.column_offsets.room());
+        }
+        const start = self.seek;
+        const end_limit = @min(self.chunk_buffer.len - 1, start + room);
+        var end = start;
+        while (end < end_limit) : (end += 1) {
+            const byte = self.chunk_buffer[end];
+            if (byte == '\n' or byte == 0) break;
+        }
+        const count = end - start;
+        if (count == 0) return;
+        const buffer_end = self.token.head;
+        @memcpy(self.token.buffer[buffer_end..][0..count], self.chunk_buffer[start..end]);
+        for (self.token.sources[buffer_end..][0..count], 0..) |*source, index| {
+            source.* = self.read_bytes + start + index;
+        }
+        if (comptime root.position_tracking_enabled) {
+            for (0..count) |_| {
+                self.line_offsets.append(0);
+                self.column_offsets.append(1);
+            }
+        }
+        self.token.head += count;
+        self.token.len += @intCast(count);
+        self.seek = end;
     }
 
     /// Peeks `T` bytes at `offset` past the current token start. Every

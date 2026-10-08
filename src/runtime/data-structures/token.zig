@@ -13,6 +13,9 @@ fn ByteAlignedUnsigned(comptime maximum: usize) type {
 pub const Token = struct {
     pub const max_length = 65500;
     pub const Length = ByteAlignedUnsigned(root.parser.longest_terminal_length);
+    /// The most bytes buffered at once: `max_length`, or fewer when `Length`
+    /// cannot count that high.
+    pub const max_buffered = @min(max_length, std.math.maxInt(Length));
     comptime {
         std.debug.assert(root.parser.longest_terminal_length <= Token.max_length);
     }
@@ -105,6 +108,11 @@ pub const Token = struct {
                 self.head = remaining;
             }
         }
+    }
+
+    /// How many more bytes can be appended.
+    pub inline fn room(self: *const Self) usize {
+        return max_buffered - self.len;
     }
 
     pub inline fn items(self: *const Self) []const u8 {

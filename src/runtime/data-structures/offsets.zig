@@ -23,6 +23,11 @@ pub const Offsets = struct {
         self.len += 1;
     }
 
+    /// How many more offsets can be appended.
+    pub inline fn room(self: *const Self) usize {
+        return Self.max_length - self.len;
+    }
+
     pub inline fn pop(self: *Self, amount: Token.Length) void {
         std.debug.assert(self.len >= amount);
 
