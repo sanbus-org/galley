@@ -285,7 +285,8 @@ Factor
 When two productions of a variable do share a nonempty prefix, the LL
 generator applies that rewrite automatically: it hoists the shared prefix
 and plans from the factored grammar, expanding the `<Variable>_Tail`
-alternatives inline at the single parent call site. The helper builds no
+alternatives inline at the single parent call site, after a decision of their
+own selects one. The helper builds no
 node and needs no hooks — suffix children splice directly into the parent,
 so the tree and the surviving `reduction_<Var>_<N>` hook are identical to
 the unfactored shape. The merged hook can no longer tell which alternative

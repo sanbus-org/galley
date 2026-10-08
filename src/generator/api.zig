@@ -460,12 +460,12 @@ test "LL decision falls back to the shorter terminal when one literal prefixes a
     });
 
     // ".l" is shared by ".length" and identifier tails like ".left": the
-    // "ength" prong folds into the empty `else` (same empty IdTail body),
+    // "ength" prong folds into the `else` that selects the empty IdTail rule,
     // which must survive; distinct ".length" routing is checked below.
     const id_tail = fnBody(output, "fn parse_IdTail(") orelse return error.TestUnexpectedStructure;
     const tail_switch = std.mem.indexOf(u8, id_tail, "head(u40, 2)") orelse return error.TestUnexpectedStructure;
     const tail_else = std.mem.indexOfPos(u8, id_tail, tail_switch, "else =>") orelse return error.TestUnexpectedStructure;
-    try std.testing.expect(std.mem.startsWith(u8, id_tail[tail_else..], "else => { // ''"));
+    try std.testing.expect(std.mem.startsWith(u8, id_tail[tail_else..], "else => break :decision_"));
     try std.testing.expect(std.mem.indexOf(u8, id_tail, "// 'ength'") == null);
 
     // ".length" still routes to the length rule, not into empty:
@@ -648,6 +648,90 @@ test "LL generation factors shared prefixes while LR plans them as written" {
     try std.testing.expectEqual(@as(usize, 3), lr_required.len);
     try std.testing.expectEqualStrings("reduction_Item_0", lr_required[0].procedure_name);
     try std.testing.expectEqualStrings("reduction_Item_1", lr_required[1].procedure_name);
+}
+
+test "LL generation writes each selected rule body once however many decision leaves select it" {
+    // Words and identifiers share prefixes at different lengths, so the
+    // decisions over `Start` and over the factored `Start_Tail` reach each of
+    // `Word "x"`, `Word "y"`, `Other` and `Other "z"` from several leaves.
+    const source =
+        \\Start
+        \\| "go" Word "x"
+        \\| "go" Other
+        \\| Word "y"
+        \\| Other "z"
+        \\
+        \\Word
+        \\| "if"
+        \\| "elif"
+        \\| "else"
+        \\| "for"
+        \\| "while"
+        \\| "with"
+        \\
+        \\Other
+        \\| "elx"
+        \\| "iz"
+        \\| "f"
+        \\| "wh"
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const output = try generateParserAlloc(arena.allocator(), source, .ll, .{ .with_ast = false, .with_procedures = false });
+    // The function repeats once per configuration variant, so a body written
+    // once appears exactly as often as the single-leaf `"go"` rule.
+    const start = fnBody(output, "fn parse_Start(") orelse return error.TestUnexpectedStructure;
+    const once = std.mem.count(u8, start, "Rule expansion: Start -> 'go', Start_Tail");
+    try std.testing.expect(once > 0);
+    try std.testing.expectEqual(once, std.mem.count(u8, start, "Rule expansion: Start -> Word, 'y'"));
+    try std.testing.expectEqual(once, std.mem.count(u8, start, "Rule expansion: Start -> Other, 'z'"));
+    try std.testing.expectEqual(once, std.mem.count(u8, start, "Rule expansion: Start_Tail -> Word, 'x'"));
+    try std.testing.expectEqual(once, std.mem.count(u8, start, "Rule expansion: Start_Tail -> Other\\n"));
+}
+
+test "LL self-repeating loops write their body once however many decision leaves continue them" {
+    const source =
+        \\Start
+        \\| Sequence "end"
+        \\
+        \\Sequence
+        \\| Word Sequence
+        \\| Other Sequence
+        \\|
+        \\
+        \\Word
+        \\| "if"
+        \\| "elif"
+        \\| "else"
+        \\| "for"
+        \\| "while"
+        \\| "with"
+        \\
+        \\Other
+        \\| "elx"
+        \\| "iz"
+        \\| "f"
+        \\| "wh"
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const output = try generateParserAlloc(arena.allocator(), source, .ll, .{ .with_ast = false, .with_procedures = false });
+    // Each loop runs its body once per iteration, whichever input continues it.
+    for ([_]struct { signature: []const u8, expansion: []const u8 }{
+        .{ .signature = "fn parse_Sequence_0_1(", .expansion = "Rule expansion: Sequence -> Word, Sequence" },
+        .{ .signature = "fn parse_Sequence_1_1(", .expansion = "Rule expansion: Sequence -> Other, Sequence" },
+    }) |loop| {
+        const body = fnBody(output, loop.signature) orelse return error.TestUnexpectedStructure;
+        const loops = std.mem.count(u8, body, "while (true) {");
+        try std.testing.expect(loops > 0);
+        try std.testing.expectEqual(loops, std.mem.count(u8, body, loop.expansion));
+    }
 }
 
 test "LL generation still rejects indirect first-set overlap" {

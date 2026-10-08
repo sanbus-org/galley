@@ -86,6 +86,8 @@ AST allocation is also decided at generation time, per symbol: helper variables 
 
 Rules that repeat a variable on their own right-hand side (list and suffix shapes) are recognized statically during planning. Instead of re-parsing the repeated variable from scratch each time, the generator emits a dedicated decision that steps through the repetition and stops on the first token that no longer matches, folding the loop into the parse flow.
 
+In LL output a variable's byte-level decision yields a rule index and one `switch` over that index holds each rule body once, so generated size grows with leaves plus bodies rather than their product. Inlined factored tails use the same shape, and a repetition's decision yields only whether to continue, with the loop body written once after it.
+
 ---
 
 ## Immediate Tree Edits

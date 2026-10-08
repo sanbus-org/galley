@@ -42,6 +42,7 @@ const Generator = struct {
     generative_terminal: ?usize,
     verbatim_literal: ?[]const u8 = null,
     verbatim_consume: bool = true,
+    decision_count: usize = 0,
 
     fn init(allocator: std.mem.Allocator, options: Options, grammar: *const common.PreparedGrammar, plan: *const LLPlan) Generator {
         return .{
@@ -309,6 +310,10 @@ const Generator = struct {
         const variable = params.variable;
         const skip_ast_construction = params.skip_ast_construction;
         const returns_node = self.symbolReturnsNode(variable, skip_ast_construction);
+        // Decision labels only need to be unique within one function; numbering
+        // them per function keeps per-configuration bodies textually identical
+        // so they still deduplicate.
+        self.decision_count = 0;
         if (variable == self.plan.augmented_start) {
             try writer.writeAll("    root_reduction.* = .{};\n");
         }
@@ -338,8 +343,11 @@ const Generator = struct {
             try writer.writeAll("        },\n");
             try writer.writeAll("    }\n");
         } else {
-            try self.emitRuleSwitch(writer, variable, decision.tree, 0, "    ", skip_ast_construction, false);
-            try writer.writeByte('\n');
+            try self.emitRuleDispatch(writer, variable, decision.tree, "    ", skip_ast_construction, VariableRuleBody{
+                .generator = self,
+                .variable = variable,
+                .skip_ast_construction = skip_ast_construction,
+            }, VariableRuleBody.emit);
         }
         if (returns_node) {
             try writer.writeAll(if (self.options.with_ast) "    return node_address;\n" else "    return node;\n");
@@ -476,6 +484,7 @@ const Generator = struct {
     };
 
     fn renderSelfRepeatingParserBody(self: *Generator, writer: *std.Io.Writer, params: SelfRepeatingParserBody) !void {
+        self.decision_count = 0;
         const variable = params.variable;
         const rule_index = params.rule_index;
         const self_index = params.self_index;
@@ -501,8 +510,7 @@ const Generator = struct {
                 try writer.writeAll(";\n");
             }
 
-            try writer.writeAll("\n    while (true) {\n");
-            try self.emitSelfRepeatingSwitch(writer, self.plan.selfRepeatingDecision(variable, rule_index, self_index, skip_ast_construction).tree, 0, "        ", .{
+            try self.emitSelfRepeatingLoop(writer, self.plan.selfRepeatingDecision(variable, rule_index, self_index, skip_ast_construction).tree, .{
                 .rule = rule,
                 .variable = variable,
                 .self_index = self_index,
@@ -510,8 +518,6 @@ const Generator = struct {
                 .returns_node = returns_node,
                 .frames_mode = true,
             });
-            try writer.writeByte('\n');
-            try writer.writeAll("    }\n");
 
             const explicit_recovery = self.uses_explicit_recovery;
             try writer.print("    var reduced_node = {s}parse_{s}(context", .{ if (explicit_recovery) "" else "try ", name });
@@ -568,8 +574,7 @@ const Generator = struct {
             );
         }
 
-        try writer.writeAll("\n    while (true) {\n");
-        try self.emitSelfRepeatingSwitch(writer, self.plan.selfRepeatingDecision(variable, rule_index, self_index, skip_ast_construction).tree, 0, "        ", .{
+        try self.emitSelfRepeatingLoop(writer, self.plan.selfRepeatingDecision(variable, rule_index, self_index, skip_ast_construction).tree, .{
             .rule = rule,
             .variable = variable,
             .self_index = self_index,
@@ -577,8 +582,6 @@ const Generator = struct {
             .returns_node = returns_node,
             .frames_mode = false,
         });
-        try writer.writeByte('\n');
-        try writer.writeAll("    }\n");
 
         if (returns_node) {
             const explicit_recovery = self.uses_explicit_recovery;
@@ -688,64 +691,14 @@ const Generator = struct {
         frames_mode: bool,
     };
 
-    fn emitSelfRepeatingSwitch(self: *Generator, writer: *std.Io.Writer, node: *const switch_planning.Node, prefix_length: usize, indent: []const u8, params: SelfRepeatingLeafParams) !void {
-        if (node.groups.items.len == 0) {
-            if (node.fallback != null) {
-                try self.emitSelfRepeatingLeafBody(writer, try indented(self.allocator, indent, 8), params);
-            } else {
-                try writer.print("{s}break;\n", .{indent});
-            }
-            return;
-        }
-        try emitter_common.emitMergedSwitch(
-            SelfRepeatingSwitchContext,
-            anyerror,
-            self.allocator,
-            writer,
-            node,
-            prefix_length,
-            indent,
-            .{ .generator = self, .node = node, .prefix_length = prefix_length, .indent = indent, .params = params },
-            renderSelfRepeatingProngBody,
-            renderSelfRepeatingFallbackBody,
-            renderSelfRepeatingElse,
-        );
-    }
-
-    const SelfRepeatingSwitchContext = struct {
-        generator: *Generator,
-        node: *const switch_planning.Node,
-        prefix_length: usize,
-        indent: []const u8,
-        params: SelfRepeatingLeafParams,
-    };
-
-    fn renderSelfRepeatingProngBody(context: SelfRepeatingSwitchContext, buffer: *std.Io.Writer, group_index: usize) !void {
-        const group = context.node.groups.items[group_index];
-        const step_length = context.node.step_length;
-        if (group.child.isLeaf()) {
-            try context.generator.emitSelfRepeatingLeafBody(buffer, try indented(context.generator.allocator, context.indent, 8), context.params);
-        } else {
-            var child_indent = std.ArrayList(u8).empty;
-            try child_indent.appendSlice(context.generator.allocator, context.indent);
-            try child_indent.appendSlice(context.generator.allocator, "        ");
-            try context.generator.emitSelfRepeatingSwitch(buffer, group.child, context.prefix_length + step_length, child_indent.items, context.params);
-            try buffer.writeByte('\n');
-        }
-    }
-
-    fn renderSelfRepeatingFallbackBody(context: SelfRepeatingSwitchContext, buffer: *std.Io.Writer) !void {
-        try context.generator.emitSelfRepeatingLeafBody(buffer, try indented(context.generator.allocator, context.indent, 8), context.params);
-    }
-
-    fn renderSelfRepeatingElse(context: SelfRepeatingSwitchContext, writer: *std.Io.Writer) !void {
-        if (context.node.fallback != null) {
-            try writer.print("{s}    else => {{ // ''\n", .{context.indent});
-            try context.generator.emitSelfRepeatingLeafBody(writer, try indented(context.generator.allocator, context.indent, 8), context.params);
-            try writer.print("{s}    }},\n", .{context.indent});
-        } else {
-            try writer.print("{s}    else => break,\n", .{context.indent});
-        }
+    /// The repetition loop: each iteration asks the decision whether the
+    /// rule repeats, then runs the repeated prefix once.
+    fn emitSelfRepeatingLoop(self: *Generator, writer: *std.Io.Writer, node: *const switch_planning.Node, params: SelfRepeatingLeafParams) !void {
+        try writer.writeAll("\n    while (true) {\n");
+        const repeats = try self.emitDecision(writer, .repetition, params.variable, node, "        ", params.skip_ast_construction);
+        try writer.print("        if (!{s}) break;\n", .{repeats});
+        try self.emitSelfRepeatingLeafBody(writer, "        ", params);
+        try writer.writeAll("    }\n");
     }
 
     fn emitSelfRepeatingLeafBody(self: *Generator, writer: *std.Io.Writer, indent: []const u8, params: SelfRepeatingLeafParams) !void {
@@ -827,7 +780,7 @@ const Generator = struct {
         }
 
         const decision = self.plan.parserDecision(terminal_index, skip_ast_construction);
-        try self.emitRuleSwitch(writer, terminal_index, decision.tree, 0, "    ", skip_ast_construction, false);
+        try self.emitTerminalSwitch(writer, decision.tree, 0, "    ");
         try writer.writeByte('\n');
         if (returns_node) {
             if (self.options.with_ast) {
@@ -859,81 +812,70 @@ const Generator = struct {
         try writer.writeAll("}");
     }
 
-    fn emitRuleSwitch(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, node: *const switch_planning.Node, prefix_length: usize, indent: []const u8, skip_ast_construction: bool, is_self_repeating: bool) !void {
+    fn emitTerminalSwitch(self: *Generator, writer: *std.Io.Writer, node: *const switch_planning.Node, prefix_length: usize, indent: []const u8) EmitError!void {
         if (node.groups.items.len == 0) {
-            if (node.fallback) |rule_index| {
-                try self.emitSwitchLeaf(writer, symbol_index, rule_index, node.fallback_length orelse prefix_length, indent, skip_ast_construction);
+            if (node.fallback != null) {
+                try self.emitTerminalLeaf(writer, node.fallback_length orelse prefix_length, indent);
                 return;
             }
         }
 
         try emitter_common.emitMergedSwitch(
-            RuleSwitchContext,
-            anyerror,
+            TerminalSwitchContext,
+            EmitError,
             self.allocator,
             writer,
             node,
             prefix_length,
             indent,
-            .{ .generator = self, .symbol_index = symbol_index, .node = node, .prefix_length = prefix_length, .indent = indent, .skip_ast_construction = skip_ast_construction, .is_self_repeating = is_self_repeating },
-            renderRuleProngBody,
-            renderRuleFallbackBody,
-            renderRuleElse,
+            .{ .generator = self, .node = node, .prefix_length = prefix_length, .indent = indent },
+            renderTerminalProngBody,
+            renderTerminalFallbackBody,
+            renderTerminalElse,
         );
     }
 
-    const RuleSwitchContext = struct {
+    const TerminalSwitchContext = struct {
         generator: *Generator,
-        symbol_index: usize,
         node: *const switch_planning.Node,
         prefix_length: usize,
         indent: []const u8,
-        skip_ast_construction: bool,
-        is_self_repeating: bool,
     };
 
-    fn renderRuleProngBody(context: RuleSwitchContext, buffer: *std.Io.Writer, group_index: usize) !void {
+    fn renderTerminalProngBody(context: TerminalSwitchContext, buffer: *std.Io.Writer, group_index: usize) EmitError!void {
         const group = context.node.groups.items[group_index];
         const step_length = context.node.step_length;
         if (group.child.isLeaf()) {
-            try context.generator.emitSwitchLeaf(buffer, context.symbol_index, group.child.fallback.?, group.child.fallback_length orelse context.prefix_length + step_length, context.indent, context.skip_ast_construction);
+            try context.generator.emitTerminalLeaf(buffer, group.child.fallback_length orelse context.prefix_length + step_length, context.indent);
         } else {
-            var child_indent = std.ArrayList(u8).empty;
-            try child_indent.appendSlice(context.generator.allocator, context.indent);
-            try child_indent.appendSlice(context.generator.allocator, "        ");
-            try context.generator.emitRuleSwitch(buffer, context.symbol_index, group.child, context.prefix_length + step_length, child_indent.items, context.skip_ast_construction, context.is_self_repeating);
+            const child_indent = try indented(context.generator.allocator, context.indent, 8);
+            try context.generator.emitTerminalSwitch(buffer, group.child, context.prefix_length + step_length, child_indent);
             try buffer.writeByte('\n');
         }
     }
 
-    fn renderRuleFallbackBody(context: RuleSwitchContext, buffer: *std.Io.Writer) !void {
-        try context.generator.emitSwitchLeaf(buffer, context.symbol_index, context.node.fallback.?, context.node.fallback_length orelse context.prefix_length, context.indent, context.skip_ast_construction);
+    fn renderTerminalFallbackBody(context: TerminalSwitchContext, buffer: *std.Io.Writer) EmitError!void {
+        try context.generator.emitTerminalLeaf(buffer, context.node.fallback_length orelse context.prefix_length, context.indent);
     }
 
-    fn renderRuleElse(context: RuleSwitchContext, writer: *std.Io.Writer) !void {
-        try context.generator.emitSwitchElse(writer, context.symbol_index, context.node, context.prefix_length, context.indent, context.skip_ast_construction, context.is_self_repeating);
-    }
-
-    fn emitSwitchLeaf(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, rule_index: usize, length: usize, indent: []const u8, skip_ast_construction: bool) !void {
-        const symbol = self.symbols.items[symbol_index];
-        if (symbol.kind == .variable) {
-            try self.emitRuleBody(writer, rule_index, symbol_index, try indented(self.allocator, indent, 8), skip_ast_construction);
-        } else {
-            try writer.print("{s}        context.releaseToken({d});\n", .{ indent, length });
-        }
-    }
-
-    fn emitSwitchElse(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, node: *const switch_planning.Node, prefix_length: usize, indent: []const u8, skip_ast_construction: bool, is_self_repeating: bool) !void {
-        if (node.fallback) |rule_index| {
-            try writer.print("{s}    else => {{ // ''\n", .{indent});
-            try self.emitSwitchLeaf(writer, symbol_index, rule_index, node.fallback_length orelse prefix_length, indent, skip_ast_construction);
-            try writer.print("{s}    }},\n", .{indent});
+    fn renderTerminalElse(context: TerminalSwitchContext, writer: *std.Io.Writer) EmitError!void {
+        if (context.node.fallback != null) {
+            try writer.print("{s}    else => {{ // ''\n", .{context.indent});
+            try context.generator.emitTerminalLeaf(writer, context.node.fallback_length orelse context.prefix_length, context.indent);
+            try writer.print("{s}    }},\n", .{context.indent});
             return;
         }
-        if (is_self_repeating) {
-            try writer.print("{s}    else => break,\n", .{indent});
-            return;
-        }
+        try context.generator.emitSyntaxErrorElse(writer, context.node, context.indent);
+    }
+
+    fn emitTerminalLeaf(self: *Generator, writer: *std.Io.Writer, length: usize, indent: []const u8) EmitError!void {
+        _ = self;
+        try writer.print("{s}        context.releaseToken({d});\n", .{ indent, length });
+    }
+
+    /// The `else` prong of a decision or terminal switch that no rule
+    /// accepts: report the syntax error the plan attached to `node`.
+    fn emitSyntaxErrorElse(self: *Generator, writer: *std.Io.Writer, node: *const switch_planning.Node, indent: []const u8) EmitError!void {
         const spec = self.plan.syntax_error_handlers.items[node.diagnostic.?];
         try writer.print("{s}    else => {{\n", .{indent});
         try writer.print("{s}        @branchHint(.unlikely);\n", .{indent});
@@ -946,7 +888,7 @@ const Generator = struct {
         writer: *std.Io.Writer,
         spec: SyntaxErrorHandlerSpec,
         indent: []const u8,
-    ) !void {
+    ) EmitError!void {
         const arguments = if (self.uses_explicit_recovery) "context, occurrence_recovery" else "context";
         // A handler that returns recovered; one that cannot recover throws.
         // The node the parser was building outlives the recovery. The text
@@ -1318,90 +1260,194 @@ const Generator = struct {
         // the inline point: the shared prefix was consumed by the normal
         // child lines above, so lookahead begins fresh here.
         const decision = self.plan.parserDecision(tail, skip_ast_construction);
-        try self.emitTransparentTailSwitch(writer, tail, decision.tree, 0, indent, .{
+        const context: TransparentInlineContext = .{
             .parent_rule = parent_rule,
             .tail_position = tail_position,
             .parent = parent,
             .parent_address = parent_address,
             .skip_ast_construction = skip_ast_construction,
-        });
+        };
+        try self.emitRuleDispatch(writer, tail, decision.tree, indent, skip_ast_construction, TransparentTailRuleBody{
+            .generator = self,
+            .tail = tail,
+            .inline_context = context,
+        }, TransparentTailRuleBody.emit);
     }
 
-    fn emitTransparentTailSwitch(
+    const VariableRuleBody = struct {
+        generator: *Generator,
+        variable: usize,
+        skip_ast_construction: bool,
+
+        fn emit(self: VariableRuleBody, writer: *std.Io.Writer, rule_index: usize, indent: []const u8) EmitError!void {
+            try self.generator.emitRuleBody(writer, rule_index, self.variable, indent, self.skip_ast_construction);
+        }
+    };
+
+    const TransparentTailRuleBody = struct {
+        generator: *Generator,
+        tail: usize,
+        inline_context: TransparentInlineContext,
+
+        fn emit(self: TransparentTailRuleBody, writer: *std.Io.Writer, rule_index: usize, indent: []const u8) EmitError!void {
+            try self.generator.emitTransparentTailLeaf(writer, self.tail, rule_index, indent, self.inline_context);
+        }
+    };
+
+    /// Emits the decision that selects one of `symbol_index`'s rules, then
+    /// one `switch` over the selection whose prongs each hold a rule body
+    /// written by `emitBody`. The single gate for rule choice: every leaf of
+    /// the byte-level decision names its rule instead of repeating the body,
+    /// so size is leaves plus bodies, not leaves times bodies.
+    fn emitRuleDispatch(
         self: *Generator,
         writer: *std.Io.Writer,
-        tail: usize,
+        symbol_index: usize,
+        node: *const switch_planning.Node,
+        indent: []const u8,
+        skip_ast_construction: bool,
+        context: anytype,
+        comptime emitBody: fn (@TypeOf(context), *std.Io.Writer, usize, []const u8) EmitError!void,
+    ) EmitError!void {
+        var rule_indices = std.ArrayList(usize).empty;
+        try collectDecisionRules(self.allocator, node, &rule_indices);
+        const selected = try self.emitDecision(writer, .rule, symbol_index, node, indent, skip_ast_construction);
+        const body_indent = try indented(self.allocator, indent, 8);
+        try writer.print("{s}switch ({s}) {{\n", .{ indent, selected });
+        for (rule_indices.items) |rule_index| {
+            try writer.print("{s}    {d} => {{\n", .{ indent, rule_index });
+            try emitBody(context, writer, rule_index, body_indent);
+            try writer.print("{s}    }},\n", .{indent});
+        }
+        try writer.print("{s}    else => unreachable,\n{s}}}\n", .{ indent, indent });
+    }
+
+    fn collectDecisionRules(allocator: std.mem.Allocator, node: *const switch_planning.Node, rule_indices: *std.ArrayList(usize)) EmitError!void {
+        if (node.fallback) |rule_index| {
+            if (std.mem.indexOfScalar(usize, rule_indices.items, rule_index) == null) try rule_indices.append(allocator, rule_index);
+        }
+        for (node.groups.items) |group| try collectDecisionRules(allocator, group.child, rule_indices);
+    }
+
+    /// What the leaves of a decision select.
+    const DecisionKind = enum {
+        /// The index of the rule to parse. Input no rule accepts is a syntax error.
+        rule,
+        /// Whether another repetition of a self-repeating rule follows. Input
+        /// no rule accepts ends the repetition.
+        repetition,
+    };
+
+    /// Emits `const <selected>: <type> = <label>: { ... };` and returns the
+    /// constant's name. The byte-switch inside only breaks out of the label
+    /// with a leaf's value (or returns, for a syntax error).
+    fn emitDecision(self: *Generator, writer: *std.Io.Writer, kind: DecisionKind, symbol_index: usize, node: *const switch_planning.Node, indent: []const u8, skip_ast_construction: bool) EmitError![]const u8 {
+        // Labels only need to be unique within one generated function; the
+        // function renderers reset the count so per-configuration bodies stay
+        // textually identical and deduplicate.
+        const id = self.decision_count;
+        self.decision_count += 1;
+        const label = try std.fmt.allocPrint(self.allocator, "decision_{d}", .{id});
+        const selected = try std.fmt.allocPrint(self.allocator, "{s}_{d}", .{ switch (kind) {
+            .rule => "selected_rule",
+            .repetition => "repeats",
+        }, id });
+        try writer.print("{s}const {s}: {s} = {s}: {{\n", .{ indent, selected, switch (kind) {
+            .rule => "usize",
+            .repetition => "bool",
+        }, label });
+        try self.emitDecisionSwitch(writer, .{
+            .generator = self,
+            .kind = kind,
+            .symbol_index = symbol_index,
+            .node = node,
+            .prefix_length = 0,
+            .indent = try indented(self.allocator, indent, 4),
+            .skip_ast_construction = skip_ast_construction,
+            .label = label,
+        });
+        try writer.print("\n{s}}};\n", .{indent});
+        return selected;
+    }
+
+    const DecisionContext = struct {
+        generator: *Generator,
+        kind: DecisionKind,
+        symbol_index: usize,
         node: *const switch_planning.Node,
         prefix_length: usize,
         indent: []const u8,
-        context: TransparentInlineContext,
-    ) EmitError!void {
-        if (node.groups.items.len == 0) {
-            if (node.fallback) |rule_index| {
-                try self.emitTransparentTailLeaf(writer, tail, rule_index, indent, context);
+        skip_ast_construction: bool,
+        label: []const u8,
+
+        fn writeLeaf(self: DecisionContext, writer: *std.Io.Writer, rule_index: usize) EmitError!void {
+            switch (self.kind) {
+                .rule => try writer.print("break :{s} {d}", .{ self.label, rule_index }),
+                .repetition => try writer.print("break :{s} true", .{self.label}),
+            }
+        }
+    };
+
+    fn emitDecisionSwitch(self: *Generator, writer: *std.Io.Writer, context: DecisionContext) EmitError!void {
+        if (context.node.groups.items.len == 0) {
+            if (context.node.fallback) |rule_index| {
+                try writer.writeAll(context.indent);
+                try context.writeLeaf(writer, rule_index);
+                try writer.writeByte(';');
+                return;
+            }
+            if (context.kind == .repetition) {
+                try writer.print("{s}break :{s} false;", .{ context.indent, context.label });
                 return;
             }
         }
-
         try emitter_common.emitMergedSwitch(
-            TransparentSwitchContext,
+            DecisionContext,
             EmitError,
             self.allocator,
             writer,
-            node,
-            prefix_length,
-            indent,
-            .{ .generator = self, .tail = tail, .node = node, .prefix_length = prefix_length, .indent = indent, .inline_context = context },
-            renderTransparentProngBody,
-            renderTransparentFallbackBody,
-            renderTransparentElse,
+            context.node,
+            context.prefix_length,
+            context.indent,
+            context,
+            renderDecisionProngBody,
+            renderDecisionFallbackBody,
+            renderDecisionElse,
         );
     }
 
-    const TransparentSwitchContext = struct {
-        generator: *Generator,
-        tail: usize,
-        node: *const switch_planning.Node,
-        prefix_length: usize,
-        indent: []const u8,
-        inline_context: TransparentInlineContext,
-    };
-
-    fn renderTransparentProngBody(context: TransparentSwitchContext, buffer: *std.Io.Writer, group_index: usize) EmitError!void {
+    fn renderDecisionProngBody(context: DecisionContext, buffer: *std.Io.Writer, group_index: usize) EmitError!void {
         const group = context.node.groups.items[group_index];
-        const step_length = context.node.step_length;
         if (group.child.isLeaf()) {
-            try context.generator.emitTransparentTailLeaf(buffer, context.tail, group.child.fallback.?, context.indent, context.inline_context);
-        } else {
-            var child_indent = std.ArrayList(u8).empty;
-            try child_indent.appendSlice(context.generator.allocator, context.indent);
-            try child_indent.appendSlice(context.generator.allocator, "        ");
-            try context.generator.emitTransparentTailSwitch(buffer, context.tail, group.child, context.prefix_length + step_length, child_indent.items, context.inline_context);
-            try buffer.writeByte('\n');
+            try buffer.print("{s}        ", .{context.indent});
+            try context.writeLeaf(buffer, group.child.fallback.?);
+            try buffer.writeAll(";\n");
+            return;
         }
+        var child = context;
+        child.node = group.child;
+        child.prefix_length = context.prefix_length + context.node.step_length;
+        child.indent = try indented(context.generator.allocator, context.indent, 8);
+        try context.generator.emitDecisionSwitch(buffer, child);
+        try buffer.writeByte('\n');
     }
 
-    fn renderTransparentFallbackBody(context: TransparentSwitchContext, buffer: *std.Io.Writer) EmitError!void {
-        try context.generator.emitTransparentTailLeaf(buffer, context.tail, context.node.fallback.?, context.indent, context.inline_context);
+    fn renderDecisionFallbackBody(context: DecisionContext, buffer: *std.Io.Writer) EmitError!void {
+        try buffer.print("{s}        ", .{context.indent});
+        try context.writeLeaf(buffer, context.node.fallback.?);
+        try buffer.writeAll(";\n");
     }
 
-    fn renderTransparentElse(context: TransparentSwitchContext, writer: *std.Io.Writer) EmitError!void {
-        // Transparent helpers head no self-repeating loop by construction
-        // (factored suffixes predate their tail), so the error branch always
-        // reports rather than breaking a repetition.
-        //
-        // A fallback rule must splice through emitTransparentTailLeaf like
-        // every other tail leaf: the generic else would emit a full rule
-        // body for the synthetic tail, redeclaring child_nodes inside the
-        // parent's body scope (and finalizing a node the tail must never
-        // own). Only a missing fallback delegates for the error branch,
-        // which emits no rule body.
+    fn renderDecisionElse(context: DecisionContext, writer: *std.Io.Writer) EmitError!void {
         if (context.node.fallback) |rule_index| {
-            try writer.print("{s}    else => {{ // ''\n", .{context.indent});
-            try context.generator.emitTransparentTailLeaf(writer, context.tail, rule_index, context.indent, context.inline_context);
-            try writer.print("{s}    }},\n", .{context.indent});
-        } else {
-            try context.generator.emitSwitchElse(writer, context.tail, context.node, context.prefix_length, context.indent, context.inline_context.skip_ast_construction, false);
+            try writer.print("{s}    else => ", .{context.indent});
+            try context.writeLeaf(writer, rule_index);
+            try writer.writeAll(",\n");
+            return;
+        }
+        switch (context.kind) {
+            .rule => try context.generator.emitSyntaxErrorElse(writer, context.node, context.indent),
+            .repetition => try writer.print("{s}    else => break :{s} false,\n", .{ context.indent, context.label }),
         }
     }
 
