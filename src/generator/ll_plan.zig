@@ -57,7 +57,6 @@ pub const LLPlan = struct {
     }
 
     pub fn build(allocator: std.mem.Allocator, grammar: *common.PreparedGrammar, options: common.Options) !LLPlan {
-        var factoring_steps: usize = 0;
         while (true) {
             var builder = Builder{
                 .allocator = allocator,
@@ -69,14 +68,7 @@ pub const LLPlan = struct {
             try builder.analyzeGrammar();
             try builder.buildParseTable();
             if (builder.pending_ambiguity) |ambiguity| {
-                if (try factorSharedPrefixStep(allocator, grammar, options, ambiguity)) {
-                    factoring_steps += 1;
-                    if (factoring_steps > max_automatic_factoring_steps) {
-                        try builder.reportAmbiguity(ambiguity);
-                        return error.AmbiguousGrammar;
-                    }
-                    continue;
-                }
+                if (try factorSharedPrefixStep(allocator, grammar, options, ambiguity)) continue;
                 try builder.reportAmbiguity(ambiguity);
                 return error.AmbiguousGrammar;
             }
@@ -123,10 +115,6 @@ const Ambiguity = struct {
     other_terminal: ?usize = null,
     overlap: ?[]const u8 = null,
 };
-
-/// Bounds automatic left-factoring rewrites per grammar so a pathological
-/// conflict cycle fails with `AmbiguousGrammar` instead of looping.
-const max_automatic_factoring_steps: usize = 64;
 
 /// Why a shared RHS prefix can or cannot be hoisted. The single
 /// `assessSharedPrefix` gate owns this decision so automatic factoring and
@@ -231,6 +219,14 @@ fn assessSharedPrefix(
 /// production-level annotations on a sharing rule, which would lose their
 /// reduction site), in which case the caller still reports
 /// `AmbiguousGrammar`.
+///
+/// Repeating this step always terminates. Count the pairs of same-header
+/// rules whose RHS start with the same symbol. A rewrite replaces the k >= 2
+/// sharing rules by one parent rule, so every pair among them disappears.
+/// The tail's rules inherit only the pairs among them that still agree on
+/// their first suffix symbol, which excludes the conflicting pair (it
+/// diverges right after the prefix). Pairs with rules outside the sharing set
+/// do not grow. The count strictly decreases and needs no cap.
 fn factorSharedPrefixStep(
     allocator: std.mem.Allocator,
     grammar: *common.PreparedGrammar,
@@ -304,11 +300,7 @@ fn factorSharedPrefixStep(
 /// productions the LL emitter's comptime check sees. Grammars with no
 /// factorable conflict are returned untouched.
 pub fn factorSharedPrefixes(allocator: std.mem.Allocator, grammar: *common.PreparedGrammar) !void {
-    var steps: usize = 0;
-    while (try factorOneConflict(allocator, grammar)) {
-        steps += 1;
-        if (steps > max_automatic_factoring_steps) return;
-    }
+    while (try factorOneConflict(allocator, grammar)) {}
 }
 
 fn factorOneConflict(allocator: std.mem.Allocator, grammar: *common.PreparedGrammar) !bool {
@@ -1281,6 +1273,53 @@ test "LL planning automatically factors directly shared prefixes" {
         root_entries += 1;
     };
     try std.testing.expectEqual(@as(usize, 1), root_entries);
+}
+
+/// Root -> "t<i>" "z" | "t<i>" for `pair_count` distinct terminals: valid
+/// LL(1) once factored, and each pair needs its own factoring step.
+fn testManyFactoringStepsGrammar(allocator: std.mem.Allocator, pair_count: usize) !common.PreparedGrammar {
+    var grammar = common.PreparedGrammar{ .augmented_start = undefined, .eof = undefined };
+    const root = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Root", .variable);
+    const z = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "z", .terminal);
+    for (0..pair_count) |i| {
+        const name = try std.fmt.allocPrint(allocator, "t{d}", .{i});
+        const terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, name, .terminal);
+        const long_index = try std.fmt.allocPrint(allocator, "{d}", .{2 * i});
+        const short_index = try std.fmt.allocPrint(allocator, "{d}", .{2 * i + 1});
+        try appendTestRule(allocator, &grammar.rules, root, long_index, &.{ terminal, z });
+        try appendTestRule(allocator, &grammar.rules, root, short_index, &.{terminal});
+    }
+    grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
+    grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
+    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "GenerativeTerminal", .variable);
+    try appendTestRule(allocator, &grammar.rules, grammar.augmented_start, "0", &.{ root, grammar.eof });
+    try appendTestRule(allocator, &grammar.rules, grammar.generative_terminal.?, "0", &.{});
+    std.mem.sort(common.Rule, grammar.rules.items, grammar.symbols.items, common.ruleLessThan);
+    return grammar;
+}
+
+fn countSyntheticTails(grammar: *const common.PreparedGrammar) usize {
+    var count: usize = 0;
+    for (grammar.symbols.items) |symbol| {
+        if (symbol.synthetic_transparent) count += 1;
+    }
+    return count;
+}
+
+test "LL planning factors grammars that need many factoring steps" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const pair_count = 100;
+
+    var planned = try testManyFactoringStepsGrammar(allocator, pair_count);
+    const options = common.Options{ .with_ast = true, .with_procedures = false, .with_error_recovery = false };
+    _ = try LLPlan.build(allocator, &planned, options);
+    try std.testing.expectEqual(@as(usize, pair_count), countSyntheticTails(&planned));
+
+    var factored = try testManyFactoringStepsGrammar(allocator, pair_count);
+    try factorSharedPrefixes(allocator, &factored);
+    try std.testing.expectEqual(@as(usize, pair_count), countSyntheticTails(&factored));
 }
 
 test "LL planning keeps conflicts whose prefix annotations diverge" {
