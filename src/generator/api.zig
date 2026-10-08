@@ -734,6 +734,28 @@ test "LL self-repeating loops write their body once however many decision leaves
     }
 }
 
+test "LL bodies beyond Zig's default branch quota state a computed one" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    // `Start` calls 200 inline terminal parsers, each charged to its budget.
+    var source: std.Io.Writer.Allocating = .init(allocator);
+    try source.writer.writeAll("Start\n|");
+    for (0..200) |i| try source.writer.print(" \"t{d}\"", .{i});
+    try source.writer.writeAll(" Small\n\nSmall\n| \"z\"\n");
+
+    const output = try generateParserAlloc(allocator, source.written(), .ll, .{ .with_ast = false, .with_procedures = false });
+    const quota_marker = "@setEvalBranchQuota(";
+
+    const start = fnBody(output, "fn parse_Start(") orelse return error.TestUnexpectedStructure;
+    const quota_at = std.mem.indexOf(u8, start, quota_marker) orelse return error.TestExpectedEqual;
+    const digits = start[quota_at + quota_marker.len ..];
+    const quota = try std.fmt.parseInt(usize, digits[0..std.mem.indexOfScalar(u8, digits, ')').?], 10);
+    try std.testing.expect(quota > 1000);
+    try std.testing.expect(quota >= std.mem.count(u8, start, "parse_terminal_"));
+}
+
 test "LL generation still rejects indirect first-set overlap" {
     const source =
         \\Start

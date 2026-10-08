@@ -448,6 +448,9 @@ fn emitMinimizedCondition(writer: *std.Io.Writer, onSetMask: MintermMask, uses_e
     }
 }
 
+/// Zig's default `@setEvalBranchQuota`.
+const default_branch_quota = 1000;
+
 /// Renders one generated function body under every configuration that
 /// `config.zig` can select, deduplicates identical texts, and emits them
 /// chained behind `comptime` gates on the generated constants. Exactly
@@ -510,17 +513,21 @@ pub fn emitModeGatedBody(
         generator.options.with_error_recovery = combo.mode != .disabled;
         var buffer = std.Io.Writer.Allocating.init(generator.allocator);
         defer buffer.deinit();
+        if (comptime @hasDecl(Generator, "beginFunctionBody")) generator.beginFunctionBody();
         try render_fn(generator, &buffer.writer, params);
         const rendered = buffer.written();
-        const text = if (has_occurrence_procedures_parameter and
+        const occurrence_prefix = if (has_occurrence_procedures_parameter and
             std.mem.indexOf(u8, rendered, "occurrence_procedures") == null)
-            try std.fmt.allocPrint(
-                generator.allocator,
-                "    _ = &occurrence_procedures;\n{s}",
-                .{rendered},
-            )
+            "    _ = &occurrence_procedures;\n"
         else
-            try generator.allocator.dupe(u8, rendered);
+            "";
+        // Zig's default comptime branch quota is 1000; a body that needs more
+        // states its own, computed by the emitter that rendered it.
+        const quota = if (comptime @hasDecl(Generator, "functionBodyBranchQuota")) generator.functionBodyBranchQuota(rendered) else 0;
+        const text = if (quota > default_branch_quota)
+            try std.fmt.allocPrint(generator.allocator, "    @setEvalBranchQuota({d});\n{s}{s}", .{ quota, occurrence_prefix, rendered })
+        else
+            try std.fmt.allocPrint(generator.allocator, "{s}{s}", .{ occurrence_prefix, rendered });
         var duplicate_index: ?usize = null;
         for (texts[0..kept_count], 0..) |existing, gi| {
             if (std.mem.eql(u8, existing, text)) {

@@ -43,6 +43,15 @@ const Generator = struct {
     verbatim_literal: ?[]const u8 = null,
     verbatim_consume: bool = true,
     decision_count: usize = 0,
+    /// Comptime branch budget spent so far in the body being rendered by
+    /// calls to inline terminal parsers (see `functionBodyBranchQuota`).
+    inline_call_cost: usize = 0,
+    /// Comptime branch budget one call to each terminal parser spends in its
+    /// caller, indexed by symbol; filled before any parser is emitted.
+    terminal_inline_costs: []usize = &.{},
+    /// Largest `functionBodyBranchQuota` computed since it was last reset, so
+    /// a terminal's cost is measured exactly like any caller's body.
+    largest_body_branch_quota: usize = 0,
 
     fn init(allocator: std.mem.Allocator, options: Options, grammar: *const common.PreparedGrammar, plan: *const LLPlan) Generator {
         return .{
@@ -116,6 +125,7 @@ const Generator = struct {
         }
         try emitter_common.emitProcedureSupport(self.allocator, writer, self.rules.items, self.symbols.items, self.variables.items, self.augmented_start, self.generative_terminal);
         try emitter_common.emitReservedLeftoverCheck(self.allocator, writer, self.symbols.items);
+        try self.measureTerminalInlineCosts();
         try self.emitParserFunctions(writer);
         try self.emitAstSuppressedParsers(writer);
         try self.emitSyntaxErrorHandlers(writer);
@@ -276,6 +286,57 @@ const Generator = struct {
         if (self.plan.ast_suppressed_order.len > 0) try writer.writeByte('\n');
     }
 
+    /// Called by `emitModeGatedBody` before it renders each function body.
+    /// Decision labels only need to be unique within one function, and
+    /// numbering them per function keeps per-configuration bodies textually
+    /// identical so they still deduplicate.
+    pub fn beginFunctionBody(self: *Generator) void {
+        self.decision_count = 0;
+        self.inline_call_cost = 0;
+    }
+
+    /// Comptime branch budget each `(` in a generated body may spend on the
+    /// inline and comptime work behind it (inline runtime helpers, rule table
+    /// lookups), which the generator cannot see into. Counting every `(`
+    /// overcounts calls about threefold (`if (`, `switch (`, builtins), which
+    /// leaves each real call well above the deepest inline chain today
+    /// (`head` through the lexer, about five calls).
+    const branch_quota_per_call = 8;
+
+    /// The `@setEvalBranchQuota` a rendered function body needs. Zig charges
+    /// every inline call, including those inside inlined bodies, against the
+    /// analyzing function's budget (1000 by default). Every call site in the
+    /// text gets `branch_quota_per_call`, and each call to an inline terminal
+    /// parser also carries that parser's whole cost.
+    pub fn functionBodyBranchQuota(self: *Generator, text: []const u8) usize {
+        const quota = branch_quota_per_call * std.mem.count(u8, text, "(") + self.inline_call_cost;
+        self.largest_body_branch_quota = @max(self.largest_body_branch_quota, quota);
+        return quota;
+    }
+
+    /// Terminal parsers are `inline fn`, so every call spends the callee's
+    /// budget in the caller. Measure each once, before any caller is emitted,
+    /// as the largest quota among its configuration variants' bodies: a
+    /// caller's variant only calls the matching variant of the terminal.
+    fn measureTerminalInlineCosts(self: *Generator) EmitError!void {
+        const costs = try self.allocator.alloc(usize, self.symbols.items.len);
+        @memset(costs, 0);
+        self.terminal_inline_costs = costs;
+        for ([_][]const usize{ self.plan.emitted_symbols, self.plan.ast_suppressed_order }, [_]bool{ false, true }) |symbols, skip_ast_construction| {
+            for (symbols) |symbol_index| {
+                if (self.symbols.items[symbol_index].kind == .variable) continue;
+                var buffer = std.Io.Writer.Allocating.init(self.allocator);
+                defer buffer.deinit();
+                self.largest_body_branch_quota = 0;
+                self.emitTerminalParser(&buffer.writer, symbol_index, skip_ast_construction) catch |err| switch (err) {
+                    error.OutOfMemory => return error.OutOfMemory,
+                    else => return error.WriteFailed,
+                };
+                costs[symbol_index] = @max(costs[symbol_index], self.largest_body_branch_quota);
+            }
+        }
+    }
+
     fn parserName(self: *Generator, symbol_index: usize) ![]const u8 {
         return self.plan.parser_names[symbol_index];
     }
@@ -310,10 +371,6 @@ const Generator = struct {
         const variable = params.variable;
         const skip_ast_construction = params.skip_ast_construction;
         const returns_node = self.symbolReturnsNode(variable, skip_ast_construction);
-        // Decision labels only need to be unique within one function; numbering
-        // them per function keeps per-configuration bodies textually identical
-        // so they still deduplicate.
-        self.decision_count = 0;
         if (variable == self.plan.augmented_start) {
             try writer.writeAll("    root_reduction.* = .{};\n");
         }
@@ -484,7 +541,6 @@ const Generator = struct {
     };
 
     fn renderSelfRepeatingParserBody(self: *Generator, writer: *std.Io.Writer, params: SelfRepeatingParserBody) !void {
-        self.decision_count = 0;
         const variable = params.variable;
         const rule_index = params.rule_index;
         const self_index = params.self_index;
@@ -1137,6 +1193,7 @@ const Generator = struct {
             try self.emitTransparentTailInline(writer, symbol_index, rule, child_index, parent, parent_address, indent, skip_ast_construction);
             return;
         }
+        if (child.kind != .variable) self.inline_call_cost += self.terminal_inline_costs[symbol_index];
         const call_name = if (symbol_index == parent_variable)
             try std.fmt.allocPrint(self.allocator, "{s}_{s}_{d}", .{ name, rule.rhs_index, child_index })
         else
