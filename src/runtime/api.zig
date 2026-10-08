@@ -889,6 +889,11 @@ pub const Session = struct {
             return error.SessionGenerationExhausted;
         }
         self.generation += 1;
+        // The storage is stamped here, before any step of the parse can
+        // recycle an address (a parse that fails before rewinding still
+        // retires the previous tree's generation), so a walker over the
+        // previous tree is stale from the moment the new parse begins.
+        if (comptime parser.is_ast_enabled) self.node_allocator.generation = self.generation;
     }
 
     /// Single parse-release site. Unlocks the write lease held by the parse.

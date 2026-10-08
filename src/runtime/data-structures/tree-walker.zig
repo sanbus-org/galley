@@ -12,12 +12,24 @@ const root = @import("galley");
 /// inside the walk's root (removed, or moved elsewhere) raises
 /// `WalkPositionDetached` (surfaced as invalid node through the C ABI).
 ///
+/// A walk belongs to the parse of the tree it was created over: every step,
+/// including one on a finished walk, first compares the cursor's generation
+/// with the generation the node storage holds and raises `StaleTree` when a
+/// later parse has begun, since that parse recycles the very addresses the
+/// cursor holds. The check lives in `walkNext`, so no caller can step
+/// without it. It cannot close a concurrent parse on another thread: nothing
+/// here holds the session lock, so a walk running while a parse recycles the
+/// storage is a data race that only a read guard (or the C door's lease)
+/// prevents.
+///
 /// AST-only: there is no persistent tree without AST construction. Calling
 /// any function in a no-AST build is a compile error.
 pub const Cursor = extern struct {
-    /// Parse generation the walk position belongs to. The C door checks it
-    /// against the live parse before every step; the walker itself never
-    /// reads it.
+    /// Parse generation the walk position belongs to: the generation of the
+    /// storage when the walk was created (`galley_root_node` and
+    /// `galley_hook_generation` report the same value to hosts). `walkNext`
+    /// compares it with the storage's generation before every step, and the
+    /// C door compares it with the door's live tree before that.
     generation: u64,
     /// Address the walk is rooted at: stepping never yields a node outside
     /// this node's subtree.
@@ -51,7 +63,7 @@ pub const option_mask: u8 = option_skip_semantic_errors | option_skip_recovered;
 pub const flag_semantic_error: u8 = 1;
 pub const flag_recovered: u8 = 2;
 
-pub const WalkError = error{ InvalidCursor, WalkPositionDetached };
+pub const WalkError = error{ InvalidCursor, WalkPositionDetached, StaleTree };
 
 const Node = root.data_structures.Node;
 
@@ -59,12 +71,15 @@ const Position = struct { address: Node.Pointer, depth: u32 };
 
 /// Advances `cursor` to the next node in pre-order, writing the position
 /// into the cursor and returning true, or marks it done and returns false.
-/// Validates the cursor on every call: an unusable cursor fails with
-/// `error.InvalidCursor` and is left unchanged.
+/// Validates the cursor on every call, first of all its generation: a cursor
+/// created over an earlier parse fails with `error.StaleTree`, whether or not
+/// its walk had finished. Any other unusable cursor fails with
+/// `error.InvalidCursor`. A failed call leaves the cursor unchanged.
 pub fn walkNext(node_allocator: Node.NodeAllocator, cursor: *Cursor) WalkError!bool {
     if (comptime !root.parser.is_ast_enabled) {
         @compileError("walkNext requires AST construction; without a persistent tree there is nothing to walk");
     }
+    if (cursor.generation != node_allocator.generation) return error.StaleTree;
     const node_count: u64 = node_allocator.counter;
     if (cursor.state > state_done) return error.InvalidCursor;
     if (cursor.options & ~option_mask != 0) return error.InvalidCursor;
@@ -170,6 +185,11 @@ fn advance(node_allocator: Node.NodeAllocator, root_address: Node.Pointer, start
 /// plus the 40-byte cursor, no allocation and nothing to deinit. This is the
 /// in-process convenience wrapper over `walkNext`; bindings drive the cursor
 /// through the C ABI instead.
+///
+/// The walker belongs to the parse of the tree it was created over: it
+/// captures the storage's generation in `init`, and stepping it after the
+/// session parsed again (successfully or not) fails with `error.StaleTree`,
+/// also once it had finished. Create a new walker over the current tree.
 pub const TreeWalker = struct {
     pub const Step = struct {
         address: Node.Pointer,
@@ -198,7 +218,7 @@ pub const TreeWalker = struct {
         return .{
             .node_allocator = node_allocator,
             .cursor = .{
-                .generation = 0,
+                .generation = node_allocator.generation,
                 .root = root_address,
                 .current = 0,
                 .depth = 0,
@@ -212,6 +232,7 @@ pub const TreeWalker = struct {
     }
 
     /// Yields the next node in pre-order, or null when the walk is done.
+    /// `error.StaleTree` once the session has parsed again.
     pub fn next(self: *TreeWalker) WalkError!?Step {
         if (comptime !root.parser.is_ast_enabled) {
             @compileError("TreeWalker requires AST construction; without a persistent tree there is nothing to walk");

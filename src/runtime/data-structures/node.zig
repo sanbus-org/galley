@@ -58,6 +58,14 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
         /// can tell that its position must be re-verified against the live
         /// links before stepping.
         structure_version: u64 = 0,
+        /// The parse generation whose nodes this storage holds: the session
+        /// stamps it when a parse acquires the session, before `reset`
+        /// recycles any address, and never reuses a value (it refuses to
+        /// parse once its generation is exhausted). A walk cursor carries
+        /// the generation it was created over and `walkNext` refuses a
+        /// storage that holds another. Zero belongs to storage no session
+        /// ever parsed into, such as a hand-built tree.
+        generation: u64 = 0,
         memory: []NodeType = &.{},
         segments: [][]NodeType = &.{},
         memory_benchmark: if (root.ast_memory_benchmark_enabled) ASTMemoryBenchmarkCounters else void =

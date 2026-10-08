@@ -550,3 +550,132 @@ test "a walk with no edits leaves the structure version unchanged and matches re
         try std.testing.expectEqual(want.depth, got.depth);
     }
 }
+
+test "walker stepped after the session parses again fails with StaleTree" {
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer session.deinit();
+    const first = try session.parseBytes("aa", null);
+    var walker = Walker.init(&session.node_allocator, first.ast_root orelse return error.MissingAstRoot, .{});
+    _ = (try walker.next()) orelse return error.TooFewSteps;
+
+    _ = try session.parseBytes("aa", null);
+    const cursor_before = walker.cursor;
+    try std.testing.expectError(error.StaleTree, walker.next());
+    // A refused step leaves the cursor as it was, so the refusal repeats.
+    try std.testing.expectEqual(cursor_before, walker.cursor);
+    try std.testing.expectError(error.StaleTree, walker.next());
+}
+
+test "walker that had already finished fails with StaleTree after a re-parse" {
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer session.deinit();
+    const first = try session.parseBytes("aa", null);
+    var walker = Walker.init(&session.node_allocator, first.ast_root orelse return error.MissingAstRoot, .{});
+    while (try walker.next()) |_| {}
+    // A finished walker keeps answering null while its parse is live.
+    try std.testing.expect((try walker.next()) == null);
+
+    _ = try session.parseBytes("aa", null);
+    try std.testing.expectError(error.StaleTree, walker.next());
+}
+
+test "walker that never started fails with StaleTree after a re-parse" {
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer session.deinit();
+    const first = try session.parseBytes("aa", null);
+    var walker = Walker.init(&session.node_allocator, first.ast_root orelse return error.MissingAstRoot, .{});
+
+    try std.testing.expectError(parser.ParseError.SemanticError, session.parseBytes("bb", null));
+    try std.testing.expectError(error.StaleTree, walker.next());
+}
+
+test "a parse that fails still retires the walkers of the previous tree" {
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer session.deinit();
+    const first = try session.parseBytes("aa", null);
+    var walker = Walker.init(&session.node_allocator, first.ast_root orelse return error.MissingAstRoot, .{});
+    _ = (try walker.next()) orelse return error.TooFewSteps;
+
+    if (session.parseBytes("x", null)) |_| return error.ExpectedParseFailure else |_| {}
+    try std.testing.expectError(error.StaleTree, walker.next());
+}
+
+test "a walker created over the new tree works and the old one stays stale" {
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer session.deinit();
+    const first = try session.parseBytes("aa", null);
+    const first_root = first.ast_root orelse return error.MissingAstRoot;
+    var old_walker = Walker.init(&session.node_allocator, first_root, .{});
+
+    const second = try session.parseBytes("aa", null);
+    var new_walker = Walker.init(&session.node_allocator, second.ast_root orelse return error.MissingAstRoot, .{});
+    var visited: usize = 0;
+    while (try new_walker.next()) |_| visited += 1;
+    try std.testing.expect(visited > 1);
+    try std.testing.expectError(error.StaleTree, old_walker.next());
+}
+
+test "raw walkNext refuses a cursor of an earlier parse" {
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer session.deinit();
+    const first = try session.parseBytes("aa", null);
+    var cursor = newCursor(first.ast_root orelse return error.MissingAstRoot);
+    cursor.generation = session.node_allocator.generation;
+    try std.testing.expect(try walkNext(&session.node_allocator, &cursor));
+
+    _ = try session.parseBytes("aa", null);
+    try std.testing.expectError(error.StaleTree, walkNext(&session.node_allocator, &cursor));
+    cursor.state = tree_walker.state_done;
+    try std.testing.expectError(error.StaleTree, walkNext(&session.node_allocator, &cursor));
+}
+
+test "walker storage generation follows the session generation" {
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer session.deinit();
+    _ = try session.parseBytes("aa", null);
+    try std.testing.expectEqual(@as(u64, session.generation), session.node_allocator.generation);
+    _ = try session.parseBytes("aa", null);
+    try std.testing.expectEqual(@as(u64, session.generation), session.node_allocator.generation);
+}
+
+test "a parse that fails before rewinding the storage still retires the walkers of the previous tree" {
+    // The non-streaming file path frees the previous input and reads the new
+    // one before it prepares node storage, so a read failure leaves the old
+    // nodes in place over freed text. The session still considers that tree
+    // dead, and so must its walkers.
+    if (parser.input_streaming_enabled) return error.SkipZigTest;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var directory = try tmp.dir.openFile(std.testing.io, ".", .{ .mode = .read_only });
+    defer directory.close(std.testing.io);
+
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer session.deinit();
+    const first = try session.parseBytes("aa", null);
+    const node_count = session.node_allocator.counter;
+    var walker = Walker.init(&session.node_allocator, first.ast_root orelse return error.MissingAstRoot, .{});
+    _ = (try walker.next()) orelse return error.TooFewSteps;
+
+    try std.testing.expectError(error.ReadFailed, session.parseFile(directory, null));
+    // The storage was never rewound: only the generation retired the walker.
+    try std.testing.expectEqual(node_count, session.node_allocator.counter);
+    try std.testing.expectError(error.StaleTree, walker.next());
+}
+
+test "a refused parse leaves the walkers of the live tree valid" {
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer session.deinit();
+    const first = try session.parseBytes("aa", null);
+    var walker = Walker.init(&session.node_allocator, first.ast_root orelse return error.MissingAstRoot, .{});
+    _ = (try walker.next()) orelse return error.TooFewSteps;
+
+    {
+        var guard = try session.readCurrent();
+        defer guard.deinit();
+        try std.testing.expectError(error.SessionInUse, session.parseBytes("aa", null));
+    }
+    var visited: usize = 1;
+    while (try walker.next()) |_| visited += 1;
+    try std.testing.expect(visited > 1);
+}
