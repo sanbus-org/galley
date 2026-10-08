@@ -31,12 +31,6 @@ pub fn reduction_KeyTail(args: *root.data_structures.ProcedureArguments) void {
 pub fn reduction_NumberTail(args: *root.data_structures.ProcedureArguments) void {
     root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_NumberTail" }));
 }
-pub fn reduction__AugmentedStart(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__AugmentedStart" }));
-}
-pub fn reduction_GenerativeTerminal(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_GenerativeTerminal" }));
-}
 pub fn hook_print(args: *root.data_structures.ProcedureArguments) void {
     root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "hook_print" }));
 }

@@ -46,20 +46,36 @@ function requireGalleyCheckout() {
  * Build the shared fixture with `buildCommand` (argv prefix, workdir
  * appended) and return the workdir — the language directory sessions
  * open through `languagePath`. `second: true` builds the second shared
- * grammar instead of the keyvalue one. Throws loudly when the build fails.
+ * grammar instead of the keyvalue one. `proceduresDisabled: true` flips
+ * the copied config to `procedures = false`, yielding an artifact that
+ * defines no hooks (its own stable workdir, never mixed with the plain
+ * fixture). Throws loudly when the build fails.
  */
-export function ensureTestLibrary({ buildCommand, libFileName, scope, second = false }) {
+export function ensureTestLibrary({ buildCommand, libFileName, scope, second = false, proceduresDisabled = false }) {
   if (!Array.isArray(buildCommand) || buildCommand.length === 0) {
     throw new Error("galley test fixture: buildCommand must be a non-empty argv array");
   }
   if (!libFileName || !scope) {
     throw new Error("galley test fixture: libFileName and scope are required");
   }
-  const workDir = path.join(os.tmpdir(), "galley-js-test", second ? `${scope}-words` : scope);
+  const workDir = path.join(
+    os.tmpdir(),
+    "galley-js-test",
+    proceduresDisabled ? `${scope}-noprocs` : second ? `${scope}-words` : scope,
+  );
   fs.mkdirSync(workDir, { recursive: true });
   const source = second ? SECOND_FIXTURE_DIR : FIXTURE_DIR;
   for (const file of second ? SECOND_FIXTURE_FILES : FIXTURE_FILES) {
     fs.copyFileSync(path.join(source, file), path.join(workDir, file));
+  }
+  if (proceduresDisabled) {
+    const configPath = path.join(workDir, "config.zig");
+    const config = fs.readFileSync(configPath, "utf-8");
+    const enabled = "pub const procedures = true;";
+    if (!config.includes(enabled)) {
+      throw new Error(`galley test fixture: expected "${enabled}" in ${configPath}`);
+    }
+    fs.writeFileSync(configPath, config.replace(enabled, "pub const procedures = false;"));
   }
   requireGalleyCheckout();
   const [command, ...prefix] = buildCommand;

@@ -123,56 +123,68 @@ static PyObject *make_procedure_args(unsigned long long hook, PyObject *session_
     return (PyObject *)object;
 }
 
-/* Decides the hook call shape before invoking: a plain Python function
- * (or bound method) declaring no positional parameters gets no
- * arguments; anything else -- including variadic and defaulted
- * declarations -- gets the ProcedureArguments object. Deciding up front
- * means a TypeError raised inside a hook body is reported as-is instead
- * of being cleared and retried as a supposed arity mismatch (which also
- * ran the hook a second time). Non-function callables (builtins,
- * partials, callable objects) report -1 and keep the legacy probe
- * below. */
-static int hook_takes_no_arguments(PyObject *callable)
-{
-    PyObject *func = callable;
-    PyObject *code = NULL;
-    PyObject *count_obj = NULL;
-    PyObject *flags_obj = NULL;
-    long positional;
-    long flags;
-    int bound_self = 0;
+/* inspect.signature, looked up once when the first hook installs. */
+static PyObject *inspect_signature = NULL;
 
-    if (PyMethod_Check(func)) {
-        func = PyMethod_GET_FUNCTION(func);
-        bound_self = 1;
+/* The number of positional parameters `callable` declares, per
+ * inspect.signature: POSITIONAL_ONLY and POSITIONAL_OR_KEYWORD count,
+ * a variadic parameter alone does not (a hook declaring only *args is
+ * called with none). This is the one arity rule of this binding, read
+ * once when the hook is installed and stored with it, never probed on a
+ * call, so a TypeError raised inside a hook body is the hook's own failure.
+ * Returns -1 when the callable has no signature (inspect.signature raises
+ * ValueError or TypeError, as for some builtins), and the caller then
+ * passes the ProcedureArguments object; -2 with the exception set when
+ * anything else fails. */
+static int inspect_positional_count(PyObject *callable)
+{
+    if (inspect_signature == NULL) {
+        PyObject *inspect_module = PyImport_ImportModule("inspect");
+        if (inspect_module == NULL)
+            return -2;
+        inspect_signature = PyObject_GetAttrString(inspect_module, "signature");
+        Py_DECREF(inspect_module);
+        if (inspect_signature == NULL)
+            return -2;
     }
-    if (!PyFunction_Check(func))
-        return -1;
-    code = PyObject_GetAttrString(func, "__code__");
-    if (code == NULL) {
+    PyObject *signature = PyObject_CallOneArg(inspect_signature, callable);
+    if (signature == NULL) {
+        if (!PyErr_ExceptionMatches(PyExc_ValueError) &&
+            !PyErr_ExceptionMatches(PyExc_TypeError))
+            return -2;
         PyErr_Clear();
         return -1;
     }
-    count_obj = PyObject_GetAttrString(code, "co_argcount");
-    flags_obj = PyObject_GetAttrString(code, "co_flags");
-    Py_DECREF(code);
-    if (count_obj == NULL || flags_obj == NULL) {
-        Py_XDECREF(count_obj);
-        Py_XDECREF(flags_obj);
-        PyErr_Clear();
-        return -1;
+    PyObject *parameters = PyObject_GetAttrString(signature, "parameters");
+    Py_DECREF(signature);
+    if (parameters == NULL)
+        return -2;
+    PyObject *values = PyObject_CallMethod(parameters, "values", NULL);
+    Py_DECREF(parameters);
+    if (values == NULL)
+        return -2;
+    PyObject *iterator = PyObject_GetIter(values);
+    Py_DECREF(values);
+    if (iterator == NULL)
+        return -2;
+    int count = 0;
+    PyObject *parameter;
+    while ((parameter = PyIter_Next(iterator)) != NULL) {
+        PyObject *kind = PyObject_GetAttrString(parameter, "kind");
+        Py_DECREF(parameter);
+        if (kind == NULL)
+            break;
+        long kind_value = PyLong_AsLong(kind);
+        Py_DECREF(kind);
+        if (kind_value == -1 && PyErr_Occurred())
+            break;
+        /* Positional-only (0) and positional-or-keyword (1) declare a
+         * positional parameter; VAR_POSITIONAL (2) alone does not. */
+        if (kind_value == 0 || kind_value == 1)
+            count++;
     }
-    positional = PyLong_AsLong(count_obj);
-    flags = PyLong_AsLong(flags_obj);
-    Py_DECREF(count_obj);
-    Py_DECREF(flags_obj);
-    if ((positional == -1 || flags == -1) && PyErr_Occurred()) {
-        PyErr_Clear();
-        return -1;
-    }
-    if (positional - bound_self <= 0 && !(flags & CO_VARARGS))
-        return 1;
-    return 0;
+    Py_DECREF(iterator);
+    return PyErr_Occurred() ? -2 : count;
 }
 
 /* Takes the exception being raised as a normalized instance with its
@@ -262,16 +274,18 @@ static int run_hook(SessionObject *session, unsigned int index, unsigned long lo
     if (session->hooks_by_index == NULL ||
         index >= (unsigned int)PyList_GET_SIZE(session->hooks_by_index))
         return 0;
-    PyObject *callable = PyList_GET_ITEM(session->hooks_by_index, index);
-    if (callable == Py_None)
+    PyObject *entry = PyList_GET_ITEM(session->hooks_by_index, index);
+    if (entry == Py_None)
         return 0;
+    /* Each entry is (callable, no_arguments, index), decided once when the
+     * hook was installed and stored with it: no-arg hooks are called empty, so a
+     * TypeError from a hook body propagates as the hook's own failure instead
+     * of being retried with other arguments. */
+    PyObject *callable = PyTuple_GET_ITEM(entry, 0);
+    int no_arguments = PyTuple_GET_ITEM(entry, 1) == Py_True;
     Py_INCREF(callable);
-    /* The call shape is decided before invoking: no-arg hooks are
-     * called empty, so a TypeError from a hook body is never mistaken
-     * for an arity mismatch. Unknown shapes keep the legacy probe. */
-    int no_arguments = hook_takes_no_arguments(callable);
     PyObject *result;
-    if (no_arguments > 0) {
+    if (no_arguments) {
         result = PyObject_CallNoArgs(callable);
     } else {
         PyObject *arg = make_procedure_args(hook, (PyObject *)session);
@@ -280,13 +294,6 @@ static int run_hook(SessionObject *session, unsigned int index, unsigned long lo
         } else {
             result = PyObject_CallOneArg(callable, arg);
             Py_DECREF(arg);
-            if (result == NULL && no_arguments < 0 &&
-                PyErr_ExceptionMatches(PyExc_TypeError)) {
-                /* Unknown shape (builtin, partial, callable object): allow
-                 * hooks that take no args. */
-                PyErr_Clear();
-                result = PyObject_CallNoArgs(callable);
-            }
         }
     }
     Py_DECREF(callable);
@@ -809,31 +816,7 @@ static PyObject *node_value(NodeObject *self,
 
 static int commit_hooks(SessionObject *self, GalleySession *session, PyObject *table);
 
-/* The defaults of the parser this session opens from. Module init gives
- * each parser its own Session subclass carrying that parser's table under
- * the private class attribute `_galley_defaults`, so the table comes from
- * the type of `self`. The bare static type belongs to no parser, has no
- * such attribute, and refuses construction: a session always opens from a
- * parser and starts with a copy of that parser's defaults. New reference,
- * or NULL with a TypeError set. */
-static PyObject *session_defaults(PyTypeObject *type)
-{
-    PyObject *table = PyObject_GetAttrString((PyObject *)type, "_galley_defaults");
-    if (table == NULL) {
-        if (PyErr_ExceptionMatches(PyExc_AttributeError)) {
-            PyErr_Clear();
-            PyErr_SetString(PyExc_TypeError,
-                            "Session opens from its parser: use parser.Session(...)");
-        }
-        return NULL;
-    }
-    if (!PyDict_Check(table)) {
-        Py_DECREF(table);
-        PyErr_SetString(PyExc_TypeError, "the parser's defaults must be a dict");
-        return NULL;
-    }
-    return table;
-}
+static PyObject *session_defaults(PyTypeObject *type);
 
 static int Session_init(SessionObject *self, PyObject *args, PyObject *keywords)
 {
@@ -2531,34 +2514,145 @@ static PyObject *Session_variable_name_at(PyObject *self, PyObject *index)
 /* Procedure hooks: one table implementation, two owners               */
 /* ------------------------------------------------------------------ */
 
-/* Each parser — the module object a bare load or a package import
- * produces — owns its default table: the private `_galley_defaults` dict
- * module init puts in that module's namespace, so two parsers over one loaded image never
- * share hook state. Every Session owns a copy of its parser's table.
- * Both are plain name -> callable dicts and every change to either goes
- * through the three helpers below, so naming, validation and warnings
- * have one implementation. A session applies a change to a copy and
- * commits it, which tells the library first. */
+/* Each parser (the module object a bare load or a package import
+ * produces) owns its default table, and every Session owns a copy of its
+ * parser's table. A table maps a hook name to its entry
+ * (callable, no_arguments, index), and only `hooks_install_one` writes
+ * entries, so an entry's shape and index hold by construction: the session
+ * tables are C-private and the parser's table lives in a HookTable, which
+ * Python code can neither create nor read. A session applies a change to a
+ * copy and commits it, which tells the library first. */
 
-/* This module's default table: the `_galley_defaults` dict module init
- * created in its namespace. New reference, or NULL with an exception set. */
-static PyObject *module_defaults(PyObject *module)
+typedef struct {
+    PyObject_HEAD
+    PyObject *entries; /* name -> (callable, no_arguments, index) */
+} HookTableObject;
+
+static int HookTable_traverse(HookTableObject *self, visitproc visit, void *arg)
 {
-    PyObject *dict = PyModule_GetDict(module);
-    PyObject *table;
+    Py_VISIT(self->entries);
+    return 0;
+}
 
-    if (dict == NULL)
+static int HookTable_clear(HookTableObject *self)
+{
+    Py_CLEAR(self->entries);
+    return 0;
+}
+
+static void HookTable_dealloc(HookTableObject *self)
+{
+    PyObject_GC_UnTrack(self);
+    HookTable_clear(self);
+    Py_TYPE(self)->tp_free((PyObject *)self);
+}
+
+static PyTypeObject HookTable_Type = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = GALLEY_MODULE_STRING ".HookTable",
+    .tp_basicsize = sizeof(HookTableObject),
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC | Py_TPFLAGS_DISALLOW_INSTANTIATION,
+    .tp_traverse = (traverseproc)HookTable_traverse,
+    .tp_clear = (inquiry)HookTable_clear,
+    .tp_dealloc = (destructor)HookTable_dealloc,
+};
+
+/* A new, empty default table. */
+static PyObject *hook_table_new(void)
+{
+    HookTableObject *table = PyObject_GC_New(HookTableObject, &HookTable_Type);
+    if (table == NULL)
         return NULL;
-    table = PyDict_GetItemString(dict, "_galley_defaults"); /* borrowed */
-    if (table == NULL) {
+    table->entries = PyDict_New();
+    if (table->entries == NULL) {
+        Py_DECREF(table);
+        return NULL;
+    }
+    PyObject_GC_Track(table);
+    return (PyObject *)table;
+}
+
+/* `object` as a default table, or NULL with a RuntimeError when it is not
+ * one. Borrowed. */
+static HookTableObject *as_hook_table(PyObject *object)
+{
+    if (object == NULL || !Py_IS_TYPE(object, &HookTable_Type)) {
         PyErr_SetString(PyExc_RuntimeError, "the parser's defaults are missing");
         return NULL;
     }
-    return Py_NewRef(table);
+    return (HookTableObject *)object;
+}
+
+/* This module's default table, which module init put in its namespace as
+ * `_galley_defaults`. New reference, or NULL with an exception set. */
+static HookTableObject *module_defaults(PyObject *module)
+{
+    PyObject *dict = PyModule_GetDict(module);
+
+    if (dict == NULL)
+        return NULL;
+    HookTableObject *table = as_hook_table(PyDict_GetItemString(dict, "_galley_defaults"));
+    return table != NULL ? (HookTableObject *)Py_NewRef(table) : NULL;
+}
+
+/* The defaults of the parser this session opens from. Module init gives
+ * each parser its own Session subclass carrying that parser's table under
+ * the private class attribute `_galley_defaults`, so the table comes from
+ * the type of `self`. The bare static type belongs to no parser, has no
+ * such attribute, and refuses construction: a session always opens from a
+ * parser and starts with a copy of that parser's defaults. The table's
+ * entries dict as a new reference, or NULL with an exception set. */
+static PyObject *session_defaults(PyTypeObject *type)
+{
+    PyObject *object = PyObject_GetAttrString((PyObject *)type, "_galley_defaults");
+    if (object == NULL) {
+        if (PyErr_ExceptionMatches(PyExc_AttributeError)) {
+            PyErr_Clear();
+            PyErr_SetString(PyExc_TypeError,
+                            "Session opens from its parser: use parser.Session(...)");
+        }
+        return NULL;
+    }
+    HookTableObject *table = as_hook_table(object);
+    PyObject *entries = table != NULL ? Py_NewRef(table->entries) : NULL;
+    Py_DECREF(object);
+    return entries;
+}
+
+/* The hook an undefined `name` most likely meant: the artifact's
+ * `hook_<name>` or else its `reduction_<name>`, as a new reference, or NULL
+ * when it defines neither (no exception set). Grammar annotations bind
+ * `hook_<name>`, so `print` for `hook_print` is the usual slip. */
+static PyObject *suggested_hook_name(PyObject *name)
+{
+    static const char *const prefixes[] = {"hook_", "reduction_"};
+
+    if (hook_indexes == NULL)
+        return NULL;
+    for (size_t i = 0; i < sizeof prefixes / sizeof prefixes[0]; i++) {
+        PyObject *candidate = PyUnicode_FromFormat("%s%U", prefixes[i], name);
+        if (candidate == NULL) {
+            PyErr_Clear();
+            return NULL;
+        }
+        if (PyDict_GetItemWithError(hook_indexes, candidate) != NULL)
+            return candidate;
+        Py_DECREF(candidate);
+        if (PyErr_Occurred()) {
+            PyErr_Clear();
+            return NULL;
+        }
+    }
+    return NULL;
 }
 
 /* Registers one callable under `name`. -1 with an exception set when the
- * callable is not callable. */
+ * callable is not callable or the artifact does not define `name`: the
+ * library's hook list is the one source every install validates against,
+ * so an artifact built without procedure hooks (an empty list) refuses
+ * every name with a message saying so. This is the one writer of table
+ * entries (callable, no_arguments, index): the call shape is read here once
+ * and the entry carries it, with the hook's index, from here on. */
 static int hooks_install_one(PyObject *table, const char *name,
                              Py_ssize_t name_len, PyObject *callable)
 {
@@ -2569,24 +2663,63 @@ static int hooks_install_one(PyObject *table, const char *name,
     PyObject *key = PyUnicode_FromStringAndSize(name, name_len);
     if (key == NULL)
         return -1;
-    int status = PyDict_SetItem(table, key, callable);
+    PyObject *index = hook_indexes != NULL
+                          ? PyDict_GetItemWithError(hook_indexes, key)
+                          : NULL;
+    if (index == NULL) {
+        if (!PyErr_Occurred()) {
+            if (hook_count == 0) {
+                PyErr_Format(PyExc_ValueError,
+                             "the artifact defines no procedure hooks; "
+                             "cannot install %R",
+                             key);
+            } else {
+                PyObject *suggestion = suggested_hook_name(key);
+                if (suggestion != NULL) {
+                    PyErr_Format(PyExc_ValueError,
+                                 "the artifact does not define a hook named "
+                                 "%R; did you mean %R?",
+                                 key, suggestion);
+                    Py_DECREF(suggestion);
+                } else {
+                    PyErr_Format(PyExc_ValueError,
+                                 "the artifact does not define a hook named %R",
+                                 key);
+                }
+            }
+        }
+        Py_DECREF(key);
+        return -1;
+    }
+    /* hook_indexes is C-private and never changes after init, so the
+     * borrowed index outlives the Python code inspect runs. */
+    int positional = inspect_positional_count(callable);
+    if (positional == -2) {
+        Py_DECREF(key);
+        return -1;
+    }
+    PyObject *entry = PyTuple_Pack(3, callable, positional == 0 ? Py_True : Py_False, index);
+    if (entry == NULL) {
+        Py_DECREF(key);
+        return -1;
+    }
+    int status = PyDict_SetItem(table, key, entry);
+    Py_DECREF(entry);
     Py_DECREF(key);
     return status;
 }
 
-/* True for export names that look like mistyped hooks
- * (`reductionPair`, `hookPrint`): warn, do not install. Anything else
- * (helpers, data) stays silent. */
-static int is_near_miss_hook_name(const char *name)
+/* True for export names a scan considers: names beginning with
+ * `reduction`, or with `hook` followed by `_` or an uppercase letter.
+ * An install is deliberate and validates against the artifact's list
+ * directly; a scan sees every export of a module, so it filters to the
+ * names that could be hooks first. */
+static int is_scan_candidate(const char *name)
 {
-    char lower[7];
-    size_t i;
-    for (i = 0; i < 6 && name[i] != '\0'; i++) {
-        char c = name[i];
-        lower[i] = (char)((c >= 'A' && c <= 'Z') ? (c + 32) : c);
-    }
-    lower[i] = '\0';
-    return strncmp(lower, "reduct", 6) == 0 || strncmp(lower, "hook", 4) == 0;
+    if (strncmp(name, "reduction", 9) == 0)
+        return 1;
+    return strncmp(name, "hook", 4) == 0 && name[4] != '\0' &&
+           (name[4] == '_' || (name[4] >= 'A' && name[4] <= 'Z'));
 }
 
 /* Registers every hook-named callable of a module, dict, or object with a
@@ -2615,45 +2748,60 @@ static int hooks_install_many(PyObject *table, PyObject *source,
         }
     }
 
-    PyObject *key, *value;
-    Py_ssize_t pos = 0;
-    while (PyDict_Next(dict, &pos, &key, &value)) {
-        if (!PyUnicode_Check(key) || !PyCallable_Check(value))
+    /* Iterate an owned snapshot: installing runs Python code (inspect,
+     * warning filters) that may change the source. */
+    PyObject *items = PyDict_Items(dict);
+    Py_DECREF(dict);
+    if (items == NULL)
+        return -1;
+    int status = 0;
+    for (Py_ssize_t position = 0; position < PyList_GET_SIZE(items); position++) {
+        PyObject *item = PyList_GET_ITEM(items, position);
+        PyObject *key = PyTuple_GET_ITEM(item, 0);
+        PyObject *value = PyTuple_GET_ITEM(item, 1);
+        if (!PyUnicode_Check(key))
             continue;
-        const char *name = PyUnicode_AsUTF8(key);
+        Py_ssize_t name_len;
+        const char *name = PyUnicode_AsUTF8AndSize(key, &name_len);
         if (name == NULL) {
             PyErr_Clear();
             continue;
         }
-        int is_procedure = 0;
-        if (strcmp(name, "reduction") == 0)
-            is_procedure = 1;
-        else if (strncmp(name, "reduction_", 10) == 0)
-            is_procedure = 1;
-        else if (strncmp(name, "hook_", 5) == 0)
-            is_procedure = 1;
-        if (!is_procedure) {
-            if (is_near_miss_hook_name(name)) {
-                char message[256];
-                snprintf(message, sizeof(message),
-                         "galley: ignoring export \"%.200s\": procedure hooks must be named "
-                         "reduction, reduction_*, or hook_*.",
-                         name);
-                if (PyErr_WarnEx(PyExc_RuntimeWarning, message, 1) < 0) {
-                    Py_DECREF(dict);
-                    return -1;
-                }
+        if (!is_scan_candidate(name))
+            continue;
+        PyObject *exact_key = PyUnicode_FromStringAndSize(name, name_len);
+        if (exact_key == NULL) {
+            status = -1;
+            break;
+        }
+        int defined = hook_indexes != NULL ? PyDict_Contains(hook_indexes, exact_key) : 0;
+        Py_DECREF(exact_key);
+        if (defined < 0) {
+            status = -1;
+            break;
+        }
+        if (!defined) {
+            char message[256];
+            snprintf(message, sizeof(message),
+                     "galley: ignoring export \"%.200s\": the artifact does "
+                     "not define it.",
+                     name);
+            if (PyErr_WarnEx(PyExc_RuntimeWarning, message, 1) < 0) {
+                status = -1;
+                break;
             }
             continue;
         }
-        if (PyDict_SetItem(table, key, value) < 0) {
-            PyErr_Clear();
+        if (!PyCallable_Check(value))
             continue;
+        if (hooks_install_one(table, name, name_len, value) < 0) {
+            status = -1;
+            break;
         }
         (*installed)++;
     }
-    Py_DECREF(dict);
-    return 0;
+    Py_DECREF(items);
+    return status;
 }
 
 /* The callable registered under a str or bytes name, as a new reference, or
@@ -2686,7 +2834,7 @@ static PyObject *hooks_lookup(PyObject *table, PyObject *name_obj)
             return NULL;
         Py_RETURN_NONE;
     }
-    return Py_NewRef(callable);
+    return Py_NewRef(PyTuple_GET_ITEM(callable, 0));
 }
 
 /* Fills hook_indexes and hook_count from the library's hook list, once
@@ -2728,8 +2876,9 @@ static int init_hook_indexes(void)
 /* Single gate for every session hook change: hands the library the enabled
  * set first, so a refusal (a parse in flight raises ERROR_SESSION_IN_USE)
  * leaves the session's hooks and the library exactly as they were, then
- * publishes `table` (a new reference is taken) and its by-index view. -1
- * with an exception set. */
+ * publishes `table` (a new reference is taken) and its by-index view --
+ * each entry the hook plus its decided call shape, read by dispatch and
+ * never probed again. -1 with an exception set. */
 static int commit_hooks(SessionObject *self, GalleySession *session, PyObject *table)
 {
     PyObject *by_index = PyList_New((Py_ssize_t)hook_count);
@@ -2748,13 +2897,7 @@ static int commit_hooks(SessionObject *self, GalleySession *session, PyObject *t
     for (size_t index = 0; index < hook_count; index++)
         PyList_SET_ITEM(by_index, (Py_ssize_t)index, Py_NewRef(Py_None));
     while (PyDict_Next(table, &pos, &key, &value)) {
-        PyObject *index_obj = PyDict_GetItemWithError(hook_indexes, key);
-        if (index_obj == NULL) {
-            if (PyErr_Occurred())
-                goto fail;
-            continue; /* The grammar has no such hook: stays listed, never fires. */
-        }
-        Py_ssize_t index = PyLong_AsSsize_t(index_obj);
+        Py_ssize_t index = PyLong_AsSsize_t(PyTuple_GET_ITEM(value, 2));
         if (PyList_SetItem(by_index, index, Py_NewRef(value)) < 0)
             goto fail;
         enabled[index] = 1;
@@ -2775,22 +2918,44 @@ fail:
     return -1;
 }
 
-/* A session's hooks as a fresh dict to edit and commit. */
-static PyObject *copy_session_hooks(SessionObject *self)
+/* A session's hooks as a fresh entry table to edit and commit. */
+static PyObject *copy_session_entries(SessionObject *self)
 {
     return self->hooks != NULL ? PyDict_Copy(self->hooks) : PyDict_New();
+}
+
+/* A hook table as the public name -> callable dict. */
+static PyObject *unpack_hook_table(PyObject *table)
+{
+    PyObject *copy = PyDict_New();
+
+    if (copy == NULL)
+        return NULL;
+    if (table == NULL)
+        return copy;
+    Py_ssize_t pos = 0;
+    PyObject *key, *value;
+    while (PyDict_Next(table, &pos, &key, &value)) {
+        if (PyDict_SetItem(copy, key, PyTuple_GET_ITEM(value, 0)) < 0) {
+            Py_DECREF(copy);
+            return NULL;
+        }
+    }
+    return copy;
 }
 
 PyDoc_STRVAR(install_procedure_doc,
 "install_procedure(name, callable)\n"
 "\n"
-"Registers a default Python procedure hook. name is the hook name (for\n"
-"example \"reduction_Pair\" or \"hook_print\") and callable is a Python\n"
-"callable that will be invoked with a ProcedureArguments object (or with\n"
-"no args for compatibility). Each Session starts with a copy of this\n"
-"parser's defaults, so an install here reaches sessions opened after it,\n"
-"never sessions already open: use Session.install_procedure for those.\n"
-"Reinstalling replaces the previous callable.");
+"Registers a default Python procedure hook. name must be a hook the\n"
+"artifact defines (for example \"reduction_Pair\" or \"hook_print\"); any\n"
+"other name raises ValueError, and an artifact built without procedure\n"
+"hooks defines none. callable is invoked with a ProcedureArguments\n"
+"object, or with no arguments when it declares no positional parameter\n"
+"(a variadic parameter alone counts as none). Each Session starts with a\n"
+"copy of this parser's defaults, so an install here reaches sessions\n"
+"opened after it, never sessions already open: use Session.install_procedure\n"
+"for those. Reinstalling replaces the previous callable.");
 
 static PyObject *module_install_procedure(PyObject *module,
                                           PyObject *args)
@@ -2798,7 +2963,7 @@ static PyObject *module_install_procedure(PyObject *module,
     const char *name;
     Py_ssize_t name_len;
     PyObject *callable;
-    PyObject *table;
+    HookTableObject *table;
     int status;
 
     if (!PyArg_ParseTuple(args, "s#O:install_procedure", &name, &name_len, &callable))
@@ -2806,7 +2971,7 @@ static PyObject *module_install_procedure(PyObject *module,
     table = module_defaults(module);
     if (table == NULL)
         return NULL;
-    status = hooks_install_one(table, name, name_len, callable);
+    status = hooks_install_one(table->entries, name, name_len, callable);
     Py_DECREF(table);
     if (status < 0)
         return NULL;
@@ -2816,24 +2981,32 @@ static PyObject *module_install_procedure(PyObject *module,
 PyDoc_STRVAR(install_procedures_doc,
 "install_procedures(module_or_dict)\n"
 "\n"
-"Registers all default procedure hooks found in a module, dict, or object\n"
-"exposing a __dict__. Hooks are `reduction`, `reduction_<Variable>`, and\n"
-"`hook_<name>` callables. Returns the number of hooks installed. Reaches\n"
-"sessions opened after the call, like install_procedure.");
+"Scans a module, dict, or object exposing a __dict__ and registers every\n"
+"export the artifact defines whose name a scan considers: beginning with\n"
+"`reduction`, or with `hook` followed by `_` or an uppercase letter. A\n"
+"considered name the artifact does not define warns on stderr naming the\n"
+"export and is skipped; everything else (helpers, data) is skipped\n"
+"silently. Returns the number of hooks installed. Reaches sessions\n"
+"opened after the call, like install_procedure.");
 
 static PyObject *module_install_procedures(PyObject *module,
                                            PyObject *source)
 {
     Py_ssize_t installed;
-    PyObject *table = module_defaults(module);
-    int status;
+    HookTableObject *table = module_defaults(module);
 
     if (table == NULL)
         return NULL;
-    status = hooks_install_many(table, source, &installed);
-    Py_DECREF(table);
-    if (status < 0)
+    /* Scan into a copy and publish it whole, so a scan that fails midway
+     * leaves the defaults as they were. */
+    PyObject *next = PyDict_Copy(table->entries);
+    if (next == NULL || hooks_install_many(next, source, &installed) < 0) {
+        Py_XDECREF(next);
+        Py_DECREF(table);
         return NULL;
+    }
+    Py_SETREF(table->entries, next);
+    Py_DECREF(table);
     return PyLong_FromSsize_t(installed);
 }
 
@@ -2846,11 +3019,11 @@ PyDoc_STRVAR(clear_procedures_doc,
 static PyObject *module_clear_procedures(PyObject *module,
                                          PyObject *Py_UNUSED(ignored))
 {
-    PyObject *table = module_defaults(module);
+    HookTableObject *table = module_defaults(module);
 
     if (table == NULL)
         return NULL;
-    PyDict_Clear(table);
+    PyDict_Clear(table->entries);
     Py_DECREF(table);
     Py_RETURN_NONE;
 }
@@ -2863,12 +3036,12 @@ PyDoc_STRVAR(list_procedures_doc,
 static PyObject *module_list_procedures(PyObject *module,
                                         PyObject *Py_UNUSED(ignored))
 {
-    PyObject *table = module_defaults(module);
+    HookTableObject *table = module_defaults(module);
     PyObject *copy;
 
     if (table == NULL)
         return NULL;
-    copy = PyDict_Copy(table);
+    copy = unpack_hook_table(table->entries);
     Py_DECREF(table);
     return copy;
 }
@@ -2882,12 +3055,12 @@ PyDoc_STRVAR(procedure_hook_doc,
 static PyObject *module_procedure_hook(PyObject *module,
                                        PyObject *name_obj)
 {
-    PyObject *table = module_defaults(module);
+    HookTableObject *table = module_defaults(module);
     PyObject *callable;
 
     if (table == NULL)
         return NULL;
-    callable = hooks_lookup(table, name_obj);
+    callable = hooks_lookup(table->entries, name_obj);
     Py_DECREF(table);
     return callable;
 }
@@ -2897,8 +3070,10 @@ static PyObject *module_procedure_hook(PyObject *module,
 PyDoc_STRVAR(session_install_procedure_doc,
 "install_procedure(name, callable)\n"
 "\n"
-"Registers a procedure hook on this session only. It takes effect from the\n"
-"next parse. Raises GalleyError (ERROR_SESSION_IN_USE) when a parse is in\n"
+"Registers a procedure hook on this session only. name must be a hook\n"
+"the artifact defines; any other name raises ValueError, and an artifact\n"
+"built without procedure hooks defines none. Takes effect from the next\n"
+"parse. Raises GalleyError (ERROR_SESSION_IN_USE) when a parse is in\n"
 "flight, from a hook or from another thread, and leaves the hooks as they\n"
 "were.");
 
@@ -2913,7 +3088,7 @@ static PyObject *Session_install_procedure(PyObject *self, PyObject *args)
         return NULL;
     if (!PyArg_ParseTuple(args, "s#O:install_procedure", &name, &name_len, &callable))
         return NULL;
-    PyObject *next = copy_session_hooks((SessionObject *)self);
+    PyObject *next = copy_session_entries((SessionObject *)self);
     if (next == NULL)
         return NULL;
     if (hooks_install_one(next, name, name_len, callable) < 0 ||
@@ -2939,7 +3114,7 @@ static PyObject *Session_install_procedures(PyObject *self, PyObject *source)
 
     if (session == NULL)
         return NULL;
-    PyObject *next = copy_session_hooks((SessionObject *)self);
+    PyObject *next = copy_session_entries((SessionObject *)self);
     if (next == NULL)
         return NULL;
     if (hooks_install_many(next, source, &installed) < 0 ||
@@ -2983,7 +3158,7 @@ static PyObject *Session_list_procedures(PyObject *self, PyObject *Py_UNUSED(ign
 {
     if (require_session(self) == NULL)
         return NULL;
-    return copy_session_hooks((SessionObject *)self);
+    return unpack_hook_table(((SessionObject *)self)->hooks);
 }
 
 PyDoc_STRVAR(session_procedure_hook_doc,
@@ -4046,6 +4221,8 @@ static int module_exec(PyObject *module)
         return -1;
     if (PyType_Ready(&Snapshot_Type) < 0)
         return -1;
+    if (PyType_Ready(&HookTable_Type) < 0)
+        return -1;
     if (PyType_Ready(&Diagnostic_Type) < 0)
         return -1;
 
@@ -4113,7 +4290,7 @@ static int module_exec(PyObject *module)
      * copies it when a session opens: the module is the parser, so no
      * default table is process-wide. The subclass keeps the base's
      * documentation. */
-    PyObject *defaults = PyDict_New();
+    PyObject *defaults = hook_table_new();
     if (defaults == NULL)
         return -1;
     if (PyModule_AddObjectRef(module, "_galley_defaults", defaults) < 0) {

@@ -107,15 +107,8 @@ pub fn main(init: std.process.Init) !void {
     const elapsed_ms: i64 = @intCast(@divTrunc(std.Io.Timestamp.now(init.io, .real).nanoseconds - start.nanoseconds, std.time.ns_per_ms));
     try printSuccess(init, language_dir, result, elapsed_ms);
 
-    if (options.emit_metadata or options.emit_host_procedures) {
-        var hook_names = try collectHookNames(init, language_dir);
-        defer {
-            for (hook_names.items) |name| init.gpa.free(name);
-            hook_names.deinit(init.gpa);
-        }
-        if (options.emit_metadata) try writeMetadataAndProcedures(init, language_dir, hook_names.items);
-        if (options.emit_host_procedures) try writeHostProcedures(init, language_dir, hook_names.items);
-    }
+    if (options.emit_metadata) try writeMetadataAndProcedures(init, language_dir, try collectCompiledHookNames(init, language_dir));
+    if (options.emit_host_procedures) try writeHostProcedures(init, language_dir);
 
     if (options.bootstrap_zig_project) {
         const checkout = init.environ_map.get("GALLEY_CHECKOUT");
@@ -263,9 +256,9 @@ fn printUsage(init: std.process.Init) !void {
         \\                             next to the generated parser(s); the
         \\                             bindings workflow consumes both.
         \\      --emit-host-procedures
-        \\                             Write host_procedures.zig: every hook as a
-        \\                             forwarder to the host language's per-session
-        \\                             dispatch (Python, Java, JavaScript).
+        \\                             Write host_procedures.zig: binds every hook
+        \\                             to the host language's per-session dispatch
+        \\                             (Python, Java, JavaScript).
         \\      --bootstrap-zig-project
         \\                             Create a minimal Zig project (build.zig,
         \\                             build.zig.zon, src/main.zig) that parses
@@ -1429,84 +1422,46 @@ fn fatal(comptime format: []const u8, args: anytype) noreturn {
     std.process.exit(1);
 }
 
-/// The hook list of the generated parser(s): the general `reduction` fallback,
-/// one `reduction_<Variable>` per variable of each generated parser, and every
-/// author-defined `hook_<name>`. Every file below renders from this one list,
-/// so extern declarations, metadata and shims cannot diverge. The caller owns
-/// the list and its names.
-fn collectHookNames(init: std.process.Init, language_dir: []const u8) !std.ArrayList([]const u8) {
-    var hook_names: std.ArrayList([]const u8) = .empty;
-    errdefer {
-        for (hook_names.items) |name| init.gpa.free(name);
-        hook_names.deinit(init.gpa);
-    }
-    try hook_names.append(init.gpa, try init.gpa.dupe(u8, "reduction"));
-    const hook_parser_types = [_][]const u8{ "ll", "lr" };
-    for (hook_parser_types) |pt| {
-        const output_name = try std.fmt.allocPrint(init.gpa, "_{s}-parser.zig", .{pt});
-        defer init.gpa.free(output_name);
-        const path = try std.fs.path.join(init.gpa, &.{ language_dir, output_name });
-        defer init.gpa.free(path);
-
-        std.Io.Dir.cwd().access(init.io, path, .{}) catch continue;
-        const content = std.Io.Dir.cwd().readFileAlloc(
-            init.io,
-            path,
-            init.gpa,
-            .limited(max_source_size),
-        ) catch continue;
-        defer init.gpa.free(content);
-
-        const proc_prefix = "pub const variables = &[_][]const u8{";
-        if (std.mem.indexOf(u8, content, proc_prefix)) |arr_start| {
-            const inner_start = arr_start + proc_prefix.len;
-            const inner_end = std.mem.indexOfPos(u8, content, inner_start, "}") orelse continue;
-            var items = std.mem.splitScalar(u8, content[inner_start..inner_end], ',');
-            while (items.next()) |item| {
-                const trimmed = std.mem.trim(u8, item, " \t\r\n");
-                if (trimmed.len < 2 or trimmed[0] != '"') continue;
-                const end_q = std.mem.lastIndexOfScalar(u8, trimmed, '"') orelse continue;
-                const variable_name = trimmed[1..end_q];
-                const hook_name = try std.fmt.allocPrint(init.gpa, "reduction_{s}", .{variable_name});
-                hook_names.append(init.gpa, hook_name) catch |err| {
-                    init.gpa.free(hook_name);
-                    return err;
-                };
+/// The hooks a compiled consumer defines: `reduction`, `reduction_<Variable>`
+/// and `hook_<name>` from the hook list of each generated parser (the
+/// parser's own `hook_names`, planned from its grammar), LL first, each name
+/// once. Terminal and per-production hooks stay out: a compiled consumer
+/// must define every hook `procedures.zig` wraps (see docs/procedures.md).
+/// Allocations belong to the process arena.
+fn collectCompiledHookNames(init: std.process.Init, language_dir: []const u8) ![]const []const u8 {
+    const arena = init.arena.allocator();
+    var names: std.ArrayList([]const u8) = .empty;
+    for ([_]generator.ParserType{ .ll, .lr }) |parser_type| {
+        const output_name = switch (parser_type) {
+            .ll => "_ll-parser.zig",
+            .lr => "_lr-parser.zig",
+        };
+        if (!fileExists(init.io, init.gpa, .cwd(), language_dir, output_name)) continue;
+        const grammar_path = try std.fs.path.join(arena, &.{ language_dir, grammarFileName(parser_type) });
+        const source = try std.Io.Dir.cwd().readFileAlloc(init.io, grammar_path, arena, .limited(max_source_size));
+        const hooks = try generator.hookListFromSource(arena, source, parser_type, .{ .error_reporter = &logGenerationError });
+        for (hooks.names, hooks.families) |name, family| {
+            switch (family) {
+                .general, .variable, .annotation => {},
+                .terminal, .production => continue,
             }
-        }
-
-        const hooks_prefix = "pub const user_hook_names = [_][]const u8{";
-        if (std.mem.indexOf(u8, content, hooks_prefix)) |hooks_start| {
-            const hooks_inner_start = hooks_start + hooks_prefix.len;
-            const hooks_inner_end = std.mem.indexOfPos(u8, content, hooks_inner_start, "} ;") orelse std.mem.indexOfPos(u8, content, hooks_inner_start, "\n};") orelse continue;
-            var hook_items = std.mem.splitScalar(u8, content[hooks_inner_start..hooks_inner_end], ',');
-            while (hook_items.next()) |hook_item| {
-                const trimmed = std.mem.trim(u8, hook_item, " \t\r\n");
-                if (trimmed.len < 2 or trimmed[0] != '"') continue;
-                const end_q = std.mem.lastIndexOfScalar(u8, trimmed, '"') orelse continue;
-                const hook_name = try init.gpa.dupe(u8, trimmed[1..end_q]);
-                hook_names.append(init.gpa, hook_name) catch |err| {
-                    init.gpa.free(hook_name);
-                    return err;
-                };
-            }
+            if (containsString(names.items, name)) continue;
+            try names.append(arena, name);
         }
     }
-
-    return hook_names;
+    return names.items;
 }
 
 /// Writes two files into the language directory:
 ///
 /// `metadata.json` — structured description of the generated parser(s):
-/// flags, variable names, symbol names, and the `procedures` hook list.
-/// Useful for build tooling.
+/// flags, variable names, symbol names, and in `procedures` the hooks a
+/// compiled consumer defines (`collectCompiledHookNames`). Useful for build
+/// tooling.
 ///
-/// `procedures.zig` — extern declarations for every hook in `hook_names`:
-/// `reduction`, `reduction_<VariableName>`, and every author-defined grammar
-/// hook under its generated `hook_<name>` lookup name. The consumer's
-/// C/C++/Rust source implements these functions; the linker resolves them
-/// when the shared library is built.
+/// `procedures.zig` — extern declarations for every hook in `hook_names`.
+/// The consumer's C/C++/Rust source implements these functions; the linker
+/// resolves them when the shared library is built.
 fn writeMetadataAndProcedures(init: std.process.Init, language_dir: []const u8, hook_names: []const []const u8) !void {
     const meta_path = try std.fs.path.join(init.gpa, &.{ language_dir, "metadata.json" });
     defer init.gpa.free(meta_path);
@@ -1635,8 +1590,7 @@ fn writeMetadataAndProcedures(init: std.process.Init, language_dir: []const u8, 
     // wrappers — the consumer's C functions ARE the implementations; the
     // linker resolves them at library build time. Reduction hooks keep
     // their established `reduction_` names; author-defined grammar hooks
-    // arrive pre-namespaced as `hook_<name>` (the generated parser's
-    // user_hook_names table lists them verbatim).
+    // arrive pre-namespaced as `hook_<name>`.
     const proc_path = try std.fs.path.join(init.gpa, &.{ language_dir, "procedures.zig" });
     defer init.gpa.free(proc_path);
     var proc_file = try std.Io.Dir.cwd().createFile(init.io, proc_path, .{});
@@ -1668,38 +1622,19 @@ fn writeMetadataAndProcedures(init: std.process.Init, language_dir: []const u8, 
 
 const procedure_arguments_type = "*root.data_structures.ProcedureArguments";
 
-/// Writes `host_procedures.zig` into the language directory: every hook in
-/// `hook_names` as a forwarder to the parsing session's own dispatch, for a
-/// host language that implements hooks per session. Hook index is list
-/// position; `host_hook_names` lets the runtime size the per-session enabled
-/// set and lets hosts resolve names to indexes. Host builds use this file as
-/// the `procedures` module in place of `procedures.zig`.
-fn writeHostProcedures(init: std.process.Init, language_dir: []const u8, hook_names: []const []const u8) !void {
+/// Writes `host_procedures.zig` into the language directory, the
+/// `procedures` module of host builds in place of `procedures.zig`. Declaring
+/// `host_dispatch` makes the generated parser bind every hook it names to
+/// the parsing session's own dispatch, by its index in the parser's
+/// `hook_names`.
+fn writeHostProcedures(init: std.process.Init, language_dir: []const u8) !void {
     const path = try std.fs.path.join(init.gpa, &.{ language_dir, "host_procedures.zig" });
     defer init.gpa.free(path);
-    var file = try std.Io.Dir.cwd().createFile(init.io, path, .{});
-    defer file.close(init.io);
-    var buffer: [4096]u8 = undefined;
-    var fw = file.writer(init.io, &buffer);
-    const w = &fw.interface;
-
-    try w.writeAll("// Auto-generated by Galley; DO NOT EDIT.\n");
-    try w.writeAll("// Every hook forwards to the parsing session's host dispatch.\n");
-    try w.writeAll("const root = @import(\"galley\");\n");
-    try w.writeAll("pub const Payload = struct {};\n\n");
-    try w.writeAll("pub const host_hook_names = [_][]const u8{\n");
-    for (hook_names) |hook_name| {
-        try w.print("    \"{s}\",\n", .{hook_name});
-    }
-    try w.writeAll("};\n");
-    for (hook_names, 0..) |hook_name, index| {
-        try w.print(
-            \\
-            \\pub fn {s}(args: {s}) !void {{
-            \\    try root.data_structures.host_hooks.forward({d}, args);
-            \\}}
-            \\
-        , .{ hook_name, procedure_arguments_type, index });
-    }
-    try w.flush();
+    try std.Io.Dir.cwd().writeFile(init.io, .{ .sub_path = path, .data =
+        \\// Auto-generated by Galley; DO NOT EDIT.
+        \\// Every hook the parser names forwards to the parsing session's host dispatch.
+        \\pub const Payload = struct {};
+        \\pub const host_dispatch = {};
+        \\
+    });
 }

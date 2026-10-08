@@ -35,6 +35,7 @@ pub const LLPlan = struct {
     first_sets: [][]const TerminalRule = &.{},
     follow_sets: [][]const TerminalRule = &.{},
     symbol_names: common.SymbolNames = .{ .reprs = &.{}, .stems = &.{} },
+    hooks: common.HookPlan = .empty,
     emitted_symbols: []const usize = &.{},
     has_parse_entries: []bool = &.{},
     variable_indices: []?usize = &.{},
@@ -968,6 +969,7 @@ const Builder = struct {
 
     fn planNames(self: *Builder) !void {
         self.plan.symbol_names = try common.planSymbolNames(self.allocator, self.grammar.symbols.items, self.grammar.rules.items, self.options.error_reporter);
+        self.plan.hooks = try common.planHooks(self.allocator, self.grammar.symbols.items, self.plan.symbol_names.stems, self.grammar.rules.items, self.grammar.variables.items);
     }
 
     fn planEmissionMetadata(self: *Builder) !void {
@@ -1136,7 +1138,7 @@ fn testPreparedGrammar(allocator: std.mem.Allocator) !common.PreparedGrammar {
     const b = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "b", .terminal);
     grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
     grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
-    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "GenerativeTerminal", .variable);
+    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_GenerativeTerminal", .variable);
     try appendTestRule(allocator, &grammar.rules, root, "0", &.{ optional, b });
     try appendTestRule(allocator, &grammar.rules, optional, "0", &.{a});
     try appendTestRule(allocator, &grammar.rules, optional, "1", &.{});
@@ -1177,7 +1179,7 @@ fn testAmbiguousGrammar(allocator: std.mem.Allocator) !common.PreparedGrammar {
     const b = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "b", .terminal);
     grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
     grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
-    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "GenerativeTerminal", .variable);
+    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_GenerativeTerminal", .variable);
     try appendTestRule(allocator, &grammar.rules, root, "0", &.{ a, b });
     try appendTestRule(allocator, &grammar.rules, root, "1", &.{a});
     try appendTestRule(allocator, &grammar.rules, grammar.augmented_start, "0", &.{ root, grammar.eof });
@@ -1199,7 +1201,7 @@ test "LL planning still rejects indirect first-set conflicts" {
     const a = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "a", .terminal);
     grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
     grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
-    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "GenerativeTerminal", .variable);
+    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_GenerativeTerminal", .variable);
     try appendTestRule(allocator, &grammar.rules, root, "0", &.{via});
     try appendTestRule(allocator, &grammar.rules, root, "1", &.{a});
     try appendTestRule(allocator, &grammar.rules, via, "0", &.{a});
@@ -1274,7 +1276,7 @@ fn testManyFactoringStepsGrammar(allocator: std.mem.Allocator, pair_count: usize
     }
     grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
     grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
-    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "GenerativeTerminal", .variable);
+    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_GenerativeTerminal", .variable);
     try appendTestRule(allocator, &grammar.rules, grammar.augmented_start, "0", &.{ root, grammar.eof });
     try appendTestRule(allocator, &grammar.rules, grammar.generative_terminal.?, "0", &.{});
     std.mem.sort(common.Rule, grammar.rules.items, grammar.symbols.items, common.ruleLessThan);
@@ -1386,7 +1388,7 @@ test "left-factor refusal sees a divergent third sharing rule" {
     const d = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "d", .terminal);
     grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
     grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
-    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "GenerativeTerminal", .variable);
+    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_GenerativeTerminal", .variable);
     try appendTestRule(allocator, &grammar.rules, root, "0", &.{ a, b });
     try appendTestRule(allocator, &grammar.rules, root, "1", &.{ a, c });
     try appendTestRule(allocator, &grammar.rules, root, "2", &.{ a, d });
@@ -1434,7 +1436,7 @@ test "ambiguity explanation traces first and follow derivation chains" {
     const open = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "{", .terminal);
     grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
     grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
-    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "GenerativeTerminal", .variable);
+    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_GenerativeTerminal", .variable);
 
     try appendTestRule(allocator, &grammar.rules, tail, "0", &.{ branch, tail });
     try appendTestRule(allocator, &grammar.rules, tail, "1", &.{});
@@ -1480,7 +1482,7 @@ test "ambiguity explanation stops at a rule containing the terminal directly" {
     const a = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "a", .terminal);
     grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
     grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
-    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "GenerativeTerminal", .variable);
+    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_GenerativeTerminal", .variable);
     try appendTestRule(allocator, &grammar.rules, root, "0", &.{via});
     try appendTestRule(allocator, &grammar.rules, root, "1", &.{a});
     try appendTestRule(allocator, &grammar.rules, via, "0", &.{a});
@@ -1520,7 +1522,7 @@ test "self-repeating decisions discriminate on full terminal bytes" {
     const comparison = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, " <", .terminal);
     grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
     grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
-    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "GenerativeTerminal", .variable);
+    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_GenerativeTerminal", .variable);
 
     try appendTestRule(allocator, &grammar.rules, root, "0", &.{ tail, comparison });
     try appendTestRule(allocator, &grammar.rules, tail, "0", &.{ operator, tail });
@@ -1576,7 +1578,7 @@ test "left-factor suggestion hoists a shared RHS prefix" {
     const tail = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "Tail", .variable);
     grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
     grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
-    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "GenerativeTerminal", .variable);
+    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_GenerativeTerminal", .variable);
 
     try appendTestRule(allocator, &grammar.rules, root, "0", &.{ colon, fields, tail });
     try appendTestRule(allocator, &grammar.rules, root, "1", &.{ colon, tail });
@@ -1624,7 +1626,7 @@ test "left-factor suggestion lists every sharing suffix" {
     const d = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "d", .terminal);
     grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
     grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
-    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "GenerativeTerminal", .variable);
+    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_GenerativeTerminal", .variable);
 
     try appendTestRule(allocator, &grammar.rules, root, "0", &.{ a, b });
     try appendTestRule(allocator, &grammar.rules, root, "1", &.{ a, c });
@@ -1672,7 +1674,7 @@ test "left-factorization yields no suggestion without a shared prefix" {
     const a = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "a", .terminal);
     grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
     grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
-    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "GenerativeTerminal", .variable);
+    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_GenerativeTerminal", .variable);
     try appendTestRule(allocator, &grammar.rules, root, "0", &.{via_var});
     try appendTestRule(allocator, &grammar.rules, root, "1", &.{a});
     try appendTestRule(allocator, &grammar.rules, via_var, "0", &.{a});
@@ -1716,7 +1718,7 @@ test "LL table gate reports generative overlap with both productions" {
     const one = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "1", .terminal);
     grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
     grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
-    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "GenerativeTerminal", .variable);
+    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_GenerativeTerminal", .variable);
     try appendTestRule(allocator, &grammar.rules, root, "0", &.{digit});
     try appendTestRule(allocator, &grammar.rules, root, "1", &.{one});
     try appendTestRule(allocator, &grammar.rules, grammar.augmented_start, "0", &.{ root, grammar.eof });
@@ -1764,7 +1766,7 @@ test "LL table gate reports nullable letter tail overlapping a lowercase followe
     const lower = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "lowercase_letter", .generative_terminal);
     grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
     grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
-    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "GenerativeTerminal", .variable);
+    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_GenerativeTerminal", .variable);
     try appendTestRule(allocator, &grammar.rules, root, "0", &.{ tail, lower });
     try appendTestRule(allocator, &grammar.rules, tail, "0", &.{letter});
     try appendTestRule(allocator, &grammar.rules, tail, "1", &.{});
@@ -1808,7 +1810,7 @@ test "LL table gate keeps prefix families longest-match" {
     const eqeq = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "==", .terminal);
     grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
     grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
-    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "GenerativeTerminal", .variable);
+    grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_GenerativeTerminal", .variable);
     try appendTestRule(allocator, &grammar.rules, root, "0", &.{eq});
     try appendTestRule(allocator, &grammar.rules, root, "1", &.{eqeq});
     try appendTestRule(allocator, &grammar.rules, grammar.augmented_start, "0", &.{ root, grammar.eof });

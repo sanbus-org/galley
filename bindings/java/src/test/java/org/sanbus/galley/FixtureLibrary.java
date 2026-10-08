@@ -36,7 +36,7 @@ final class FixtureLibrary {
      * @throws IllegalStateException when the binding directory cannot be
      *                               derived or the fixture was not built.
      */
-    static String path(String fixtureName) {
+    static Path directory(String fixtureName) {
         Path classes = classLocation();
         Path target = classes.getParent();
         Path bindingDirectory = target != null ? target.getParent() : null;
@@ -44,8 +44,11 @@ final class FixtureLibrary {
             throw new IllegalStateException("cannot derive the binding directory from the test classes at "
                     + classes + "; expected them under bindings/java/target");
         }
-        Path library = bindingDirectory.resolve(fixtureName)
-                .resolve(GalleyLibraryLoader.libFileName());
+        return bindingDirectory.resolve(fixtureName);
+    }
+
+    static String path(String fixtureName) {
+        Path library = directory(fixtureName).resolve(GalleyLibraryLoader.libFileName());
         if (!Files.isRegularFile(library)) {
             throw new IllegalStateException("fixture library missing: " + library
                     + "; build it with GalleyBuild bindings/java/" + fixtureName);

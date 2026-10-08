@@ -1070,15 +1070,16 @@ export fn galley_session_set_message_override(
 
 const host_hooks = root.data_structures.host_hooks;
 
-/// Number of hooks the linked host shim forwards; zero for a library built
-/// with Zig or extern hooks. Hook indexes run `0 ..< galley_hooks_count()`
+/// Number of hooks the parser binds to the host shim; zero for a library
+/// built with Zig or extern hooks, or with procedures disabled. Hook indexes run `0 ..< galley_hooks_count()`
 /// and are fixed for the library's lifetime.
 export fn galley_hooks_count() usize {
     return host_hooks.hook_count;
 }
 
-/// Name of hook `index` (the grammar's `reduction`, `reduction_<Variable>`
-/// or `hook_<name>`): static storage valid for the process lifetime. A null
+/// Name of hook `index` (`reduction`, `reduction_<Variable>`,
+/// `reduction_<terminal stem>`, `reduction_<Variable>_<RhsIndex>` or
+/// `hook_<name>`; always an identifier): static storage valid for the process lifetime. A null
 /// pointer and a zero length for an out-of-range index. The pointer and the
 /// length are two calls so every host, wasm included, reads them as plain
 /// scalars.

@@ -38,8 +38,6 @@ const Generator = struct {
     has_recovery_annotations: bool,
     uses_verbatim: bool,
     end_symbol: usize,
-    augmented_start: usize,
-    generative_terminal: ?usize,
     verbatim_literal: ?[]const u8 = null,
     verbatim_consume: bool = true,
     decision_count: usize = 0,
@@ -66,8 +64,6 @@ const Generator = struct {
             .has_recovery_annotations = grammar.has_recovery_annotations,
             .uses_verbatim = grammar.uses_verbatim,
             .end_symbol = grammar.eof,
-            .augmented_start = grammar.augmented_start,
-            .generative_terminal = grammar.generative_terminal,
         };
     }
 
@@ -123,7 +119,7 @@ const Generator = struct {
         if (self.uses_explicit_recovery) {
             try self.emitExplicitRecoverySupport(writer);
         }
-        try emitter_common.emitProcedureSupport(self.allocator, writer, self.rules.items, self.symbols.items, self.plan.symbol_names.stems, self.variables.items, self.augmented_start, self.generative_terminal);
+        try emitter_common.emitProcedureSupport(self.allocator, writer, self.rules.items, self.symbols.items, &self.plan.hooks, self.variables.items);
         try emitter_common.emitReservedLeftoverCheck(self.allocator, writer, self.symbols.items);
         try self.measureTerminalInlineCosts();
         try self.emitParserFunctions(writer);
@@ -562,7 +558,7 @@ const Generator = struct {
             , .{rule.rhs.items.len});
             if (self.has_occurrence_procedures) {
                 try writer.writeAll("    const recursive_occurrence_procedures = ");
-                try emitter_common.emitProcedureSequenceExpression(writer, rule.rhs_annotations.items[self_index].procedures.items);
+                try emitter_common.emitProcedureSequenceExpression(writer, &self.plan.hooks, rule.rhs_annotations.items[self_index].procedures.items);
                 try writer.writeAll(";\n");
             }
 
@@ -644,7 +640,7 @@ const Generator = struct {
             try writer.print("    const exit_node = {s}parse_{s}(context", .{ if (explicit_recovery) "" else "try ", name });
             if (self.has_occurrence_procedures) {
                 try writer.writeAll(", if (node_address == data_structures.Node.invalid_pointer) occurrence_procedures else ");
-                try emitter_common.emitProcedureSequenceExpression(writer, rule.rhs_annotations.items[self_index].procedures.items);
+                try emitter_common.emitProcedureSequenceExpression(writer, &self.plan.hooks, rule.rhs_annotations.items[self_index].procedures.items);
             }
             if (self.uses_explicit_recovery) {
                 try writer.writeAll(", occurrence_recovery");
@@ -683,7 +679,7 @@ const Generator = struct {
                 try writer.writeByte('\n');
                 if (self.has_occurrence_procedures) {
                     try writer.writeAll("        const reduction_occurrence_procedures = if (enclosing_node_address == data_structures.Node.invalid_pointer) occurrence_procedures else ");
-                    try emitter_common.emitProcedureSequenceExpression(writer, rule.rhs_annotations.items[self_index].procedures.items);
+                    try emitter_common.emitProcedureSequenceExpression(writer, &self.plan.hooks, rule.rhs_annotations.items[self_index].procedures.items);
                     try writer.writeAll(";\n");
                 }
                 try self.emitProcedureBlock(
@@ -1578,7 +1574,7 @@ const Generator = struct {
         if (self.has_occurrence_procedures) {
             try writer.writeAll(", ");
             if (child_returns_node) {
-                try emitter_common.emitProcedureSequenceExpression(writer, rule.rhs_annotations.items[child_index].procedures.items);
+                try emitter_common.emitProcedureSequenceExpression(writer, &self.plan.hooks, rule.rhs_annotations.items[child_index].procedures.items);
             } else {
                 try writer.writeAll("null");
             }
@@ -1602,7 +1598,7 @@ const Generator = struct {
         if (self.has_occurrence_procedures) {
             try writer.print("{s}try runProcedureSequence({s}, &args);\n", .{ indent, occurrence_expr });
         }
-        try emitter_common.emitProcedureRuleSequenceCall(writer, indent, self.rules.items[rule_index].annotations.procedures.items);
+        try emitter_common.emitProcedureRuleSequenceCall(writer, indent, &self.plan.hooks, self.rules.items[rule_index].annotations.procedures.items);
         try emitter_common.emitProcedureDispatchTail(writer, indent, rule_index, variable_index, parent_variable, null);
         if (include_outcome and self.options.with_ast) {
             try writer.print(

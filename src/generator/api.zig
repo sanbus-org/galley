@@ -198,6 +198,32 @@ pub fn generateParserAlloc(
     return output.toOwnedSlice();
 }
 
+pub const HookFamily = common.HookFamily;
+
+/// The hooks a generated parser binds, in hook-index order: the parser's own
+/// `hook_names` table, with what each name binds.
+pub const HookList = struct {
+    names: []const []const u8,
+    families: []const HookFamily,
+};
+
+/// The hook list of the parser `parser_type` generates from `source` with
+/// `options`, planned by the generation pipeline itself. Allocations belong to
+/// `allocator`; pass an arena.
+pub fn hookListFromSource(
+    allocator: std.mem.Allocator,
+    source: []const u8,
+    parser_type: ParserType,
+    options: Options,
+) !HookList {
+    const parsed_grammar = try parseGrammarWithOptions(allocator, source, options);
+    const hooks = switch (parser_type) {
+        .ll => try ll_generator.hookPlanWithOptions(allocator, parsed_grammar, options),
+        .lr => try lr_generator.hookPlanWithOptions(allocator, parsed_grammar, options),
+    };
+    return .{ .names = hooks.names, .families = hooks.families };
+}
+
 pub const RequiredReductionProcedure = common.RequiredReductionProcedure;
 
 /// Lists every visible production's `reduction_<Var>_<N>` obligation for
@@ -214,8 +240,6 @@ pub fn requiredReductionProceduresFromSource(
         allocator,
         prepared.symbols.items,
         prepared.rules.items,
-        prepared.augmented_start,
-        prepared.generative_terminal,
     );
 }
 
@@ -235,8 +259,6 @@ pub fn requiredLLReductionProceduresFromSource(
         allocator,
         prepared.symbols.items,
         prepared.rules.items,
-        prepared.augmented_start,
-        prepared.generative_terminal,
     );
 }
 
@@ -597,7 +619,7 @@ test "generated parser gates missing reduction hooks behind strict config" {
     for ([_]ParserType{ .ll, .lr }) |parser_type| {
         const output = try generateParserAlloc(arena.allocator(), source, parser_type, .{});
         try std.testing.expect(std.mem.indexOf(u8, output, "pub const require_reduction_procedures = ") != null);
-        try std.testing.expect(std.mem.indexOf(u8, output, "if (require_reduction_procedures) {") != null);
+        try std.testing.expect(std.mem.indexOf(u8, output, "if (require_reduction_procedures and are_procedures_enabled and !binds_host_hooks) {") != null);
         try std.testing.expect(std.mem.indexOf(u8, output, "reduction_Item_0") != null);
         try std.testing.expect(std.mem.indexOf(u8, output, "reduction_Item_1") != null);
         try std.testing.expect(std.mem.indexOf(u8, output, "reduction_Start_0") != null);
@@ -605,7 +627,7 @@ test "generated parser gates missing reduction hooks behind strict config" {
         try std.testing.expect(std.mem.indexOf(u8, output, "rhs_index 0") != null);
         // Synthetic headers never require hooks.
         try std.testing.expect(std.mem.indexOf(u8, output, "reduction__AugmentedStart_0") == null);
-        try std.testing.expect(std.mem.indexOf(u8, output, "reduction_GenerativeTerminal_0") == null);
+        try std.testing.expect(std.mem.indexOf(u8, output, "reduction__GenerativeTerminal_0") == null);
     }
 
     const required = try requiredReductionProceduresFromSource(arena.allocator(), source);
@@ -1160,13 +1182,130 @@ test "terminal hook names are emitted for LL and LR and end of input has none" {
 
     for ([_]ParserType{ .ll, .lr }) |parser_type| {
         const output = try generateParserAlloc(arena.allocator(), source, parser_type, .{});
-        _ = try expectContains(output, ".readable = \"reduction_A\", .identifier_safe = null },");
-        _ = try expectContains(output, ".readable = \"reduction_\\\"A\\\"\", .identifier_safe = \"reduction_terminal_A\" },");
-        _ = try expectContains(output, ".readable = \"reduction_\\\"{\\\"\", .identifier_safe = \"reduction_terminal__x123\" },");
+        // The listed name is the identifier-safe one; a terminal's readable
+        // name rides along on its symbol entry, bound first.
+        const variable_hook = try expectContains(output, "\"reduction_A\", // ");
+        const terminal_hook = try expectContains(output, "\"reduction_terminal_A\", // ");
+        _ = try expectContains(output, "\"reduction_terminal__x123\", // ");
+        _ = try expectContains(output, "\"reduction_terminal__x92x00\", // ");
+        _ = try expectContains(output, ".readable = \"reduction_\\\"A\\\"\" },");
+        _ = try expectContains(output, ".readable = \"reduction_\\\"{\\\"\" },");
+        try std.testing.expect(variable_hook != terminal_hook);
         // The NUL terminal owns `reduction_"\x00"`; end of input binds no name.
-        _ = try expectContains(output, ".readable = \"reduction_\\\"\\\\x00\\\"\", .identifier_safe = \"reduction_terminal__x92x00\" },");
+        _ = try expectContains(output, ".readable = \"reduction_\\\"\\\\x00\\\"\" },");
         try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, output, "reduction_\\\"\\\\x00\\\""));
         try expectNotContains(output, "reduction_special_EOF");
+    }
+}
+
+/// The generated parser's own hook table, in index order.
+fn emittedHookNames(allocator: std.mem.Allocator, output: []const u8) ![]const []const u8 {
+    const header = "const all_hook_names = [_][]const u8{\n";
+    const start = (std.mem.indexOf(u8, output, header) orelse return error.TestUnexpectedResult) + header.len;
+    const end = std.mem.indexOfPos(u8, output, start, "\n};") orelse return error.TestUnexpectedResult;
+    var names: std.ArrayList([]const u8) = .empty;
+    var lines = std.mem.splitScalar(u8, output[start..end], '\n');
+    while (lines.next()) |line| {
+        const open = std.mem.indexOfScalar(u8, line, '"') orelse return error.TestUnexpectedResult;
+        const close = std.mem.lastIndexOf(u8, line, "\", // ") orelse return error.TestUnexpectedResult;
+        try names.append(allocator, line[open + 1 .. close]);
+    }
+    return names.items;
+}
+
+test "the hook list is the generated parser's own hook table" {
+    const sources = [_][]const u8{
+        // Terminals, generative terminals, productions, header and
+        // occurrence annotations, a `_` helper, and an LL-factored `_Tail`.
+        \\Start
+        \\| Item "end"
+        \\| Pair@print "end"
+        \\
+        \\Item@print
+        \\| "a" "x"
+        \\| "a" "y"
+        \\
+        \\Pair
+        \\| "p" letter _Helper "{"@mark
+        \\
+        \\_Helper
+        \\| "-"
+        \\
+        ,
+        \\Document
+        \\| Pair PairTail
+        \\
+        \\PairTail
+        \\| "," Pair PairTail
+        \\|
+        \\
+        \\Pair@print
+        \\| letter ":" digit
+        \\
+        ,
+        \\Start
+        \\| "\u{9}" "\u{0}" "null"
+        \\
+        ,
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    for (sources) |source| {
+        for ([_]ParserType{ .ll, .lr }) |parser_type| {
+            const output = try generateParserAlloc(allocator, source, parser_type, .{});
+            const hooks = try hookListFromSource(allocator, source, parser_type, .{});
+            const emitted = try emittedHookNames(allocator, output);
+            try std.testing.expectEqual(hooks.names.len, emitted.len);
+            for (hooks.names, emitted, 0..) |listed, table, index| {
+                // The emitted table is a Zig string literal; every listed name
+                // is an identifier, so its literal is the name itself.
+                try std.testing.expectEqualStrings(listed, table);
+                for (listed) |byte| try std.testing.expect(std.ascii.isAlphanumeric(byte) or byte == '_');
+                for (hooks.names[0..index]) |earlier| try std.testing.expect(!std.mem.eql(u8, earlier, listed));
+            }
+            // Every binding site names its hook through the table; nothing
+            // builds a hook name at comptime.
+            try expectNotContains(output, "\"reduction_\" ++");
+            try expectNotContains(output, "\"hook_\" ++");
+        }
+    }
+
+    for ([_]ParserType{ .ll, .lr }) |parser_type| {
+        const hooks = try hookListFromSource(allocator, sources[0], parser_type, .{});
+        const expected = [_]struct { []const u8, HookFamily }{
+            .{ "reduction", .general },
+            .{ "reduction_Start", .variable },
+            .{ "reduction_Item", .variable },
+            .{ "reduction_Pair", .variable },
+            .{ "reduction_terminal_end", .terminal },
+            .{ "reduction_terminal__x123", .terminal },
+            .{ "reduction_terminal_p", .terminal },
+            .{ "reduction_generative_terminal_letter", .terminal },
+            .{ "reduction_Start_0", .production },
+            .{ "reduction_Start_1", .production },
+            .{ "reduction_Pair_0", .production },
+            .{ "hook_print", .annotation },
+            .{ "hook_mark", .annotation },
+        };
+        for (expected) |entry| {
+            const index = for (hooks.names, 0..) |name, index| {
+                if (std.mem.eql(u8, name, entry[0])) break index;
+            } else {
+                std.debug.print("missing hook {s}\n", .{entry[0]});
+                return error.TestUnexpectedResult;
+            };
+            try std.testing.expectEqual(entry[1], hooks.families[index]);
+        }
+        for (hooks.names) |name| {
+            // Helpers, synthetic variables, factoring tails and end of input
+            // bind no hook.
+            for ([_][]const u8{ "_Helper", "_AugmentedStart", "_GenerativeTerminal", "Item_Tail", "special_EOF" }) |absent| {
+                try std.testing.expect(std.mem.indexOf(u8, name, absent) == null);
+            }
+        }
     }
 }
 
@@ -1240,7 +1379,11 @@ test "LR terminal occurrence hooks survive default options" {
     // Occurrence metadata is a grammar fact: default `Options{}` must still
     // emit the terminal hook so the `ast_for_terminals` comptime branch can run it.
     const output = try generateParserAlloc(arena.allocator(), source, .lr, .{});
-    try std.testing.expect(std.mem.indexOf(u8, output, "comptime makeProcedureSequence(&[_][]const u8{\"hook_\" ++ \"myhook\"})") != null);
+    const hook_index = std.mem.indexOf(u8, output, "    \"hook_myhook\", // ") orelse return error.TestUnexpectedResult;
+    const index_text = std.mem.sliceTo(output[hook_index + "    \"hook_myhook\", // ".len ..], '\n');
+    const sequence = try std.fmt.allocPrint(std.testing.allocator, "comptime makeProcedureSequence(&[_]usize{{{s}}})", .{index_text});
+    defer std.testing.allocator.free(sequence);
+    try std.testing.expect(std.mem.indexOf(u8, output, sequence) != null);
 }
 
 test "LR generation is configuration independent" {

@@ -34,7 +34,7 @@ export class Parser {
   constructor(port: FfiPort, bundledProcedures: unknown = null) {
     if (!port) throw new TypeError("galley: Parser needs a bound port");
     this.#port = port;
-    this.#registry = new ProcedureRegistry();
+    this.#registry = new ProcedureRegistry(port.hookNames());
     this.installBundledProcedures(bundledProcedures);
   }
 
@@ -114,15 +114,17 @@ export class Parser {
   /**
    * Installs a single default procedure hook into this artifact.
    * Overwrites any existing entry for `name`.
+   * Throws a RangeError when the artifact does not define `name` — an
+   * artifact without procedure hooks defines none.
    */
   installProcedure(name: string, fn: HookFn | (() => void)): void {
     this.#registry.install(name, fn);
   }
 
   /**
-   * Scans `module` for exported procedure hooks (`reduction`,
-   * `reduction_*`, `hook_*`) and registers each function as a default of
-   * this artifact. Returns the number installed.
+   * Scans `module` for exported procedure hooks the artifact defines
+   * (shape: `reduction...`, `hook_...`, `hookX...`) and registers each
+   * function as a default of this artifact. Returns the number installed.
    */
   installProcedures(module: Record<string, unknown>): number {
     return this.#registry.installModule(module);

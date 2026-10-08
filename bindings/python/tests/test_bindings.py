@@ -13,6 +13,7 @@ concurrency tests.
 
 from __future__ import annotations
 
+import functools
 import gc
 import operator
 import os
@@ -808,6 +809,235 @@ class HookDispatchTests(unittest.TestCase):
             self.session.clear_procedures()
         self.assertEqual(len(fired), 2)
 
+    def test_variadic_only_hook_is_called_with_no_arguments(self) -> None:
+        # A variadic parameter alone declares no positional parameter:
+        # the hook is called empty, not with the ProcedureArguments object.
+        seen: list[tuple[Any, ...]] = []
+
+        def reduction_Pair(*args: Any) -> None:
+            seen.append(args)
+
+        self.session.install_procedure("reduction_Pair", reduction_Pair)
+        try:
+            self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
+        finally:
+            self.session.clear_procedures()
+        self.assertEqual(len(seen), 2)
+        self.assertTrue(all(args == () for args in seen))
+
+    def test_callable_object_type_error_runs_once(self) -> None:
+        # The callable object's shape comes from __call__ minus self: it
+        # receives the ProcedureArguments object, a TypeError from its
+        # body aborts the parse as-is, and the hook runs exactly once —
+        # no retry with other arguments.
+        calls: list[bool] = []
+        failure = TypeError("callable boom")
+
+        class Hook:
+            def __call__(self, args: Any) -> None:
+                calls.append(args is not None)
+                raise failure
+
+        self.session.install_procedure("reduction_Pair", Hook())
+        with self.assertRaises(grammar.GalleyError) as raised:
+            self.session.parse("alpha:12,beta:3")
+        self.assertIs(raised.exception.__cause__, failure)
+        self.assertEqual(raised.exception.code, grammar.Status.ERROR_HOOK_FAILED)
+        self.assertEqual(calls, [True])
+
+    def test_functools_partial_hook_uses_the_remaining_signature(self) -> None:
+        # partial binds its leading arguments: what remains of the
+        # signature decides the call shape.
+        seen: list[Any] = []
+
+        def hook(prefix: str, args: Any) -> None:
+            seen.append((prefix, args))
+
+        self.session.install_procedure(
+            "reduction_Pair", functools.partial(hook, "tag")
+        )
+        try:
+            self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
+        finally:
+            self.session.clear_procedures()
+        self.assertEqual(len(seen), 2)
+        self.assertTrue(all(prefix == "tag" for prefix, _ in seen))
+        self.assertTrue(all(args is not None for _, args in seen))
+
+    def test_bound_method_hook_receives_the_arguments(self) -> None:
+        # self is already bound, so the remaining parameter receives the
+        # ProcedureArguments object.
+        seen: list[Any] = []
+
+        class Recorder:
+            def hook(self, args: Any) -> None:
+                seen.append(args)
+
+        self.session.install_procedure("reduction_Pair", Recorder().hook)
+        try:
+            self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
+        finally:
+            self.session.clear_procedures()
+        self.assertEqual(len(seen), 2)
+        self.assertTrue(all(args is not None for args in seen))
+
+    def test_static_and_class_method_hooks(self) -> None:
+        # A staticmethod is the plain function; a classmethod binds cls.
+        # Neither binding puts an extra positional argument in front of
+        # the ProcedureArguments object.
+        static_seen: list[Any] = []
+        class_seen: list[Any] = []
+
+        class Hooks:
+            @staticmethod
+            def static_hook(args: Any) -> None:
+                static_seen.append(args)
+
+            @classmethod
+            def class_hook(cls, args: Any) -> None:
+                class_seen.append((cls, args))
+
+        self.session.install_procedure("reduction_Pair", Hooks.static_hook)
+        try:
+            self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
+        finally:
+            self.session.clear_procedures()
+        self.session.install_procedure("reduction_Pair", Hooks.class_hook)
+        try:
+            self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
+        finally:
+            self.session.clear_procedures()
+        self.assertEqual(len(static_seen), 2)
+        self.assertTrue(all(args is not None for args in static_seen))
+        self.assertEqual(len(class_seen), 2)
+        for cls, args in class_seen:
+            self.assertIs(cls, Hooks)
+            self.assertIsNotNone(args)
+
+    def test_keyword_only_parameter_does_not_change_the_shape(self) -> None:
+        # Keyword-only parameters never count as positional: with one,
+        # the hook still receives the ProcedureArguments object; with
+        # only keyword-only parameters, it is called empty.
+        with_args: list[Any] = []
+        without_args: list[Any] = []
+
+        def receives(args: Any, *, tag: str = "kw") -> None:
+            with_args.append((args, tag))
+
+        def only_keyword(*, tag: str = "kw") -> None:
+            without_args.append(tag)
+
+        self.session.install_procedure("reduction_Pair", receives)
+        try:
+            self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
+        finally:
+            self.session.clear_procedures()
+        self.session.install_procedure("reduction_Pair", only_keyword)
+        try:
+            self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
+        finally:
+            self.session.clear_procedures()
+        self.assertEqual(len(with_args), 2)
+        self.assertTrue(
+            all(args is not None and tag == "kw"
+                for args, tag in with_args)
+        )
+        self.assertEqual(without_args, ["kw", "kw"])
+
+    def test_kwargs_only_hook_is_called_with_no_arguments(self) -> None:
+        # **kwargs is not a positional parameter: the hook runs empty,
+        # with an empty mapping.
+        seen: list[dict[str, Any]] = []
+
+        def hook(**kwargs: Any) -> None:
+            seen.append(kwargs)
+
+        self.session.install_procedure("reduction_Pair", hook)
+        try:
+            self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
+        finally:
+            self.session.clear_procedures()
+        self.assertEqual(seen, [{}, {}])
+
+    def test_default_parameter_still_receives_the_arguments(self) -> None:
+        # A default value does not make dispatch fall back to it: the
+        # hook receives the ProcedureArguments object.
+        seen: list[Any] = []
+
+        def hook(args: Any = None) -> None:
+            seen.append(args)
+
+        self.session.install_procedure("reduction_Pair", hook)
+        try:
+            self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
+        finally:
+            self.session.clear_procedures()
+        self.assertEqual(len(seen), 2)
+        self.assertTrue(all(args is not None for args in seen))
+
+    def test_positional_only_parameter_counts_as_positional(self) -> None:
+        seen: list[Any] = []
+
+        def hook(args: Any, /) -> None:
+            seen.append(args)
+
+        self.session.install_procedure("reduction_Pair", hook)
+        try:
+            self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
+        finally:
+            self.session.clear_procedures()
+        self.assertEqual(len(seen), 2)
+        self.assertTrue(all(args is not None for args in seen))
+
+    def test_lambda_hook_receives_the_arguments(self) -> None:
+        seen: list[Any] = []
+        self.session.install_procedure(
+            "reduction_Pair", lambda args: seen.append(args)
+        )
+        try:
+            self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
+        finally:
+            self.session.clear_procedures()
+        self.assertEqual(len(seen), 2)
+        self.assertTrue(all(args is not None for args in seen))
+
+    def test_signature_less_builtin_is_called_with_the_arguments(self) -> None:
+        # inspect.signature() finds no signature for `type`, so dispatch
+        # falls back to calling the builtin with the ProcedureArguments
+        # object: an empty call would raise TypeError from type() itself
+        # and abort the parse.
+        self.session.install_procedure("reduction_Pair", type)
+        try:
+            self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
+        finally:
+            self.session.clear_procedures()
+
+    def test_unknown_hook_name_suggests_the_prefixed_hook(self) -> None:
+        # A bare annotation name suggests its hook_ name, a bare symbol name
+        # its reduction_ name -- on the defaults and on a session.
+        def hook(args: Any) -> None:
+            pass
+
+        with self.assertRaises(ValueError) as raised:
+            grammar.install_procedure("print", hook)
+        message = str(raised.exception)
+        self.assertIn("does not define a hook named 'print'", message)
+        self.assertIn("did you mean 'hook_print'", message)
+
+        with self.assertRaises(ValueError) as raised:
+            self.session.install_procedure("Pair", hook)
+        self.assertIn("did you mean 'reduction_Pair'", str(raised.exception))
+
+    def test_unknown_hook_name_without_a_prefixed_hook_gets_no_suggestion(self) -> None:
+        def hook(args: Any) -> None:
+            pass
+
+        with self.assertRaises(ValueError) as raised:
+            grammar.install_procedure("reduction_Pai", hook)
+        message = str(raised.exception)
+        self.assertIn("does not define a hook named", message)
+        self.assertNotIn("did you mean", message)
+
 
 class ProcedureChannelTests(unittest.TestCase):
     session: grammar.Session
@@ -835,12 +1065,12 @@ class ProcedureChannelTests(unittest.TestCase):
         def hook(args: grammar.ProcedureArguments) -> None:
             pass
 
-        grammar.install_procedure("hook_channel_probe", hook)
+        grammar.install_procedure("hook_print", hook)
         try:
-            self.assertIs(grammar.procedure_hook("hook_channel_probe"), hook)
+            self.assertIs(grammar.procedure_hook("hook_print"), hook)
         finally:
             grammar.clear_procedures()
-        self.assertIsNone(grammar.procedure_hook("hook_channel_probe"))
+        self.assertIsNone(grammar.procedure_hook("hook_print"))
 
     def test_current_node_channel_round_trip(self) -> None:
         detached: list[int] = []
@@ -2788,24 +3018,143 @@ class SessionHookTests(unittest.TestCase):
                     {
                         "reduction_Pair": lambda: None,
                         "reductionPair": lambda: None,
+                        "hookTypo": lambda: None,
+                        "hooky": lambda: None,
                         "myHelper": lambda: None,
                     }
                 )
             self.assertEqual(installed, 1)
             self.assertEqual(list(session.list_procedures()), ["reduction_Pair"])
-            messages = [str(item.message) for item in caught]
-            self.assertTrue(any('"reductionPair"' in message for message in messages))
-            self.assertFalse(any("myHelper" in message for message in messages))
+            scan_messages = [
+                str(item.message)
+                for item in caught
+                if str(item.message).startswith("galley:")
+            ]
+            # A scan considers reduction* and hook_*/hookX: each considered
+            # name the artifact lacks warns naming the export, once; a name
+            # outside the pattern is skipped without a word.
+            self.assertEqual(
+                sum('"reductionPair"' in message for message in scan_messages), 1
+            )
+            self.assertTrue(any('"hookTypo"' in message for message in scan_messages))
+            self.assertTrue(
+                all("does not define it" in message for message in scan_messages)
+            )
+            self.assertFalse(any("hooky" in message for message in scan_messages))
+            self.assertFalse(any("myHelper" in message for message in scan_messages))
             with self.assertRaises(TypeError):
                 session.install_procedure("reduction_Pair", "not callable")
 
-    def test_hooks_naming_no_grammar_hook_are_listed_but_never_fire(self) -> None:
+    def test_hooks_naming_no_grammar_hook_are_refused(self) -> None:
+        # The artifact's own list decides: an unknown name raises at the
+        # install, lists nothing, and a parse runs unhooked.
         with grammar.Session() as session:
-            session.install_procedure(
-                "reduction_Nonexistent", lambda: self.fail("fired")
-            )
-            self.assertIn("reduction_Nonexistent", session.list_procedures())
+            with self.assertRaises(ValueError) as raised:
+                session.install_procedure(
+                    "reduction_Nonexistent", lambda: self.fail("fired")
+                )
+            self.assertIn("reduction_Nonexistent", str(raised.exception))
+            self.assertNotIn("reduction_Nonexistent", session.list_procedures())
             session.parse("alpha:12")
+        with self.assertRaises(ValueError):
+            grammar.install_procedure("helperFunction", lambda: None)
+        self.assertNotIn("helperFunction", grammar.list_procedures())
+
+    def test_production_and_escaped_terminal_hooks_fire(self) -> None:
+        # The artifact's list is the parser's own: per-production hooks and
+        # the escaped terminal names install and fire like any other hook.
+        fired: list[str] = []
+        with grammar.Session() as session:
+            session.install_procedure("reduction_Pair_0", lambda: fired.append("Pair_0"))
+            session.install_procedure("reduction_terminal__x58", lambda: fired.append(":"))
+            session.install_procedure(
+                "reduction_generative_terminal_digit", lambda: fired.append("digit")
+            )
+            session.parse("alpha:12,beta:3")
+        self.assertEqual(fired.count("Pair_0"), 2)
+        self.assertEqual(fired.count(":"), 2)
+        self.assertEqual(fired.count("digit"), 3)
+
+    def test_zig_only_and_helper_names_are_not_hooks(self) -> None:
+        # Hosts get the escaped name only: the readable terminal spelling,
+        # a generative terminal's bare name, and generator-invented
+        # variables are not in the list.
+        for name in ('reduction_":"', "reduction_digit", "reduction__AugmentedStart"):
+            with self.assertRaises(ValueError, msg=name):
+                grammar.install_procedure(name, lambda: None)
+
+    def test_scan_survives_a_signature_that_mutates_the_source(self) -> None:
+        # Installing runs inspect.signature, which runs Python code; the scan
+        # must own what it iterates.
+        source: dict[str, Any] = {}
+
+        class Hook:
+            @property
+            def __signature__(self) -> Any:
+                source.clear()
+                return None
+
+            def __call__(self, args: Any) -> None:
+                fired.append(args)
+
+        fired: list[Any] = []
+        source["reduction_Pair"] = Hook()
+        with grammar.Session() as session:
+            self.assertEqual(session.install_procedures(source), 1)
+            session.parse("alpha:12,beta:3")
+        self.assertEqual(len(fired), 2)
+
+    def test_scan_stores_hooks_under_their_plain_names(self) -> None:
+        class Name(str):
+            calls = 0
+
+            def __hash__(self) -> int:
+                Name.calls += 1
+                return Name.calls
+
+            def __eq__(self, other: object) -> bool:
+                return False
+
+        fired: list[str] = []
+        with grammar.Session() as session:
+            session.install_procedures({Name("reduction_Pair"): lambda: fired.append("Pair")})
+            self.assertEqual(list(session.list_procedures()), ["reduction_Pair"])
+            self.assertIs(type(next(iter(session.list_procedures()))), str)
+            session.parse("alpha:12")
+        self.assertEqual(fired, ["Pair"])
+
+    def test_signature_errors_other_than_no_signature_propagate(self) -> None:
+        class Interrupting:
+            @property
+            def __signature__(self) -> Any:
+                raise RuntimeError("interrupted")
+
+            def __call__(self, args: Any) -> None:
+                pass
+
+        with grammar.Session() as session:
+            with self.assertRaisesRegex(RuntimeError, "interrupted"):
+                session.install_procedure("reduction_Pair", Interrupting())
+            self.assertEqual(session.list_procedures(), {})
+
+    def test_failed_default_scan_leaves_the_defaults_unchanged(self) -> None:
+        before = grammar.list_procedures()
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            with self.assertRaises(RuntimeWarning):
+                grammar.install_procedures(
+                    {"reduction_Number": lambda: None, "reductionTypo": lambda: None}
+                )
+        self.assertEqual(grammar.list_procedures(), before)
+
+    def test_default_table_is_not_a_python_mapping(self) -> None:
+        # Hook tables hold only what installs wrote: Python code cannot
+        # reach into the parser's defaults.
+        table = grammar._impl._galley_defaults
+        with self.assertRaises(TypeError):
+            table["reduction_Pair"] = lambda: None
+        with self.assertRaises(TypeError):
+            type(table)()
 
     def test_hooks_closing_over_their_session_do_not_leak_it(self) -> None:
         class Sentinel:
@@ -2834,6 +3183,83 @@ class SessionHookTests(unittest.TestCase):
 
 
 _SECOND_FIXTURE_DIRECTORY = BINDINGS_DIRECTORY / "test_fixture_second"
+
+
+class DisabledArtifactTests(unittest.TestCase):
+    """A --no-procedures artifact: hook count 0, every install raises.
+
+    Each loaded image carries its own hook list, so the fixture, the
+    second fixture and this artifact each validate against their own
+    list regardless of sharing one interpreter — there is no
+    process-wide state to isolate from. The build and the check run as
+    subprocesses because the build already is one: `python -m galley`
+    writes the artifact, and the check loads that freshly built image
+    with `galley.load(...)` in the same fresh interpreter. Building
+    needs GALLEY_CHECKOUT, like the suite's own fixture builds.
+    """
+
+    _CHECK_SCRIPT = """
+import sys
+import galley
+
+parser = galley.load(sys.argv[1])
+
+def hook(args=None):
+    raise AssertionError("an install must refuse before any hook runs")
+
+for install in (
+    lambda: parser.install_procedure("reduction", hook),
+    lambda: parser.install_procedure("reduction_Pair", hook),
+    lambda: parser.install_procedure("hook_print", hook),
+):
+    try:
+        install()
+    except ValueError as error:
+        assert "defines no procedure hooks" in str(error), error
+    else:
+        raise AssertionError("install on a hook-less artifact must raise")
+assert parser.list_procedures() == {}
+
+with parser.Session() as session:
+    try:
+        session.install_procedure("reduction", hook)
+    except ValueError as error:
+        assert "defines no procedure hooks" in str(error), error
+    else:
+        raise AssertionError("session install on a hook-less artifact must raise")
+"""
+
+    def test_no_procedures_artifact_has_no_hooks_to_install(self) -> None:
+        workdir = Path(tempfile.gettempdir()) / "galley-python-test" / "noprocs"
+        workdir.mkdir(parents=True, exist_ok=True)
+        for name in ("ll.grm", "config.zig"):
+            shutil.copyfile(FIXTURE_DIRECTORY / name, workdir / name)
+        config = workdir / "config.zig"
+        source = config.read_text()
+        self.assertIn("pub const procedures = true;", source)
+        config.write_text(
+            source.replace(
+                "pub const procedures = true;", "pub const procedures = false;", 1
+            )
+        )
+
+        build = subprocess.run(
+            [sys.executable, "-m", "galley", str(workdir)],
+            env=os.environ.copy(),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(build.returncode, 0, build.stdout + build.stderr)
+        impl = workdir / f"galley_impl{sysconfig.get_config_var('EXT_SUFFIX')}"
+        self.assertTrue(impl.is_file(), f"the build produced no artifact at {impl}")
+
+        check = subprocess.run(
+            [sys.executable, "-c", self._CHECK_SCRIPT, str(impl)],
+            env=os.environ.copy(),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(check.returncode, 0, check.stdout + check.stderr)
 
 
 class _Worker:

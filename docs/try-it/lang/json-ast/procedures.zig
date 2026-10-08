@@ -10,9 +10,6 @@ pub fn reduction(args: *root.data_structures.ProcedureArguments) void {
 pub fn reduction_Value(args: *root.data_structures.ProcedureArguments) void {
     root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_Value" }));
 }
-pub fn reduction__OptionalBlank(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__OptionalBlank" }));
-}
 pub fn reduction_ObjectMembers(args: *root.data_structures.ProcedureArguments) void {
     root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_ObjectMembers" }));
 }
@@ -25,44 +22,11 @@ pub fn reduction_IntegerNumber(args: *root.data_structures.ProcedureArguments) v
 pub fn reduction_FloatTail(args: *root.data_structures.ProcedureArguments) void {
     root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_FloatTail" }));
 }
-pub fn reduction__StringContent(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__StringContent" }));
-}
 pub fn reduction_ObjectMembersTail(args: *root.data_structures.ProcedureArguments) void {
     root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_ObjectMembersTail" }));
 }
 pub fn reduction_ArrayMembersTail(args: *root.data_structures.ProcedureArguments) void {
     root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_ArrayMembersTail" }));
-}
-pub fn reduction__OptionalBlankTail(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__OptionalBlankTail" }));
-}
-pub fn reduction__JsonEscape(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__JsonEscape" }));
-}
-pub fn reduction__Utf8Scalar(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__Utf8Scalar" }));
-}
-pub fn reduction__JsonEscapeBody(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__JsonEscapeBody" }));
-}
-pub fn reduction__Utf8TwoByte(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__Utf8TwoByte" }));
-}
-pub fn reduction__Utf8ThreeByte(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__Utf8ThreeByte" }));
-}
-pub fn reduction__Utf8FourByte(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__Utf8FourByte" }));
-}
-pub fn reduction__PositiveIntegerNumberTail(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__PositiveIntegerNumberTail" }));
-}
-pub fn reduction__AugmentedStart(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__AugmentedStart" }));
-}
-pub fn reduction_GenerativeTerminal(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_GenerativeTerminal" }));
 }
 pub fn hook_countKey(args: *root.data_structures.ProcedureArguments) void {
     root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "hook_countKey" }));

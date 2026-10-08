@@ -32,7 +32,7 @@ java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.
 ```
 
 Generator flags forward verbatim to the generator ahead of
-`--emit-metadata --emit-host-procedures`: every flag the tool does not own goes to the generator,
+`--emit-host-procedures`: every flag the tool does not own goes to the generator,
 which owns its surface (documented in [Configuration](/configuration)).
 
 Add `--optimize Debug` to build the parser library in Debug with the
@@ -43,7 +43,7 @@ The tool requires `GALLEY_CHECKOUT` (a Galley working tree);
 `ZIG_EXECUTABLE` selects zig. For convenience,
 `GALLEY_CHECKOUT=$(examples/scripts/fetch-galley.sh)` fetches one into the
 system cache, but that cache is examples-only, not part of the bindings.
-It generates the parser (`--emit-metadata --emit-host-procedures`), builds the shared library
+It generates the parser (`--emit-host-procedures`), builds the shared library
 through `bindings/c/consumer/build.zig` directly next to the grammar,
 and detects optional hook files next to your
 grammar (`procedures.java` for native Java hooks,
@@ -179,25 +179,37 @@ Mechanically, the build links the generator's host shim (`host_procedures.zig`,
 written by `--emit-host-procedures`), which forwards every hook to the parsing
 session's own dispatch. Each session hands the library its enabled set and one
 upcall (`galley_session_set_hooks`), so hook code executes in the host's JVM and
-a hook the session did not install returns before any call. Reduction hooks
-keep their `reduction_<VariableName>` names (plus the general `reduction`);
-author-defined grammar hooks are declared as `hook_<name>`. Semantic payloads
+a hook the session did not install returns before any call. Semantic payloads
 are unavailable through bindings.
 
-You can also bulk-register from a map or object:
+You can also bulk-register from a map, or from a class's public static
+methods:
 ```java
 Map<String, Consumer<ProcedureArguments>> map = Map.of(
     "reduction_Pair", args -> {},
     "hook_print", args -> {}
 );
 parser.installProcedures(map); // the same calls exist on a Session
+parser.installProcedures(MyHooks.class); // methods taking ProcedureArguments or nothing
 parser.listProcedures(); // Map<String, Consumer>
 parser.clearProcedures();
 ```
 
-Only `reduction`, `reduction_*`, and `hook_*` install; anything else is
-ignored. Names that look like mistyped hooks (`reductionPair`,
-`hookPrint`) warn on `System.err` naming the export and the rule.
+The packaged `Parser` the build generates installs `<package>/procedures.java`
+through `installProcedures(procedures.class)`, so the class defines only the
+hooks it implements.
+
+Hook names are the artifact's list (see [Hook Names Outside Zig](/procedures#hook-names-outside-zig)): an
+annotation `@print` installs as `hook_print`, a terminal under its escaped
+name such as `reduction_terminal__x58`. Installing any other name raises
+`IllegalArgumentException`, suggesting `hook_<name>` or `reduction_<name>`
+when the artifact defines it; with `procedures = false` every install raises.
+A scan considers only names beginning with `reduction`, or with `hook`
+followed by `_` or an ASCII uppercase letter, and warns on `System.err`,
+every time, naming each considered export the artifact lacks; a class scan
+raises for a considered method whose signature no hook can have. A
+`Consumer<ProcedureArguments>` gets the arguments object and a `Runnable`
+none.
 
 Legacy `procedures.c` / `procedures.cpp` hooks continue to work exactly like
 the C/C++ consumers: the build compiles the C file into the shared library

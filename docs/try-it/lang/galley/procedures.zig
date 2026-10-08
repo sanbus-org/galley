@@ -88,18 +88,6 @@ pub fn reduction_CamelCaseId(args: *root.data_structures.ProcedureArguments) voi
 pub fn reduction_TerminalAndCursor(args: *root.data_structures.ProcedureArguments) void {
     root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_TerminalAndCursor" }));
 }
-pub fn reduction__Utf8Scalar(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__Utf8Scalar" }));
-}
-pub fn reduction__Utf8TwoByte(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__Utf8TwoByte" }));
-}
-pub fn reduction__Utf8ThreeByte(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__Utf8ThreeByte" }));
-}
-pub fn reduction__Utf8FourByte(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__Utf8FourByte" }));
-}
 pub fn reduction_ControlCharacter(args: *root.data_structures.ProcedureArguments) void {
     root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_ControlCharacter" }));
 }
@@ -120,19 +108,4 @@ pub fn reduction_BlockEnd(args: *root.data_structures.ProcedureArguments) void {
 }
 pub fn reduction_CommentLine(args: *root.data_structures.ProcedureArguments) void {
     root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_CommentLine" }));
-}
-pub fn reduction__AugmentedStart(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__AugmentedStart" }));
-}
-pub fn reduction_GenerativeTerminal(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_GenerativeTerminal" }));
-}
-pub fn reduction_RightHandSides_Tail(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_RightHandSides_Tail" }));
-}
-pub fn reduction_AnyContent_Tail(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_AnyContent_Tail" }));
-}
-pub fn reduction_AnyContent_Tail0(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_AnyContent_Tail0" }));
 }

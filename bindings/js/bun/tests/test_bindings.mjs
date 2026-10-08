@@ -26,6 +26,7 @@ import { runGenerationScenarios } from "../../../js/core/build/generations.mjs";
 import { runRefusalScenarios } from "../../../js/core/build/refusals.mjs";
 import { runPublishedFailureScenarios } from "../../../js/core/build/published-failures.mjs";
 import { runHookFailureScenarios } from "../../../js/core/build/hook-failures.mjs";
+import { runHookNameScenarios } from "../../../js/core/build/hook-names.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const exampleLib = artifactFileName("galley-js-bun", process.platform);
@@ -57,6 +58,16 @@ const bundledProcedures = await import(
 
 async function newParser() {
   return openLanguageDirectory(languageDir, {}, bundledProcedures);
+}
+
+async function newDisabledParser() {
+  const disabledDir = ensureTestLibrary({
+    buildCommand: ["bun", path.join(__dirname, "..", "build.mjs")],
+    libFileName: exampleLib,
+    scope: "bun",
+    proceduresDisabled: true,
+  });
+  return openLanguageDirectory(disabledDir);
 }
 
 async function newSession(opts = {}) {
@@ -1653,6 +1664,7 @@ await test("two language directories parse independently", async () => {
 await runGenerationScenarios({ test, assert, newParser, SessionClosedError, StaleTreeError, GalleyError, Status, collect });
 await runPublishedFailureScenarios({ test, assert, newParser, StaleTreeError, GalleyError, Status });
 await runHookFailureScenarios({ test, assert, newParser, StaleTreeError, GalleyError, Status, Kind });
+await runHookNameScenarios({ test, assert, newParser, newDisabledParser });
 await runRefusalScenarios({ test, assert, newParser, StaleTreeError, GalleyError, Status });
 
 await test("two parsers, two sessions each, four threads at once", async () => {

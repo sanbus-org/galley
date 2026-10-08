@@ -23,6 +23,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -45,6 +46,39 @@ import java.util.function.Consumer;
  * naming its path, never a search.
  */
 public class GalleyTest {
+
+    /** A hook class for the method scan: two hooks, a helper and a misspelled hook. */
+    public static final class ScannedHooks {
+        static final List<String> calls = new ArrayList<>();
+
+        public static void reduction_Pair(ProcedureArguments args) {
+            calls.add(args.currentNode() != null ? "Pair" : "Pair without node");
+        }
+
+        public static void hook_print() {
+            calls.add("print");
+        }
+
+        public static void reductionTypo(ProcedureArguments args) {}
+
+        public static int helper() {
+            return 0;
+        }
+    }
+
+    /** A scanned hook whose method declares a checked exception. */
+    public static final class CheckedFailureHooks {
+        static final java.io.IOException failure = new java.io.IOException("checked failure");
+
+        public static void reduction_Pair(ProcedureArguments args) throws java.io.IOException {
+            throw failure;
+        }
+    }
+
+    /** A hook-named method whose signature no hook can have. */
+    public static final class MisdeclaredHooks {
+        public static void reduction_Pair(String text) {}
+    }
 
     private static String fixtureLibraryPath() {
         return FixtureLibrary.path("test-fixture");
@@ -1801,6 +1835,173 @@ public class GalleyTest {
         void ordinaryNumbersStillPassWithRealHooks() {
             assertEquals(8, session.parse("alpha:12"));
         }
+
+        @Test
+        void installingANameTheArtifactDoesNotDefineRaises() {
+            IllegalArgumentException onParser = assertThrows(IllegalArgumentException.class,
+                    () -> parser.installProcedure("reduction_Nonexistent", args -> {}));
+            assertTrue(onParser.getMessage().contains("reduction_Nonexistent"), onParser.getMessage());
+            assertTrue(onParser.getMessage().contains("does not define a hook of that name"), onParser.getMessage());
+            assertFalse(onParser.getMessage().contains("did you mean"), onParser.getMessage());
+            IllegalArgumentException annotation = assertThrows(IllegalArgumentException.class,
+                    () -> parser.installProcedure("print", args -> {}));
+            assertTrue(annotation.getMessage().contains("did you mean \"hook_print\"?"), annotation.getMessage());
+            IllegalArgumentException symbol = assertThrows(IllegalArgumentException.class,
+                    () -> session.installProcedure("Pair", args -> {}));
+            assertTrue(symbol.getMessage().contains("did you mean \"reduction_Pair\"?"), symbol.getMessage());
+            assertFalse(parser.listProcedures().containsKey("reduction_Nonexistent"));
+            IllegalArgumentException onSession = assertThrows(IllegalArgumentException.class,
+                    () -> session.installProcedure("helperFunction", args -> {}));
+            assertTrue(onSession.getMessage().contains("helperFunction"), onSession.getMessage());
+            assertFalse(session.listProcedures().containsKey("helperFunction"));
+            assertThrows(IllegalArgumentException.class,
+                    () -> session.installProcedure("helperFunction", (Runnable) () -> {}));
+        }
+
+        @Test
+        void productionAndEscapedTerminalHooksFire() {
+            List<String> fired = new ArrayList<>();
+            session.clearProcedures();
+            session.installProcedure("reduction_Pair_0", () -> fired.add("Pair_0"));
+            session.installProcedure("reduction_terminal__x58", () -> fired.add(":"));
+            session.installProcedure("reduction_generative_terminal_digit", () -> fired.add("digit"));
+            session.parse("alpha:12,beta:3");
+            assertEquals(2, fired.stream().filter("Pair_0"::equals).count());
+            assertEquals(2, fired.stream().filter(":"::equals).count());
+            assertEquals(3, fired.stream().filter("digit"::equals).count());
+        }
+
+        @Test
+        void zigOnlySpellingsAndHelpersAreNotHooks() {
+            for (String name : List.of("reduction_\":\"", "reduction_digit", "reduction__AugmentedStart")) {
+                assertThrows(IllegalArgumentException.class, () -> parser.installProcedure(name, args -> {}), name);
+            }
+        }
+
+        @Test
+        void classScanInstallsTheHooksItsMethodsDefine() {
+            parser.clearProcedures();
+            PrintStream original = System.err;
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            int installed;
+            try {
+                System.setErr(new PrintStream(buffer, true, StandardCharsets.UTF_8));
+                installed = parser.installProcedures(ScannedHooks.class);
+            } finally {
+                System.setErr(original);
+            }
+            String err = buffer.toString(StandardCharsets.UTF_8);
+            assertEquals(2, installed);
+            assertEquals(Set.of("reduction_Pair", "hook_print"), parser.listProcedures().keySet());
+            assertTrue(err.contains("\"reductionTypo\"") && err.contains("does not define it"), err);
+            assertFalse(err.contains("helper"), err);
+
+            ScannedHooks.calls.clear();
+            Session scanned = parser.openSession();
+            try {
+                scanned.parse("alpha:12,beta:3");
+            } finally {
+                scanned.close();
+            }
+            assertEquals(List.of("print", "Pair", "print", "Pair"), ScannedHooks.calls);
+
+            assertThrows(IllegalArgumentException.class, () -> parser.installProcedures(MisdeclaredHooks.class));
+        }
+
+        @Test
+        void classScannedHookFailureKeepsItsCheckedCause() {
+            Session scanned = parser.openSession();
+            try {
+                scanned.clearProcedures();
+                assertEquals(1, scanned.installProcedures(CheckedFailureHooks.class));
+                GalleyException failure = assertThrows(GalleyException.class, () -> scanned.parse("alpha:12"));
+                assertEquals(StatusCode.ERROR_HOOK_FAILED, failure.getCode());
+                assertSame(CheckedFailureHooks.failure, failure.getCause());
+            } finally {
+                scanned.close();
+            }
+        }
+
+        @Test
+        void scansConsiderOnlyHookShapedExports() {
+            Map<String, Object> exports = new LinkedHashMap<>();
+            exports.put("reduction_Pair", (Consumer<ProcedureArguments>) args -> {});
+            exports.put("reductionPair", (Consumer<ProcedureArguments>) args -> {});
+            exports.put("hookTypo", (Consumer<ProcedureArguments>) args -> {});
+            exports.put("hooky", (Consumer<ProcedureArguments>) args -> {});
+            exports.put("myHelper", (Consumer<ProcedureArguments>) args -> {});
+            PrintStream original = System.err;
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            int installed;
+            try {
+                System.setErr(new PrintStream(buffer, true, StandardCharsets.UTF_8));
+                installed = parser.installProcedures(exports);
+            } finally {
+                System.setErr(original);
+            }
+            String err = buffer.toString(StandardCharsets.UTF_8);
+            assertEquals(1, installed);
+            assertTrue(err.contains("\"reductionPair\"") && err.contains("does not define it"), err);
+            assertTrue(err.contains("\"hookTypo\"") && err.contains("does not define it"), err);
+            assertFalse(err.contains("hooky"), err);
+            assertFalse(err.contains("myHelper"), err);
+            assertFalse(err.contains("reduction_Pair"), err);
+        }
+    }
+
+    @Nested
+    class DisabledArtifactTests {
+        @Test
+        void noProceduresArtifactBuildsAndRefusesEveryInstall() throws Exception {
+            String checkout = System.getenv("GALLEY_CHECKOUT");
+            assertNotNull(checkout, "GALLEY_CHECKOUT must name the checkout that builds fixtures");
+            Path source = FixtureLibrary.directory("test-fixture");
+            // The builder spells the Java package from the directory name
+            // (test-fixture → test_fixture), so the copy keeps the name.
+            Path work = Paths.get(System.getProperty("java.io.tmpdir"))
+                    .resolve("galley-java-test").resolve("noprocs").resolve("test-fixture");
+            Files.createDirectories(work.resolve("test_fixture"));
+            Files.copy(source.resolve("config.zig"), work.resolve("config.zig"),
+                    StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(source.resolve("ll.grm"), work.resolve("ll.grm"),
+                    StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(source.resolve("test_fixture").resolve("procedures.java"),
+                    work.resolve("test_fixture").resolve("procedures.java"),
+                    StandardCopyOption.REPLACE_EXISTING);
+            Path config = work.resolve("config.zig");
+            String enabled = "pub const procedures = true;";
+            String sourceText = Files.readString(config);
+            assertTrue(sourceText.contains(enabled), config + " must declare the procedures default");
+            Files.writeString(config, sourceText.replace(enabled, "pub const procedures = false;"));
+
+            List<String> command = List.of(
+                    Paths.get(System.getProperty("java.home"), "bin", "java").toString(),
+                    "--enable-native-access=ALL-UNNAMED",
+                    "-cp", System.getProperty("java.class.path"),
+                    "org.sanbus.galley.build.GalleyBuild", work.toString());
+            ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
+            builder.environment().put("GALLEY_CHECKOUT", checkout);
+            Process process = builder.start();
+            String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertEquals(0, process.waitFor(), output);
+
+            Path library = work.resolve(GalleyLibraryLoader.libFileName());
+            assertTrue(Files.isRegularFile(library), "no built library at " + library);
+            Parser parser = Galley.load(library.toString());
+            assertEquals(0, parser.hookCount());
+            IllegalArgumentException onParser = assertThrows(IllegalArgumentException.class,
+                    () -> parser.installProcedure("reduction", args -> {}));
+            assertTrue(onParser.getMessage().contains("defines no procedure hooks"), onParser.getMessage());
+            Session session = parser.openSession();
+            try {
+                IllegalArgumentException onSession = assertThrows(IllegalArgumentException.class,
+                        () -> session.installProcedure("reduction_Pair", args -> {}));
+                assertTrue(onSession.getMessage().contains("defines no procedure hooks"), onSession.getMessage());
+                assertTrue(session.parse("alpha:12") > 0);
+            } finally {
+                session.close();
+            }
+        }
     }
 
     @Nested
@@ -2445,7 +2646,9 @@ public class GalleyTest {
             System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
             try (Session sess = parser.openSession()) {
                 sess.installProcedure("reduction_Pair", args -> {});
-                sess.installProcedure("reductionPair", args -> {});
+                IllegalArgumentException unknown = assertThrows(IllegalArgumentException.class,
+                        () -> sess.installProcedure("reductionPair", args -> {}));
+                assertTrue(unknown.getMessage().contains("reductionPair"), unknown.getMessage());
                 assertEquals(1, sess.installProcedures(Map.of(
                         "hook_print", (Runnable) () -> {},
                         "myHelper", (Runnable) () -> {})));
@@ -2455,8 +2658,8 @@ public class GalleyTest {
                 System.setErr(original);
             }
             String warnings = captured.toString(StandardCharsets.UTF_8);
-            assertTrue(warnings.contains("\"reductionPair\""));
-            assertFalse(warnings.contains("myHelper"));
+            assertFalse(warnings.contains("reductionPair"), warnings);
+            assertFalse(warnings.contains("myHelper"), warnings);
         }
 
         @Test
@@ -2574,14 +2777,17 @@ public class GalleyTest {
         }
 
         @Test
-        void nearMissHookNamesWarnAndStayUninstalled() {
+        void nearMissNamesRaiseAndScanStaysQuiet() {
             PrintStream original = System.err;
             ByteArrayOutputStream captured = new ByteArrayOutputStream();
             System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
             try {
                 parser.installProcedure("reduction_Pair", args -> {});
-                parser.installProcedure("reductionPair", args -> {});
-                parser.installProcedure("hookPrint", () -> {});
+                IllegalArgumentException pair = assertThrows(IllegalArgumentException.class,
+                        () -> parser.installProcedure("reductionPair", args -> {}));
+                assertTrue(pair.getMessage().contains("reductionPair"), pair.getMessage());
+                assertThrows(IllegalArgumentException.class,
+                        () -> parser.installProcedure("hookPrint", () -> {}));
                 int installed = parser.installProcedures(Map.of(
                         "reducton_X", (Runnable) () -> {},
                         "myHelper", (Runnable) () -> {}));
@@ -2596,12 +2802,9 @@ public class GalleyTest {
             assertNull(parser.lookupProcedure("hookPrint"));
             assertNull(parser.lookupProcedure("reducton_X"));
             assertNull(parser.lookupProcedure("myHelper"));
-            assertFalse(warnings.contains("reduction_Pair"));
-            assertTrue(warnings.contains("\"reductionPair\""));
-            assertTrue(warnings.contains("\"hookPrint\""));
-            assertTrue(warnings.contains("\"reducton_X\""));
-            assertTrue(warnings.contains("reduction, reduction_*, or hook_*"));
-            assertFalse(warnings.contains("myHelper"));
+            assertFalse(warnings.contains("reductionPair"), warnings);
+            assertFalse(warnings.contains("reducton_X"), warnings);
+            assertFalse(warnings.contains("myHelper"), warnings);
         }
     }
 

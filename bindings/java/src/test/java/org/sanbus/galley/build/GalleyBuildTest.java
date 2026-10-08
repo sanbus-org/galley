@@ -34,7 +34,6 @@ class GalleyBuildTest {
         Path languageDir = root.resolve("language");
         Files.createDirectories(languageDir);
         Files.writeString(languageDir.resolve("ll.grm"), "");
-        Files.writeString(languageDir.resolve("metadata.json"), "{\"procedures\": [\"reduction\"]}");
 
         List<String> command = new ArrayList<>(List.of(
                 Path.of(System.getProperty("java.home"), "bin", "java").toString(),

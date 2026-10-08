@@ -12,6 +12,7 @@
   - [Chaining Multiple Hooks](#chaining-multiple-hooks)
 - [Implicit / Automatic Hooks](#implicit--automatic-hooks)
   - [Terminal Hooks](#terminal-hooks)
+  - [Hook Names Outside Zig](#hook-names-outside-zig)
 - [Hook Execution Order](#hook-execution-order)
 - [Semantic Errors](#semantic-errors)
 - [Writing Hook Functions in Zig](#writing-hook-functions-in-zig)
@@ -38,7 +39,7 @@ the other `examples/` directories implement the same hooks through the C ABI.
 1. **Source Generation:** The grammar generator parses your grammar file
    (`ll.grm` or `lr.grm`) and emits Zig parser source such as
    `_ll-parser.zig`.
-2. **Binding:** For every hook reference (explicit or implicit), the generator checks if a public declaration with that name is exported by `languages/<name>/procedures.zig`.
+2. **Binding:** For every hook reference (explicit or implicit), the generator checks if a public declaration with that name is exported by `languages/<name>/procedures.zig`. An annotation `@print` binds the declaration `hook_print`; automatic hooks bind their `reduction` names.
 3. **Execution:** During runtime, when the parser shifts or reduces the marked symbols, it calls the corresponding hook function, passing a mutable context.
 
 ---
@@ -100,7 +101,7 @@ if (parsed.result.semantic_root) |root| {
 
 ## Explicit Hook Annotations
 
-You can explicitly bind a procedure to a grammar symbol by appending `@procedure_name`:
+You can explicitly bind a procedure to a grammar symbol by appending `@name`. The annotation binds the declaration `hook_<name>`: `@dropChildren` runs `hook_dropChildren` from your `procedures.zig`, which must declare it. Bare names are never hooks.
 
 ### 1. LHS Variable Hooks
 
@@ -163,7 +164,9 @@ Alongside the three explicit hook placements, Galley provides a fourth family of
 | `reduction_"<spelling>"`, `reduction_<stem>` | Execute whenever a terminal matches. See [Terminal Hooks](#terminal-hooks). |
 | `reduction` | Executes as the general hook for every eligible variable reduction and visible terminal match. |
 
-Missing automatic hooks are silent nulls by default. Set `require_reduction_procedures = true` in `config.zig` (or pass `--require-reduction-procedures`) to warn at generation and fail compilation for any visible production without `reduction_<SymbolName>_<RhsIndex>`, naming variable, index, and shape. Synthetic `<Variable>_Tail` helpers from automatic left-factoring are transparent and never need hooks.
+Missing automatic hooks are silent nulls by default. Set `require_reduction_procedures = true` in `config.zig` (or pass `--require-reduction-procedures`) to warn at generation and fail compilation for any visible production without `reduction_<SymbolName>_<RhsIndex>`, naming variable, index, and shape.
+
+Variables whose names begin with `_` produce no visible node, so neither they nor their productions bind automatic hooks; that includes the generator's own `_AugmentedStart` and `_GenerativeTerminal`. Synthetic `<Variable>_Tail` helpers from automatic left-factoring expand inline into their parent and bind none either.
 
 ### Terminal Hooks
 
@@ -191,6 +194,18 @@ Rules that follow:
 - The unquoted spelling of a literal terminal (`reduction_{`, `reduction_null`) is not a hook name and never binds.
 - Generation fails with `error.SymbolNameCollision`, naming both, when two symbols or productions would bind one hook name: for example `","` and `"_x44"` (both `reduction_terminal__x44`), or the first production of `A` and a variable `A_0` (both `reduction_A_0`). Rename one of them.
 - End of input has no hook: it never produces a node, so it has neither a readable nor an identifier-safe hook name, and a terminal `"\u{0}"` owns `@"reduction_\"\\x00\""`.
+
+### Hook Names Outside Zig
+
+Python, Java and JavaScript install hooks by name at runtime, and a built library lists the names it accepts (`galley_hooks_count`, `galley_hooks_name_data`). The list is the generated parser's own hook table: every hook the parser binds, each under one name that is a valid identifier in every language:
+
+- `reduction`, `reduction_<Variable>` and `reduction_<Variable>_<RhsIndex>`, as in Zig.
+- `reduction_<stem>` for a terminal: the identifier-safe name from [Terminal Hooks](#terminal-hooks) (`reduction_terminal__x123` for `"{"`, `reduction_generative_terminal_digit` for `digit`). The readable spellings, `reduction_"<spelling>"` and a generative terminal's `reduction_<id>`, are Zig-only.
+- `hook_<name>` for every annotation `@name`.
+
+Installing a name outside the list raises the host's argument error, suggesting `hook_<name>` or `reduction_<name>` when the artifact defines it. With `procedures = false` the list is empty and every install raises.
+
+C, C++, Rust and Go hooks are compiled into the library instead. `--emit-metadata` writes `procedures.zig` declaring only `reduction`, `reduction_<Variable>` and `hook_<name>`, and the consumer must define every one of them, so terminal and per-production hooks are not reachable from those languages yet. The planned fix declares hooks in `procedures.h`, translated with `addTranslateC`, so a consumer defines only the hooks it implements and every name in the list becomes reachable. `metadata.json` lists the same declared subset under `procedures`.
 
 ---
 
@@ -258,13 +273,13 @@ All custom procedures are defined inside your language's `procedures.zig`.
 
 ### Function Signature
 
-Every hook function must match the following signature:
+Every hook function must match the following signature. This one runs for the annotation `@myHook`:
 
 ```zig
 const data_structures = @import("galley").data_structures;
 const ProcedureArguments = data_structures.ProcedureArguments;
 
-pub fn myHook(args: *ProcedureArguments) !void {
+pub fn hook_myHook(args: *ProcedureArguments) !void {
     if (args.currentNode()) |node| {
         const text = args.context.getTextSlice(node.text_start, node.text_length);
         _ = node.variable;
@@ -301,10 +316,12 @@ The helpers below manipulate AST nodes and require AST construction. In no-AST
 mode they fail to compile unless the parser is generated with
 `--allow-no-ast-tree-procedures`, in which case each becomes a no-op.
 
+Each is a public function of `standard_procedures`; an annotation reaches it through a re-export under its `hook_` name, for example `pub const hook_dropIfEmpty = standard_procedures.dropIfEmpty;`. The sketches below show what each one does.
+
 - **`dropChildren`**: Discards all child nodes of the current node to save memory:
 
   ```zig
-  pub fn dropChildren(args: *ProcedureArguments) !void {
+  pub fn hook_dropChildren(args: *ProcedureArguments) !void {
       if (args.node_address) |node_address| {
           _ = data_structures.Node.cleanChildren(node_address, args.context.node_allocator);
       }
@@ -320,7 +337,7 @@ mode they fail to compile unless the parser is generated with
 - **`dropSelf`**: Discards the current node itself by setting it to `null`:
 
   ```zig
-  pub fn dropSelf(args: *ProcedureArguments) !void {
+  pub fn hook_dropSelf(args: *ProcedureArguments) !void {
       args.node_address = null;
   }
   ```
@@ -328,13 +345,13 @@ mode they fail to compile unless the parser is generated with
 - **`dropIfEmpty`**: Discards the current node when it has no children. This is useful for optional recursive tails:
 
   ```zig
-  pub const dropIfEmpty = standard_procedures.dropIfEmpty;
+  pub const hook_dropIfEmpty = standard_procedures.dropIfEmpty;
   ```
 
 - **`replaceWithChildren`**: Detaches the current node and puts all of its children in its place among its siblings. With no children the result is `null` and the node stays; a node without a parent yields its children as a detached chain:
 
   ```zig
-  pub fn replaceWithChildren(args: *ProcedureArguments) !void {
+  pub fn hook_replaceWithChildren(args: *ProcedureArguments) !void {
       if (args.node_address) |node_address| {
           args.node_address = data_structures.Node.immediatePromoteChildrenOverWrapper(node_address, args.context.node_allocator);
       }
@@ -358,7 +375,7 @@ Within a hook, access the payload through the direct current node pointer in
 either mode:
 
 ```zig
-pub fn countVariable(args: *ProcedureArguments) void {
+pub fn hook_countVariable(args: *ProcedureArguments) void {
     if (args.currentNode()) |node| {
         node.payload.variable_count += 1;
     }

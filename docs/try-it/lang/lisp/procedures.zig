@@ -10,9 +10,6 @@ pub fn reduction(args: *root.data_structures.ProcedureArguments) void {
 pub fn reduction_Start(args: *root.data_structures.ProcedureArguments) void {
     root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_Start" }));
 }
-pub fn reduction__OptionalBlankTail(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__OptionalBlankTail" }));
-}
 pub fn reduction_Forms(args: *root.data_structures.ProcedureArguments) void {
     root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_Forms" }));
 }
@@ -94,23 +91,11 @@ pub fn reduction_HexDigit(args: *root.data_structures.ProcedureArguments) void {
 pub fn reduction_HexDigitTail(args: *root.data_structures.ProcedureArguments) void {
     root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_HexDigitTail" }));
 }
-pub fn reduction__DigitTail(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__DigitTail" }));
-}
 pub fn reduction_HashNumberDispatch(args: *root.data_structures.ProcedureArguments) void {
     root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_HashNumberDispatch" }));
 }
 pub fn reduction_BlockCommentBody(args: *root.data_structures.ProcedureArguments) void {
     root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_BlockCommentBody" }));
-}
-pub fn reduction__SymbolInitial(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__SymbolInitial" }));
-}
-pub fn reduction__SymbolTail(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__SymbolTail" }));
-}
-pub fn reduction__CharNameTail(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__CharNameTail" }));
 }
 pub fn reduction_VectorBodyTail(args: *root.data_structures.ProcedureArguments) void {
     root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_VectorBodyTail" }));
@@ -142,15 +127,6 @@ pub fn reduction_ArrayMarker(args: *root.data_structures.ProcedureArguments) voi
 pub fn reduction_BlockCommentAfterPipe(args: *root.data_structures.ProcedureArguments) void {
     root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_BlockCommentAfterPipe" }));
 }
-pub fn reduction__StringContent(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__StringContent" }));
-}
-pub fn reduction__EscapeSequence(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__EscapeSequence" }));
-}
-pub fn reduction__EscapedSymbolContent(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__EscapedSymbolContent" }));
-}
 pub fn reduction_ExponentTail(args: *root.data_structures.ProcedureArguments) void {
     root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_ExponentTail" }));
 }
@@ -159,19 +135,4 @@ pub fn reduction_ExpMarker(args: *root.data_structures.ProcedureArguments) void 
 }
 pub fn reduction_ExpSign(args: *root.data_structures.ProcedureArguments) void {
     root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_ExpSign" }));
-}
-pub fn reduction__LineCommentTail(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__LineCommentTail" }));
-}
-pub fn reduction__AugmentedStart(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__AugmentedStart" }));
-}
-pub fn reduction_GenerativeTerminal(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_GenerativeTerminal" }));
-}
-pub fn reduction_Abbreviation_Tail(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_Abbreviation_Tail" }));
-}
-pub fn reduction_DecimalNumber_Tail(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_DecimalNumber_Tail" }));
 }

@@ -27,6 +27,18 @@ pub fn emitParserWithOptions(
     return emitter.emit(allocator, &prepared, &plan, writer, options);
 }
 
+/// The hooks the parser `emitParserWithOptions` emits for `grammar` binds,
+/// planned by the same pipeline.
+pub fn hookPlanWithOptions(
+    allocator: std.mem.Allocator,
+    grammar: anytype,
+    options: Options,
+) !common.HookPlan {
+    const prepared = try common.prepareGrammar(allocator, grammar, options, false);
+    const plan = try planning.LRPlan.build(allocator, &prepared, options.error_reporter);
+    return plan.hooks;
+}
+
 pub fn emitErrorMessagesWithOptions(
     allocator: std.mem.Allocator,
     grammar: anytype,

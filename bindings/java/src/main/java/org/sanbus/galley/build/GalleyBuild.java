@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
 
+
 /**
  * Builds a Galley parser and its shared library for a Java consumer.
  *
@@ -16,7 +17,7 @@ import java.util.*;
  * builds do not check.
  *
  * Generator flags forward verbatim to the generator ahead of
- * `--emit-metadata --emit-host-procedures`: this tool forwards every flag it does not own and
+ * `--emit-host-procedures`: this tool forwards every flag it does not own and
  * the binary owns its surface (unknown flags die there with `unknown
  * argument`), so new generator flags work with no wrapper changes. Only
  * `--parser-type`'s value-shape is known here (`--parser-type lr` and
@@ -35,7 +36,7 @@ import java.util.*;
  * Environment overrides: ZIG_EXECUTABLE (default zig),
  *   GALLEY_CHECKOUT (required: existing Galley working tree).
  *
- * Generates parser (--emit-metadata --emit-host-procedures), builds shared library through generic
+ * Generates parser (--emit-host-procedures), builds shared library through generic
  * consumer build directly next to the grammar, so the consumer can name it
  * outright via Galley.load(path). To fetch
  * a checkout for convenience, use examples/scripts/fetch-galley.sh — that
@@ -145,7 +146,7 @@ public final class GalleyBuild {
 
     // Java package spelling of the language directory name. The generated
     // per-grammar Parser lives in this package next to the hook source, so
-    // its explicit install calls resolve without imports or reflection.
+    // it names the hook class without an import.
     private static String packageNameFor(Path languageDir) {
         String raw = languageDir.getFileName().toString();
         StringBuilder cleaned = new StringBuilder(raw.length());
@@ -164,37 +165,6 @@ public final class GalleyBuild {
         return null;
     }
 
-    // Reads the generator's hook list from metadata.json, written alongside
-    // procedures.zig. Minimal scanner for one string array (the file is
-    // machine-written by the generator); the stdlib has no JSON parser.
-    // The generator owns the hook list; this tool renders it.
-    private static List<String> readProcedureHooks(Path languageDir) {
-        Path metadataPath = languageDir.resolve("metadata.json");
-        String metadata;
-        try { metadata = Files.readString(metadataPath, StandardCharsets.UTF_8); } catch (IOException e) { fatal("failed to read " + metadataPath + ": " + e.getMessage()); return null; }
-        int key = metadata.indexOf("\"procedures\"");
-        if (key < 0) fatal(metadataPath + " has no procedure hook list; update the Galley checkout");
-        int open = metadata.indexOf('[', key);
-        if (open < 0) fatal(metadataPath + " has no procedure hook list; update the Galley checkout");
-        List<String> hooks = new ArrayList<>();
-        StringBuilder current = null;
-        boolean escape = false;
-        for (int i = open + 1; i < metadata.length(); i++) {
-            char ch = metadata.charAt(i);
-            if (current == null) {
-                if (ch == '"') { current = new StringBuilder(); escape = false; }
-                else if (ch == ']') break;
-                continue;
-            }
-            if (escape) { current.append(ch); escape = false; }
-            else if (ch == '\\') escape = true;
-            else if (ch == '"') { hooks.add(current.toString()); current = null; }
-            else current.append(ch);
-        }
-        if (current != null || hooks.isEmpty()) fatal(metadataPath + " has no procedure hook list; update the Galley checkout");
-        return hooks;
-    }
-
     // Removes a stale banner-carrying Parser left by an earlier packaged
     // build. Foreign (hand-written) files are never touched.
     private static void deleteIfGenerated(Path path) {
@@ -207,21 +177,23 @@ public final class GalleyBuild {
         }
     }
 
-    // Per-grammar Parser class: banner-guarded, fixed class name, one
-    // explicit installProcedure call per hook from the generator-owned
-    // metadata list (no reflection). One package is one parser per
-    // process: load() memoizes it and wires the bundled hooks exactly
-    // once, storing the parser only after every install succeeded, so a
-    // failed first load caches nothing and a retry is a fresh attempt.
-    // Bare Galley.load wires nothing, and later installs win per hook
-    // name. Refuses to overwrite a file it did not generate.
-    private static void emitParserClass(String packageName, String hookClass, List<String> hooks, Path languageDir) {
+    // Per-grammar Parser class: banner-guarded, fixed class name. load()
+    // installs every hook the procedures class defines through
+    // installProcedures(<class>.class), which scans its methods with the
+    // rule Python and JavaScript package scans use, so the class defines
+    // only the hooks it implements. One package is one parser per process: load() memoizes
+    // it and wires the bundled hooks exactly once, storing the parser only
+    // after the install succeeded, so a failed first load caches nothing
+    // and a retry is a fresh attempt. Bare Galley.load wires nothing, and
+    // later installs win per hook name. Refuses to overwrite a file it did
+    // not generate.
+    private static void emitParserClass(String packageName, String hookClass, Path languageDir) {
         Path packageDir = languageDir.resolve(packageName);
         Path outputPath = packageDir.resolve("Parser.java");
         assertGeneratedOrAbsent(outputPath);
         List<String> lines = new ArrayList<>();
         lines.add(GENERATED_BANNER);
-        lines.add("// Bundled hook wiring for this grammar, from metadata.json.");
+        lines.add("// Bundled hook wiring for this grammar: every hook " + hookClass + " defines.");
         lines.add("// One parser per process for this package: load() wires the bundled hooks");
         lines.add("// exactly once, and later installs win per hook name.");
         lines.add("package " + packageName + ";");
@@ -235,9 +207,7 @@ public final class GalleyBuild {
         lines.add("    public static synchronized org.sanbus.galley.Parser load(String libraryPath) throws org.sanbus.galley.MissingArtifactException {");
         lines.add("        if (parser == null) {");
         lines.add("            org.sanbus.galley.Parser loaded = org.sanbus.galley.Galley.load(libraryPath);");
-        for (String hook : hooks) {
-            lines.add("            loaded.installProcedure(\"" + hook + "\", " + hookClass + "::" + hook + ");");
-        }
+        lines.add("            loaded.installProcedures(" + hookClass + ".class);");
         lines.add("            parser = loaded;");
         lines.add("        }");
         lines.add("        return parser;");
@@ -360,30 +330,21 @@ public final class GalleyBuild {
         List<String> generateArgs = new ArrayList<>();
         generateArgs.add(cli.toString());
         generateArgs.addAll(generatorFlags);
-        generateArgs.add("--emit-metadata");
         generateArgs.add("--emit-host-procedures");
         generateArgs.add(languageDir.toString());
         run(generateArgs, null);
 
-        // One library embeds one parser; the consumer build locates the file
-        // generation produced from -Dlanguage-dir and infers the family
-        // from the filename.
-        List<String> procedureHooks = readProcedureHooks(languageDir);
-
         if (javaProceduresFile != null) {
             System.err.println("galley-bindings: using Java procedures from " + javaProceduresFile);
         }
-        // Every build links the generator's host shim (non-empty even when
-        // the grammar disables procedures), so a hook installed later
-        // fires without a rebuild.
+        // Every build links the generator's host shim: the library then
+        // forwards every hook its parser binds, none when the grammar
+        // disables procedures, in which case installing one raises.
         String proceduresZigSource = languageDir.resolve("host_procedures.zig").toString();
 
-        if (packagedJavaProceduresFile != null) {
-            String hookClass = packagedJavaProceduresFile.getFileName().toString();
-            hookClass = hookClass.substring(0, hookClass.length() - ".java".length());
-            emitParserClass(packageName, hookClass, procedureHooks, languageDir);
-        }
-
+        // One library embeds one parser; the consumer build locates the file
+        // generation produced from -Dlanguage-dir and infers the family
+        // from the filename.
         List<String> consumerArgs = consumerBuildArguments(
                 galleySource.resolve("bindings").resolve("c").resolve("consumer").resolve("build.zig"),
                 languageDir, proceduresZigSource, optimize);
@@ -391,6 +352,13 @@ public final class GalleyBuild {
 
         Path dest = languageDir.resolve(libFileName(LIBRARY_NAME));
         if (!Files.exists(dest)) fatal("expected library not found at " + dest);
+
+        if (packagedJavaProceduresFile != null) {
+            String hookClass = packagedJavaProceduresFile.getFileName().toString();
+            hookClass = hookClass.substring(0, hookClass.length() - ".java".length());
+            emitParserClass(packageName, hookClass, languageDir);
+        }
+
         System.out.println("galley-bindings: built " + dest + "; import from " + languageDir);
     }
 }

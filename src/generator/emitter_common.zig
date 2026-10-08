@@ -2,16 +2,6 @@ const std = @import("std");
 const common = @import("generator_common");
 const switch_planning = @import("generator_switch_plan");
 
-/// Writes the procedure-module lookup name for one grammar annotation.
-/// Every author-written hook — standard tree helpers included — is emitted
-/// under the generated `hook_` namespace so its declaration cannot collide
-/// with unrelated symbols such as libc's; only the generator-invented
-/// reduction names keep their established `reduction_` spelling.
-fn emitProcedureLookupName(writer: *std.Io.Writer, name: []const u8) !void {
-    try writer.writeAll("\"hook_\" ++ ");
-    try common.emitStringLiteral(writer, name);
-}
-
 pub fn emitRecoveryOffsetFunction(writer: *std.Io.Writer, function_name: []const u8) !void {
     try writer.print(
         \\fn {s}(context: *data_structures.Context, candidates: []const []const u8, start: usize) !?usize {{
@@ -679,66 +669,70 @@ fn variableIndex(variables: []const usize, symbol_index: usize) usize {
     unreachable;
 }
 
-/// Emits the automatic hook names (`common.symbolHookNames`) the generated
-/// binder looks up in the procedures module: `readable` first, then
-/// `identifier_safe`. Precomputed here so the comptime binder does no string
-/// building and a symbol costs at most two `@hasDecl` checks. Each entry
-/// carries its symbol index; end of input has no entry and no lookup.
-fn emitSymbolHookNames(
-    allocator: std.mem.Allocator,
-    writer: *std.Io.Writer,
-    symbols: []const common.Symbol,
-    stems: []const []const u8,
-) !void {
-    try writer.writeAll("const SymbolHookNames = struct { symbol: usize, readable: []const u8, identifier_safe: ?[]const u8 };\n\n");
-    try writer.writeAll("const symbol_hook_names = [_]SymbolHookNames{\n");
-    for (symbols, stems, 0..) |symbol, stem, index| {
-        const hook_names = try common.symbolHookNames(allocator, symbol, stem) orelse continue;
-        defer allocator.free(hook_names.readable);
-        defer if (hook_names.identifier_safe) |identifier_safe| allocator.free(identifier_safe);
-        try writer.print("    .{{ .symbol = {d}, .readable = ", .{index});
-        try common.emitStringLiteral(writer, hook_names.readable);
-        try writer.writeAll(", .identifier_safe = ");
-        if (hook_names.identifier_safe) |identifier_safe| {
-            try common.emitStringLiteral(writer, identifier_safe);
-        } else {
-            try writer.writeAll("null");
-        }
-        try writer.writeAll(" },\n");
-    }
-    try writer.writeAll("};\n\n");
-}
-
 /// Emits the procedure support declarations shared verbatim by the LL and LR
-/// generators. The current node is resolved through the `ProcedureArguments`
-/// accessor on each hook phase, so no refresh pass is needed between calls.
+/// generators. The parser's hook table is `hooks.names`, emitted once; every
+/// binding site names its hook by index into it, so the list a library
+/// serves (`hook_names`) and what the parser binds are one table. The
+/// current node is resolved through the `ProcedureArguments` accessor on
+/// each hook phase, so no refresh pass is needed between calls.
 pub fn emitProcedureSupport(
     allocator: std.mem.Allocator,
     writer: *std.Io.Writer,
     rules: []const common.Rule,
     symbols: []const common.Symbol,
-    stems: []const []const u8,
+    hooks: *const common.HookPlan,
     variables: []const usize,
-    augmented_start: usize,
-    generative_terminal: ?usize,
 ) !void {
-    const rule_procedure_quota = @max(1000, rules.len * 8);
-    const symbol_procedure_quota = @max(1000, symbols.len * 8);
-    const variable_procedure_quota = @max(1000, variables.len * 8);
-    try emitSymbolHookNames(allocator, writer, symbols, stems);
+    try writer.writeAll(
+        \\const binds_host_hooks = @hasDecl(procedures, "host_dispatch");
+        \\
+        \\const all_hook_names = [_][]const u8{
+        \\
+    );
+    for (hooks.names, 0..) |name, index| {
+        try writer.writeAll("    ");
+        try common.emitStringLiteral(writer, name);
+        try writer.print(", // {d}\n", .{index});
+    }
     try writer.print(
+        \\}};
+        \\
+        \\/// The hooks this parser binds, by hook index: the list a host library
+        \\/// serves and validates installs against. Empty when procedures are
+        \\/// disabled, because the parser then binds no hook.
+        \\pub const hook_names: []const []const u8 = if (are_procedures_enabled) &all_hook_names else &.{{}};
+        \\
+        \\/// Binds hook `index`. Under a host shim every hook forwards to the
+        \\/// parsing session's dispatch; otherwise the first of `names` the
+        \\/// procedures module declares binds, or nothing does.
+        \\fn bindHook(comptime index: usize, comptime names: []const []const u8) ?*const data_structures.Procedure {{
+        \\    if (!are_procedures_enabled) return null;
+        \\    if (binds_host_hooks) return data_structures.host_hooks.procedure(index);
+        \\    inline for (names) |name| {{
+        \\        if (@hasDecl(procedures, name)) return data_structures.wrap_procedure(data_structures.Procedure, @field(procedures, name), name);
+        \\    }}
+        \\    return null;
+        \\}}
+        \\
+        \\/// Binds annotation hook `index`, which the procedures module must
+        \\/// declare unless a host shim forwards it.
+        \\fn bindAnnotationHook(comptime index: usize) *const data_structures.Procedure {{
+        \\    if (binds_host_hooks) return data_structures.host_hooks.procedure(index);
+        \\    const name = all_hook_names[index];
+        \\    return data_structures.wrap_procedure(data_structures.Procedure, @field(procedures, name), name);
+        \\}}
+        \\
         \\const ProcedureSequenceNode = struct {{
         \\    procedure: *const data_structures.Procedure,
         \\    next: ?*const ProcedureSequenceNode,
         \\}};
         \\
-        \\fn makeProcedureSequence(comptime procedure_names: []const []const u8) ?*const ProcedureSequenceNode {{
-        \\    @setEvalBranchQuota(@max(1000, procedure_names.len * 8));
-        \\    if (procedure_names.len == 0) return null;
-        \\    const procedure_name = procedure_names[0];
+        \\fn makeProcedureSequence(comptime hooks: []const usize) ?*const ProcedureSequenceNode {{
+        \\    @setEvalBranchQuota(@max(1000, hooks.len * 8));
+        \\    if (!are_procedures_enabled or hooks.len == 0) return null;
         \\    return &ProcedureSequenceNode{{
-        \\        .procedure = data_structures.wrap_procedure(data_structures.Procedure, @field(procedures, procedure_name), procedure_name),
-        \\        .next = makeProcedureSequence(procedure_names[1..]),
+        \\        .procedure = bindAnnotationHook(hooks[0]),
+        \\        .next = makeProcedureSequence(hooks[1..]),
         \\    }};
         \\}}
         \\
@@ -751,94 +745,98 @@ pub fn emitProcedureSupport(
         \\    }}
         \\}}
         \\
+        \\/// Per rule: its `reduction_<Variable>_<RhsIndex>` hook, or null.
+        \\const rule_hooks = [_]?usize{{
+        \\
+    , .{});
+    for (hooks.rules) |hook| {
+        if (hook) |index| try writer.print("    {d},\n", .{index}) else try writer.writeAll("    null,\n");
+    }
+    try writer.print(
+        \\}};
+        \\
         \\pub const rule_procedures = rule_procedures: {{
         \\    @setEvalBranchQuota({d});
         \\    var arr: [{d}]?*const data_structures.Procedure = @splat(null);
         \\
-        \\    for (rules, 0..) |rule, index| {{
-        \\        const procedure_name = "reduction_" ++ variables[rule.header] ++ "_" ++ rule.right_hand_side_index;
-        \\        if (@hasDecl(procedures, procedure_name)) {{
-        \\            arr[index] = data_structures.wrap_procedure(data_structures.Procedure, @field(procedures, procedure_name), procedure_name);
-        \\        }}
+        \\    for (rule_hooks, 0..) |hook, index| {{
+        \\        if (hook) |hook_index| arr[index] = bindHook(hook_index, &.{{all_hook_names[hook_index]}});
         \\    }}
         \\
         \\    break :rule_procedures arr;
+        \\}};
+        \\
+        \\/// Per symbol: its `reduction_<stem>` hook and the Zig-only readable
+        \\/// name bound before it, or null when the symbol binds no hook.
+        \\const SymbolHook = struct {{ hook: usize, readable: ?[]const u8 }};
+        \\
+        \\const symbol_hooks = [_]?SymbolHook{{
+        \\
+    , .{ @max(1000, rules.len * 8), rules.len });
+    for (hooks.symbols) |symbol_hook| {
+        const hook = symbol_hook orelse {
+            try writer.writeAll("    null,\n");
+            continue;
+        };
+        try writer.print("    .{{ .hook = {d}, .readable = ", .{hook.index});
+        if (hook.readable) |readable| try common.emitStringLiteral(writer, readable) else try writer.writeAll("null");
+        try writer.writeAll(" },\n");
+    }
+    try writer.print(
         \\}};
         \\
         \\pub const symbol_procedures = symbol_procedures: {{
         \\    @setEvalBranchQuota({d});
         \\    var arr: [{d}]?*const data_structures.Procedure = @splat(null);
         \\
-        \\    for (symbol_hook_names) |hook_names| {{
-        \\        const symbol = symbols[hook_names.symbol];
-        \\        const procedure_name: ?[]const u8 = if (@hasDecl(procedures, hook_names.readable))
-        \\            hook_names.readable
-        \\        else if (hook_names.identifier_safe) |identifier_safe|
-        \\            if (@hasDecl(procedures, identifier_safe)) identifier_safe else null
+        \\    for (symbol_hooks, 0..) |symbol_hook, index| {{
+        \\        const hook = symbol_hook orelse continue;
+        \\        arr[index] = if (hook.readable) |readable|
+        \\            bindHook(hook.hook, &.{{ readable, all_hook_names[hook.hook] }})
         \\        else
-        \\            null;
-        \\        if (procedure_name) |name| {{
-        \\            arr[hook_names.symbol] = data_structures.wrap_procedure(data_structures.Procedure, @field(procedures, name), symbol);
-        \\        }}
+        \\            bindHook(hook.hook, &.{{all_hook_names[hook.hook]}});
         \\    }}
         \\
         \\    break :symbol_procedures arr;
         \\}};
         \\
-        \\const variable_procedure_names = &[_][]const []const u8{{
+        \\const variable_procedure_hooks = &[_][]const usize{{
         \\
-    , .{ rule_procedure_quota, rules.len, symbol_procedure_quota, symbols.len });
+    , .{ @max(1000, symbols.len * 8), symbols.len });
     for (variables) |symbol_index| {
-        const symbol = symbols[symbol_index];
-        try writer.writeAll("    &[_][]const u8{");
-        for (symbol.annotations.procedures.items, 0..) |procedure, i| {
-            if (i != 0) try writer.writeAll(", ");
-            try emitProcedureLookupName(writer, procedure);
-        }
-        try writer.writeAll("},\n");
+        try writer.writeAll("    ");
+        try emitAnnotationHookIndexes(writer, hooks, symbols[symbol_index].annotations.procedures.items);
+        try writer.writeAll(",\n");
     }
-    try writer.writeAll("};\n");
-
-    // Manifest of every hook this grammar requires through its annotations,
-    // emitted under their generated `hook_` lookup names (standard tree
-    // helpers included). Binding generators scan it to declare the extern
-    // entry points the consumer must implement.
-    try writer.writeAll("\npub const user_hook_names = [_][]const u8{");
-    var user_hooks: std.ArrayList([]const u8) = .empty;
-    defer user_hooks.deinit(allocator);
-    for (rules) |rule| {
-        try collectUserHooks(allocator, &user_hooks, rule.annotations.procedures.items);
-        for (rule.rhs_annotations.items) |annotations| {
-            try collectUserHooks(allocator, &user_hooks, annotations.procedures.items);
-        }
-    }
-    for (variables) |symbol_index| {
-        try collectUserHooks(allocator, &user_hooks, symbols[symbol_index].annotations.procedures.items);
-    }
-    for (user_hooks.items) |hook_name| {
-        try writer.writeAll("\n    ");
-        try common.emitStringLiteral(writer, hook_name);
-        try writer.writeAll(",");
-    }
-    try writer.writeAll("\n};\n");
     try writer.print(
+        \\}};
         \\
         \\pub const variable_procedures = variable_procedures: {{
         \\    @setEvalBranchQuota({d});
         \\    var arr: [{d}]?*const ProcedureSequenceNode = @splat(null);
         \\
-        \\    for (variable_procedure_names, 0..) |procedure_names, index| {{
-        \\        arr[index] = makeProcedureSequence(procedure_names);
+        \\    for (variable_procedure_hooks, 0..) |procedure_hooks, index| {{
+        \\        arr[index] = makeProcedureSequence(procedure_hooks);
         \\    }}
         \\
         \\    break :variable_procedures arr;
         \\}};
         \\
-        \\pub const reduction_procedure: ?*const data_structures.Procedure = if (@hasDecl(procedures, "reduction")) data_structures.wrap_procedure(data_structures.Procedure, @field(procedures, "reduction"), "reduction") else null;
+        \\pub const reduction_procedure: ?*const data_structures.Procedure = bindHook({d}, &.{{all_hook_names[{d}]}});
         \\
         \\
-    , .{ variable_procedure_quota, variables.len });
-    try emitStrictReductionCheck(allocator, writer, rules, symbols, augmented_start, generative_terminal);
+    , .{ @max(1000, variables.len * 8), variables.len, common.HookPlan.general_index, common.HookPlan.general_index });
+    try emitStrictReductionCheck(allocator, writer, rules, symbols);
+}
+
+/// Emits `&[_]usize{ ... }`: the hook index of each annotation procedure.
+fn emitAnnotationHookIndexes(writer: *std.Io.Writer, hooks: *const common.HookPlan, procedures_: []const []const u8) !void {
+    try writer.writeAll("&[_]usize{");
+    for (procedures_, 0..) |procedure, index| {
+        if (index != 0) try writer.writeAll(", ");
+        try writer.print("{d}", .{hooks.annotationIndex(procedure)});
+    }
+    try writer.writeAll("}");
 }
 
 /// Emits the opt-in strict per-production hook check shared verbatim by the
@@ -846,17 +844,16 @@ pub fn emitProcedureSupport(
 /// `require_reduction_procedures = true` in `config.zig`, any visible
 /// production without `reduction_<Var>_<N>` fails compilation with its
 /// variable, index, and shape. Otherwise the block folds away and missing
-/// hooks stay silent nulls.
+/// hooks stay silent nulls. A parser with procedures disabled binds no hook
+/// and a host shim forwards every hook, so neither has anything to check.
 fn emitStrictReductionCheck(
     allocator: std.mem.Allocator,
     writer: *std.Io.Writer,
     rules: []const common.Rule,
     symbols: []const common.Symbol,
-    augmented_start: usize,
-    generative_terminal: ?usize,
 ) !void {
-    const required = try common.collectRequiredReductionProcedures(allocator, symbols, rules, augmented_start, generative_terminal);
-    try writer.writeAll("\ncomptime {\n    if (require_reduction_procedures) {\n");
+    const required = try common.collectRequiredReductionProcedures(allocator, symbols, rules);
+    try writer.writeAll("\ncomptime {\n    if (require_reduction_procedures and are_procedures_enabled and !binds_host_hooks) {\n");
     for (required) |item| {
         const message = try std.fmt.allocPrint(
             allocator,
@@ -912,30 +909,10 @@ pub fn emitReservedLeftoverCheck(
     try writer.writeAll(");\n    }\n}\n");
 }
 
-/// Appends `hook_`-prefixed hook names to `user_hooks`, skipping names
-/// already present.
-fn collectUserHooks(
-    allocator: std.mem.Allocator,
-    user_hooks: *std.ArrayList([]const u8),
-    procedures_: []const []const u8,
-) !void {
-    for (procedures_) |procedure| {
-        const hook_name = try std.fmt.allocPrint(allocator, "hook_{s}", .{procedure});
-        for (user_hooks.items) |existing| {
-            if (std.mem.eql(u8, existing, hook_name)) break;
-        } else {
-            try user_hooks.append(allocator, hook_name);
-        }
-    }
-}
-
-pub fn emitProcedureSequenceExpression(writer: *std.Io.Writer, procedures_: []const []const u8) !void {
-    try writer.writeAll("comptime makeProcedureSequence(&[_][]const u8{");
-    for (procedures_, 0..) |procedure, index| {
-        if (index != 0) try writer.writeAll(", ");
-        try emitProcedureLookupName(writer, procedure);
-    }
-    try writer.writeAll("})");
+pub fn emitProcedureSequenceExpression(writer: *std.Io.Writer, hooks: *const common.HookPlan, procedures_: []const []const u8) !void {
+    try writer.writeAll("comptime makeProcedureSequence(");
+    try emitAnnotationHookIndexes(writer, hooks, procedures_);
+    try writer.writeAll(")");
 }
 
 /// Emits the `var args = data_structures.ProcedureArguments{...};` block shared by
@@ -1000,9 +977,9 @@ pub fn emitProcedureRunCall(writer: *std.Io.Writer, indent: []const u8) !void {
 
 /// Emits a complete `try runProcedureSequence(<rule procedure sequence>, &args);`
 /// statement using the rule's own annotation procedures.
-pub fn emitProcedureRuleSequenceCall(writer: *std.Io.Writer, indent: []const u8, procedures_: []const []const u8) !void {
+pub fn emitProcedureRuleSequenceCall(writer: *std.Io.Writer, indent: []const u8, hooks: *const common.HookPlan, procedures_: []const []const u8) !void {
     try emitProcedureRunCall(writer, indent);
-    try emitProcedureSequenceExpression(writer, procedures_);
+    try emitProcedureSequenceExpression(writer, hooks, procedures_);
     try writer.writeAll(", &args);\n");
 }
 

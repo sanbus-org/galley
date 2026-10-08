@@ -6,9 +6,9 @@
 //
 // This file supplies the Java hook implementations for the keyvalue
 // grammar. Hooks install onto a parser handle at
-// runtime via parser.installProcedure. The build tool always generates
-// the dispatch shim from the metadata hook list;
-// plus the packaged Parser wiring them in one explicit call per hook.
+// runtime via parser.installProcedure; the packaged Parser the build tool
+// generates installs every hook this class defines through
+// parser.installProcedures(procedures.class).
 
 package test_fixture;
 
@@ -111,12 +111,6 @@ public final class procedures {
         emit("Document " + res[0] + " pairs, sum=" + res[1]);
     }
 
-    // Internal generator hooks with no user behavior. Present so the
-    // generated Parser resolves every metadata hook; they stay inert.
-    public static void reduction__AugmentedStart(ProcedureArguments args) {}
-
-    public static void reduction_GenerativeTerminal(ProcedureArguments args) {}
-
     // Install all hooks onto the given parser.
     public static void register(org.sanbus.galley.Parser parser) {
         parser.installProcedure("reduction", procedures::reduction);
@@ -129,7 +123,5 @@ public final class procedures {
         parser.installProcedure("reduction_Number", procedures::reduction_Number);
         parser.installProcedure("reduction_Pair", procedures::reduction_Pair);
         parser.installProcedure("reduction_Document", procedures::reduction_Document);
-        parser.installProcedure("reduction__AugmentedStart", procedures::reduction__AugmentedStart);
-        parser.installProcedure("reduction_GenerativeTerminal", procedures::reduction_GenerativeTerminal);
     }
 }

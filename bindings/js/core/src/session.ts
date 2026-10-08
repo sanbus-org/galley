@@ -260,8 +260,10 @@ export class Session implements HookOwner {
   #handle: Handle | null = null;
   #port: FfiPort;
   #closed = false;
-  /** This session's hooks by name: replaced whole by every change, never mutated. */
-  #hooks = new ProcedureRegistry();
+  /** This session's hooks by name: replaced whole by every change, never mutated.
+   * Assigned from the parser defaults (a copy carrying the artifact's hook
+   * names) before the constructor returns anything observable. */
+  #hooks!: ProcedureRegistry;
   /** The same hooks by the library's hook index: the dispatch lookup. */
   #hooksByIndex: (HookFn | undefined)[] = [];
   /** The handle the library hands back with this session's hooks. */
@@ -528,9 +530,9 @@ export class Session implements HookOwner {
   }
 
   /**
-   * Scans `module` for exported procedure hooks (`reduction`,
-   * `reduction_*`, `hook_*`) and registers each on this session in one
-   * step. Returns the number installed.
+   * Scans `module` for exported procedure hooks the artifact defines
+   * (shape: `reduction...`, `hook_...`, `hookX...`) and registers each on
+   * this session in one step. Returns the number installed.
    */
   installProcedures(module: Record<string, unknown>): number {
     const next = this.#hooks.copy();
@@ -539,9 +541,11 @@ export class Session implements HookOwner {
     return installed;
   }
 
-  /** Removes all of this session's hooks. */
+  /** Removes all of this session's hooks; the artifact's list stays with it. */
   clearProcedures(): void {
-    this.#commitHooks(new ProcedureRegistry());
+    const next = this.#hooks.copy();
+    next.clear();
+    this.#commitHooks(next);
   }
 
   /** Returns a copy of this session's hooks (name -> callable). */
@@ -610,10 +614,9 @@ export class Session implements HookOwner {
       this.#parseDoor = new Door(this, this.#port.hook, nativeDoor);
     }
     this.#dispatching = true;
-    if (fn.length === 0) {
-      (fn as () => void)();
-      return;
-    }
+    // Always pass the object: this language ignores a surplus argument,
+    // and there is no arity to inspect (the fn.length heuristic missed
+    // defaults and rest parameters alike).
     const procedureArguments = new ProcedureArguments(
       hook,
       this.#requireHandle(),

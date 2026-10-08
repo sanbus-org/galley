@@ -34,12 +34,6 @@ pub fn reduction_ParenItems(args: *root.data_structures.ProcedureArguments) void
 pub fn reduction_BracketAfter(args: *root.data_structures.ProcedureArguments) void {
     root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_BracketAfter" }));
 }
-pub fn reduction__LongStringContent(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__LongStringContent" }));
-}
-pub fn reduction__LineCommentTail(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__LineCommentTail" }));
-}
 pub fn reduction_BraceItem(args: *root.data_structures.ProcedureArguments) void {
     root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_BraceItem" }));
 }
@@ -51,22 +45,4 @@ pub fn reduction_BracketItems(args: *root.data_structures.ProcedureArguments) vo
 }
 pub fn reduction_BracketItem(args: *root.data_structures.ProcedureArguments) void {
     root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_BracketItem" }));
-}
-pub fn reduction__DoubleStringContent(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__DoubleStringContent" }));
-}
-pub fn reduction__SingleStringContent(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__SingleStringContent" }));
-}
-pub fn reduction__LongStringAfterBracket(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__LongStringAfterBracket" }));
-}
-pub fn reduction__AugmentedStart(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction__AugmentedStart" }));
-}
-pub fn reduction_GenerativeTerminal(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_GenerativeTerminal" }));
-}
-pub fn reduction_DashItem_Tail(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_DashItem_Tail" }));
 }

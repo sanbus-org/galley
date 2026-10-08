@@ -32,8 +32,6 @@ const Generator = struct {
     has_recovery_annotations: bool,
     uses_verbatim: bool,
     end_symbol: usize,
-    augmented_start: usize,
-    generative_terminal: ?usize,
 
     fn init(allocator: std.mem.Allocator, options: Options, grammar: *const common.PreparedGrammar, plan: *const LRPlan) Generator {
         return .{
@@ -47,8 +45,6 @@ const Generator = struct {
             .has_recovery_annotations = grammar.has_recovery_annotations,
             .uses_verbatim = grammar.uses_verbatim,
             .end_symbol = grammar.eof,
-            .augmented_start = grammar.augmented_start,
-            .generative_terminal = grammar.generative_terminal,
         };
     }
 
@@ -76,7 +72,7 @@ const Generator = struct {
         // or feature-set is active is selected at comptime per configuration
         // (LL parity), and unused support folds away under lazy analysis.
         try emitter_common.emitRecoveryOffsetFunction(writer, "lrRecoveryOffset");
-        try emitter_common.emitProcedureSupport(self.allocator, writer, self.rules.items, self.symbols.items, self.plan.symbol_names.stems, self.variables.items, self.augmented_start, self.generative_terminal);
+        try emitter_common.emitProcedureSupport(self.allocator, writer, self.rules.items, self.symbols.items, &self.plan.hooks, self.variables.items);
         try emitter_common.emitReservedLeftoverCheck(self.allocator, writer, self.symbols.items);
 
         try writer.writeAll(
@@ -597,7 +593,7 @@ const Generator = struct {
         try emitter_common.emitProcedureRunCall(writer, indent);
         try self.emitOccurrenceExpression(writer, occurrence);
         try writer.writeAll(", &args);\n");
-        try emitter_common.emitProcedureRuleSequenceCall(writer, indent, rule.annotations.procedures.items);
+        try emitter_common.emitProcedureRuleSequenceCall(writer, indent, &self.plan.hooks, rule.annotations.procedures.items);
         try emitter_common.emitProcedureDispatchTail(writer, indent, rule_index, variable_index, parent_variable, null);
     }
 
@@ -613,6 +609,7 @@ const Generator = struct {
         if (occurrence) |value| {
             try emitter_common.emitProcedureSequenceExpression(
                 writer,
+                &self.plan.hooks,
                 self.rules.items[value.rule].rhs_annotations.items[value.position].procedures.items,
             );
         } else {

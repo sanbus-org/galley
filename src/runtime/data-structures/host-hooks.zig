@@ -1,10 +1,10 @@
 //! Per-session hook state for hosts: the enabled set, the dispatch
 //! callback, and (through `Context.user_data`) the host handle.
 //!
-//! The generated host shim (`host_procedures.zig`) declares
-//! `host_hook_names` and forwards every hook through `forward`. A hook
-//! that is not enabled on the parsing session returns after one load from
-//! the parse `Context`; an enabled one calls the session's dispatch
+//! The generated host shim (`host_procedures.zig`) declares `host_dispatch`,
+//! and the generated parser then binds every hook it names to `procedure`.
+//! A hook that is not enabled on the parsing session returns after one load
+//! from the parse `Context`; an enabled one calls the session's dispatch
 //! callback with the session's handle. Nothing here is shared between
 //! sessions, so independent sessions of one library hook independently.
 
@@ -12,11 +12,12 @@ const builtin = @import("builtin");
 const root = @import("galley");
 const data_structures = root.data_structures;
 
-/// Hook names in index order, as the linked shim declares them. Empty for
-/// builds whose `procedures` module is not a host shim (Zig or extern
+/// Hook names in index order: the parser's own `hook_names`, so the list a
+/// host validates installs against is exactly what the parser binds. Empty
+/// for builds whose `procedures` module is not a host shim (Zig or extern
 /// hooks), where no session carries any enabled hook.
-pub const hook_names: []const []const u8 = if (@hasDecl(root.procedures, "host_hook_names"))
-    &root.procedures.host_hook_names
+pub const hook_names: []const []const u8 = if (@hasDecl(root.procedures, "host_dispatch"))
+    root.parser.hook_names
 else
     &.{};
 
@@ -45,6 +46,15 @@ pub const HostHooks = struct {
 const wasm_dispatch = struct {
     extern "env" fn galley_host_dispatch(handle: ?*anyopaque, index: u32, hook: u64) i32;
 };
+
+/// The procedure a parser binds for hook `index` under a host shim.
+pub fn procedure(comptime index: u32) *const data_structures.Procedure {
+    return &struct {
+        fn call(args: *data_structures.ProcedureArguments) anyerror!void {
+            return forward(index, args);
+        }
+    }.call;
+}
 
 /// The one forwarding site of every host shim hook: the call runs under a
 /// fresh ticket that names its arguments for exactly as long as it runs. A

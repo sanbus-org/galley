@@ -214,12 +214,15 @@ long long galley_session_set_message_override(GalleySession *session,
  * semantic error instead. */
 typedef int (*GalleyHookDispatch)(void *handle, unsigned int index, unsigned long long hook);
 
-/* Number of hooks the library forwards. Hook indexes run 0 .. count-1 and
- * are fixed for the library's lifetime. */
+/* Number of hooks the library forwards: every hook its parser binds, none
+ * when procedures are disabled. Hook indexes run 0 .. count-1 and are fixed
+ * for the library's lifetime. */
 size_t galley_hooks_count(void);
 
-/* Name of hook index (reduction, reduction_<Variable>, or hook_<name>):
- * static storage valid for the process lifetime. NULL and 0 for an index out
+/* Name of hook index, always an identifier: reduction, reduction_<Variable>,
+ * reduction_<terminal stem> (reduction_terminal__x123 for "{"),
+ * reduction_<Variable>_<RhsIndex>, or hook_<name>. Static storage valid for
+ * the process lifetime. NULL and 0 for an index out
  * of range. The pointer and the length are separate calls so every host
  * reads them as plain scalars. */
 const char *galley_hooks_name_data(size_t index);

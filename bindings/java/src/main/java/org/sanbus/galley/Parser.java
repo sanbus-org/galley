@@ -107,32 +107,66 @@ public final class Parser {
         return lib.galley_status_string(status.getCode());
     }
 
-    /** Installs a default hook: reaches sessions opened after this call. */
+    /**
+     * Installs a default hook: reaches sessions opened after this call.
+     * Raises when the artifact does not define {@code name} — an artifact
+     * without procedure hooks defines none.
+     */
     public void installProcedure(String name, Consumer<ProcedureArguments> hook) {
         HookNames.require(name, hook);
-        if (HookNames.accepts(name)) hooks.put(name, hook);
+        requireArtifactHook(name);
+        hooks.put(name, hook);
     }
 
     public void installProcedure(String name, Runnable hook) {
         HookNames.require(name, hook);
-        if (HookNames.accepts(name)) hooks.put(name, args -> hook.run());
+        requireArtifactHook(name);
+        hooks.put(name, args -> hook.run());
     }
 
     /**
-     * Installs every hook-shaped entry ({@code reduction},
-     * {@code reduction_*}, {@code hook_*}) whose value is a
-     * {@code Consumer<ProcedureArguments>} or a {@code Runnable}.
-     * Near-miss names warn and anything else is silently ignored.
-     * Returns the number installed.
+     * Installs every entry of a scanned map the artifact defines: only
+     * exports whose names begin with {@code reduction}, or with {@code hook}
+     * followed by {@code _} or an uppercase letter, are considered; each
+     * considered name the artifact does not define is skipped with a warning
+     * naming the export, and everything else (helpers, data) is skipped
+     * without a word. An install is deliberate, so the singular form raises
+     * instead. Returns the number installed.
      */
     public int installProcedures(Map<String, ?> source) {
         if (source == null) return 0;
+        return installScannedHooks(source, hooks);
+    }
+
+    /**
+     * Scans the public static methods of {@code hooks} like a map of its
+     * exports: a method taking a {@code ProcedureArguments} or nothing,
+     * named like a hook, installs under its name. Returns the number
+     * installed.
+     */
+    public int installProcedures(Class<?> hooks) {
+        if (hooks == null) return 0;
+        return installProcedures(HookNames.exports(hooks));
+    }
+
+    /**
+     * The scan gate both hook tables share: installs the considered,
+     * artifact-defined, hook-valued entries of {@code source} into
+     * {@code target}, warning on stderr for each considered export the
+     * artifact does not define. Returns the number installed.
+     */
+    int installScannedHooks(Map<String, ?> source, Map<String, Consumer<ProcedureArguments>> target) {
         int count = 0;
         for (Map.Entry<String, ?> entry : source.entrySet()) {
-            if (!HookNames.accepts(entry.getKey())) continue;
+            String name = entry.getKey();
+            if (!HookNames.isScanCandidate(name)) continue;
+            if (!definesHook(name)) {
+                System.err.println("galley: ignoring export \"" + name + "\": " + canonicalPath + " does not define it.");
+                continue;
+            }
             Consumer<ProcedureArguments> hook = HookNames.toHook(entry.getValue());
             if (hook == null) continue;
-            hooks.put(entry.getKey(), hook);
+            target.put(name, hook);
             count++;
         }
         return count;
@@ -158,6 +192,41 @@ public final class Parser {
 
     /** Number of hooks the library forwards. */
     int hookCount() { return hookIndexes.size(); }
+
+    /**
+     * Whether the artifact defines {@code name}: its own hook list, which is
+     * empty for a library built without procedure hooks. The one answer every
+     * install consults — the same list hosts cross by name.
+     */
+    boolean definesHook(String name) {
+        return hookIndex(name) != -1;
+    }
+
+    /** Raises unless the artifact defines {@code name}: the gate of every named install. */
+    void requireArtifactHook(String name) {
+        if (definesHook(name)) return;
+        if (hookIndexes.isEmpty()) {
+            throw new IllegalArgumentException("cannot install \"" + name + "\": " + canonicalPath
+                    + " defines no procedure hooks");
+        }
+        String suggestion = suggestedHookName(name);
+        throw new IllegalArgumentException("cannot install \"" + name + "\": " + canonicalPath
+                + " does not define a hook of that name"
+                + (suggestion == null ? "" : "; did you mean \"" + suggestion + "\"?"));
+    }
+
+    /**
+     * The hook an undefined {@code name} most likely meant: the artifact's
+     * {@code hook_<name>} or else its {@code reduction_<name>}, or null when
+     * it defines neither. Grammar annotations bind {@code hook_<name>}, so
+     * {@code print} for {@code hook_print} is the usual slip.
+     */
+    private String suggestedHookName(String name) {
+        for (String candidate : new String[] {"hook_" + name, "reduction_" + name}) {
+            if (definesHook(candidate)) return candidate;
+        }
+        return null;
+    }
 
     /** The library's index for a hook name, or -1 when the grammar has no such hook. */
     int hookIndex(String name) {

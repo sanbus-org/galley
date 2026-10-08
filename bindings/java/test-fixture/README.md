@@ -6,12 +6,12 @@ only ever import `org.sanbus.galley.*`.
 
 The hook source lives in the `test_fixture` package (the packaged
 layout is canonical: only it yields the generated `Parser` alongside the
-shim; with two inert internal hooks so every metadata hook resolves); the
-builder emits the banner-guarded `test_fixture/Parser` wiring them next
-to it, and refuses to overwrite a foreign file there.
+shim); the builder emits the banner-guarded `test_fixture/Parser`, which
+installs every hook the class defines, next to it, and refuses to
+overwrite a foreign file there.
 
 The parser (`_ll-parser.zig`, `procedures.zig`,
-`host_procedures.zig`, `metadata.json`, `libgalley-java.*`) is built
+`host_procedures.zig`, `libgalley-java.*`) is built
 into this directory with the stock builder class:
 
     javac --release 22 -d bindings/java/out $(find bindings/java/src/main/java -name "*.java")

@@ -309,10 +309,14 @@ public final class Session implements AutoCloseable {
 
     // -- hooks --
 
-    /** Installs a hook on this session only. Takes effect from the next parse. */
+    /**
+     * Installs a hook on this session only. Takes effect from the next parse.
+     * Raises when the artifact does not define {@code name} — an artifact
+     * without procedure hooks defines none.
+     */
     public void installProcedure(String name, Consumer<ProcedureArguments> hook) {
         HookNames.require(name, hook);
-        if (!HookNames.accepts(name)) return;
+        parser.requireArtifactHook(name);
         Map<String, Consumer<ProcedureArguments>> next = new HashMap<>(hooks);
         next.put(name, hook);
         commitHooks(Map.copyOf(next));
@@ -324,25 +328,30 @@ public final class Session implements AutoCloseable {
     }
 
     /**
-     * Installs every hook-shaped entry ({@code reduction},
-     * {@code reduction_*}, {@code hook_*}) whose value is a
-     * {@code Consumer<ProcedureArguments>} or a {@code Runnable}, in one
-     * step. Near-miss names warn and anything else is silently ignored.
-     * Returns the number installed.
+     * Installs every entry of a scanned map the artifact defines, in one
+     * step: only exports whose names begin with {@code reduction}, or with
+     * {@code hook} followed by {@code _} or an uppercase letter, are
+     * considered; each considered name the artifact does not define is
+     * skipped with a warning naming the export, and everything else
+     * (helpers, data) is skipped without a word. Returns the number
+     * installed.
      */
     public int installProcedures(Map<String, ?> source) {
         if (source == null) return 0;
         Map<String, Consumer<ProcedureArguments>> next = new HashMap<>(hooks);
-        int count = 0;
-        for (Map.Entry<String, ?> entry : source.entrySet()) {
-            if (!HookNames.accepts(entry.getKey())) continue;
-            Consumer<ProcedureArguments> hook = HookNames.toHook(entry.getValue());
-            if (hook == null) continue;
-            next.put(entry.getKey(), hook);
-            count++;
-        }
+        int count = parser.installScannedHooks(source, next);
         if (count > 0) commitHooks(Map.copyOf(next));
         return count;
+    }
+
+    /**
+     * Scans the public static methods of {@code hooks} like a map of its
+     * exports, as {@link Parser#installProcedures(Class)} does, onto this
+     * session. Returns the number installed.
+     */
+    public int installProcedures(Class<?> hooks) {
+        if (hooks == null) return 0;
+        return installProcedures(HookNames.exports(hooks));
     }
 
     public Map<String, Consumer<ProcedureArguments>> listProcedures() {

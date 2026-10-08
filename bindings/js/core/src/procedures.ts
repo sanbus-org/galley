@@ -148,14 +148,37 @@ export type HookFn = (args: ProcedureArguments) => void;
 /** Hook modules for a session: one module, nested arrays, nullish entries skipped. */
 export type ProceduresOption = Record<string, unknown> | null | undefined | ProceduresOption[];
 
+/**
+ * The one shape rule a scan asks: names beginning with `reduction`, or
+ * with `hook` followed by `_` or an uppercase letter. A scan sees every
+ * export of a module, so it filters to names that could be hooks first;
+ * the default-export cover check and the zero-wiring guard ask the same
+ * shape question. Whether a name may be installed is a different answer,
+ * the artifact's own hook list's.
+ */
 export function isProcedureName(name: string): boolean {
-  return name === "reduction" || name.startsWith("reduction_") || name.startsWith("hook_");
+  if (name.startsWith("reduction")) return true;
+  if (!name.startsWith("hook") || name.length <= 4) return false;
+  return name[4] === "_" || (name.charCodeAt(4) >= 65 && name.charCodeAt(4) <= 90);
 }
 
 /**
- * The one wire rule: a hook-named function export. The scan, the
- * default-export cover check, and the zero-wiring guard's "exports a
- * hook" test all ask this, so the install rule cannot drift from them.
+ * The hook an undefined `name` most likely meant: the artifact's
+ * `hook_<name>` or else its `reduction_<name>`, or null when it defines
+ * neither. Grammar annotations bind `hook_<name>`, so `print` for
+ * `hook_print` is the usual slip.
+ */
+function suggestedHookName(names: ReadonlySet<string>, name: string): string | null {
+  for (const candidate of [`hook_${name}`, `reduction_${name}`]) {
+    if (names.has(candidate)) return candidate;
+  }
+  return null;
+}
+
+/**
+ * A hook-shaped function export: the shape rule plus a function value.
+ * The default-export cover check and the zero-wiring guard ask this; the
+ * scan asks it after the artifact's list has accepted the name.
  */
 function isWireableHook(name: string, value: unknown): value is HookFn {
   return typeof value === "function" && isProcedureName(name);
@@ -163,19 +186,58 @@ function isWireableHook(name: string, value: unknown): value is HookFn {
 
 /**
  * One artifact's procedure hooks. Parsers build one from the entry's
- * bundled namespace; hooks never cross artifacts.
+ * bundled namespace; hooks never cross artifacts. The artifact's own
+ * hook list comes with the registry: it is the one answer to whether a
+ * name may be installed, and an artifact without procedure hooks carries
+ * an empty list, so every install there raises.
  */
 export class ProcedureRegistry {
   readonly #hooks = new Map<string, HookFn>();
+  /** The artifact's hook names: every install validates against this. */
+  readonly #artifactNames: ReadonlySet<string>;
+  /**
+   * Names already reported by scans of this parser: shared by the parser's
+   * registry and every copy of it (its sessions'), so each name warns once
+   * per parser.
+   */
+  readonly #warnedUnknownExports: Set<string>;
+
+  constructor(artifactNames: Iterable<string>, warnedUnknownExports: Set<string> = new Set()) {
+    this.#artifactNames = new Set(artifactNames);
+    this.#warnedUnknownExports = warnedUnknownExports;
+  }
+
   /**
    * Installs a single procedure hook. `fn` may be
    * `(args: ProcedureArguments)=>void` or `()=>void`.
    * Overwrites any existing entry for `name`.
+   * Throws a RangeError when the artifact does not define `name`.
    */
   install(name: string, fn: HookFn | (() => void)): void {
     if (typeof name !== "string" || name.length === 0) throw new TypeError("procedure name must be non-empty string");
     if (typeof fn !== "function") throw new TypeError("procedure must be a function");
+    if (!this.#artifactNames.has(name)) {
+      if (this.#artifactNames.size === 0) {
+        throw new RangeError(`galley: the artifact defines no procedure hooks; cannot install "${name}"`);
+      }
+      const suggestion = suggestedHookName(this.#artifactNames, name);
+      throw new RangeError(
+        suggestion === null
+          ? `galley: the artifact does not define a hook named "${name}"`
+          : `galley: the artifact does not define a hook named "${name}"; did you mean "${suggestion}"?`,
+      );
+    }
     this.#hooks.set(name, fn as HookFn);
+  }
+
+  /**
+   * Warns once per name per parser: a re-scan by the parser or any of its
+   * sessions stays quiet, while another parser reports its own scan.
+   */
+  #warnUnknownScanExport(name: string): void {
+    if (this.#warnedUnknownExports.has(name)) return;
+    this.#warnedUnknownExports.add(name);
+    console.warn(`galley: ignoring export "${name}": the artifact does not define it.`);
   }
 
   /**
@@ -213,30 +275,36 @@ export class ProcedureRegistry {
   }
 
   /**
-   * Scans `module` for exported procedure hooks (`reduction`,
-   * `reduction_*`, `hook_*`) and registers each function, later
-   * entries winning per hook name. Returns the number installed.
+   * Scans `module` for exported procedure hooks the artifact defines
+   * (shape: `reduction...`, `hook_...`, `hookX...`) and registers each
+   * function, later entries winning per hook name. Returns the number
+   * installed.
    */
   installModule(module: Record<string, unknown>): number {
     return this.#scanModule(module, true);
   }
 
   /**
-   * Shared module scan: name filter, near-miss warning, overwrite
-   * policy; the default-export diagnostic runs at scan end, once every
-   * top-level name is known.
+   * Shared module scan: shape filter, artifact-list membership, overwrite
+   * policy; a considered name the artifact does not define warns (once
+   * per name for this registry) naming the export, and everything else is
+   * skipped without a word. The
+   * default-export diagnostic runs at scan end, once every top-level name
+   * is known.
    */
   #scanModule(module: Record<string, unknown>, overwrite: boolean): number {
     if (module === null || typeof module !== "object") throw new TypeError("module must be an object");
     let count = 0;
     for (const [name, value] of Object.entries(module)) {
       if (name === "default") continue;
-      if (!isWireableHook(name, value)) {
-        if (typeof value === "function") warnOnNearMissHook(name);
+      if (!isProcedureName(name)) continue;
+      if (!this.#artifactNames.has(name)) {
+        this.#warnUnknownScanExport(name);
         continue;
       }
+      if (typeof value !== "function") continue;
       if (!overwrite && this.#hooks.has(name)) continue;
-      this.#hooks.set(name, value);
+      this.#hooks.set(name, value as HookFn);
       count++;
     }
     if (Object.hasOwn(module, "default")) {
@@ -245,9 +313,9 @@ export class ProcedureRegistry {
     return count;
   }
 
-  /** An independent registry holding the same hooks. */
+  /** An independent registry of the same artifact holding the same hooks. */
   copy(): ProcedureRegistry {
-    const copied = new ProcedureRegistry();
+    const copied = new ProcedureRegistry(this.#artifactNames, this.#warnedUnknownExports);
     for (const [name, fn] of this.#hooks) copied.#hooks.set(name, fn);
     return copied;
   }
@@ -353,29 +421,6 @@ export function routerFor(port: FfiPort): HookRouter {
   return router;
 }
 
-/**
- * True for export names that look like mistyped hooks (`reductionPair`,
- * `hookPrint`, `Reduction_X`): a warning, not an install. Anything else
- * (helpers, data) stays silent.
- */
-function isNearMissHookName(name: string): boolean {
-  const lower = name.toLowerCase();
-  return lower.startsWith("reduct") || lower.startsWith("hook");
-}
-
-/** Names already reported as mistyped hooks: one report per name per process. */
-const warnedNearMissNames = new Set<string>();
-
-/** Warns once per name on a skipped export that looks like a mistyped hook. */
-function warnOnNearMissHook(name: string): void {
-  if (!isNearMissHookName(name) || warnedNearMissNames.has(name)) return;
-  warnedNearMissNames.add(name);
-  console.warn(
-    `galley: ignoring export "${name}": ` +
-      `procedure hooks must be named reduction, reduction_*, or hook_*.`,
-  );
-}
-
 /** Modules already reported for a hidden default export: one report per module. */
 const warnedDefaultExports = new WeakSet<object>();
 
@@ -408,7 +453,7 @@ function warnOnIgnoredDefault(module: Record<string, unknown>, defaultExport: un
   warnedDefaultExports.add(module);
   console.warn(
     `galley: ignoring default export: ` +
-      `procedure hooks must be named exports (reduction_*, hook_*).`,
+      `procedure hooks must be named exports (names starting with "reduction", or "hook" followed by "_" or a capital letter).`,
   );
 }
 
@@ -436,7 +481,7 @@ function warnOnZeroHookWiring(module: Record<string, unknown>): void {
   warnedZeroHookWiring.add(module);
   console.warn(
     `galley: no hooks wired from the procedures module, but this build has procedures enabled ` +
-      `(config.zig procedures = true): hooks must be named reduction, reduction_*, or hook_*.`,
+      `(config.zig procedures = true): hooks must start with "reduction", or "hook" followed by "_" or a capital letter.`,
   );
 }
 

@@ -174,8 +174,13 @@ pub fn add(b: *std.Build, options: Options) !void {
             const run_symbol_kind_identity_tests = try addSymbolKindIdentityTests(b, options, parser_type, selection.names);
             test_step.dependOn(&run_symbol_kind_identity_tests.step);
 
-            const run_self_repeating_tests = try addSelfRepeatingTests(b, options, parser_type, selection.names);
+            const run_self_repeating_tests = try addSelfRepeatingTests(b, options, parser_type, false, selection.names);
             test_step.dependOn(&run_self_repeating_tests.step);
+
+            // The same hookless, procedures-disabled parser under strict
+            // reduction coverage: it binds no hook, so it must still compile.
+            const run_self_repeating_strict_tests = try addSelfRepeatingTests(b, options, parser_type, true, selection.names);
+            test_step.dependOn(&run_self_repeating_strict_tests.step);
 
             if (comptime std.mem.eql(u8, parser_type, "ll")) {
                 const run_self_repeating_procedures_tests = try addSelfRepeatingProceduresTests(b, options, parser_type, selection.names);
@@ -490,16 +495,17 @@ fn addSelfRepeatingTests(
     b: *std.Build,
     options: Options,
     parser_type: []const u8,
+    require_reduction_procedures: bool,
     filters: []const []const u8,
 ) !*std.Build.Step.Run {
-    const parser_name = b.fmt("self-repeating-{s}", .{parser_type});
+    const parser_name = b.fmt("self-repeating{s}-{s}", .{ if (require_reduction_procedures) "-strict" else "", parser_type });
     const generate_parser = b.addRunArtifact(options.generate_parser_file_exe);
     generate_parser.addArg("--grammar");
     generate_parser.addFileArg(b.path("tests/self-repeating/grammar.grm"));
     generate_parser.addArg("--parser-type");
     generate_parser.addArg(parser_type);
     generate_parser.addArg("--label");
-    generate_parser.addArg(b.fmt("{s}/self-repeating/tests", .{parser_type}));
+    generate_parser.addArg(b.fmt("{s}/{s}/tests", .{ parser_type, parser_name }));
     generate_parser.addArg("--output");
     const generated_parser_path = generate_parser.addOutputFileArg(b.fmt("{s}-parser.zig", .{parser_name}));
     generate_parser.addArg("--config-output");
@@ -508,6 +514,7 @@ fn addSelfRepeatingTests(
         "--no-ast",
         "--no-procedures",
     });
+    if (require_reduction_procedures) generate_parser.addArg("--require-reduction-procedures");
 
     const procedures_mod = b.createModule(.{
         .root_source_file = b.path("tests/self-repeating/procedures.zig"),

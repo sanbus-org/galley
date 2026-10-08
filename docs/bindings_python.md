@@ -235,7 +235,7 @@ import galley
 
 parser = galley.load("./my-language/galley_impl.cpython-314-darwin.so")
 parser.install_procedure("reduction_Pair", lambda args: print("Pair"))
-parser.install_procedures(my_hooks)  # all reduction_*/hook_* in my_hooks
+parser.install_procedures(my_hooks)  # hook-shaped exports my_hooks defines
 parser.list_procedures()   # {name: callable}
 parser.procedure_hook("reduction_Pair")   # the callable, or None
 parser.clear_procedures()
@@ -245,6 +245,20 @@ with parser.Session() as session:   # copies the defaults above
     session.parse("alpha:12")
 ```
 
+Hook names are the artifact's list (see [Hook Names Outside Zig](/procedures#hook-names-outside-zig)): an
+annotation `@print` installs as `hook_print`, a terminal under its escaped
+name such as `reduction_terminal__x58`. Installing any other name raises
+`ValueError`, suggesting `hook_<name>` or `reduction_<name>` when the
+artifact defines it; with `procedures = false` every install raises. A scan
+considers only names beginning with `reduction`, or with `hook` followed by
+`_` or an ASCII uppercase letter, and warns with a `RuntimeWarning` naming
+each considered export the artifact lacks; the active warning filters decide
+how often it prints (once per name under the defaults).
+
+A hook whose signature declares no positional parameter (read once at
+install through `inspect.signature`; `*args` alone counts as none) is called
+with no arguments; any other hook gets the `ProcedureArguments` object.
+
 When the grammar ships no hooks, the build writes an empty
 `procedures.py`; the shim is still linked so the archive links
 and hooks are simply no-ops until
@@ -253,10 +267,7 @@ without requiring a rebuild.
 `parser.has_procedures()` reports whether
 the library was built with procedure hooks compiled in.
 
-Reduction hooks
-keep their `reduction_<VariableName>` names (plus the general `reduction`);
-author-defined grammar hooks are declared as `hook_<name>`. Semantic
-payloads are unavailable through bindings.
+Semantic payloads are unavailable through bindings.
 
 ## Tree Walking
 

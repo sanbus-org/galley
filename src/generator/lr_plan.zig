@@ -54,6 +54,7 @@ pub const LRPlan = struct {
     syntax_error_handlers: std.ArrayList(SyntaxErrorHandler) = .empty,
     variable_indices: []?usize = &.{},
     symbol_names: common.SymbolNames = .{ .reprs = &.{}, .stems = &.{} },
+    hooks: common.HookPlan = .empty,
     longest_terminal_length: usize = 0,
     augmented_start: usize = 0,
     eof: usize = 0,
@@ -70,6 +71,7 @@ pub const LRPlan = struct {
             .plan = .{ .augmented_start = grammar.augmented_start, .eof = grammar.eof },
         };
         builder.plan.symbol_names = try common.planSymbolNames(allocator, grammar.symbols.items, grammar.rules.items, reporter);
+        builder.plan.hooks = try common.planHooks(allocator, grammar.symbols.items, builder.plan.symbol_names.stems, grammar.rules.items, grammar.variables.items);
         try builder.buildStates();
         try builder.buildParseTable();
         try common.validateVerbatimSymbols(allocator, grammar, reporter);

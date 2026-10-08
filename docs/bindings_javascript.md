@@ -306,13 +306,23 @@ const session = parser.openSession(); // starts with a copy of the defaults
 session.installProcedure("reduction_Number", (args) => { args.currentNode()?.text(); });
 ```
 
+Hook names are the artifact's list (see [Hook Names Outside Zig](/procedures#hook-names-outside-zig)): an
+annotation `@print` installs as `hook_print`, a terminal under its escaped
+name such as `reduction_terminal__x58`. Installing any other name throws a
+`RangeError`, suggesting `hook_<name>` or `reduction_<name>` when the
+artifact defines it; with `procedures = false` every install throws. A scan
+considers only names beginning with `reduction`, or with `hook` followed by
+`_` or an ASCII uppercase letter, and warns through `console.warn` once per
+name per parser (its sessions' scans included), naming each considered
+export the artifact lacks. Every
+hook is called with the `ProcedureArguments` object; one that declares no
+parameter ignores it.
+
 Sessions in different worker threads (Node `worker_threads`, Bun and Deno
 workers) parse at the same time, each with its own hooks; wasm instances are
 independent per worker.
 
-Reduction hooks keep their `reduction_<VariableName>` names (plus the
-general `reduction`); author-defined grammar hooks are declared as
-`hook_<name>`. A legacy `procedures.c` / `procedures.cpp` file next to
+A legacy `procedures.c` / `procedures.cpp` file next to
 the grammar is a fatal build error naming the host file to use instead.
 Semantic payloads are unavailable through bindings.
 

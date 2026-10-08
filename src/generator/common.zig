@@ -249,7 +249,7 @@ pub fn prepareGrammar(
             allocator,
             &result.symbols,
             &result.variables,
-            "GenerativeTerminal",
+            "_GenerativeTerminal",
             .variable,
         );
         result.generative_terminal = generative_terminal;
@@ -343,6 +343,7 @@ fn checkHookNameCollisions(
         if (hook_names.identifier_safe) |name| try claimHookName(&owners, symbols, rules, reporter, name, .{ .symbol = index });
     }
     for (rules, 0..) |rule, index| {
+        if (!bindsHooks(symbols[rule.header])) continue;
         try claimHookName(&owners, symbols, rules, reporter, try reductionProcedureName(arena_allocator, symbols, rule), .{ .production = index });
     }
 }
@@ -421,12 +422,28 @@ pub const SymbolHookNames = struct {
     identifier_safe: ?[]const u8,
 };
 
-/// The hook names that bind `symbol`, or null for end of input: it never
-/// produces a node, so no hook can run for it and it has no name to claim or
-/// look up. Its stem (`special_EOF`) still names generated identifiers.
+/// Whether `symbol` binds hooks. None of these produce a node a hook could
+/// run for, so neither they nor their productions bind a hook name: end of
+/// input, a variable whose name begins with `_` (helpers, the generator's
+/// own `_AugmentedStart` and `_GenerativeTerminal` included), and a
+/// transparent left-factoring tail, whose alternatives expand inline into
+/// its parent.
+pub fn bindsHooks(symbol: Symbol) bool {
+    return switch (symbol.kind) {
+        .end => false,
+        .variable => !std.mem.startsWith(u8, symbol.id, "_") and !symbol.synthetic_transparent,
+        .terminal, .generative_terminal => true,
+    };
+}
+
+/// The hook names that bind `symbol`, or null when it binds none
+/// (`bindsHooks`): no hook can run for it, so it has no name to claim or
+/// look up. Its stem (`special_EOF` for end of input) still names generated
+/// identifiers.
 pub fn symbolHookNames(allocator: std.mem.Allocator, symbol: Symbol, stem: []const u8) !?SymbolHookNames {
+    if (!bindsHooks(symbol)) return null;
     const readable = switch (symbol.kind) {
-        .end => return null,
+        .end => unreachable,
         .variable, .generative_terminal => try std.fmt.allocPrint(allocator, "reduction_{s}", .{symbol.id}),
         .terminal => blk: {
             const spelling = try readableSymbolName(allocator, symbol.id);
@@ -1024,26 +1041,19 @@ pub fn ruleLessThan(symbols: []const Symbol, lhs: Rule, rhs: Rule) bool {
 /// Single source of truth for strict reduction-procedure coverage: whether
 /// the production at `rule_index` must declare `reduction_<Var>_<N>` when
 /// `require_reduction_procedures` is enabled. Only visible variables count:
-/// synthetic augmented/generative headers, AST-suppressed helpers
-/// (`ast_enabled == false`), and transparent factoring helpers (which build
-/// no node and splice into their parent) produce no hook and are excluded.
+/// a header that binds no hooks (`bindsHooks`) or builds no node
+/// (`ast_enabled == false`) is excluded.
 /// Both the generated parser's comptime check and the CLI's generation-time
 /// warning delegate here so they can never diverge.
 pub fn requiresReductionProcedure(
     symbols: []const Symbol,
     rules: []const Rule,
-    augmented_start: usize,
-    generative_terminal: ?usize,
     rule_index: usize,
 ) bool {
-    const rule = rules[rule_index];
-    if (rule.header == augmented_start) return false;
-    if (generative_terminal) |generative| if (rule.header == generative) return false;
-    const header = symbols[rule.header];
+    const header = symbols[rules[rule_index].header];
     if (header.kind != .variable) return false;
-    if (!header.ast_enabled) return false;
-    if (header.synthetic_transparent) return false;
-    return true;
+    if (!bindsHooks(header)) return false;
+    return header.ast_enabled;
 }
 
 /// Renders the automatic per-production hook name for `rule` as
@@ -1068,12 +1078,10 @@ pub fn collectRequiredReductionProcedures(
     allocator: std.mem.Allocator,
     symbols: []const Symbol,
     rules: []const Rule,
-    augmented_start: usize,
-    generative_terminal: ?usize,
 ) ![]RequiredReductionProcedure {
     var out = std.ArrayList(RequiredReductionProcedure).empty;
     for (rules, 0..) |rule, rule_index| {
-        if (!requiresReductionProcedure(symbols, rules, augmented_start, generative_terminal, rule_index)) continue;
+        if (!requiresReductionProcedure(symbols, rules, rule_index)) continue;
         const shape = try ruleText(allocator, symbols, rule);
         errdefer allocator.free(shape);
         const procedure_name = try reductionProcedureName(allocator, symbols, rule);
@@ -1086,6 +1094,127 @@ pub fn collectRequiredReductionProcedures(
         });
     }
     return out.toOwnedSlice(allocator);
+}
+
+/// What a hook name binds. A compiled consumer's generated `procedures.zig`
+/// wraps only the `general`, `variable` and `annotation` hooks.
+pub const HookFamily = enum { general, variable, terminal, production, annotation };
+
+/// A symbol's hook: its index in `HookPlan.names`, and the Zig-only spelling
+/// the binder looks up before the listed name.
+pub const SymbolHook = struct {
+    index: usize,
+    /// `reduction_"<spelling>"` for a terminal, `reduction_<id>` for a
+    /// generative terminal; null for a variable, whose listed name is
+    /// already its readable one.
+    readable: ?[]const u8,
+};
+
+/// Every hook a generated parser binds, planned once from its prepared
+/// grammar. A hook's index is its position in `names`, and every name is an
+/// identifier, so every host can spell it. The emitted parser binds through
+/// these indexes and serves `names` as its `hook_names`, so the list a
+/// library validates installs against and the parser's binding are one
+/// table.
+pub const HookPlan = struct {
+    names: []const []const u8,
+    families: []const HookFamily,
+    /// Indexed like the symbol table; null for a symbol that binds none.
+    symbols: []const ?SymbolHook,
+    /// Indexed like the rule table: the `reduction_<Var>_<N>` hook, or null
+    /// when the rule's header binds none.
+    rules: []const ?usize,
+    /// Annotation procedure name (`print`) to the index of its `hook_print`.
+    annotations: std.StringArrayHashMapUnmanaged(usize),
+
+    /// The general fallback `reduction` is always hook zero.
+    pub const general_index = 0;
+
+    pub const empty: HookPlan = .{ .names = &.{}, .families = &.{}, .symbols = &.{}, .rules = &.{}, .annotations = .empty };
+
+    pub fn annotationIndex(self: *const HookPlan, procedure: []const u8) usize {
+        return self.annotations.get(procedure).?;
+    }
+};
+
+/// Plans `HookPlan` for a prepared grammar and its symbol stems: the general
+/// `reduction`, then `reduction_<stem>` per symbol that binds hooks, then
+/// `reduction_<Var>_<N>` per rule of such a symbol, then `hook_<name>` per
+/// annotation procedure in first-use order. Allocates from `allocator`,
+/// which must be an arena: the plan also holds static and grammar-owned
+/// strings, so its parts are never freed one by one.
+pub fn planHooks(
+    allocator: std.mem.Allocator,
+    symbols: []const Symbol,
+    stems: []const []const u8,
+    rules: []const Rule,
+    variables: []const usize,
+) !HookPlan {
+    var hook_names: std.ArrayList([]const u8) = .empty;
+    var families: std.ArrayList(HookFamily) = .empty;
+    try hook_names.append(allocator, "reduction");
+    try families.append(allocator, .general);
+
+    const symbol_hooks = try allocator.alloc(?SymbolHook, symbols.len);
+    for (symbols, stems, symbol_hooks) |symbol, stem, *symbol_hook| {
+        const symbol_hook_names = try symbolHookNames(allocator, symbol, stem) orelse {
+            symbol_hook.* = null;
+            continue;
+        };
+        const identifier_safe = symbol_hook_names.identifier_safe orelse symbol_hook_names.readable;
+        symbol_hook.* = .{
+            .index = hook_names.items.len,
+            .readable = if (symbol_hook_names.identifier_safe != null) symbol_hook_names.readable else null,
+        };
+        try hook_names.append(allocator, identifier_safe);
+        try families.append(allocator, if (symbol.kind == .variable) .variable else .terminal);
+    }
+
+    const rule_hooks = try allocator.alloc(?usize, rules.len);
+    for (rules, rule_hooks) |rule, *rule_hook| {
+        if (!bindsHooks(symbols[rule.header])) {
+            rule_hook.* = null;
+            continue;
+        }
+        rule_hook.* = hook_names.items.len;
+        try hook_names.append(allocator, try reductionProcedureName(allocator, symbols, rule));
+        try families.append(allocator, .production);
+    }
+
+    var annotations: std.StringArrayHashMapUnmanaged(usize) = .empty;
+    for (rules) |rule| {
+        try planAnnotationHooks(allocator, &hook_names, &families, &annotations, rule.annotations.procedures.items);
+        for (rule.rhs_annotations.items) |rhs_annotations| {
+            try planAnnotationHooks(allocator, &hook_names, &families, &annotations, rhs_annotations.procedures.items);
+        }
+    }
+    for (variables) |symbol_index| {
+        try planAnnotationHooks(allocator, &hook_names, &families, &annotations, symbols[symbol_index].annotations.procedures.items);
+    }
+
+    return .{
+        .names = try hook_names.toOwnedSlice(allocator),
+        .families = try families.toOwnedSlice(allocator),
+        .symbols = symbol_hooks,
+        .rules = rule_hooks,
+        .annotations = annotations,
+    };
+}
+
+fn planAnnotationHooks(
+    allocator: std.mem.Allocator,
+    hook_names: *std.ArrayList([]const u8),
+    families: *std.ArrayList(HookFamily),
+    annotations: *std.StringArrayHashMapUnmanaged(usize),
+    procedures: []const []const u8,
+) !void {
+    for (procedures) |procedure| {
+        const entry = try annotations.getOrPut(allocator, procedure);
+        if (entry.found_existing) continue;
+        entry.value_ptr.* = hook_names.items.len;
+        try hook_names.append(allocator, try std.fmt.allocPrint(allocator, "hook_{s}", .{procedure}));
+        try families.append(allocator, .annotation);
+    }
 }
 
 pub fn longestTerminalLength(symbols: []const Symbol) usize {
@@ -1640,7 +1769,7 @@ test "strict reduction coverage selects visible productions only" {
     const helper = try addSymbol(allocator, &symbols, &variables, "_Helper", .variable);
     const terminal = try addSymbol(allocator, &symbols, &variables, "a", .terminal);
     const augmented = try addSymbol(allocator, &symbols, &variables, "_AugmentedStart", .variable);
-    const generative = try addSymbol(allocator, &symbols, &variables, "GenerativeTerminal", .variable);
+    const generative = try addSymbol(allocator, &symbols, &variables, "_GenerativeTerminal", .variable);
 
     var rules = std.ArrayList(Rule).empty;
     try rules.append(allocator, .{ .header = visible, .rhs_index = "0" });
@@ -1649,13 +1778,13 @@ test "strict reduction coverage selects visible productions only" {
     try rules.append(allocator, .{ .header = augmented, .rhs_index = "0" });
     try rules.append(allocator, .{ .header = generative, .rhs_index = "0" });
 
-    try std.testing.expect(requiresReductionProcedure(symbols.items, rules.items, augmented, generative, 0));
-    try std.testing.expect(requiresReductionProcedure(symbols.items, rules.items, augmented, generative, 1));
-    try std.testing.expect(!requiresReductionProcedure(symbols.items, rules.items, augmented, generative, 2));
-    try std.testing.expect(!requiresReductionProcedure(symbols.items, rules.items, augmented, generative, 3));
-    try std.testing.expect(!requiresReductionProcedure(symbols.items, rules.items, augmented, generative, 4));
+    try std.testing.expect(requiresReductionProcedure(symbols.items, rules.items, 0));
+    try std.testing.expect(requiresReductionProcedure(symbols.items, rules.items, 1));
+    try std.testing.expect(!requiresReductionProcedure(symbols.items, rules.items, 2));
+    try std.testing.expect(!requiresReductionProcedure(symbols.items, rules.items, 3));
+    try std.testing.expect(!requiresReductionProcedure(symbols.items, rules.items, 4));
 
-    const collected = try collectRequiredReductionProcedures(allocator, symbols.items, rules.items, augmented, generative);
+    const collected = try collectRequiredReductionProcedures(allocator, symbols.items, rules.items);
     try std.testing.expectEqual(@as(usize, 2), collected.len);
     try std.testing.expectEqualStrings("reduction_Visible_0", collected[0].procedure_name);
     try std.testing.expectEqualStrings("Visible", collected[0].variable);

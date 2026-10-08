@@ -153,7 +153,7 @@ interface GalleySymbols extends DoorNames<"">, DoorNames<"hook_"> {
   galley_hooks_count(): bigint;
   galley_hooks_name_data(index: bigint): bigint;
   galley_hooks_name_length(index: bigint): bigint;
-  galley_session_set_hooks(session: NativeHandle, dispatch: NativeHandle, hookHandle: bigint, enabled: number, enabledCount: bigint): bigint;
+  galley_session_set_hooks(session: NativeHandle, dispatch: NativeHandle, hookHandle: bigint, enabled: number | null, enabledCount: bigint): bigint;
 }
 
 // --- library discovery -------------------------------------------------
@@ -484,12 +484,15 @@ export class BunPort implements FfiPort {
   }
 
   setSessionHooks(session: Handle, hookHandle: number, enabled: Uint8Array): number {
+    // An artifact with no hooks commits an empty table: bun:ffi cannot
+    // take a pointer to empty memory, so an empty `enabled` crosses as
+    // null, which the API already reads as "enable none" at count 0.
     return Number(
       this.native.galley_session_set_hooks(
         session as NativeHandle,
         this.dispatchPointer,
         BigInt(hookHandle),
-        ptr(enabled),
+        enabled.length > 0 ? ptr(enabled) : null,
         BigInt(enabled.length),
       ),
     );
