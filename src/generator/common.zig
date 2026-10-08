@@ -274,6 +274,163 @@ pub fn symbolText(allocator: std.mem.Allocator, symbols: []const Symbol, symbol_
     };
 }
 
+/// Identifier-safe spellings of every symbol, indexed like the symbol table.
+pub const SymbolNames = struct {
+    /// Readable, kind-prefixed spelling: variables bare, `terminal_<spelling>`,
+    /// `generative_terminal_<spelling>`, and `special_EOF` for end-of-input.
+    reprs: []const []const u8,
+    /// `safeIdentifier(repr)`: the stem of every generated Zig identifier and
+    /// of every identifier-safe hook name.
+    stems: []const []const u8,
+};
+
+/// The single source of generated-identifier stems: LL parser function names,
+/// LR planning, and the `reduction_` hook binder all take their stems from
+/// here. Fails with `error.SymbolNameCollision` when two producers would bind
+/// one hook name. Every symbol but end of input binds `reduction_<stem>`, so
+/// this also keeps stems, and the identifiers built from them, unique.
+pub fn planSymbolNames(allocator: std.mem.Allocator, symbols: []const Symbol, rules: []const Rule) !SymbolNames {
+    const reprs = try allocator.alloc([]const u8, symbols.len);
+    const stems = try allocator.alloc([]const u8, symbols.len);
+    for (symbols, 0..) |symbol, index| {
+        const prefix = switch (symbol.kind) {
+            .end => {
+                reprs[index] = try allocator.dupe(u8, "special_EOF");
+                stems[index] = reprs[index];
+                continue;
+            },
+            .variable => "",
+            .terminal => "terminal_",
+            .generative_terminal => "generative_terminal_",
+        };
+        const spelling = try readableSymbolName(allocator, symbol.id);
+        defer allocator.free(spelling);
+        reprs[index] = try std.mem.concat(allocator, u8, &.{ prefix, spelling });
+        stems[index] = try safeIdentifier(allocator, reprs[index]);
+    }
+    try checkHookNameCollisions(allocator, symbols, rules, stems);
+    return .{ .reprs = reprs, .stems = stems };
+}
+
+/// One producer of a hook name: a symbol's readable or identifier-safe
+/// name, or a production's `reduction_<Var>_<N>`.
+const HookNameProducer = union(enum) { symbol: usize, production: usize };
+
+fn checkHookNameCollisions(
+    allocator: std.mem.Allocator,
+    symbols: []const Symbol,
+    rules: []const Rule,
+    stems: []const []const u8,
+) !void {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_allocator = arena.allocator();
+
+    var owners = std.StringHashMap(HookNameProducer).init(arena_allocator);
+    for (symbols, stems, 0..) |symbol, stem, index| {
+        const hook_names = try symbolHookNames(arena_allocator, symbol, stem) orelse continue;
+        try claimHookName(&owners, symbols, rules, hook_names.readable, .{ .symbol = index });
+        if (hook_names.identifier_safe) |name| try claimHookName(&owners, symbols, rules, name, .{ .symbol = index });
+    }
+    for (rules, 0..) |rule, index| {
+        try claimHookName(&owners, symbols, rules, try reductionProcedureName(arena_allocator, symbols, rule), .{ .production = index });
+    }
+}
+
+fn claimHookName(
+    owners: *std.StringHashMap(HookNameProducer),
+    symbols: []const Symbol,
+    rules: []const Rule,
+    name: []const u8,
+    producer: HookNameProducer,
+) !void {
+    const owner = try owners.getOrPut(name);
+    if (!owner.found_existing) {
+        owner.value_ptr.* = producer;
+        return;
+    }
+    const message = try hookNameCollisionMessage(owners.allocator, symbols, rules, owner.value_ptr.*, producer, name);
+    defer owners.allocator.free(message);
+    std.log.warn("{s}", .{message});
+    return error.SymbolNameCollision;
+}
+
+fn hookNameCollisionMessage(
+    allocator: std.mem.Allocator,
+    symbols: []const Symbol,
+    rules: []const Rule,
+    first: HookNameProducer,
+    second: HookNameProducer,
+    name: []const u8,
+) ![]const u8 {
+    const first_text = try describeHookProducer(allocator, symbols, rules, first);
+    defer allocator.free(first_text);
+    const second_text = try describeHookProducer(allocator, symbols, rules, second);
+    defer allocator.free(second_text);
+    return std.fmt.allocPrint(
+        allocator,
+        "hook name collision: {s} and {s} both bind \"{s}\"; rename one of them",
+        .{ first_text, second_text, name },
+    );
+}
+
+fn describeHookProducer(
+    allocator: std.mem.Allocator,
+    symbols: []const Symbol,
+    rules: []const Rule,
+    producer: HookNameProducer,
+) ![]const u8 {
+    const symbol_index = switch (producer) {
+        .production => |index| {
+            const text = try ruleText(allocator, symbols, rules[index]);
+            defer allocator.free(text);
+            return std.fmt.allocPrint(allocator, "production {s}", .{text});
+        },
+        .symbol => |index| index,
+    };
+    const kind = switch (symbols[symbol_index].kind) {
+        .variable => "variable",
+        .terminal => "terminal",
+        .generative_terminal => "generative terminal",
+        .end => unreachable, // End of input binds no hook name.
+    };
+    const text = try symbolText(allocator, symbols, symbol_index);
+    defer allocator.free(text);
+    return std.fmt.allocPrint(allocator, "{s} {s}", .{ kind, text });
+}
+
+/// The two procedure-module declaration names that bind a symbol's automatic
+/// hook. Both are looked up, `readable` first, so it wins when both exist.
+pub const SymbolHookNames = struct {
+    /// Variables and generative terminals: `reduction_<id>`. Terminals:
+    /// `reduction_"<spelling>"`, spelled by `readableSymbolName`.
+    readable: []const u8,
+    /// `reduction_<stem>`; null when it equals `readable` (variables), so the
+    /// binder never repeats a lookup.
+    identifier_safe: ?[]const u8,
+};
+
+/// The hook names that bind `symbol`, or null for end of input: it never
+/// produces a node, so no hook can run for it and it has no name to claim or
+/// look up. Its stem (`special_EOF`) still names generated identifiers.
+pub fn symbolHookNames(allocator: std.mem.Allocator, symbol: Symbol, stem: []const u8) !?SymbolHookNames {
+    const readable = switch (symbol.kind) {
+        .end => return null,
+        .variable, .generative_terminal => try std.fmt.allocPrint(allocator, "reduction_{s}", .{symbol.id}),
+        .terminal => blk: {
+            const spelling = try readableSymbolName(allocator, symbol.id);
+            defer allocator.free(spelling);
+            break :blk try std.fmt.allocPrint(allocator, "reduction_\"{s}\"", .{spelling});
+        },
+    };
+    const identifier_safe = try std.fmt.allocPrint(allocator, "reduction_{s}", .{stem});
+    if (std.mem.eql(u8, readable, identifier_safe)) {
+        allocator.free(identifier_safe);
+        return .{ .readable = readable, .identifier_safe = null };
+    }
+    return .{ .readable = readable, .identifier_safe = identifier_safe };
+}
+
 /// Renders a production as `Header -> symbol symbol ...` for diagnostics,
 /// or `Header -> <empty>` when the RHS is empty, matching `symbolsText`.
 pub fn ruleText(allocator: std.mem.Allocator, symbols: []const Symbol, rule: Rule) ![]const u8 {
@@ -1488,4 +1645,71 @@ test "strict reduction coverage selects visible productions only" {
     try std.testing.expectEqualStrings("0", collected[0].rhs_index);
     try std.testing.expectEqualStrings("reduction_Visible_1", collected[1].procedure_name);
     _ = terminal;
+}
+
+test "symbol hook names are a readable spelling plus the identifier-safe stem" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var symbols: std.ArrayList(Symbol) = .empty;
+    var variables: std.ArrayList(usize) = .empty;
+    _ = try addSymbol(allocator, &symbols, &variables, "A", .variable);
+    _ = try addSymbol(allocator, &symbols, &variables, "A", .terminal);
+    _ = try addSymbol(allocator, &symbols, &variables, "{", .terminal);
+    _ = try addSymbol(allocator, &symbols, &variables, "\t", .terminal);
+    _ = try addSymbol(allocator, &symbols, &variables, "\x00", .terminal);
+    _ = try addSymbol(allocator, &symbols, &variables, "digit", .generative_terminal);
+    _ = try addSymbol(allocator, &symbols, &variables, "\x00", .end);
+
+    const expected = [_]struct { readable: []const u8, identifier_safe: ?[]const u8 }{
+        .{ .readable = "reduction_A", .identifier_safe = null },
+        .{ .readable = "reduction_\"A\"", .identifier_safe = "reduction_terminal_A" },
+        .{ .readable = "reduction_\"{\"", .identifier_safe = "reduction_terminal__x123" },
+        .{ .readable = "reduction_\"\\t\"", .identifier_safe = "reduction_terminal__x92t" },
+        .{ .readable = "reduction_\"\\x00\"", .identifier_safe = "reduction_terminal__x92x00" },
+        .{ .readable = "reduction_digit", .identifier_safe = "reduction_generative_terminal_digit" },
+    };
+    const symbol_names = try planSymbolNames(allocator, symbols.items, &.{});
+    for (expected, 0..) |entry, index| {
+        const hook_names = (try symbolHookNames(allocator, symbols.items[index], symbol_names.stems[index])).?;
+        try std.testing.expectEqualStrings(entry.readable, hook_names.readable);
+        try std.testing.expectEqualDeep(entry.identifier_safe, hook_names.identifier_safe);
+    }
+    // End of input binds no hook but keeps its identifier stem.
+    try std.testing.expectEqual(@as(?SymbolHookNames, null), try symbolHookNames(allocator, symbols.items[6], symbol_names.stems[6]));
+    try std.testing.expectEqualStrings("special_EOF", symbol_names.stems[6]);
+}
+
+test "two producers of one hook name fail symbol name planning" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    // `safeIdentifier` maps both "," and "_x44" to `terminal__x44`.
+    var terminal_symbols: std.ArrayList(Symbol) = .empty;
+    var terminal_variables: std.ArrayList(usize) = .empty;
+    _ = try addSymbol(allocator, &terminal_symbols, &terminal_variables, ",", .terminal);
+    _ = try addSymbol(allocator, &terminal_symbols, &terminal_variables, "_x44", .terminal);
+    try std.testing.expectError(error.SymbolNameCollision, planSymbolNames(allocator, terminal_symbols.items, &.{}));
+
+    // The first production of `A` and the variable `A_0` both bind `reduction_A_0`.
+    var symbols: std.ArrayList(Symbol) = .empty;
+    var variables: std.ArrayList(usize) = .empty;
+    const a = try addSymbol(allocator, &symbols, &variables, "A", .variable);
+    _ = try addSymbol(allocator, &symbols, &variables, "A_0", .variable);
+    const terminal = try addSymbol(allocator, &symbols, &variables, "a", .terminal);
+    var rules: std.ArrayList(Rule) = .empty;
+    try rules.append(allocator, .{ .header = a, .rhs_index = "0" });
+    try rules.items[0].rhs.append(allocator, terminal);
+    try std.testing.expectError(error.SymbolNameCollision, planSymbolNames(allocator, symbols.items, rules.items));
+
+    try std.testing.expectEqualStrings(
+        "hook name collision: variable A_0 and production A -> \"a\" both bind \"reduction_A_0\"; rename one of them",
+        try hookNameCollisionMessage(allocator, symbols.items, rules.items, .{ .symbol = 1 }, .{ .production = 0 }, "reduction_A_0"),
+    );
+    try std.testing.expectEqualStrings(
+        "hook name collision: terminal \",\" and terminal \"_x44\" both bind \"reduction_terminal__x44\"; rename one of them",
+        try hookNameCollisionMessage(allocator, terminal_symbols.items, &.{}, .{ .symbol = 0 }, .{ .symbol = 1 }, "reduction_terminal__x44"),
+    );
 }

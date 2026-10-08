@@ -679,6 +679,36 @@ fn variableIndex(variables: []const usize, symbol_index: usize) usize {
     unreachable;
 }
 
+/// Emits the automatic hook names (`common.symbolHookNames`) the generated
+/// binder looks up in the procedures module: `readable` first, then
+/// `identifier_safe`. Precomputed here so the comptime binder does no string
+/// building and a symbol costs at most two `@hasDecl` checks. Each entry
+/// carries its symbol index; end of input has no entry and no lookup.
+fn emitSymbolHookNames(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    symbols: []const common.Symbol,
+    stems: []const []const u8,
+) !void {
+    try writer.writeAll("const SymbolHookNames = struct { symbol: usize, readable: []const u8, identifier_safe: ?[]const u8 };\n\n");
+    try writer.writeAll("const symbol_hook_names = [_]SymbolHookNames{\n");
+    for (symbols, stems, 0..) |symbol, stem, index| {
+        const hook_names = try common.symbolHookNames(allocator, symbol, stem) orelse continue;
+        defer allocator.free(hook_names.readable);
+        defer if (hook_names.identifier_safe) |identifier_safe| allocator.free(identifier_safe);
+        try writer.print("    .{{ .symbol = {d}, .readable = ", .{index});
+        try common.emitStringLiteral(writer, hook_names.readable);
+        try writer.writeAll(", .identifier_safe = ");
+        if (hook_names.identifier_safe) |identifier_safe| {
+            try common.emitStringLiteral(writer, identifier_safe);
+        } else {
+            try writer.writeAll("null");
+        }
+        try writer.writeAll(" },\n");
+    }
+    try writer.writeAll("};\n\n");
+}
+
 /// Emits the procedure support declarations shared verbatim by the LL and LR
 /// generators. The current node is resolved through the `ProcedureArguments`
 /// accessor on each hook phase, so no refresh pass is needed between calls.
@@ -687,6 +717,7 @@ pub fn emitProcedureSupport(
     writer: *std.Io.Writer,
     rules: []const common.Rule,
     symbols: []const common.Symbol,
+    stems: []const []const u8,
     variables: []const usize,
     augmented_start: usize,
     generative_terminal: ?usize,
@@ -694,6 +725,7 @@ pub fn emitProcedureSupport(
     const rule_procedure_quota = @max(1000, rules.len * 8);
     const symbol_procedure_quota = @max(1000, symbols.len * 8);
     const variable_procedure_quota = @max(1000, variables.len * 8);
+    try emitSymbolHookNames(allocator, writer, symbols, stems);
     try writer.print(
         \\const ProcedureSequenceNode = struct {{
         \\    procedure: *const data_structures.Procedure,
@@ -737,10 +769,16 @@ pub fn emitProcedureSupport(
         \\    @setEvalBranchQuota({d});
         \\    var arr: [{d}]?*const data_structures.Procedure = @splat(null);
         \\
-        \\    for (symbols, 0..) |symbol, index| {{
-        \\        const procedure_name = "reduction_" ++ symbol;
-        \\        if (@hasDecl(procedures, procedure_name)) {{
-        \\            arr[index] = data_structures.wrap_procedure(data_structures.Procedure, @field(procedures, procedure_name), symbol);
+        \\    for (symbol_hook_names) |hook_names| {{
+        \\        const symbol = symbols[hook_names.symbol];
+        \\        const procedure_name: ?[]const u8 = if (@hasDecl(procedures, hook_names.readable))
+        \\            hook_names.readable
+        \\        else if (hook_names.identifier_safe) |identifier_safe|
+        \\            if (@hasDecl(procedures, identifier_safe)) identifier_safe else null
+        \\        else
+        \\            null;
+        \\        if (procedure_name) |name| {{
+        \\            arr[hook_names.symbol] = data_structures.wrap_procedure(data_structures.Procedure, @field(procedures, name), symbol);
         \\        }}
         \\    }}
         \\

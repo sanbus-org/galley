@@ -37,7 +37,7 @@ pub fn reduction_Array(args: *ProcedureArguments) !void {
     }
 }
 
-pub fn reduction_null(args: *ProcedureArguments) !void {
+pub fn @"reduction_\"null\""(args: *ProcedureArguments) !void {
     if (args.node_address) |node_address| {
         var node = args.context.node_allocator.at(node_address);
         node.payload.nulls += 1;

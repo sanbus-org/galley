@@ -90,7 +90,7 @@ pub fn hook_terminalOccurrence(args: *ProcedureArguments) !void {
     try record(.terminal_occurrence, args);
 }
 
-pub fn reduction_a(args: *ProcedureArguments) !void {
+pub fn @"reduction_\"a\""(args: *ProcedureArguments) !void {
     try record(.automatic_terminal, args);
 }
 

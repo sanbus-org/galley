@@ -123,7 +123,7 @@ const Generator = struct {
         if (self.uses_explicit_recovery) {
             try self.emitExplicitRecoverySupport(writer);
         }
-        try emitter_common.emitProcedureSupport(self.allocator, writer, self.rules.items, self.symbols.items, self.variables.items, self.augmented_start, self.generative_terminal);
+        try emitter_common.emitProcedureSupport(self.allocator, writer, self.rules.items, self.symbols.items, self.plan.symbol_names.stems, self.variables.items, self.augmented_start, self.generative_terminal);
         try emitter_common.emitReservedLeftoverCheck(self.allocator, writer, self.symbols.items);
         try self.measureTerminalInlineCosts();
         try self.emitParserFunctions(writer);
@@ -338,7 +338,7 @@ const Generator = struct {
     }
 
     fn parserName(self: *Generator, symbol_index: usize) ![]const u8 {
-        return self.plan.parser_names[symbol_index];
+        return self.plan.symbol_names.stems[symbol_index];
     }
 
     fn emitVariableParser(self: *Generator, writer: *std.Io.Writer, variable: usize, skip_ast_construction: bool) !void {
@@ -1651,7 +1651,7 @@ const Generator = struct {
     }
 
     fn emitSymbolRepr(self: *Generator, writer: *std.Io.Writer, symbol_index: usize) !void {
-        try writer.writeAll(self.plan.symbol_reprs[symbol_index]);
+        try writer.writeAll(self.plan.symbol_names.reprs[symbol_index]);
     }
 
     fn variableIndex(self: *Generator, symbol_index: usize) usize {

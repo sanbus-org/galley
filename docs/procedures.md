@@ -11,6 +11,7 @@
   - [3. Production Hooks](#3-production-hooks)
   - [Chaining Multiple Hooks](#chaining-multiple-hooks)
 - [Implicit / Automatic Hooks](#implicit--automatic-hooks)
+  - [Terminal Hooks](#terminal-hooks)
 - [Hook Execution Order](#hook-execution-order)
 - [Semantic Errors](#semantic-errors)
 - [Writing Hook Functions in Zig](#writing-hook-functions-in-zig)
@@ -158,10 +159,38 @@ Alongside the three explicit hook placements, Galley provides a fourth family of
 | Procedure Name | Execution Trigger |
 | :--- | :--- |
 | `reduction_<SymbolName>_<RhsIndex>` | Executes when the zero-based right-hand-side production `<RhsIndex>` of `<SymbolName>` is reduced (e.g. `reduction_Expr_0` runs only for the first `Expr` production). Indices follow the consecutive `|` lines beneath the variable's unique LHS header. |
-| `reduction_<SymbolName>` | Executes whenever `<SymbolName>` produces a visible node, either by reducing a variable or matching an enabled terminal. |
+| `reduction_<Variable>` | Executes whenever the variable `<Variable>` produces a visible node by reduction. |
+| `reduction_"<spelling>"`, `reduction_<stem>` | Execute whenever a terminal matches. See [Terminal Hooks](#terminal-hooks). |
 | `reduction` | Executes as the general hook for every eligible variable reduction and visible terminal match. |
 
 Missing automatic hooks are silent nulls by default. Set `require_reduction_procedures = true` in `config.zig` (or pass `--require-reduction-procedures`) to warn at generation and fail compilation for any visible production without `reduction_<SymbolName>_<RhsIndex>`, naming variable, index, and shape. Synthetic `<Variable>_Tail` helpers from automatic left-factoring are transparent and never need hooks.
+
+### Terminal Hooks
+
+A terminal matches with a hook only under `--ast-for-terminals`. Each terminal can be hooked under two names, and the generator looks them up in this order:
+
+1. The readable name: `reduction_` followed by the terminal's decoded byte spelling in a fixed pair of double quotes, `reduction_"<spelling>"`. The spelling derives from the bytes the terminal matches, not from its text in the grammar source: newline, tab, carriage return and backslash are escaped as `\n`, `\t`, `\r` and `\\`; every other control byte and every byte from `0x7f` up is escaped as lowercase `\xNN`. Bytes from `0x20` to `0x7e` appear literally, so a `"` inside the fixed quote pair is not escaped — the terminal `"\u{22}"` reads `reduction_"""`. Most readable names are not valid Zig identifiers; declare them with `@"..."`.
+2. The identifier-safe name: `reduction_` followed by the terminal's generated identifier stem, the same stem LL parser function names use. The stem is `terminal_` (`generative_terminal_` for generative terminals) plus the readable spelling with every byte other than a letter, digit or `_` replaced by `_x<decimal byte value>`. The escaping is applied to the already backslash-escaped readable spelling, so a tab, spelled `\t`, becomes `_x92t`, not `_x9`.
+
+If both names are declared, the readable one runs and the other is ignored without a warning. Each terminal costs exactly these two lookups.
+
+| Terminal | Readable hook name | Identifier-safe hook name |
+| :--- | :--- | :--- |
+| `"{"` | `@"reduction_\"{\""` | `reduction_terminal__x123` |
+| `"A"` | `@"reduction_\"A\""` | `reduction_terminal_A` |
+| `"null"` | `@"reduction_\"null\""` | `reduction_terminal_null` |
+| `","` | `@"reduction_\",\""` | `reduction_terminal__x44` |
+| `"\t"` | `@"reduction_\"\\t\""` | `reduction_terminal__x92t` |
+| `"\u{7}"` | `@"reduction_\"\\x07\""` | `reduction_terminal__x92x07` |
+| `digit` (generative) | `reduction_digit` | `reduction_generative_terminal_digit` |
+
+Rules that follow:
+
+- Variables bind `reduction_<Variable>` only. A terminal `"A"` and a variable `A` may coexist; `reduction_A` hooks the variable and `@"reduction_\"A\""` hooks the terminal.
+- Generative terminals are written unquoted, and so is their readable hook name: `reduction_digit`, `reduction_letter`. The name is the terminal's identifier re-serialized, exception chain included: with an exception it reads `@"reduction_digit^\"1\""`. A generative terminal and a literal terminal spelled alike (`digit` and `"digit"`) therefore bind separately.
+- The unquoted spelling of a literal terminal (`reduction_{`, `reduction_null`) is not a hook name and never binds.
+- Generation fails with `error.SymbolNameCollision`, naming both, when two symbols or productions would bind one hook name: for example `","` and `"_x44"` (both `reduction_terminal__x44`), or the first production of `A` and a variable `A_0` (both `reduction_A_0`). Rename one of them.
+- End of input has no hook: it never produces a node, so it has neither a readable nor an identifier-safe hook name, and a terminal `"\u{0}"` owns `@"reduction_\"\\x00\""`.
 
 ---
 
@@ -173,7 +202,7 @@ For each eligible variable reduction, hooks execute from the most specific conte
 2. Hooks attached after the initial pipe of the selected production, in left-to-right chain order.
 3. The automatic production hook `reduction_<SymbolName>_<RhsIndex>`, if exported.
 4. Hooks attached to the variable's left-hand-side declaration, in left-to-right chain order.
-5. The automatic symbol hook `reduction_<SymbolName>`, if exported.
+5. The automatic variable hook `reduction_<Variable>`, if exported.
 6. The general `reduction` hook, if exported.
 
 Each phase receives the node resulting from the preceding phase. An RHS occurrence hook belongs to the child variable's reduction and runs only when that child is reached through the annotated parent position. A child completes this sequence before its parent variable is reduced. The start variable has no parent RHS occurrence, and `reduction` runs once and last for each eligible reduction.
@@ -181,7 +210,7 @@ Each phase receives the node resulting from the preceding phase. An RHS occurren
 For a terminal match enabled by `--ast-for-terminals`, only the applicable phases run:
 
 1. Hooks attached to that terminal occurrence, in left-to-right chain order.
-2. The automatic terminal hook `reduction_<SymbolName>`, if exported.
+2. The automatic terminal hook, if exported (see [Terminal Hooks](#terminal-hooks)).
 3. The general `reduction` hook, if exported.
 
 Variable hooks receive the selected variable rule in `args.rule`. Terminals do

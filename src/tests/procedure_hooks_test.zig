@@ -246,6 +246,46 @@ test "procedure-hooks terminal phases run local to global" {
     try std.testing.expectEqual(expected.len, matched);
 }
 
+fn countHook(hook: procedures.Hook) usize {
+    var count: usize = 0;
+    for (procedures.trace()) |event| {
+        if (event.hook == hook) count += 1;
+    }
+    return count;
+}
+
+test "procedure-hooks terminals bind their readable name first, then their identifier-safe name" {
+    procedures.resetTrace();
+    try parse("{Ab-,\t\x075x \"\xc3\xa9\r\x0b\x0c\x00!");
+
+    const expected = [_]struct { hook: procedures.Hook, count: usize }{
+        .{ .hook = .terminal_punctuation, .count = 1 },
+        .{ .hook = .terminal_upper_a, .count = 1 },
+        .{ .hook = .variable_upper_a, .count = 1 },
+        .{ .hook = .terminal_comma_identifier_safe, .count = 1 },
+        .{ .hook = .terminal_hyphen_readable, .count = 1 },
+        .{ .hook = .terminal_hyphen_identifier_safe, .count = 0 },
+        .{ .hook = .terminal_tab, .count = 1 },
+        .{ .hook = .terminal_bell, .count = 1 },
+        .{ .hook = .generative_digit, .count = 1 },
+        .{ .hook = .generative_letter_identifier_safe, .count = 1 },
+        .{ .hook = .generative_space_readable, .count = 1 },
+        .{ .hook = .generative_space_identifier_safe, .count = 0 },
+        .{ .hook = .terminal_quote, .count = 1 },
+        .{ .hook = .terminal_multibyte, .count = 1 },
+        .{ .hook = .terminal_carriage_return, .count = 1 },
+        .{ .hook = .terminal_vertical_tab_identifier_safe, .count = 1 },
+        .{ .hook = .terminal_form_feed, .count = 1 },
+        .{ .hook = .terminal_nul, .count = 1 },
+        .{ .hook = .terminal_exclamation_old_name, .count = 0 },
+    };
+    for (expected) |entry| {
+        errdefer std.debug.print("hook {s}\n", .{@tagName(entry.hook)});
+        try std.testing.expectEqual(entry.count, countHook(entry.hook));
+    }
+    try expectHookTargets(.variable_upper_a, &.{"A"});
+}
+
 test "procedure-hooks production indices follow alternatives under one LHS header" {
     procedures.resetTrace();
     try parse("i0");

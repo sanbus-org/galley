@@ -34,8 +34,7 @@ pub const LLPlan = struct {
     nullable_rules: []?usize = &.{},
     first_sets: [][]const TerminalRule = &.{},
     follow_sets: [][]const TerminalRule = &.{},
-    parser_names: [][]const u8 = &.{},
-    symbol_reprs: [][]const u8 = &.{},
+    symbol_names: common.SymbolNames = .{ .reprs = &.{}, .stems = &.{} },
     emitted_symbols: []const usize = &.{},
     has_parse_entries: []bool = &.{},
     variable_indices: []?usize = &.{},
@@ -967,24 +966,7 @@ const Builder = struct {
     }
 
     fn planNames(self: *Builder) !void {
-        self.plan.parser_names = try self.allocator.alloc([]const u8, self.grammar.symbols.items.len);
-        self.plan.symbol_reprs = try self.allocator.alloc([]const u8, self.grammar.symbols.items.len);
-        for (self.grammar.symbols.items, 0..) |symbol, index| {
-            if (symbol.kind == .end) {
-                self.plan.parser_names[index] = try self.allocator.dupe(u8, "special_EOF");
-                self.plan.symbol_reprs[index] = self.plan.parser_names[index];
-                continue;
-            }
-            const prefix = switch (symbol.kind) {
-                .variable => "",
-                .terminal => "terminal_",
-                .generative_terminal => "generative_terminal_",
-                .end => unreachable,
-            };
-            const repr = try common.readableSymbolName(self.allocator, symbol.id);
-            self.plan.symbol_reprs[index] = try std.mem.concat(self.allocator, u8, &.{ prefix, repr });
-            self.plan.parser_names[index] = try common.safeIdentifier(self.allocator, self.plan.symbol_reprs[index]);
-        }
+        self.plan.symbol_names = try common.planSymbolNames(self.allocator, self.grammar.symbols.items, self.grammar.rules.items);
     }
 
     fn planEmissionMetadata(self: *Builder) !void {
@@ -1077,7 +1059,7 @@ const Builder = struct {
     }
 
     fn syntaxErrorFunctionNames(self: *Builder, symbol_index: usize, node: switch_planning.Node) !struct { exact: []const u8, symbol: []const u8 } {
-        const symbol_stem = self.plan.parser_names[symbol_index];
+        const symbol_stem = self.plan.symbol_names.stems[symbol_index];
         const expected_stem = try self.syntaxErrorExpectedStem(symbol_index, node);
         const exact = try std.fmt.allocPrint(self.allocator, "syntax_error_ll_{s}__expected_{s}", .{ symbol_stem, expected_stem });
         const symbol = try std.fmt.allocPrint(self.allocator, "syntax_error_ll_{s}", .{symbol_stem});
@@ -1088,23 +1070,23 @@ const Builder = struct {
     fn syntaxErrorExpectedStem(self: *Builder, symbol_index: usize, node: switch_planning.Node) ![]const u8 {
         var stems = std.ArrayList([]const u8).empty;
         if (node.groups.items.len == 0) {
-            try common.appendUniqueString(&stems, self.allocator, try std.fmt.allocPrint(self.allocator, "valid_{s}", .{self.plan.parser_names[symbol_index]}));
+            try common.appendUniqueString(&stems, self.allocator, try std.fmt.allocPrint(self.allocator, "valid_{s}", .{self.plan.symbol_names.stems[symbol_index]}));
         } else if (self.grammar.symbols.items[symbol_index].kind == .variable) {
             for (node.groups.items) |group| {
                 for (group.child.entries) |entry| try common.appendUniqueString(&stems, self.allocator, try self.ruleExpectedStem(symbol_index, entry.target));
             }
-        } else try common.appendUniqueString(&stems, self.allocator, self.plan.parser_names[symbol_index]);
-        if (stems.items.len == 0) try common.appendUniqueString(&stems, self.allocator, try std.fmt.allocPrint(self.allocator, "valid_{s}", .{self.plan.parser_names[symbol_index]}));
+        } else try common.appendUniqueString(&stems, self.allocator, self.plan.symbol_names.stems[symbol_index]);
+        if (stems.items.len == 0) try common.appendUniqueString(&stems, self.allocator, try std.fmt.allocPrint(self.allocator, "valid_{s}", .{self.plan.symbol_names.stems[symbol_index]}));
         std.mem.sort([]const u8, stems.items, {}, common.headLessThan);
         return joinWithOr(self.allocator, stems.items);
     }
 
     fn ruleExpectedStem(self: *Builder, symbol_index: usize, rule_index: usize) ![]const u8 {
-        if (rule_index >= self.grammar.rules.items.len) return self.plan.parser_names[symbol_index];
+        if (rule_index >= self.grammar.rules.items.len) return self.plan.symbol_names.stems[symbol_index];
         const rule = self.grammar.rules.items[rule_index];
-        if (rule.header != symbol_index) return self.plan.parser_names[symbol_index];
-        if (rule.rhs.items.len == 0) return std.fmt.allocPrint(self.allocator, "end_of_{s}", .{self.plan.parser_names[symbol_index]});
-        return self.plan.parser_names[rule.rhs.items[0]];
+        if (rule.header != symbol_index) return self.plan.symbol_names.stems[symbol_index];
+        if (rule.rhs.items.len == 0) return std.fmt.allocPrint(self.allocator, "end_of_{s}", .{self.plan.symbol_names.stems[symbol_index]});
+        return self.plan.symbol_names.stems[rule.rhs.items[0]];
     }
 
     fn appendErrorMessageSpec(self: *Builder, name: []const u8) !void {

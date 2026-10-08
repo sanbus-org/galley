@@ -124,14 +124,15 @@ Galley provides three explicit hook placements, registered by appending a proced
 4. **Automatic Reduction Hooks:** Exporting conventionally named public procedures from `procedures.zig` binds them without grammar annotations:
 
    - `reduction_<SymbolName>_<RhsIndex>` runs only for the zero-based production index of that symbol. Indices follow the consecutive `|` lines beneath the variable's unique LHS header.
-   - `reduction_<SymbolName>` runs whenever that symbol produces an AST node.
+   - `reduction_<Variable>` runs whenever that variable produces an AST node.
+   - `reduction_"<spelling>"`, or its identifier-safe form `reduction_terminal_<escaped spelling>`, runs whenever that terminal matches; see [Terminal Hooks](/procedures#terminal-hooks).
    - `reduction` runs for every eligible variable reduction and AST-enabled terminal match.
 
 Multiple procedures can be chained on any explicit hook target (for example, `Number@hook1@hook2`). Chaining runs the procedures from left to right; it is not a separate hook kind.
 
-For each variable reduction, hooks run in this order: RHS occurrence hooks, production hooks, `reduction_<SymbolName>_<RhsIndex>`, LHS hooks, `reduction_<SymbolName>`, then the general `reduction` hook. Each explicit chain runs left to right, and each phase receives the node produced by the preceding phase.
+For each variable reduction, hooks run in this order: RHS occurrence hooks, production hooks, `reduction_<SymbolName>_<RhsIndex>`, LHS hooks, `reduction_<Variable>`, then the general `reduction` hook. Each explicit chain runs left to right, and each phase receives the node produced by the preceding phase.
 
-For an AST-enabled terminal, the occurrence chain runs first, followed by `reduction_<SymbolName>` and then `reduction`. Terminal hooks receive `args.rule = null`. LR generation reports `error.AmbiguousProcedureHooks` if the parser cannot distinguish occurrences with different chains at the match or reduction point.
+For an AST-enabled terminal, the occurrence chain runs first, followed by the automatic terminal hook and then `reduction`. Terminal hooks receive `args.rule = null`. LR generation reports `error.AmbiguousProcedureHooks` if the parser cannot distinguish occurrences with different chains at the match or reduction point.
 
 ---
 

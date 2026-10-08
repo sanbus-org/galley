@@ -30,6 +30,25 @@ pub const Hook = enum {
     automatic_terminal,
     automatic_repeated_production,
     general,
+    terminal_punctuation,
+    terminal_upper_a,
+    variable_upper_a,
+    terminal_comma_identifier_safe,
+    terminal_hyphen_readable,
+    terminal_hyphen_identifier_safe,
+    terminal_tab,
+    terminal_bell,
+    generative_digit,
+    generative_letter_identifier_safe,
+    generative_space_readable,
+    generative_space_identifier_safe,
+    terminal_quote,
+    terminal_multibyte,
+    terminal_carriage_return,
+    terminal_vertical_tab_identifier_safe,
+    terminal_form_feed,
+    terminal_nul,
+    terminal_exclamation_old_name,
 };
 
 pub const Event = struct {
@@ -171,8 +190,98 @@ pub fn hook_nestedHook(args: *ProcedureArguments) !void {
     if (nested_callback) |callback| try callback(args);
 }
 
-pub fn reduction_j(args: *ProcedureArguments) !void {
+pub fn @"reduction_\"j\""(args: *ProcedureArguments) !void {
     try record(.automatic_terminal, args);
+}
+
+// Terminal hooks. A terminal binds `reduction_"<spelling>"` first and the
+// identifier-safe `reduction_terminal_<escaped spelling>` second.
+pub fn @"reduction_\"{\""(args: *ProcedureArguments) !void {
+    try record(.terminal_punctuation, args);
+}
+
+pub fn @"reduction_\"A\""(args: *ProcedureArguments) !void {
+    try record(.terminal_upper_a, args);
+}
+
+// The variable `A` shares its spelling with the terminal "A" and binds
+// separately.
+pub fn reduction_A(args: *ProcedureArguments) !void {
+    try record(.variable_upper_a, args);
+}
+
+// "," has only the identifier-safe name declared.
+pub fn reduction_terminal__x44(args: *ProcedureArguments) !void {
+    try record(.terminal_comma_identifier_safe, args);
+}
+
+// "-" declares both names: the readable one must win.
+pub fn @"reduction_\"-\""(args: *ProcedureArguments) !void {
+    try record(.terminal_hyphen_readable, args);
+}
+
+pub fn reduction_terminal__x45(args: *ProcedureArguments) !void {
+    try record(.terminal_hyphen_identifier_safe, args);
+}
+
+pub fn @"reduction_\"\\t\""(args: *ProcedureArguments) !void {
+    try record(.terminal_tab, args);
+}
+
+pub fn @"reduction_\"\\x07\""(args: *ProcedureArguments) !void {
+    try record(.terminal_bell, args);
+}
+
+pub fn reduction_digit(args: *ProcedureArguments) !void {
+    try record(.generative_digit, args);
+}
+
+// The generative terminal `letter` has only the identifier-safe name declared.
+pub fn reduction_generative_terminal_letter(args: *ProcedureArguments) !void {
+    try record(.generative_letter_identifier_safe, args);
+}
+
+// The generative terminal `space` declares both names: the readable one wins.
+pub fn reduction_space(args: *ProcedureArguments) !void {
+    try record(.generative_space_readable, args);
+}
+
+pub fn reduction_generative_terminal_space(args: *ProcedureArguments) !void {
+    try record(.generative_space_identifier_safe, args);
+}
+
+// The quote terminal reads `reduction_"""`: a `"` inside the fixed quote pair
+// is not escaped.
+pub fn @"reduction_\"\"\""(args: *ProcedureArguments) !void {
+    try record(.terminal_quote, args);
+}
+
+// A multi-byte terminal is spelled byte by byte.
+pub fn @"reduction_\"\\xc3\\xa9\""(args: *ProcedureArguments) !void {
+    try record(.terminal_multibyte, args);
+}
+
+pub fn @"reduction_\"\\r\""(args: *ProcedureArguments) !void {
+    try record(.terminal_carriage_return, args);
+}
+
+// "\u{b}" has only the identifier-safe name declared.
+pub fn reduction_terminal__x92x0b(args: *ProcedureArguments) !void {
+    try record(.terminal_vertical_tab_identifier_safe, args);
+}
+
+pub fn @"reduction_\"\\x0c\""(args: *ProcedureArguments) !void {
+    try record(.terminal_form_feed, args);
+}
+
+// A NUL terminal owns `reduction_"\x00"`; end of input has no hook name.
+pub fn @"reduction_\"\\x00\""(args: *ProcedureArguments) !void {
+    try record(.terminal_nul, args);
+}
+
+// The unquoted spelling of "!" is not a terminal hook name and never binds.
+pub fn @"reduction_!"(args: *ProcedureArguments) !void {
+    try record(.terminal_exclamation_old_name, args);
 }
 
 pub fn reduction_IndexedTarget_1(args: *ProcedureArguments) !void {

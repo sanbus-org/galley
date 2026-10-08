@@ -1144,6 +1144,58 @@ test "LR rejects indistinguishable variable and terminal occurrence hooks" {
     );
 }
 
+test "terminal hook names are emitted for LL and LR and end of input has none" {
+    const source =
+        \\Start
+        \\| "{" A "A" "\u{0}"
+        \\
+        \\A
+        \\| "b"
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    for ([_]ParserType{ .ll, .lr }) |parser_type| {
+        const output = try generateParserAlloc(arena.allocator(), source, parser_type, .{});
+        _ = try expectContains(output, ".readable = \"reduction_A\", .identifier_safe = null },");
+        _ = try expectContains(output, ".readable = \"reduction_\\\"A\\\"\", .identifier_safe = \"reduction_terminal_A\" },");
+        _ = try expectContains(output, ".readable = \"reduction_\\\"{\\\"\", .identifier_safe = \"reduction_terminal__x123\" },");
+        // The NUL terminal owns `reduction_"\x00"`; end of input binds no name.
+        _ = try expectContains(output, ".readable = \"reduction_\\\"\\\\x00\\\"\", .identifier_safe = \"reduction_terminal__x92x00\" },");
+        try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, output, "reduction_\\\"\\\\x00\\\""));
+        try expectNotContains(output, "reduction_special_EOF");
+    }
+}
+
+test "two producers of one hook name fail LL and LR generation" {
+    const terminal_source =
+        \\Start
+        \\| "," "_x44"
+        \\
+    ;
+    const production_source =
+        \\Start
+        \\| A A_0
+        \\
+        \\A
+        \\| "a"
+        \\
+        \\A_0
+        \\| "b"
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    for ([_]ParserType{ .ll, .lr }) |parser_type| {
+        try std.testing.expectError(error.SymbolNameCollision, generateParserAlloc(arena.allocator(), terminal_source, parser_type, .{}));
+        try std.testing.expectError(error.SymbolNameCollision, generateParserAlloc(arena.allocator(), production_source, parser_type, .{}));
+    }
+}
+
 test "LR accepts indistinguishable occurrences with identical hook chains" {
     const variable_source =
         \\Start
