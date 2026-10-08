@@ -23,7 +23,7 @@ pub fn emitParserWithOptions(
     options: Options,
 ) !void {
     const prepared = try common.prepareGrammar(allocator, grammar, options, false);
-    const plan = try planning.LRPlan.build(allocator, &prepared);
+    const plan = try planning.LRPlan.build(allocator, &prepared, options.error_reporter);
     return emitter.emit(allocator, &prepared, &plan, writer, options);
 }
 
@@ -34,7 +34,7 @@ pub fn emitErrorMessagesWithOptions(
     options: Options,
 ) !void {
     const prepared = try common.prepareGrammar(allocator, grammar, options, false);
-    const plan = try planning.LRPlan.build(allocator, &prepared);
+    const plan = try planning.LRPlan.build(allocator, &prepared, options.error_reporter);
     return emitter_common.emitErrorMessageFile(writer, "LR", plan.error_message_specs.items);
 }
 
@@ -44,9 +44,9 @@ pub fn canonicalTopologyEqualForTesting(
     rhs_grammar: anytype,
 ) !bool {
     const lhs_prepared = try common.prepareGrammar(allocator, lhs_grammar, .{}, false);
-    const lhs_plan = try planning.LRPlan.build(allocator, &lhs_prepared);
+    const lhs_plan = try planning.LRPlan.build(allocator, &lhs_prepared, null);
     const rhs_prepared = try common.prepareGrammar(allocator, rhs_grammar, .{}, false);
-    const rhs_plan = try planning.LRPlan.build(allocator, &rhs_prepared);
+    const rhs_plan = try planning.LRPlan.build(allocator, &rhs_prepared, null);
     return lhs_plan.topologyEqual(&rhs_plan);
 }
 
@@ -55,7 +55,7 @@ pub fn canonicalStateCountForTesting(
     grammar: anytype,
 ) !usize {
     const prepared = try common.prepareGrammar(allocator, grammar, .{}, false);
-    const plan = try planning.LRPlan.build(allocator, &prepared);
+    const plan = try planning.LRPlan.build(allocator, &prepared, null);
     return plan.states.items.len;
 }
 

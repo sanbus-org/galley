@@ -21,8 +21,18 @@ pub const Options = struct {
     with_input_streaming: bool = false,
     allow_no_ast_tree_procedures: bool = false,
     require_reduction_procedures: bool = false,
-    syntax_error_reporter: ?*const fn (message: []const u8) void = null,
+    /// Receives every generation failure message, grammar syntax errors
+    /// included, before the error is returned.
+    error_reporter: ErrorReporter = null,
 };
+
+/// Receives one generation failure message. Null prints it to stderr.
+pub const ErrorReporter = ?*const fn (message: []const u8) void;
+
+/// The one exit for generation failure messages.
+pub fn reportError(reporter: ErrorReporter, message: []const u8) void {
+    if (reporter) |report| report(message) else std.debug.print("{s}\n", .{message});
+}
 
 pub const ErrorMessageSpec = struct {
     name: []const u8,
@@ -167,11 +177,10 @@ pub fn prepareGrammar(
     options: Options,
     add_generative_terminal: bool,
 ) !PreparedGrammar {
-    // `options` no longer shapes grammar preparation: every field of the
+    // `options` supplies only the error reporter: every field of the
     // prepared grammar is a grammar fact. Configuration is applied at
     // comptime inside the generated parser.
-    _ = options;
-    try validateGrammar(grammar);
+    try validateGrammar(allocator, grammar, options.error_reporter);
 
     var result = PreparedGrammar{
         .augmented_start = undefined,
@@ -253,7 +262,7 @@ pub fn prepareGrammar(
         defer allocator.free(nullable);
         computeNullableFixpoint(&result, nullable);
         for (result.variables.items) |variable| {
-            _ = try nullableRuleFromNullable(allocator, &result, nullable, variable);
+            _ = try nullableRuleFromNullable(allocator, &result, nullable, variable, options.error_reporter);
         }
     }
     return result;
@@ -289,7 +298,7 @@ pub const SymbolNames = struct {
 /// here. Fails with `error.SymbolNameCollision` when two producers would bind
 /// one hook name. Every symbol but end of input binds `reduction_<stem>`, so
 /// this also keeps stems, and the identifiers built from them, unique.
-pub fn planSymbolNames(allocator: std.mem.Allocator, symbols: []const Symbol, rules: []const Rule) !SymbolNames {
+pub fn planSymbolNames(allocator: std.mem.Allocator, symbols: []const Symbol, rules: []const Rule, reporter: ErrorReporter) !SymbolNames {
     const reprs = try allocator.alloc([]const u8, symbols.len);
     const stems = try allocator.alloc([]const u8, symbols.len);
     for (symbols, 0..) |symbol, index| {
@@ -308,7 +317,7 @@ pub fn planSymbolNames(allocator: std.mem.Allocator, symbols: []const Symbol, ru
         reprs[index] = try std.mem.concat(allocator, u8, &.{ prefix, spelling });
         stems[index] = try safeIdentifier(allocator, reprs[index]);
     }
-    try checkHookNameCollisions(allocator, symbols, rules, stems);
+    try checkHookNameCollisions(allocator, symbols, rules, stems, reporter);
     return .{ .reprs = reprs, .stems = stems };
 }
 
@@ -321,6 +330,7 @@ fn checkHookNameCollisions(
     symbols: []const Symbol,
     rules: []const Rule,
     stems: []const []const u8,
+    reporter: ErrorReporter,
 ) !void {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
@@ -329,11 +339,11 @@ fn checkHookNameCollisions(
     var owners = std.StringHashMap(HookNameProducer).init(arena_allocator);
     for (symbols, stems, 0..) |symbol, stem, index| {
         const hook_names = try symbolHookNames(arena_allocator, symbol, stem) orelse continue;
-        try claimHookName(&owners, symbols, rules, hook_names.readable, .{ .symbol = index });
-        if (hook_names.identifier_safe) |name| try claimHookName(&owners, symbols, rules, name, .{ .symbol = index });
+        try claimHookName(&owners, symbols, rules, reporter, hook_names.readable, .{ .symbol = index });
+        if (hook_names.identifier_safe) |name| try claimHookName(&owners, symbols, rules, reporter, name, .{ .symbol = index });
     }
     for (rules, 0..) |rule, index| {
-        try claimHookName(&owners, symbols, rules, try reductionProcedureName(arena_allocator, symbols, rule), .{ .production = index });
+        try claimHookName(&owners, symbols, rules, reporter, try reductionProcedureName(arena_allocator, symbols, rule), .{ .production = index });
     }
 }
 
@@ -341,6 +351,7 @@ fn claimHookName(
     owners: *std.StringHashMap(HookNameProducer),
     symbols: []const Symbol,
     rules: []const Rule,
+    reporter: ErrorReporter,
     name: []const u8,
     producer: HookNameProducer,
 ) !void {
@@ -351,7 +362,7 @@ fn claimHookName(
     }
     const message = try hookNameCollisionMessage(owners.allocator, symbols, rules, owner.value_ptr.*, producer, name);
     defer owners.allocator.free(message);
-    std.log.warn("{s}", .{message});
+    reportError(reporter, message);
     return error.SymbolNameCollision;
 }
 
@@ -649,6 +660,7 @@ pub fn nullableRuleFromNullable(
     grammar: *const PreparedGrammar,
     nullable: []const bool,
     variable: usize,
+    reporter: ErrorReporter,
 ) !?usize {
     var found: ?usize = null;
     for (grammar.rules.items, 0..) |rule, rule_index| {
@@ -670,7 +682,7 @@ pub fn nullableRuleFromNullable(
                 rule,
             );
             defer allocator.free(message);
-            std.log.warn("{s}", .{message});
+            reportError(reporter, message);
             return error.AmbiguousGrammar;
         }
         found = rule_index;
@@ -686,16 +698,17 @@ pub fn nullableRule(
     allocator: std.mem.Allocator,
     grammar: *const PreparedGrammar,
     variable: usize,
+    reporter: ErrorReporter,
 ) !?usize {
     const nullable = try allocator.alloc(bool, grammar.symbols.items.len);
     defer allocator.free(nullable);
     computeNullableFixpoint(grammar, nullable);
-    return nullableRuleFromNullable(allocator, grammar, nullable, variable);
+    return nullableRuleFromNullable(allocator, grammar, nullable, variable, reporter);
 }
 
 /// Rejects grammars whose verbatim-annotated RHS positions can match empty
 /// input, shared by the LL and LR planners.
-pub fn validateVerbatimSymbols(allocator: std.mem.Allocator, grammar: *const PreparedGrammar) !void {
+pub fn validateVerbatimSymbols(allocator: std.mem.Allocator, grammar: *const PreparedGrammar, reporter: ErrorReporter) !void {
     if (!grammar.uses_verbatim) return;
     const nullable = try allocator.alloc(bool, grammar.symbols.items.len);
     defer allocator.free(nullable);
@@ -712,7 +725,7 @@ pub fn validateVerbatimSymbols(allocator: std.mem.Allocator, grammar: *const Pre
             const symbol = grammar.symbols.items[symbol_index];
             const empty_matchable = switch (symbol.kind) {
                 .terminal, .generative_terminal => symbol.id.len == 0,
-                .variable => try nullableRuleFromNullable(allocator, grammar, nullable, symbol_index) != null,
+                .variable => try nullableRuleFromNullable(allocator, grammar, nullable, symbol_index, reporter) != null,
                 .end => false,
             };
             if (empty_matchable) return error.EmptyVerbatimSymbol;
@@ -938,10 +951,12 @@ pub fn findDuplicateRuleHeader(rules: anytype) ?DuplicateRuleHeaders {
     return null;
 }
 
-pub fn validateGrammar(grammar: anytype) !void {
+pub fn validateGrammar(allocator: std.mem.Allocator, grammar: anytype, reporter: ErrorReporter) !void {
     if (findDuplicateRuleHeader(grammar.rules)) |duplicate| {
         const rule = grammar.rules[duplicate.second];
-        std.debug.print("duplicate rule header \"{s}\" (first defined at rule {d})\n", .{ rule.header, duplicate.first + 1 });
+        const message = try std.fmt.allocPrint(allocator, "duplicate rule header \"{s}\" (first defined at rule {d})", .{ rule.header, duplicate.first + 1 });
+        defer allocator.free(message);
+        reportError(reporter, message);
         return error.DuplicateRuleHeader;
     }
     for (grammar.rules) |rule| {
@@ -962,7 +977,9 @@ pub fn validateGrammar(grammar: anytype) !void {
                     if (std.mem.eql(u8, candidate.header, symbol.id)) break true;
                 } else false;
                 if (!defined) {
-                    std.debug.print("undefined variable \"{s}\" referenced in rule \"{s}\"\n", .{ symbol.id, rule.header });
+                    const message = try std.fmt.allocPrint(allocator, "undefined variable \"{s}\" referenced in rule \"{s}\"", .{ symbol.id, rule.header });
+                    defer allocator.free(message);
+                    reportError(reporter, message);
                     return error.UndefinedVariable;
                 }
             }
@@ -1670,7 +1687,7 @@ test "symbol hook names are a readable spelling plus the identifier-safe stem" {
         .{ .readable = "reduction_\"\\x00\"", .identifier_safe = "reduction_terminal__x92x00" },
         .{ .readable = "reduction_digit", .identifier_safe = "reduction_generative_terminal_digit" },
     };
-    const symbol_names = try planSymbolNames(allocator, symbols.items, &.{});
+    const symbol_names = try planSymbolNames(allocator, symbols.items, &.{}, null);
     for (expected, 0..) |entry, index| {
         const hook_names = (try symbolHookNames(allocator, symbols.items[index], symbol_names.stems[index])).?;
         try std.testing.expectEqualStrings(entry.readable, hook_names.readable);
@@ -1681,7 +1698,22 @@ test "symbol hook names are a readable spelling plus the identifier-safe stem" {
     try std.testing.expectEqualStrings("special_EOF", symbol_names.stems[6]);
 }
 
-test "two producers of one hook name fail symbol name planning" {
+/// Keeps the last reported generation failure message for assertions.
+const CapturedError = struct {
+    var buffer: [256]u8 = undefined;
+    var length: usize = 0;
+
+    fn report(message: []const u8) void {
+        length = @min(message.len, buffer.len);
+        @memcpy(buffer[0..length], message[0..length]);
+    }
+
+    fn last() []const u8 {
+        return buffer[0..length];
+    }
+};
+
+test "two producers of one hook name fail symbol name planning and report both" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
@@ -1691,7 +1723,11 @@ test "two producers of one hook name fail symbol name planning" {
     var terminal_variables: std.ArrayList(usize) = .empty;
     _ = try addSymbol(allocator, &terminal_symbols, &terminal_variables, ",", .terminal);
     _ = try addSymbol(allocator, &terminal_symbols, &terminal_variables, "_x44", .terminal);
-    try std.testing.expectError(error.SymbolNameCollision, planSymbolNames(allocator, terminal_symbols.items, &.{}));
+    try std.testing.expectError(error.SymbolNameCollision, planSymbolNames(allocator, terminal_symbols.items, &.{}, &CapturedError.report));
+    try std.testing.expectEqualStrings(
+        "hook name collision: terminal \",\" and terminal \"_x44\" both bind \"reduction_terminal__x44\"; rename one of them",
+        CapturedError.last(),
+    );
 
     // The first production of `A` and the variable `A_0` both bind `reduction_A_0`.
     var symbols: std.ArrayList(Symbol) = .empty;
@@ -1702,14 +1738,9 @@ test "two producers of one hook name fail symbol name planning" {
     var rules: std.ArrayList(Rule) = .empty;
     try rules.append(allocator, .{ .header = a, .rhs_index = "0" });
     try rules.items[0].rhs.append(allocator, terminal);
-    try std.testing.expectError(error.SymbolNameCollision, planSymbolNames(allocator, symbols.items, rules.items));
-
+    try std.testing.expectError(error.SymbolNameCollision, planSymbolNames(allocator, symbols.items, rules.items, &CapturedError.report));
     try std.testing.expectEqualStrings(
         "hook name collision: variable A_0 and production A -> \"a\" both bind \"reduction_A_0\"; rename one of them",
-        try hookNameCollisionMessage(allocator, symbols.items, rules.items, .{ .symbol = 1 }, .{ .production = 0 }, "reduction_A_0"),
-    );
-    try std.testing.expectEqualStrings(
-        "hook name collision: terminal \",\" and terminal \"_x44\" both bind \"reduction_terminal__x44\"; rename one of them",
-        try hookNameCollisionMessage(allocator, terminal_symbols.items, &.{}, .{ .symbol = 0 }, .{ .symbol = 1 }, "reduction_terminal__x44"),
+        CapturedError.last(),
     );
 }

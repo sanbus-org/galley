@@ -59,19 +59,20 @@ pub const LRPlan = struct {
     eof: usize = 0,
     recovery: recovery_planning.Plan = .{},
 
-    pub fn build(allocator: std.mem.Allocator, grammar: *const common.PreparedGrammar) !LRPlan {
+    pub fn build(allocator: std.mem.Allocator, grammar: *const common.PreparedGrammar, reporter: common.ErrorReporter) !LRPlan {
         var analysis = try common.analyzeGrammarSets(allocator, grammar);
         defer analysis.deinit();
         var builder = Builder{
             .allocator = allocator,
             .grammar = grammar,
             .analysis = &analysis,
+            .reporter = reporter,
             .plan = .{ .augmented_start = grammar.augmented_start, .eof = grammar.eof },
         };
-        builder.plan.symbol_names = try common.planSymbolNames(allocator, grammar.symbols.items, grammar.rules.items);
+        builder.plan.symbol_names = try common.planSymbolNames(allocator, grammar.symbols.items, grammar.rules.items, reporter);
         try builder.buildStates();
         try builder.buildParseTable();
-        try common.validateVerbatimSymbols(allocator, grammar);
+        try common.validateVerbatimSymbols(allocator, grammar, reporter);
         builder.plan.recovery = try recovery_planning.build(allocator, grammar, builder.plan.states.items);
         try builder.planStateDecisionsAndDiagnostics();
         try builder.planMetadata();
@@ -96,6 +97,7 @@ const Builder = struct {
     allocator: std.mem.Allocator,
     grammar: *const common.PreparedGrammar,
     analysis: *const common.GrammarAnalysis,
+    reporter: common.ErrorReporter,
     plan: LRPlan,
 
     fn buildStates(self: *Builder) !void {
@@ -193,13 +195,15 @@ const Builder = struct {
         const existing_rule = self.grammar.rules.items[existing.rule];
         const existing_rule_text = try common.ruleText(self.allocator, self.grammar.symbols.items, existing_rule);
         defer self.allocator.free(existing_rule_text);
-        std.log.warn("ambiguous grammar: state {d} has multiple procedure hooks on the same reduction:\n  {s}", .{ state_index, existing_rule_text });
+        const message = try std.fmt.allocPrint(self.allocator, "ambiguous grammar: state {d} has multiple procedure hooks on the same reduction:\n  {s}", .{ state_index, existing_rule_text });
+        defer self.allocator.free(message);
+        common.reportError(self.reporter, message);
     }
 
     fn reportActionConflict(self: *Builder, state: *State, existing: Action, incoming: Action, overlap: ?[]const u8) !void {
         const message = try self.explainActionConflict(state, existing, incoming, overlap);
         defer self.allocator.free(message);
-        std.log.warn("{s}", .{message});
+        common.reportError(self.reporter, message);
     }
 
     fn explainActionConflict(self: *Builder, state: *State, existing: Action, incoming: Action, overlap: ?[]const u8) ![]const u8 {
@@ -326,7 +330,7 @@ const Builder = struct {
                     .target = action_index,
                 });
             }
-            const tree = try switch_planning.build(self.allocator, entries.items);
+            const tree = try switch_planning.build(self.allocator, entries.items, self.reporter);
             if (entries.items.len == 0) {
                 tree.diagnostic = try self.addDiagnostic(state_index, tree.*, .state);
             } else try self.planActionDiagnostics(state_index, tree);
@@ -429,7 +433,7 @@ test "LR planning completes canonical topology decisions and recovery metadata" 
     defer arena.deinit();
     const allocator = arena.allocator();
     const grammar = try testPreparedGrammar(allocator);
-    const plan = try LRPlan.build(allocator, &grammar);
+    const plan = try LRPlan.build(allocator, &grammar, null);
 
     try std.testing.expect(plan.states.items.len > 1);
     try std.testing.expectEqual(plan.states.items.len, plan.state_decisions.items.len);
@@ -446,7 +450,7 @@ test "LR plan accepts only after the original start" {
     defer arena.deinit();
     const allocator = arena.allocator();
     const grammar = try testPreparedGrammar(allocator);
-    const plan = try LRPlan.build(allocator, &grammar);
+    const plan = try LRPlan.build(allocator, &grammar, null);
 
     // State 0 holds `_AugmentedStart -> . Root EOF` and must not accept on EOF.
     for (plan.states.items[0].actions.items) |action| {
@@ -483,7 +487,7 @@ test "LR planning reports conflicting actions" {
     defer arena.deinit();
     const allocator = arena.allocator();
     const grammar = try testAmbiguousGrammar(allocator);
-    try std.testing.expectError(error.AmbiguousGrammar, LRPlan.build(allocator, &grammar));
+    try std.testing.expectError(error.AmbiguousGrammar, LRPlan.build(allocator, &grammar, null));
 }
 
 test "LR action gate reports generative overlap with state and both sides" {
@@ -512,6 +516,7 @@ test "LR action gate reports generative overlap with state and both sides" {
         .allocator = allocator,
         .grammar = &grammar,
         .analysis = &analysis,
+        .reporter = null,
         .plan = .{ .augmented_start = grammar.augmented_start, .eof = grammar.eof },
     };
     try gate.buildStates();
@@ -580,6 +585,7 @@ test "LR action gate reports nullable letter tail overlapping a lowercase follow
         .allocator = allocator,
         .grammar = &grammar,
         .analysis = &analysis,
+        .reporter = null,
         .plan = .{ .augmented_start = grammar.augmented_start, .eof = grammar.eof },
     };
     try gate.buildStates();
@@ -628,6 +634,6 @@ test "LR action gate keeps prefix families longest-match" {
     try appendTestRule(allocator, &grammar.rules, grammar.augmented_start, "0", &.{ root, grammar.eof });
     std.mem.sort(common.Rule, grammar.rules.items, grammar.symbols.items, common.ruleLessThan);
 
-    const plan = try LRPlan.build(allocator, &grammar);
+    const plan = try LRPlan.build(allocator, &grammar, null);
     try std.testing.expect(plan.states.items.len > 1);
 }

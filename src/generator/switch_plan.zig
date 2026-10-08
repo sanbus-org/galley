@@ -24,8 +24,8 @@ pub const Node = struct {
     }
 };
 
-pub fn build(allocator: std.mem.Allocator, source_entries: []const Entry) !*Node {
-    try diagnoseEqualBytes(allocator, source_entries);
+pub fn build(allocator: std.mem.Allocator, source_entries: []const Entry, reporter: common.ErrorReporter) !*Node {
+    try diagnoseEqualBytes(allocator, source_entries, reporter);
     return buildWithInheritedFallback(allocator, source_entries, 0, null);
 }
 
@@ -33,7 +33,7 @@ pub fn build(allocator: std.mem.Allocator, source_entries: []const Entry) !*Node
 /// top-level entries suffices: equal full strings are equal here, and equal
 /// suffixes deeper in the tree imply equal full strings. Prefix-related
 /// entries differ and pass through to longest-match planning.
-fn diagnoseEqualBytes(allocator: std.mem.Allocator, entries: []const Entry) !void {
+fn diagnoseEqualBytes(allocator: std.mem.Allocator, entries: []const Entry, reporter: common.ErrorReporter) !void {
     for (entries, 0..) |lhs, i| {
         for (entries[i + 1 ..]) |rhs| {
             if (lhs.target == rhs.target) continue;
@@ -44,7 +44,7 @@ fn diagnoseEqualBytes(allocator: std.mem.Allocator, entries: []const Entry) !voi
             try writer.print("ambiguous token: byte sequence ", .{});
             try common.emitStringLiteral(writer, lhs.terminal);
             try writer.print(" matches two alternatives with identical bytes and no longest match, so give one side an exception or merge the targets", .{});
-            std.log.warn("{s}", .{message.written()});
+            common.reportError(reporter, message.written());
             return error.AmbiguousGrammar;
         }
     }
@@ -184,17 +184,17 @@ test "switch planning rejects identical bytes with different targets" {
     try std.testing.expectError(error.AmbiguousGrammar, build(allocator, &.{
         .{ .terminal = "1", .target = 0 },
         .{ .terminal = "1", .target = 1 },
-    }));
+    }, null));
     // NUL terminal vs EOF: same byte, different targets.
     try std.testing.expectError(error.AmbiguousGrammar, build(allocator, &.{
         .{ .terminal = "\x00", .target = 0 },
         .{ .terminal = "\x00", .target = 1 },
-    }));
+    }, null));
     // Verbatim-style empty match on two targets is the same conflict.
     try std.testing.expectError(error.AmbiguousGrammar, build(allocator, &.{
         .{ .terminal = "", .target = 0 },
         .{ .terminal = "", .target = 1 },
-    }));
+    }, null));
 }
 
 test "switch planning keeps identical bytes with one target and prefix families" {
@@ -208,7 +208,7 @@ test "switch planning keeps identical bytes with one target and prefix families"
         .{ .terminal = "1", .target = 0 },
         .{ .terminal = "1", .target = 0 },
         .{ .terminal = "2", .target = 0 },
-    });
+    }, null);
     try std.testing.expect(shared.fallback == null);
     try std.testing.expectEqual(@as(usize, 1), shared.groups.items.len);
     try std.testing.expectEqual(@as(usize, 2), shared.groups.items[0].heads.items.len);
@@ -218,7 +218,7 @@ test "switch planning keeps identical bytes with one target and prefix families"
     const prefixed = try build(allocator, &.{
         .{ .terminal = "=", .target = 0 },
         .{ .terminal = "==", .target = 1 },
-    });
+    }, null);
     try std.testing.expectEqual(@as(?usize, 0), prefixed.groups.items[0].child.fallback);
     try std.testing.expectEqual(@as(usize, 1), prefixed.groups.items[0].child.fallback_length);
 }
@@ -232,7 +232,7 @@ test "switch planning preserves grouped heads fallback and leaf topology" {
         .{ .terminal = "ab", .target = 1 },
         .{ .terminal = "ac", .target = 1 },
         .{ .terminal = "", .target = 2 },
-    });
+    }, null);
     try std.testing.expectEqual(@as(?usize, 2), node.fallback);
     try std.testing.expectEqual(@as(usize, 2), node.step_length);
     try std.testing.expectEqual(@as(usize, 1), node.groups.items.len);
@@ -249,7 +249,7 @@ test "switch planning inherits ancestor fallback length" {
         .{ .terminal = ".", .target = 1 },
         .{ .terminal = "..", .target = 2 },
         .{ .terminal = ".length", .target = 3 },
-    });
+    }, null);
 
     // The node below "." holds ["", ".", "length"]; its empty entry is the "." terminal.
     const tail = node.groups.items[0].child;
@@ -276,7 +276,7 @@ test "switch planning caps steps at 16 bytes" {
     // byte continues in the child.
     const single = try build(allocator, &.{
         .{ .terminal = "abcdefghijklmnopq", .target = 0 },
-    });
+    }, null);
     try std.testing.expectEqual(@as(usize, 16), single.step_length);
     try std.testing.expectEqual(@as(usize, 16), single.groups.items[0].heads.items[0].len);
     try std.testing.expectEqual(@as(usize, 1), single.groups.items[0].child.step_length);
@@ -286,7 +286,7 @@ test "switch planning caps steps at 16 bytes" {
     const colliding = try build(allocator, &.{
         .{ .terminal = "A1234567890123456", .target = 0 },
         .{ .terminal = "B1234567890123456", .target = 1 },
-    });
+    }, null);
     try std.testing.expectEqual(@as(usize, 16), colliding.step_length);
     try std.testing.expectEqual(@as(usize, 2), colliding.groups.items.len);
     const case_a = common.bytesToInt(colliding.groups.items[0].heads.items[0]);
@@ -298,7 +298,7 @@ test "switch planning caps steps at 16 bytes" {
         .{ .terminal = "Q", .target = 0 },
         .{ .terminal = "Qaaaaaaaaaaaaaaaaa", .target = 1 },
         .{ .terminal = "Qbbbbbbbbbbbbbbbbb", .target = 2 },
-    });
+    }, null);
     const tail = suffixes.groups.items[0].child;
     try std.testing.expectEqual(@as(usize, 16), tail.step_length);
 }

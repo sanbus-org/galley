@@ -6,6 +6,10 @@ const ctime = @import("c");
 
 fn ignoreDiagnostic(_: []const u8) void {}
 
+fn logGenerationError(message: []const u8) void {
+    std.log.err("{s}", .{message});
+}
+
 const max_source_size = 1024 * 1024 * 1024;
 
 /// Option flags materialize as in-place edits to the language's
@@ -670,6 +674,7 @@ fn generateParser(init: std.process.Init, language_dir: []const u8, parser_type:
             .allocator = init.arena.allocator(),
             .source = source,
             .parser_type = parser_type,
+            .error_reporter = &logGenerationError,
         },
         ParserEmission.emit,
     );
@@ -760,9 +765,10 @@ const ParserEmission = struct {
     allocator: std.mem.Allocator,
     source: []const u8,
     parser_type: generator.ParserType,
+    error_reporter: generator.ErrorReporter,
 
     fn emit(self: ParserEmission, writer: *std.Io.Writer) !void {
-        try generator.emitParserFromSource(self.allocator, self.source, writer, self.parser_type, .{});
+        try generator.emitParserFromSource(self.allocator, self.source, writer, self.parser_type, .{ .error_reporter = self.error_reporter });
     }
 };
 
@@ -784,7 +790,7 @@ fn fillErrorMessages(
     const source = try std.Io.Dir.cwd().readFileAlloc(io, grammar_path, gpa, .limited(max_source_size));
     defer gpa.free(source);
 
-    const filled_source = try generator.generateErrorMessagesAlloc(arena, source, parser_type, .{});
+    const filled_source = try generator.generateErrorMessagesAlloc(arena, source, parser_type, .{ .error_reporter = &logGenerationError });
 
     const path = try std.fs.path.join(gpa, &.{ language_dir, basename });
     defer gpa.free(path);
@@ -1007,6 +1013,7 @@ test "failed parser generation preserves the previous output" {
             .allocator = arena.allocator(),
             .source = "Start\n| \"unterminated\n",
             .parser_type = .ll,
+            .error_reporter = &ignoreDiagnostic,
         },
         ParserEmission.emit,
     ));

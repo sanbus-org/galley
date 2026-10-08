@@ -16,6 +16,7 @@ pub const Annotations = galley_grammar.procedures.Annotations;
 pub const RecoveryPoint = galley_grammar.procedures.RecoveryPoint;
 pub const RecoveryResume = galley_grammar.procedures.RecoveryResume;
 pub const Options = common.Options;
+pub const ErrorReporter = common.ErrorReporter;
 pub const atomic_file = common.atomic_file;
 
 fn ignoreDiagnostic(_: []const u8) void {}
@@ -25,7 +26,7 @@ pub fn parseGrammar(allocator: std.mem.Allocator, source: []const u8) !*Grammar 
 }
 
 pub fn parseGrammarWithOptions(allocator: std.mem.Allocator, source: []const u8, options: Options) !*Grammar {
-    var parsed = try galley_grammar.parseBytes(std.Io.failing, allocator, source, .{ .syntax_error_reporter = options.syntax_error_reporter });
+    var parsed = try galley_grammar.parseBytes(std.Io.failing, allocator, source, .{ .syntax_error_reporter = options.error_reporter });
     defer parsed.deinit();
 
     var read_guard = try parsed.session.read(parsed.result);
@@ -156,7 +157,7 @@ pub fn emitParserFromSource(
     parser_type: ParserType,
     options: Options,
 ) !void {
-    var parsed = try galley_grammar.parseBytes(std.Io.failing, allocator, source, .{ .syntax_error_reporter = options.syntax_error_reporter });
+    var parsed = try galley_grammar.parseBytes(std.Io.failing, allocator, source, .{ .syntax_error_reporter = options.error_reporter });
     defer parsed.deinit();
 
     var read_guard = try parsed.session.read(parsed.result);
@@ -174,7 +175,7 @@ pub fn emitErrorMessagesFromSource(
     parser_type: ParserType,
     options: Options,
 ) !void {
-    var parsed = try galley_grammar.parseBytes(std.Io.failing, allocator, source, .{ .syntax_error_reporter = options.syntax_error_reporter });
+    var parsed = try galley_grammar.parseBytes(std.Io.failing, allocator, source, .{ .syntax_error_reporter = options.error_reporter });
     defer parsed.deinit();
 
     var read_guard = try parsed.session.read(parsed.result);
@@ -852,7 +853,7 @@ test "parsed grammar rejects duplicate headers and invalid recovery annotations"
         \\| "b"
         \\
     ,
-        .{ .syntax_error_reporter = &ignoreDiagnostic },
+        .{ .error_reporter = &ignoreDiagnostic },
     ));
     try std.testing.expectError(error.InvalidRecoveryTarget, parseGrammar(arena.allocator(),
         \\Start
@@ -875,7 +876,7 @@ test "parsed grammar rejects duplicate headers and invalid recovery annotations"
         \\| "a"
         \\
     ,
-        .{ .syntax_error_reporter = &ignoreDiagnostic },
+        .{ .error_reporter = &ignoreDiagnostic },
     ));
     try std.testing.expectError(error.SyntaxError, parseGrammarWithOptions(
         arena.allocator(),
@@ -883,7 +884,7 @@ test "parsed grammar rejects duplicate headers and invalid recovery annotations"
         \\| "a"
         \\
     ,
-        .{ .syntax_error_reporter = &ignoreDiagnostic },
+        .{ .error_reporter = &ignoreDiagnostic },
     ));
     try std.testing.expectError(error.SyntaxError, parseGrammarWithOptions(
         arena.allocator(),
@@ -891,7 +892,7 @@ test "parsed grammar rejects duplicate headers and invalid recovery annotations"
         \\| "a"
         \\
     ,
-        .{ .syntax_error_reporter = &ignoreDiagnostic },
+        .{ .error_reporter = &ignoreDiagnostic },
     ));
 }
 

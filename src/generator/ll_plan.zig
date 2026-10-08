@@ -405,6 +405,7 @@ const Builder = struct {
                 self.grammar,
                 analysis.nullable,
                 variable,
+                self.options.error_reporter,
             );
             var first_map = std.AutoHashMap(usize, usize).init(self.allocator);
             defer first_map.deinit();
@@ -452,7 +453,7 @@ const Builder = struct {
             }
             self.plan.follow_sets[variable] = try self.terminalRulesFromMap(follow_map);
         }
-        try common.validateVerbatimSymbols(self.allocator, self.grammar);
+        try common.validateVerbatimSymbols(self.allocator, self.grammar, self.options.error_reporter);
     }
 
     fn terminalRulesFromMap(self: *Builder, map: std.AutoHashMap(usize, usize)) ![]const TerminalRule {
@@ -504,7 +505,7 @@ const Builder = struct {
     fn reportAmbiguity(self: *Builder, ambiguity: Ambiguity) !void {
         const message = try self.explainConflict(ambiguity);
         defer self.allocator.free(message);
-        std.log.warn("{s}", .{message});
+        common.reportError(self.options.error_reporter, message);
     }
 
     fn explainConflict(self: *Builder, ambiguity: Ambiguity) ![]const u8 {
@@ -966,7 +967,7 @@ const Builder = struct {
     }
 
     fn planNames(self: *Builder) !void {
-        self.plan.symbol_names = try common.planSymbolNames(self.allocator, self.grammar.symbols.items, self.grammar.rules.items);
+        self.plan.symbol_names = try common.planSymbolNames(self.allocator, self.grammar.symbols.items, self.grammar.rules.items, self.options.error_reporter);
     }
 
     fn planEmissionMetadata(self: *Builder) !void {
@@ -1019,7 +1020,7 @@ const Builder = struct {
                             if (terminal.len > 0) try self_repeating_entries.append(self.allocator, .{ .terminal = terminal, .target = rule_index });
                         }
                     }
-                    const tree = try switch_planning.build(self.allocator, self_repeating_entries.items);
+                    const tree = try switch_planning.build(self.allocator, self_repeating_entries.items, self.options.error_reporter);
                     try self.plan.self_repeating_decisions.append(self.allocator, .{
                         .variable = symbol_index,
                         .rule_index = rule_index,
@@ -1032,7 +1033,7 @@ const Builder = struct {
         } else {
             for (symbol.terminals.items) |terminal| try entries.append(self.allocator, .{ .terminal = terminal, .target = 0 });
         }
-        const tree = try switch_planning.build(self.allocator, entries.items);
+        const tree = try switch_planning.build(self.allocator, entries.items, self.options.error_reporter);
         try self.plan.parser_decisions.append(self.allocator, .{
             .symbol_index = symbol_index,
             .skip_ast_construction = skip_ast_construction,
