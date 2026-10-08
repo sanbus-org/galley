@@ -17,15 +17,44 @@ pub const Token = struct {
         std.debug.assert(root.parser.longest_terminal_length <= Token.max_length);
     }
 
-    buffer: if (root.config.indentation_syntax) [Token.max_length * 2]u8 else []u8 = undefined,
+    /// In indentation mode, the lexed bytes in a `Storage` the session owns;
+    /// otherwise the input itself.
+    buffer: []u8 = undefined,
     /// Parallel to `buffer` in indentation mode: the source offset each buffered
     /// byte was lexed from. Source offsets are independent of the cleaned/rewritten
     /// token stream, so node text spans can be resolved back to the original input.
-    sources: if (root.config.indentation_syntax) [Token.max_length * 2]usize else void = undefined,
+    sources: if (root.config.indentation_syntax) []usize else void = if (root.config.indentation_syntax) &.{} else {},
     head: usize = 0,
     len: Length = 0,
 
     const Self = @This();
+
+    /// The indentation lexer's buffers, allocated once per session and
+    /// attached to each parse's token. They are large (twice the longest
+    /// token), so they must not live inline in the per-parse context.
+    pub const Storage = struct {
+        pub const capacity = Token.max_length * 2;
+
+        buffer: []u8,
+        sources: []usize,
+
+        pub fn init(allocator: std.mem.Allocator) !Storage {
+            const buffer = try allocator.alloc(u8, capacity);
+            errdefer allocator.free(buffer);
+            return .{ .buffer = buffer, .sources = try allocator.alloc(usize, capacity) };
+        }
+
+        pub fn deinit(self: Storage, allocator: std.mem.Allocator) void {
+            allocator.free(self.buffer);
+            allocator.free(self.sources);
+        }
+    };
+
+    pub inline fn attach(self: *Self, storage: Storage) void {
+        comptime std.debug.assert(root.config.indentation_syntax);
+        self.buffer = storage.buffer;
+        self.sources = storage.sources;
+    }
 
     pub inline fn resetBuffered(self: *Self) void {
         comptime std.debug.assert(root.config.indentation_syntax);

@@ -1207,10 +1207,14 @@ test "augmented iterate" {
     }
 }
 
+var test_token_buffer: [root.data_structures.Token.Storage.capacity]u8 = undefined;
+var test_token_sources: [root.data_structures.Token.Storage.capacity]usize = undefined;
+
 fn testContext(node_allocator: *TestASTAllocator, text: []u8, runtime_context: *root.data_structures.RuntimeContext) Context {
     var context = Context{ .runtime_context = runtime_context };
     context.node_allocator = node_allocator;
     if (comptime root.config.indentation_syntax) {
+        context.token.attach(.{ .buffer = &test_token_buffer, .sources = &test_token_sources });
         context.token.resetBuffered();
         @memcpy(context.token.buffer[0..text.len], text);
     } else {

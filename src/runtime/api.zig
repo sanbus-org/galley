@@ -632,6 +632,7 @@ pub const Session = struct {
     runtime_context: data_structures.RuntimeContext,
     reader_buffer: []u8,
     chunk_buffer: []u8,
+    token_storage: if (config.indentation_syntax) data_structures.Token.Storage else void,
     owned_input: ?[]u8 = null,
     node_allocator: if (parser.is_ast_enabled) data_structures.ASTAllocator else void,
     verbosity: if (builtin.mode == .debug) usize else void,
@@ -695,6 +696,9 @@ pub const Session = struct {
         const chunk_buffer = try allocator.alloc(u8, chunk_buffer_size);
         errdefer allocator.free(chunk_buffer);
 
+        const token_storage = if (comptime config.indentation_syntax) try data_structures.Token.Storage.init(allocator) else {};
+        errdefer if (comptime config.indentation_syntax) token_storage.deinit(allocator);
+
         var message_overrides: std.StringHashMapUnmanaged([]const u8) = .empty;
         errdefer message_overrides.deinit(allocator);
         for (options.message_overrides) |override| {
@@ -728,6 +732,7 @@ pub const Session = struct {
             },
             .reader_buffer = reader_buffer,
             .chunk_buffer = chunk_buffer,
+            .token_storage = token_storage,
             .node_allocator = node_allocator,
             .message_overrides = message_overrides,
             .verbosity = if (builtin.mode == .debug) options.verbosity else {},
@@ -754,6 +759,7 @@ pub const Session = struct {
         }
         self.freeMessageOverrides();
         self.allocator.free(self.chunk_buffer);
+        if (comptime config.indentation_syntax) self.token_storage.deinit(self.allocator);
         self.allocator.free(self.reader_buffer);
         self.arena.deinit();
     }
@@ -1116,6 +1122,7 @@ pub const Session = struct {
         if (comptime builtin.mode == .debug) {
             context_value.verbosity = self.verbosity;
         }
+        if (comptime config.indentation_syntax) context_value.token.attach(self.token_storage);
         return context_value;
     }
 
