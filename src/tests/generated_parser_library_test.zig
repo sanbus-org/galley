@@ -67,6 +67,14 @@ fn isJsonUnicodeCase() bool {
     return std.mem.indexOf(u8, case_name, "-json-unicode-") != null;
 }
 
+fn isPythonCase() bool {
+    return std.mem.indexOf(u8, case_name, "-python-") != null;
+}
+
+comptime {
+    if (isPythonCase()) _ = @import("python_expression_test.zig");
+}
+
 test "JSON parser accepts valid UTF-8 scalar boundaries" {
     if (comptime !isJsonUnicodeCase()) return error.SkipZigTest;
 
