@@ -234,7 +234,7 @@ const Generator = struct {
         );
         try writer.writeAll(
             \\    return .{
-            \\        .parsed_bytes = context.pos() -| (if (comptime config.indentation_syntax) 1 else 0),
+            \\        .parsed_bytes = context.currentTokenSourceOffset(),
             \\        .line = context.line,
             \\        .column = context.column,
             \\        .ast_root = ast_root,

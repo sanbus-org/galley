@@ -92,7 +92,7 @@ pub fn reduction_Start(args: *ProcedureArguments) !void {
 
 fn updateTextLength(context: *data_structures.Context, node_address: Node.Pointer) void {
     const node = context.node_allocator.at(node_address);
-    const end = context.pos();
+    const end = context.currentTokenSourceOffset();
     if (end >= node.text_start) {
         node.text_length = end - node.text_start;
     }

@@ -21,7 +21,7 @@ For helper or temporary variables in the grammar (like `_StringContent` or `_Opt
   LL parses rules top-down. The parser knows which rule it is expanding before it matches the children. If the variable has `is_ast_enabled = false`, LL simply skips allocating the AST node.
   
 - **LR Parser (Bottom-Up):**
-  LR parses rules bottom-up, meaning parent nodes are only created during reduction. If the reduced variable has `is_ast_enabled = false`, LR skips the node allocation. However, because it still needs to track positions for parent rules, it pushes the start position (`context.pos()`) directly onto the semantic stack as a raw integer instead of allocating an AST node.
+  LR parses rules bottom-up, meaning parent nodes are only created during reduction. If the reduced variable has `is_ast_enabled = false`, LR skips the node allocation. However, because it still needs to track positions for parent rules, it pushes the start position (`context.currentTokenSourceOffset()`) directly onto the semantic stack as a raw integer instead of allocating an AST node.
 
 ---
 
@@ -44,5 +44,5 @@ Because LR is bottom-up, it is built on a flat state machine rather than a call 
 To solve this limitation, LR uses a **compile-time static analysis** mechanism:
 
 1. During generator time, the generator builds a set of `linked_terminals` — terminals that appear on the RHS of at least one AST-enabled rule.
-2. During runtime shifting, LR only allocates a terminal AST node if the terminal is in `linked_terminals`. Otherwise, it pushes the raw position `context.pos()`.
+2. During runtime shifting, LR only allocates a terminal AST node if the terminal is in `linked_terminals`. Otherwise, it pushes the raw source offset `context.currentTokenSourceOffset()`.
 3. **Limitation:** If a terminal (like `digit`) is linked in one rule (`IntegerNumber`) but not in another (`_PositiveIntegerNumberTail`), LR is forced to allocate nodes for it every time it shifts, because it cannot distinguish them bottom-up. LL, conversely, can select an AST-suppressed parser variant for `_PositiveIntegerNumberTail` during generation.

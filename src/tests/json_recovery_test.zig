@@ -28,7 +28,7 @@ fn syntaxDiagnostic(read_guard: *const parser.SessionDiagnosticsGuard) parser.Sy
 }
 
 fn expectReachedEnd(parsed: *ParsedError, input: [:0]const u8) !void {
-    try std.testing.expect(parsed.context.pos() >= input.len);
+    try std.testing.expect(parsed.context.currentTokenSourceOffset() >= input.len);
 }
 
 test "json grammar uses explicit recovery" {
@@ -157,5 +157,5 @@ test "json remains fail fast outside committed recovery scopes" {
     defer read_guard.deinit();
     try std.testing.expectEqual(@as(usize, 1), read_guard.syntaxErrorCount());
     try std.testing.expect(syntaxDiagnostic(&read_guard).recovery == null);
-    try std.testing.expect(parsed.context.pos() <= input.len);
+    try std.testing.expect(parsed.context.currentTokenSourceOffset() <= input.len);
 }

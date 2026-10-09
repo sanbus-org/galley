@@ -46626,7 +46626,7 @@ pub fn parseWithResult(context: *data_structures.Context) !root.ParseResult {
         std.log.info("The input file was parsed successfully!", .{});
     }
     return .{
-        .parsed_bytes = context.pos() -| 1,
+        .parsed_bytes = context.currentTokenSourceOffset() -| 1,
         .line = context.line,
         .column = context.column,
         .ast_root = root_reduction.ast_root,

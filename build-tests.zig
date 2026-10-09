@@ -236,8 +236,10 @@ pub fn add(b: *std.Build, options: Options) !void {
             const run_newline_after_block_end_off_tests = try addNewlineAfterBlockEndTests(b, options, parser_type, false, selection.names);
             test_step.dependOn(&run_newline_after_block_end_off_tests.step);
 
-            const run_byte_run_tests = try addByteRunTests(b, options, parser_type, selection.names);
-            test_step.dependOn(&run_byte_run_tests.step);
+            inline for ([_]bool{ false, true }) |recovery| {
+                const run_byte_run_tests = try addByteRunTests(b, options, parser_type, recovery, selection.names);
+                test_step.dependOn(&run_byte_run_tests.step);
+            }
 
             const run_explicit_recovery_tests = try addExplicitRecoveryTests(b, options, parser_type, selection.names);
             test_step.dependOn(&run_explicit_recovery_tests.step);
@@ -1374,9 +1376,10 @@ fn addByteRunTests(
     b: *std.Build,
     options: Options,
     parser_type: []const u8,
+    recovery: bool,
     filters: []const []const u8,
 ) !*std.Build.Step.Run {
-    const parser_name = b.fmt("byte-run-{s}", .{parser_type});
+    const parser_name = b.fmt("byte-run-{s}{s}", .{ parser_type, if (recovery) "-recovery" else "" });
     const generate_parser = b.addRunArtifact(options.generate_parser_file_exe);
     generate_parser.addArg("--grammar");
     generate_parser.addFileArg(b.path("tests/byte-run/grammar.grm"));
@@ -1394,6 +1397,7 @@ fn addByteRunTests(
         "--indentation-syntax",
         "--newline-after-block-end",
     });
+    if (recovery) generate_parser.addArg("--with-error-recovery");
     generate_parser.stdio = .inherit;
 
     const procedures_mod = b.createModule(.{

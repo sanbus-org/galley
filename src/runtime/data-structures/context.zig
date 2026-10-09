@@ -1745,27 +1745,21 @@ pub const Context = struct {
         return std.mem.readInt(T, array_ptr, .big);
     }
 
-    pub inline fn pos(self: *const Self) usize {
-        if (comptime root.config.indentation_syntax) {
-            return self.read_bytes + self.seek;
-        }
-        if (comptime root.sliding_input_enabled) {
-            return self.window_base + self.token.head - self.token.len;
-        }
-        return self.token.head - self.token.len;
-    }
-
     /// Source offset of the token the parser is about to consume, or of the
     /// byte it is about to lex when no front-run token is buffered. This is the
     /// source position where the next consumed token begins (equivalently, where
     /// the previously consumed token ended), and is the coordinate space node
-    /// text spans should be captured in.
+    /// text spans should be captured in. It is the parser's position: the
+    /// lexer may have read further ahead.
     pub inline fn currentTokenSourceOffset(self: *const Self) usize {
         if (comptime root.config.indentation_syntax) {
             if (self.token.len == 0) return self.read_bytes + self.seek;
             return self.token.firstSourceOffset();
         }
-        return self.pos();
+        if (comptime root.sliding_input_enabled) {
+            return self.window_base + self.token.head - self.token.len;
+        }
+        return self.token.head - self.token.len;
     }
 
     /// Creates the local node handle a generated rule body assembles for one

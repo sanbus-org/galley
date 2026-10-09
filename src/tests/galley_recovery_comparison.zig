@@ -79,7 +79,7 @@ fn run(io: std.Io, allocator: std.mem.Allocator) !Summary {
     const rendered = try parser.renderParseDiagnostic(allocator, diagnostic, .plain);
     return .{
         .error_count = read_guard.syntaxErrorCount(),
-        .reached_bytes = context.pos() - 1,
+        .reached_bytes = context.currentTokenSourceOffset() - 1,
         .line = syntax.line,
         .column = syntax.column,
         .unexpected_token = unexpected_token,

@@ -68,3 +68,17 @@ test "an unexpected token spans at most the longest terminal, not the rest of th
 test "an unexpected token still spans a whole UTF-8 character" {
     try expectUnexpectedToken("ab😀cdef", "😀");
 }
+
+test "a recovered parse does not count bytes the lexer only read ahead" {
+    if (!parser.parser.is_error_recovery_enabled) return error.SkipZigTest;
+    // The lexer reads `%abc` at once; LL stops at the `%` having consumed
+    // nothing, while LR recovers to the end of the input.
+    const input = "%abc\nde";
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .max_errors = 10, .syntax_error_reporter = &ignoreDiagnostic });
+    defer session.deinit();
+    try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes(input, null));
+    var guard = try session.readCurrent();
+    defer guard.deinit();
+    const stopped_at: usize = if (parser.parser.parser_type == .ll) 0 else input.len;
+    try std.testing.expectEqual(stopped_at, guard.result.parsed_bytes);
+}

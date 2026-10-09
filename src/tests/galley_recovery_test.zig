@@ -28,7 +28,7 @@ fn syntaxDiagnostic(read_guard: *const parser.SessionDiagnosticsGuard) parser.Sy
 }
 
 fn expectReachedEnd(context: *parser.data_structures.Context, input: [:0]const u8) !void {
-    try std.testing.expect(context.pos() >= input.len);
+    try std.testing.expect(context.currentTokenSourceOffset() >= input.len);
 }
 
 test "galley grammar uses explicit recovery" {
@@ -136,6 +136,6 @@ test "galley grammar fails fast between committed recovery scopes" {
     var read_guard = try parsed.read();
     defer read_guard.deinit();
     try std.testing.expectEqual(@as(usize, 1), read_guard.syntaxErrorCount());
-    try std.testing.expect(parsed.context.pos() - 1 < input.len);
+    try std.testing.expect(parsed.context.currentTokenSourceOffset() - 1 < input.len);
     try std.testing.expect(syntaxDiagnostic(&read_guard).recovery == null);
 }
