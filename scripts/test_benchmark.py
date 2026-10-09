@@ -7,7 +7,6 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-
 SCRIPT_PATH = pathlib.Path(__file__).with_name("benchmark.py")
 SPEC = importlib.util.spec_from_file_location("galley_benchmark", SCRIPT_PATH)
 benchmark = importlib.util.module_from_spec(SPEC)
@@ -58,7 +57,9 @@ class ProgressFormattingTests(unittest.TestCase):
             variant=variant,
             cards=(
                 benchmark.BenchmarkCard("small", "LL", 2, None, None),
-                benchmark.BenchmarkCard("large", "LL", 2**16, "> 1 MB", "procedures enabled"),
+                benchmark.BenchmarkCard(
+                    "large", "LL", 2**16, "> 1 MB", "procedures enabled"
+                ),
             ),
         )
 
@@ -131,10 +132,15 @@ class BenchmarkPlanningTests(unittest.TestCase):
 
     def test_explicit_inputs_replace_language_samples(self):
         inputs = ["custom/first.input", "custom/second.input"]
-        with mock.patch.object(
-            benchmark, "get_parser_types_for_language", return_value=["LL"]
-        ), mock.patch.object(
-            benchmark, "sample_inputs", side_effect=AssertionError("samples consulted")
+        with (
+            mock.patch.object(
+                benchmark, "get_parser_types_for_language", return_value=["LL"]
+            ),
+            mock.patch.object(
+                benchmark,
+                "sample_inputs",
+                side_effect=AssertionError("samples consulted"),
+            ),
         ):
             suite = benchmark.prepare_benchmark_suite(
                 "custom",
@@ -149,11 +155,14 @@ class BenchmarkPlanningTests(unittest.TestCase):
 class InteractiveProgressTests(unittest.TestCase):
     def test_updates_overwrite_reserved_bottom_line_without_newlines(self):
         output = io.StringIO()
-        with mock.patch.object(
-            benchmark.shutil,
-            "get_terminal_size",
-            return_value=os.terminal_size((100, 24)),
-        ), mock.patch.object(sys, "stdout", output):
+        with (
+            mock.patch.object(
+                benchmark.shutil,
+                "get_terminal_size",
+                return_value=os.terminal_size((100, 24)),
+            ),
+            mock.patch.object(sys, "stdout", output),
+        ):
             progress = benchmark.GlobalProgress(total=2, enabled=True)
             progress.begin_card("JSON · No AST", 1, 2)
             progress.complete_card()
@@ -168,11 +177,14 @@ class InteractiveProgressTests(unittest.TestCase):
 
     def test_finish_leaves_completed_line_then_restores_terminal(self):
         output = io.StringIO()
-        with mock.patch.object(
-            benchmark.shutil,
-            "get_terminal_size",
-            return_value=os.terminal_size((100, 24)),
-        ), mock.patch.object(sys, "stdout", output):
+        with (
+            mock.patch.object(
+                benchmark.shutil,
+                "get_terminal_size",
+                return_value=os.terminal_size((100, 24)),
+            ),
+            mock.patch.object(sys, "stdout", output),
+        ):
             progress = benchmark.GlobalProgress(total=3, enabled=True)
             progress.begin_card("JSON · No AST", 3, 3)
             progress.finish()
@@ -190,9 +202,12 @@ class InteractiveProgressTests(unittest.TestCase):
                 os.terminal_size((80, 20)),
             )
         )
-        with mock.patch.object(
-            benchmark.shutil, "get_terminal_size", side_effect=terminal_sizes
-        ), mock.patch.object(sys, "stdout", output):
+        with (
+            mock.patch.object(
+                benchmark.shutil, "get_terminal_size", side_effect=terminal_sizes
+            ),
+            mock.patch.object(sys, "stdout", output),
+        ):
             progress = benchmark.GlobalProgress(total=1, enabled=True)
             progress.begin_card("JSON · No AST", 1, 1)
 

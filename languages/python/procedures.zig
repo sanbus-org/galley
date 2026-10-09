@@ -80,6 +80,24 @@ fn unaryPrecedence(operator_text: []const u8) u8 {
     return Precedence.unary;
 }
 
+/// Whether a node is a terminal's (built only with AST nodes for terminals).
+/// The hooks pair operands and find list wrappers among a node's children, so
+/// they step over terminal children.
+fn isTerminal(node: *const Node) bool {
+    return node.variable == Node.invalid_variable;
+}
+
+/// The first child that is not a terminal's, starting at `address`.
+fn nextOperand(context: *Context, address: Pointer) Pointer {
+    var current = address;
+    while (current != invalid and isTerminal(context.node_allocator.at(current))) current = context.node_allocator.at(current).next;
+    return current;
+}
+
+fn firstOperand(context: *Context, node: *const Node) Pointer {
+    return nextOperand(context, node.first_child);
+}
+
 fn end(node: *const Node) usize {
     return node.text_start + node.text_length;
 }
@@ -94,11 +112,11 @@ fn extendStart(node: *Node, start: usize) void {
 /// operand children (or before its operand, for a unary operation).
 fn operatorText(context: *Context, node: *const Node) []const u8 {
     const node_allocator = context.node_allocator;
-    const first = node_allocator.at(node.first_child);
+    const first = node_allocator.at(firstOperand(context, node));
     if (node.variable == unary_operation_variable) {
         return context.getTextSlice(node.text_start, first.text_start - node.text_start);
     }
-    const second = node_allocator.at(first.next);
+    const second = node_allocator.at(nextOperand(context, first.next));
     return context.getTextSlice(end(first), second.text_start - end(first));
 }
 
@@ -106,7 +124,7 @@ fn operatorText(context: *Context, node: *const Node) []const u8 {
 /// null when the node is an operand that operators cannot reach into.
 fn resolvedPrecedence(context: *Context, address: Pointer) ?u8 {
     const node = context.node_allocator.at(address);
-    if (node.first_child == invalid) return null;
+    if (firstOperand(context, node) == invalid) return null;
     if (node.variable == conditional_variable or node.variable == named_expression_variable) return Precedence.lowest;
     if (node.variable == binary_operation_variable) return binaryPrecedence(operatorText(context, node));
     return null;
@@ -114,7 +132,7 @@ fn resolvedPrecedence(context: *Context, address: Pointer) ?u8 {
 
 fn isUnaryNot(context: *Context, address: Pointer) bool {
     const node = context.node_allocator.at(address);
-    if (node.variable != unary_operation_variable or node.first_child == invalid) return false;
+    if (node.variable != unary_operation_variable or firstOperand(context, node) == invalid) return false;
     return unaryPrecedence(operatorText(context, node)) == Precedence.not;
 }
 
@@ -126,7 +144,7 @@ fn extendSpine(context: *Context, root: Pointer, target: Pointer, start: usize) 
     while (true) {
         extendStart(node_allocator.at(address), start);
         if (address == target) return;
-        address = node_allocator.at(address).first_child;
+        address = firstOperand(context, node_allocator.at(address));
     }
 }
 
@@ -155,19 +173,22 @@ fn insertBinary(context: *Context, left: Pointer, operator: Pointer, right: Poin
         const descends = position_precedence < precedence or
             (position_precedence == precedence and precedence != Precedence.power and precedence != Precedence.comparison);
         if (!descends) break;
-        position = node_allocator.at(position).first_child;
+        position = firstOperand(context, node_allocator.at(position));
     }
 
     // `a is not b` arrives as `is` applied to `not b`.
     if (std.mem.eql(u8, std.mem.trim(u8, operator_text, " "), "is") and isUnaryNot(context, position)) {
-        const operand = node_allocator.at(position).first_child;
+        const operand = firstOperand(context, node_allocator.at(position));
         Node.removeSelf(operand, node_allocator);
         root = replaceNode(context, position, operand, root);
         position = operand;
     }
 
-    // Comparison chains stay one node: `a < b < c` has three operands.
+    // Comparison chains stay one node: `a < b < c` has three operands. The
+    // operator's own terminals, if any, move along between the operands.
     if (precedence == Precedence.comparison and resolvedPrecedence(context, position) == Precedence.comparison) {
+        const terminals = Node.cleanChildren(operator, node_allocator);
+        if (terminals != invalid) Node.insertChildren(position, node_allocator, 0, terminals);
         Node.insertChildren(position, node_allocator, 0, left);
         extendSpine(context, root, position, left_start);
         return root;
@@ -175,7 +196,8 @@ fn insertBinary(context: *Context, left: Pointer, operator: Pointer, right: Poin
 
     const position_parent = node_allocator.at(position).parent;
     if (position_parent != invalid) Node.removeSelf(position, node_allocator);
-    Node.appendChildren(operator, node_allocator, left);
+    // Operands go around the operator's own terminals, if any.
+    Node.insertChildren(operator, node_allocator, 0, left);
     Node.appendChildren(operator, node_allocator, position);
     operator_node.text_start = left_start;
     operator_node.text_length = end(node_allocator.at(position)) - left_start;
@@ -196,7 +218,7 @@ fn insertUnary(context: *Context, operator: Pointer, right: Pointer) Pointer {
     var position = right;
     while (resolvedPrecedence(context, position)) |position_precedence| {
         if (position_precedence >= precedence) break;
-        position = node_allocator.at(position).first_child;
+        position = firstOperand(context, node_allocator.at(position));
     }
 
     const position_parent = node_allocator.at(position).parent;
@@ -289,8 +311,10 @@ pub fn hook_identifierStatement(args: *ProcedureArguments) !void {
     const context = args.context;
     const node_allocator = context.node_allocator;
     const node = node_allocator.at(node_address);
-    const head = node.first_child;
+    const head = firstOperand(context, node);
     if (head == invalid or node_allocator.at(head).variable != keyword_name_variable) return;
+    // The keyword's terminals are the start of the name.
+    while (node.first_child != head) Node.removeSelf(node.first_child, node_allocator);
 
     node.variable = expression_statement_variable;
     node_allocator.at(head).variable = name_variable;
@@ -330,17 +354,19 @@ fn isListWrapper(variable: u16) bool {
     return std.mem.indexOfScalar(u16, &list_wrapper_variables, variable) != null;
 }
 
-/// A list wrapper is always the last child of its owner and of the wrapper
-/// above it, so lifting the trailing wrapper repeatedly flattens the list.
+/// A list wrapper is the last child of its owner and of the wrapper above it,
+/// apart from trailing terminals, so lifting that wrapper repeatedly flattens
+/// the list.
 pub fn hook_flattenLists(args: *ProcedureArguments) !void {
     if (comptime !galley.parser.is_ast_enabled) return;
     const node_address = args.node_address orelse return;
     const node_allocator = args.context.node_allocator;
     while (true) {
-        const wrapper = node_allocator.at(node_address).last_child;
+        var wrapper = node_allocator.at(node_address).last_child;
+        while (wrapper != invalid and isTerminal(node_allocator.at(wrapper))) wrapper = node_allocator.at(wrapper).prior;
         if (wrapper == invalid or !isListWrapper(node_allocator.at(wrapper).variable)) return;
-        Node.removeSelf(wrapper, node_allocator);
         const children = Node.cleanChildren(wrapper, node_allocator);
-        if (children != invalid) Node.appendChildren(node_address, node_allocator, children);
+        if (children != invalid) Node.insertBefore(wrapper, node_allocator, children);
+        Node.removeSelf(wrapper, node_allocator);
     }
 }

@@ -37,7 +37,7 @@ const matrix_variants = [_]MatrixVariant{
         .name = "no-ast-procedures-no-terminal-ast",
         .args = &.{ "--no-ast", "--with-procedures", "--no-ast-for-terminals", "--no-error-recovery" },
         .large_sample_api_coverage = true,
-        .excluded_languages = &.{ "galley", "json-augmented", "json-structured-ast" },
+        .excluded_languages = &.{ "galley", "json-augmented", "json-structured-ast", "python" },
     },
     .{
         .name = "ast-no-procedures-no-terminal-ast",

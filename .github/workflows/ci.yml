@@ -47,6 +47,7 @@ jobs:
         case:
           - ll-galley
           - lr-galley
+          - ll-python
           - ll-json-structured-ast
           - lr-json-structured-ast
           - ll-json
