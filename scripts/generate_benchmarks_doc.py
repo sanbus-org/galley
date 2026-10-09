@@ -331,6 +331,11 @@ def section_bundled_grammar_coverage() -> str:
             "LL",
         ],
         [
+            "Python",
+            "Statements, expressions, decorators, async functions, match cases, type aliases",
+            "LL",
+        ],
+        [
             "Galley Grammar",
             "The `.grm` language used to define Galley grammars",
             "LL + LR",
@@ -547,6 +552,10 @@ GRAMMAR_DESCRIPTIONS: Dict[str, str] = {
         "returns, function-call expressions, integer literals, strings, comments, "
         "and keyed table constructors."
     ),
+    "python": (
+        "A Python grammar that exercises statements, expressions, decorators, async "
+        "functions, match cases, and type aliases across two feature-coverage samples."
+    ),
     "indentation": (
         "A procedure-free indentation-sensitive grammar whose delimiter tokens make "
         "every decision point unambiguous with one token of lookahead. Used to exercise "
@@ -558,6 +567,7 @@ GRAMMAR_DESCRIPTIONS: Dict[str, str] = {
 GRAMMAR_SECTION_ORDER = [
     "lua",
     "lisp",
+    "python",
     "json",
     "galley",
     "json-augmented",
@@ -569,6 +579,7 @@ GRAMMAR_SECTION_ORDER = [
 GRAMMAR_SECTION_LABELS = {
     "lua": "Lua",
     "lisp": "Lisp",
+    "python": "Python",
     "json": "JSON",
     "galley": "Galley",
     "json-augmented": "JSON Augmented",

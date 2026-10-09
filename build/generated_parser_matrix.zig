@@ -88,6 +88,7 @@ const languages = [_][]const u8{
     "json-structured-ast",
     "lisp",
     "lua",
+    "python",
     "indentation",
 };
 

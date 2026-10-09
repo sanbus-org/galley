@@ -19,6 +19,7 @@ Galley benchmarks track parser throughput across grammar shapes. JSON is also th
 | JSON           | Recursive data, strings, numbers, arrays, objects, third-party comparison baseline | LL + LR |
 | Lisp           | Nested S-expressions, symbols, strings, integers, multiple top-level forms         | LL      |
 | Lua            | Keyword-led statements, functions, calls, returns, keyed table constructors        | LL      |
+| Python         | Statements, expressions, decorators, async functions, match cases, type aliases    | LL      |
 | Galley Grammar | The `.grm` language used to define Galley grammars                                   | LL + LR |
 
 ---

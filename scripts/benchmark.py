@@ -148,7 +148,12 @@ def truncate_name(name, inner_width):
 
 
 def format_progress_line(
-    completed, total, suite_label, card_index, card_total, terminal_width
+    completed,
+    total,
+    suite_label,
+    card_index,
+    card_total,
+    terminal_width,
 ):
     percent = 100 if total == 0 else min(100, int(completed * 100 / total))
     count_text = f"{completed}/{total} ({percent}%)"
@@ -1043,6 +1048,10 @@ def lua_benchmark(gen_opts, args):
     args.benchmark_plan.append(prepare_benchmark_suite("lua", gen_opts, args))
 
 
+def python_benchmark(gen_opts, args):
+    args.benchmark_plan.append(prepare_benchmark_suite("python", gen_opts, args))
+
+
 def run_all_modes(benchmark_fn, args):
     """Iterates through all AST and terminal-AST feature modes."""
     if args.no_ast:
@@ -1069,6 +1078,7 @@ BENCHMARKS = {
     "json-unicode": json_unicode_benchmark,
     "lisp": lisp_benchmark,
     "lua": lua_benchmark,
+    "python": python_benchmark,
     "indentation": indentation_benchmark,
 }
 
