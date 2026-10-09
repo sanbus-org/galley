@@ -32,50 +32,53 @@ public final class ProcedureArguments {
         this.generation = generation;
     }
 
-    /** The session handle every call crosses with; a closed session is refused here. */
-    private MemorySegment handle() {
-        if (session.isClosed()) throw new GalleyClosedException("session");
-        return session.handle();
+    /**
+     * The one crossing for this object's native calls: claims the session
+     * handle through {@link Session#gate}, the count close refuses on, so a
+     * hook's calls nest inside its parse's count and a closed session is
+     * refused there.
+     */
+    private <T> T cross(Session.HandleCall<T> call) {
+        return session.gate(call);
     }
 
     /**
      * The node being reduced, or null.
      */
     public Node currentNode() {
-        long address = succeeded(lib.galley_procedure_current_node(handle(), hook));
+        long address = succeeded(cross(handle -> lib.galley_procedure_current_node(handle, hook)));
         if (address == Galley.INVALID_NODE) return null;
         return new Node(session, address, generation);
     }
 
     public void setCurrentNode(Node node) {
-        MemorySegment handle = handle();
         if (node == null) {
-            succeeded(lib.galley_procedure_set_current_node(handle, hook, 0, Galley.INVALID_NODE));
+            succeeded(cross(handle -> lib.galley_procedure_set_current_node(handle, hook, 0, Galley.INVALID_NODE)));
             return;
         }
         long address = session.address(node);
-        succeeded(lib.galley_procedure_set_current_node(handle, hook, node.generation(), address));
+        succeeded(cross(handle -> lib.galley_procedure_set_current_node(handle, hook, node.generation(), address)));
     }
 
     public long dropSelf() {
-        return succeeded(lib.galley_procedure_drop_self(handle(), hook));
+        return succeeded(cross(handle -> lib.galley_procedure_drop_self(handle, hook)));
     }
 
     public long dropChildren() {
-        return succeeded(lib.galley_procedure_drop_children(handle(), hook));
+        return succeeded(cross(handle -> lib.galley_procedure_drop_children(handle, hook)));
     }
 
     public long dropIfEmpty() {
-        return succeeded(lib.galley_procedure_drop_if_empty(handle(), hook));
+        return succeeded(cross(handle -> lib.galley_procedure_drop_if_empty(handle, hook)));
     }
 
     public long replaceWithChildren() {
-        return succeeded(lib.galley_procedure_replace_with_children(handle(), hook));
+        return succeeded(cross(handle -> lib.galley_procedure_replace_with_children(handle, hook)));
     }
 
-    public int currentLine() { return (int) succeeded(lib.galley_procedure_context_line(handle(), hook)); }
+    public int currentLine() { return (int) succeeded(cross(handle -> lib.galley_procedure_context_line(handle, hook))); }
 
-    public int currentColumn() { return (int) succeeded(lib.galley_procedure_context_column(handle(), hook)); }
+    public int currentColumn() { return (int) succeeded(cross(handle -> lib.galley_procedure_context_column(handle, hook))); }
 
     /**
      * Records a semantic error on the current node and returns the running
@@ -83,11 +86,10 @@ public final class ProcedureArguments {
      * error fails with {@link StatusCode#ERROR_SEMANTIC}.
      */
     public int reportSemanticError(String message) {
-        MemorySegment handle = handle();
         byte[] bytes = message.getBytes(StandardCharsets.UTF_8);
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment seg = bytes.length == 0 ? MemorySegment.NULL : arena.allocateFrom(ValueLayout.JAVA_BYTE, bytes);
-            return (int) succeeded(lib.galley_procedure_report_semantic_error(handle, hook, seg, bytes.length));
+            return (int) succeeded(cross(handle -> lib.galley_procedure_report_semantic_error(handle, hook, seg, bytes.length)));
         }
     }
 

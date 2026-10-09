@@ -576,6 +576,125 @@ class SessionTests(unittest.TestCase):
         self.session.close()
         self.assertTrue(self.session.is_closed())
 
+    def test_close_is_refused_while_a_call_is_in_flight(self) -> None:
+        # galley_parse_file opens the file before the core takes its lease,
+        # so a named pipe with no writer leaves the parse holding only this
+        # binding's count: nothing is locked in the core, and the refusal
+        # below is the count's alone. The GIL makes the ordering exact —
+        # the parsing thread keeps it from its signal to its claim, so this
+        # thread cannot run close before the claim exists.
+        if not hasattr(os, "mkfifo"):
+            self.skipTest("no named pipes on this platform")
+        directory = tempfile.mkdtemp(prefix="galley-python-inflight-")
+        fifo = os.path.join(directory, "input.kv")
+        os.mkfifo(fifo)
+        entered = threading.Event()
+        outcome: list[int] = []
+
+        def parse_blocked_file() -> None:
+            entered.set()
+            outcome.append(self.session.parse_file(fifo))
+
+        previous_interval = sys.getswitchinterval()
+        sys.setswitchinterval(3600.0)
+        parser = threading.Thread(target=parse_blocked_file)
+        parser.start()
+        try:
+            self.assertTrue(entered.wait(30))
+            with self.assertRaises(grammar.GalleyError) as refusal:
+                self.session.close()
+            self.assertEqual(
+                refusal.exception.code, grammar.Status.ERROR_SESSION_IN_USE
+            )
+            self.assertFalse(self.session.is_closed())
+            self.assertEqual(outcome, [], "the parse was not in flight")
+        finally:
+            sys.setswitchinterval(previous_interval)
+            writer = os.open(fifo, os.O_WRONLY)
+            os.write(writer, b"alpha:12,beta:3")
+            os.close(writer)
+            parser.join(30)
+            os.unlink(fifo)
+            os.rmdir(directory)
+
+        # The claim covered the whole call, so the parse finished on a live
+        # session and the close it was refused for now goes through.
+        self.assertEqual(outcome, [15])
+        self.session.close()
+        self.assertTrue(self.session.is_closed())
+
+    def test_a_conversion_that_closes_never_reaches_a_freed_handle(self) -> None:
+        # The handle is read and claimed only after the argument's
+        # conversion, and __fspath__ runs host code: the close below wins,
+        # because nothing claims the session yet, and the parse must then
+        # find the session closed — it never calls into the handle that
+        # close freed. The other allowed outcome, a close refused by a
+        # claim held elsewhere, is
+        # test_close_is_refused_while_a_call_is_in_flight.
+        session = self.session
+        outcome: list[str] = []
+
+        class ClosingPath:
+            def __fspath__(self):
+                try:
+                    session.close()
+                    outcome.append("closed")
+                except grammar.GalleyError as refused:
+                    outcome.append(f"refused:{refused.code}")
+                return b"never-opened.kv"
+
+        with self.assertRaises((ValueError, grammar.GalleyError)) as raised:
+            session.parse_file(ClosingPath())
+
+        self.assertEqual(outcome, ["closed"])
+        self.assertIsInstance(raised.exception, ValueError)
+        self.assertEqual(str(raised.exception), "session is closed")
+        self.assertTrue(session.is_closed())
+        session.close()  # closing a closed session stays free
+
+    def test_node_arguments_are_checked_by_real_type(self) -> None:
+        # Node validation reads the real type, never __class__: the faked
+        # property must not run, so no host code — and no close of this
+        # session — can slip between reading the handle and the native
+        # call, and the faker is refused instead of cast to a Node.
+        session = self.session
+        consulted: list[str] = []
+
+        class Faker:
+            __slots__ = ("a", "b", "c")
+
+            @property
+            def __class__(self):
+                consulted.append("__class__")
+                session.close()
+                return grammar.Node
+
+        session.parse("alpha:12,beta:3")
+        root = session.root_node()
+        self.assertIsNotNone(root)
+
+        faker = Faker()
+        # Laid out at NodeObject's field offsets (session, address,
+        # generation), so a type check that regresses to isinstance hands
+        # the native call a session pointer instead of stopping at the
+        # cast; with the type check the slots are never read.
+        faker.a = session
+        faker.b = 0
+        faker.c = 0
+
+        with self.assertRaises(TypeError) as raised:
+            session.append_children(root, faker)
+        self.assertIn("expected a Node", str(raised.exception))
+        self.assertEqual(consulted, [])
+        self.assertFalse(session.is_closed())
+
+        # Comparison uses the same type check: no host code, no adoption.
+        self.assertNotEqual(faker, root)
+        self.assertNotEqual(root, faker)
+        self.assertEqual(consulted, [])
+        self.assertFalse(session.is_closed())
+        self.assertGreater(len(root), 0)  # the session is still whole
+
     def test_reinit_from_a_hook_is_refused_and_keeps_the_session(self) -> None:
         # Session.__init__ of a live session from inside its own parse must
         # not swap that session out from under the parse: the refusal keeps

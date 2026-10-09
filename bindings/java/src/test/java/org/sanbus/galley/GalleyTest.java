@@ -9,6 +9,7 @@ import org.sanbus.galley.internal.GalleyLibraryLoader;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.PrintStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
@@ -362,6 +363,70 @@ public class GalleyTest {
             int[] pos = session.lastPosition();
             assertNotNull(pos);
             assertArrayEquals(new int[]{1, 17}, pos);
+        }
+
+        @Test
+        void closeIsRefusedWhileACallIsInFlight() throws Exception {
+            // galley_parse_file opens the file before the core takes its
+            // lease, so a named pipe with no writer leaves the parse holding
+            // only this binding's count: nothing is locked in the core, and
+            // the refusal below is the count's alone. Nothing outside the
+            // binding can see that window — a writer's appearance ends it —
+            // so the count is what tells us the claim exists; close runs
+            // only after it reads 1. Both threads are daemons and every
+            // join has a deadline, so a red assertion reports instead of
+            // hanging the suite on the blocked pipe.
+            Path directory = Files.createTempDirectory("galley-java-inflight");
+            Path fifo = directory.resolve("input.kv");
+            Process mkfifo = new ProcessBuilder("mkfifo", fifo.toString())
+                    .redirectErrorStream(true).start();
+            Assumptions.assumeTrue(mkfifo.waitFor(30, TimeUnit.SECONDS) && mkfifo.exitValue() == 0,
+                    "no mkfifo on this platform");
+            AtomicInteger outcome = new AtomicInteger(-1);
+            CountDownLatch started = new CountDownLatch(1);
+            Thread parser = new Thread(() -> {
+                started.countDown();
+                outcome.set(session.parseFile(fifo.toString()));
+            });
+            parser.setDaemon(true);
+            parser.start();
+            try {
+                assertTrue(started.await(30, TimeUnit.SECONDS));
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+                while (session.inFlightCount() < 1) {
+                    if (System.nanoTime() > deadline) fail("the parse never claimed the session");
+                    Thread.sleep(1);
+                }
+                GalleyException refusal = assertThrows(GalleyException.class, session::close);
+                assertEquals(StatusCode.ERROR_SESSION_IN_USE, refusal.getCode());
+                assertFalse(session.isClosed());
+                assertEquals(-1, outcome.get(), "the parse was not in flight");
+            } finally {
+                Thread writer = new Thread(() -> {
+                    try {
+                        Files.write(fifo, "alpha:12,beta:3".getBytes(StandardCharsets.UTF_8));
+                    } catch (IOException unwritable) {
+                        // No reader arrived: the test's own assertion, not
+                        // this cleanup, is what reports.
+                    }
+                });
+                writer.setDaemon(true);
+                writer.start();
+                writer.join(30_000);
+                parser.join(30_000);
+                try {
+                    Files.deleteIfExists(fifo);
+                    Files.deleteIfExists(directory);
+                } catch (IOException uncleaned) {
+                    // Temp-directory cleanup is not the test's claim.
+                }
+            }
+
+            // The count covered the whole call, so the parse finished on a
+            // live session and the close it was refused for now goes through.
+            assertEquals(15, outcome.get());
+            session.close();
+            assertTrue(session.isClosed());
         }
 
         @Test

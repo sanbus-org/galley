@@ -56,12 +56,14 @@ language in its own binary.
   which returns `SessionInUse`). Hosts that expose `close` — Python, Java,
   JS and Go — pass that refusal through to their caller and keep the session
   open, so no layer frees state a running parse still reads.
-* The host still owns the handle's lifetime. The refusal above covers only
+* A raw C ABI caller owns the handle's lifetime. The refusal above covers only
   parses the core can see: a caller holding the pointer before the core
   takes its lock is invisible to the core and reaches it afterwards, so no
   call may race a destroy that succeeds. Keep one owner per handle — or a
-  count the host checks before the pointer can go — and free nothing while a
-  call that reads the handle is in flight.
+  count checked before the pointer can go — and free nothing while a call
+  that reads the handle is in flight. A language binding makes that check as
+  part of its own contract, not this one: see
+  [binding contracts](https://github.com/sanbus-org/galley/blob/main/bindings/CONTRACTS.md).
 * Mutate message overrides only through `Session.setMessageOverride`, never by
   writing `Session.message_overrides` directly.
 * Unload a Galley library only when no session with recovery enabled is live.

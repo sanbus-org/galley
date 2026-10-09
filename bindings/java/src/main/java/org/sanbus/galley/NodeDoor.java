@@ -3,7 +3,6 @@ package org.sanbus.galley;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.util.function.LongFunction;
-import java.util.function.Supplier;
 import org.sanbus.galley.internal.GalleyLibrary;
 import org.sanbus.galley.internal.NodeCalls;
 
@@ -16,8 +15,10 @@ import org.sanbus.galley.internal.NodeCalls;
  * unshared by construction. The two differ only in what they are opened on,
  * so a door is data: the family of downcalls ({@link NodeCalls}, two sets of
  * handles with identical types), the handle to call it on, and how to turn
- * a refusal into the host's failure. The core checks the node's generation
- * inside every call on either door. The session picks the door per call
+ * a refusal into the host's failure. Every crossing claims the session
+ * handle through {@link Session#gate}, so close cannot free the session
+ * under a call in flight. The core checks the node's generation inside
+ * every call on either door. The session picks the door per call
  * ({@link Session}'s {@code door()}): a hook door is created for one parse
  * and only the thread running its hook may cross it. A {@link Node} stores
  * neither door: it carries the session, the core's parse generation and the
@@ -27,23 +28,36 @@ import org.sanbus.galley.internal.NodeCalls;
  */
 final class NodeDoor {
     private final NodeCalls calls;
-    private final Supplier<MemorySegment> handle;
+    private final Session session;
+    /** The parse's own door for a hook door; {@link MemorySegment#NULL} for the session door. */
+    private final MemorySegment hookDoor;
     private final LongFunction<GalleyException> failure;
 
-    private NodeDoor(NodeCalls calls, Supplier<MemorySegment> handle, LongFunction<GalleyException> failure) {
+    private NodeDoor(NodeCalls calls, Session session, MemorySegment hookDoor, LongFunction<GalleyException> failure) {
         this.calls = calls;
-        this.handle = handle;
+        this.session = session;
+        this.hookDoor = hookDoor;
         this.failure = failure;
     }
 
     /** The post-parse door of {@code session}; refusals carry its diagnostic snapshot. */
     static NodeDoor ofSession(GalleyLibrary lib, Session session) {
-        return new NodeDoor(lib.sessionCalls, session::handle, session::errorFromStatus);
+        return new NodeDoor(lib.sessionCalls, session, MemorySegment.NULL, session::errorFromStatus);
     }
 
     /** The hook door of one parse; refusals carry only the status text. */
-    static NodeDoor ofHook(GalleyLibrary lib, MemorySegment door) {
-        return new NodeDoor(lib.hookCalls, () -> door, status -> Session.statusFailure(lib, status, null));
+    static NodeDoor ofHook(GalleyLibrary lib, Session session, MemorySegment door) {
+        return new NodeDoor(lib.hookCalls, session, door, status -> Session.statusFailure(lib, status, null));
+    }
+
+    /**
+     * The one crossing for this door: claims the session handle through
+     * {@link Session#gate}, the count close refuses on, and hands the call
+     * the segment this door opens on — the parse's own door for a hook
+     * door, the claimed handle for the session door.
+     */
+    private <T> T cross(Session.HandleCall<T> call) {
+        return session.gate(handle -> call.run(hookDoor.equals(MemorySegment.NULL) ? handle : hookDoor));
     }
 
     /**
@@ -74,7 +88,7 @@ final class NodeDoor {
     // shares a segment between threads.
 
     int childCount(long generation, long address) {
-        return (int) check(calls.childCount(handle.get(), generation, address));
+        return (int) check(cross(handle -> calls.childCount(handle, generation, address)));
     }
 
     /** The five tree links. */
@@ -82,42 +96,41 @@ final class NodeDoor {
 
     /** One link through this door; {@link Galley#INVALID_NODE} when it does not exist. */
     long link(Link which, long generation, long address) {
-        MemorySegment handle = this.handle.get();
-        return check(switch (which) {
+        return check(cross(handle -> switch (which) {
             case FIRST_CHILD -> calls.firstChild(handle, generation, address);
             case LAST_CHILD -> calls.lastChild(handle, generation, address);
             case NEXT_SIBLING -> calls.nextSibling(handle, generation, address);
             case PRIOR_SIBLING -> calls.priorSibling(handle, generation, address);
             case PARENT -> calls.parent(handle, generation, address);
-        });
+        }));
     }
 
     byte[] text(long generation, long address) {
         Scratch scratch = Scratch.local();
-        check(calls.text(handle.get(), generation, address, scratch.first, scratch.second));
+        check(cross(handle -> calls.text(handle, generation, address, scratch.first, scratch.second)));
         return copyBytes(scratch);
     }
 
     byte[] symbolNameBytes(long generation, long address) {
         Scratch scratch = Scratch.local();
-        check(calls.symbolName(handle.get(), generation, address, scratch.first, scratch.second));
+        check(cross(handle -> calls.symbolName(handle, generation, address, scratch.first, scratch.second)));
         return copyBytes(scratch);
     }
 
     long[] span(long generation, long address) {
         Scratch scratch = Scratch.local();
-        check(calls.span(handle.get(), generation, address, scratch.first, scratch.second));
+        check(cross(handle -> calls.span(handle, generation, address, scratch.first, scratch.second)));
         return new long[]{scratch.firstLong(), scratch.secondLong()};
     }
 
     int[] lineColumn(long generation, long address) {
         Scratch scratch = Scratch.local();
-        check(calls.lineColumn(handle.get(), generation, address, scratch.first, scratch.second));
+        check(cross(handle -> calls.lineColumn(handle, generation, address, scratch.first, scratch.second)));
         return new int[]{scratch.firstInt(), scratch.secondInt()};
     }
 
     Integer variableIndex(long generation, long address) {
-        long index = check(calls.variableIndex(handle.get(), generation, address));
+        long index = check(cross(handle -> calls.variableIndex(handle, generation, address)));
         return index == Galley.NO_VARIABLE ? null : (int) index;
     }
 
@@ -130,7 +143,7 @@ final class NodeDoor {
      * (stale tree, session in use, invalid cursor bytes).
      */
     long walkStep(MemorySegment cursor) {
-        return calls.walkNext(handle.get(), cursor);
+        return cross(handle -> calls.walkNext(handle, cursor));
     }
 
     // -- tree edits --
@@ -139,47 +152,47 @@ final class NodeDoor {
     // the core refuses a pair from two parses.
 
     void appendChildren(long generation, long parent, long chainGeneration, long chain) {
-        check(calls.appendChildren(handle.get(), generation, parent, chainGeneration, chain));
+        check(cross(handle -> calls.appendChildren(handle, generation, parent, chainGeneration, chain)));
     }
 
     void insertBefore(long generation, long target, long chainGeneration, long chain) {
-        check(calls.insertBefore(handle.get(), generation, target, chainGeneration, chain));
+        check(cross(handle -> calls.insertBefore(handle, generation, target, chainGeneration, chain)));
     }
 
     void insertAfter(long generation, long target, long chainGeneration, long chain) {
-        check(calls.insertAfter(handle.get(), generation, target, chainGeneration, chain));
+        check(cross(handle -> calls.insertAfter(handle, generation, target, chainGeneration, chain)));
     }
 
-    /** A tree edit that detaches a chain: runs {@code call} with an out-head and returns the head, {@link Galley#INVALID_NODE} when empty. */
+    /** A native edit that detaches a chain: runs with an out-head and returns the head, {@link Galley#INVALID_NODE} when empty. */
     private interface HeadCall {
-        long run(MemorySegment outHead);
+        long run(MemorySegment handle, MemorySegment outHead);
     }
 
     private long detachedHead(HeadCall call) {
         Scratch scratch = Scratch.local();
         scratch.first.set(ValueLayout.JAVA_LONG, 0, Galley.INVALID_NODE);
-        check(call.run(scratch.first));
+        check(cross(handle -> call.run(handle, scratch.first)));
         return scratch.firstLong();
     }
 
     long removeSiblings(long generation, long address, int count) {
-        return detachedHead(outHead -> calls.removeSiblings(handle.get(), generation, address, count, outHead));
+        return detachedHead((handle, outHead) -> calls.removeSiblings(handle, generation, address, count, outHead));
     }
 
     long removeSelf(long generation, long address) {
-        return detachedHead(outHead -> calls.removeSelf(handle.get(), generation, address, outHead));
+        return detachedHead((handle, outHead) -> calls.removeSelf(handle, generation, address, outHead));
     }
 
     long cleanChildren(long generation, long address) {
-        return detachedHead(outHead -> calls.cleanChildren(handle.get(), generation, address, outHead));
+        return detachedHead((handle, outHead) -> calls.cleanChildren(handle, generation, address, outHead));
     }
 
     void insertChildrenAt(long generation, long parent, int index, long chainGeneration, long chain) {
-        check(calls.insertChildrenAt(handle.get(), generation, parent, index, chainGeneration, chain));
+        check(cross(handle -> calls.insertChildrenAt(handle, generation, parent, index, chainGeneration, chain)));
     }
 
     long removeChildrenAt(long generation, long parent, int index, int count) {
-        return detachedHead(outHead -> calls.removeChildrenAt(handle.get(), generation, parent, index, count, outHead));
+        return detachedHead((handle, outHead) -> calls.removeChildrenAt(handle, generation, parent, index, count, outHead));
     }
 
     /**

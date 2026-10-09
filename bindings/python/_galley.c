@@ -105,6 +105,11 @@ typedef struct {
      * which the core refuses while the parse runs. */
     int dispatching;
     unsigned long dispatch_thread;
+    /* Calls in flight against the session: claims taken by the legs that
+     * release the GIL, so a close cannot free the session under a call the
+     * core has not locked yet. The GIL guards it. A counter, not a flag:
+     * nested parses nest their claims. */
+    Py_ssize_t in_flight;
     /* This session's hooks by name (str -> callable): replaced whole by every
      * change, never mutated. NULL until Session.__init__ ran. */
     PyObject *hooks;
@@ -538,10 +543,10 @@ static int node_crossing(NodeObject *node, NodeCrossing *cross)
 static int node_parts(PyObject *object, PyObject *session_obj,
                       GalleyNodeAddress *address, unsigned long long *generation)
 {
-    int is_node = PyObject_IsInstance(object, (PyObject *)&Node_Type);
-    if (is_node < 0)
-        return -1;
-    if (!is_node) {
+    /* The real type, never __class__: an object faking __class__ would
+     * pass an isinstance check and be cast to a Node, and the lookup that
+     * lets it through runs host code while the caller holds a read handle. */
+    if (!PyObject_TypeCheck(object, &Node_Type)) {
         PyErr_Format(PyExc_TypeError, "expected a Node, got %s",
                      Py_TYPE(object)->tp_name);
         return -1;
@@ -579,6 +584,41 @@ static inline GalleySession *require_session(PyObject *self)
         return NULL;
     }
     return session_object->session;
+}
+
+/* Whether a call holds this session: a leg has claimed it (in_flight) and
+ * not returned. It covers the call the core has not locked yet — the window
+ * between this binding's GIL release and the core's own lease, which no
+ * core-side check can close because the core cannot see a caller that has
+ * not reached it. Read with the GIL held, as both destroy sites do. */
+static inline int session_in_use(SessionObject *self)
+{
+    return self->in_flight > 0;
+}
+
+/* Reads the handle and claims it for one native leg that releases the GIL,
+ * as one step with the GIL held and no host code between the two: with the
+ * count up, destroy refuses instead of freeing the session under a call the
+ * core has not locked yet — the window between this binding's GIL release
+ * and the core's own lease, which no core-side check can close because the
+ * core cannot see a caller that has not reached it. Called only after every
+ * conversion the argument needs: a conversion can run host code (a path's
+ * __fspath__, a buffer's __buffer__), and that code may close this session —
+ * so the handle is read once, after it, and never from before it. Returns
+ * NULL with the closed error set when there is nothing to claim; pairs with
+ * in_flight_release after parse_outcome, which reads the session too. */
+static GalleySession *in_flight_claim(PyObject *self)
+{
+    GalleySession *session = require_session(self);
+    if (session == NULL)
+        return NULL;
+    ((SessionObject *)self)->in_flight++;
+    return session;
+}
+
+static inline void in_flight_release(PyObject *self)
+{
+    ((SessionObject *)self)->in_flight--;
 }
 
 /* Ends a native parse leg: the parse's door dies with the parse, and nothing
@@ -884,7 +924,9 @@ static int Session_init(SessionObject *self, PyObject *args, PyObject *keywords)
     }
     Py_DECREF(defaults);
     if (self->session != NULL) {
-        long long status = galley_session_destroy(self->session);
+        long long status = session_in_use(self)
+            ? galley_error_session_in_use
+            : galley_session_destroy(self->session);
         if (status < 0) {
             /* Re-`__init__` while a parse runs (from a hook or another
              * thread): the live session is in use, so it stays. Restore
@@ -907,13 +949,20 @@ static int Session_init(SessionObject *self, PyObject *args, PyObject *keywords)
 }
 
 /* Frees the session, or refuses it: returns -1 with an exception set when
- * a parse holds the session, in which case nothing was freed and the
- * object keeps it. */
+ * something holds the session — a parse running on another thread, which
+ * the core's own lease reports, or a call that claimed it and has not
+ * returned, which only this binding can see — in which case nothing was
+ * freed and the object keeps it. The count is refused on before the core is
+ * asked, so a claim that outlives the core's lease still wins. */
 static int close_session(SessionObject *self)
 {
     if (self->session == NULL)
         return 0;
-    long long status = galley_session_destroy(self->session);
+    long long status;
+    if (session_in_use(self))
+        status = galley_error_session_in_use;
+    else
+        status = galley_session_destroy(self->session);
     if (status < 0) {
         set_error_from_status(status);
         return -1;
@@ -1021,8 +1070,9 @@ static void Session_dealloc(SessionObject *self)
 {
     PyObject_GC_UnTrack(self);
     /* A running parse's method holds a reference to self, so a parse cannot
-     * be in flight here and the status can only be ok; were a refusal ever
-     * possible, close_session keeps the session instead of freeing it. */
+     * be in flight here — the count is 0 as well as the core's lease free —
+     * and the status can only be ok; were a refusal ever possible,
+     * close_session keeps the session instead of freeing it. */
     (void)close_session(self);
     Session_clear(self);
     Py_TYPE(self)->tp_free((PyObject *)self);
@@ -1039,16 +1089,18 @@ PyDoc_STRVAR(parse_doc,
 
 static PyObject *Session_parse(PyObject *self, PyObject *input)
 {
-    GalleySession *session = require_session(self);
     const char *data = NULL;
     Py_ssize_t length = 0;
     Py_buffer view;
     int have_view = 0;
     long long status;
+    PyObject *result;
     ParseHolder holder;
+    GalleySession *session;
 
-    if (session == NULL)
-        return NULL;
+    /* The input is converted first: a buffer's __buffer__ runs host code
+     * that may close this session, and the handle must not be read before
+     * it — the claim below is the first read. */
     if (PyUnicode_Check(input)) {
         data = PyUnicode_AsUTF8AndSize(input, &length);
         if (data == NULL)
@@ -1063,6 +1115,12 @@ static PyObject *Session_parse(PyObject *self, PyObject *input)
         data = (const char *)view.buf;
         length = view.len;
     }
+    session = in_flight_claim(self);
+    if (session == NULL) {
+        if (have_view)
+            PyBuffer_Release(&view);
+        return NULL;
+    }
     /* A zero-length input must not present a NULL pointer. The GIL is
      * released for the parse itself: the input stays alive (an immutable
      * str or bytes, or a buffer export that blocks resizing), and a hook
@@ -1073,7 +1131,9 @@ static PyObject *Session_parse(PyObject *self, PyObject *input)
     Py_END_ALLOW_THREADS
     if (have_view)
         PyBuffer_Release(&view);
-    return parse_outcome(self, status, &holder);
+    result = parse_outcome(self, status, &holder);
+    in_flight_release(self);
+    return result;
 }
 
 PyDoc_STRVAR(parse_file_doc,
@@ -1084,13 +1144,13 @@ PyDoc_STRVAR(parse_file_doc,
 
 static PyObject *Session_parse_file(PyObject *self, PyObject *path)
 {
-    GalleySession *session = require_session(self);
     PyObject *filesystem_path;
     const char *data = NULL;
     PyObject *result = NULL;
 
-    if (session == NULL)
-        return NULL;
+    /* The path is converted first: __fspath__ runs host code that may
+     * close this session, and the handle must not be read before it — the
+     * claim inside the branch below is the first read. */
     filesystem_path = PyOS_FSPath(path);
     if (filesystem_path == NULL)
         return NULL;
@@ -1110,13 +1170,21 @@ static PyObject *Session_parse_file(PyObject *self, PyObject *path)
         data = NULL;
     }
     if (data != NULL) {
+        GalleySession *session;
         long long status;
         ParseHolder holder;
+
+        session = in_flight_claim(self);
+        if (session == NULL) {
+            Py_DECREF(filesystem_path);
+            return NULL;
+        }
         holder_push(&holder, self);
         Py_BEGIN_ALLOW_THREADS
         status = galley_parse_file(session, data);
         Py_END_ALLOW_THREADS
         result = parse_outcome(self, status, &holder);
+        in_flight_release(self);
     }
     Py_DECREF(filesystem_path);
     return result;
@@ -3587,8 +3655,8 @@ static PyMappingMethods Node_mapping_methods = {
 
 static PyObject *Node_richcompare(PyObject *a, PyObject *b, int op)
 {
-    if (!PyObject_IsInstance(a, (PyObject *)&Node_Type) ||
-        !PyObject_IsInstance(b, (PyObject *)&Node_Type)) {
+    if (!PyObject_TypeCheck(a, &Node_Type) ||
+        !PyObject_TypeCheck(b, &Node_Type)) {
         Py_RETURN_NOTIMPLEMENTED;
     }
     NodeObject *na = (NodeObject *)a;

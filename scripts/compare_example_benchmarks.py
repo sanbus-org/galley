@@ -28,8 +28,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 BPS_RE = re.compile(r"^bytes_per_second:\s*([0-9,]+)\s*$")
-DEFAULT_ROUNDS = 7
-DEFAULT_WARMUP = 1
+DEFAULT_ROUNDS = 10
+DEFAULT_WARMUP = 3
 DEFAULT_ITERATIONS = 10
 DEFAULT_MIN_RATIO = 0.94
 # Per-language bars replacing the global --min-ratio for the named

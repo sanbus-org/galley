@@ -26,9 +26,19 @@ import org.sanbus.galley.internal.GalleyLibrary;
  */
 public final class Session implements AutoCloseable {
 
+    /**
+     * The native session. Read only inside {@link #gate}, in {@link #close},
+     * and in the constructor: every other crossing takes it from the gate, so
+     * no native call can be handed a handle its close has already freed.
+     */
     private MemorySegment handle;
     private final GalleyLibrary lib;
-    private boolean closed = false;
+    /** Volatile so the lock-free {@link #isClosed()} probes are answered with the latest truth; the gate re-reads it under {@link #lifetime}. */
+    private volatile boolean closed = false;
+    /** Guards {@link #handle} and {@link #inFlight}: the one lock no native call runs under. */
+    private final Object lifetime = new Object();
+    /** Calls in flight against {@link #handle}. A counter, not a flag: a hook's call nests inside its parse's. */
+    private int inFlight;
     private final Parser parser;
     /** The session door: post-parse access, refused by the core while a parse runs. */
     private final NodeDoor sessionDoor;
@@ -130,11 +140,41 @@ public final class Session implements AutoCloseable {
         }
     }
 
-    /** The native session handle; the session door crosses it. */
-    MemorySegment handle() { return handle; }
+    /** One native call, made with the session handle it is given. */
+    @FunctionalInterface
+    interface HandleCall<T> {
+        T run(MemorySegment handle);
+    }
+
+    /**
+     * The one crossing over the handle: claims it for a single native call so
+     * {@link #close} cannot free the session while that call is in flight.
+     * Increments the count first and reads the session open under the same
+     * lock close transitions on — a call either starts before close wins it,
+     * or finds the session closed — then runs outside the lock, because a
+     * native call must never hold {@code lifetime} (a hook's crossing would
+     * then wait on its own parse's). The count drops in a finally, and nests:
+     * a hook's call sits inside its parse's count, which is why close refuses
+     * with {@code session in use} rather than waiting.
+     */
+    <T> T gate(HandleCall<T> body) {
+        MemorySegment claimed;
+        boolean open;
+        synchronized (lifetime) {
+            inFlight++;
+            open = !closed && handle != null && !handle.equals(MemorySegment.NULL);
+            claimed = handle;
+        }
+        try {
+            if (!open) throw new GalleyClosedException("session");
+            return body.run(claimed);
+        } finally {
+            synchronized (lifetime) { inFlight--; }
+        }
+    }
 
     private void requireOpen() {
-        if (closed || handle == null || handle.equals(MemorySegment.NULL)) throw new GalleyClosedException("session");
+        if (closed) throw new GalleyClosedException("session");
     }
 
     /**
@@ -215,7 +255,7 @@ public final class Session implements AutoCloseable {
     GalleyException errorFromStatus(long status) {
         Diagnostic diagnostic = null;
         try {
-            if (handle != null && !handle.equals(MemorySegment.NULL) && lib.galley_has_diagnostic(handle) != 0) {
+            if (gate(sessionHandle -> lib.galley_has_diagnostic(sessionHandle) != 0)) {
                 diagnostic = buildDiagnosticSingular();
             }
         } catch (Exception ignored) {}
@@ -268,22 +308,18 @@ public final class Session implements AutoCloseable {
         return (int) status;
     }
 
-    /** One native parse call. */
-    private interface NativeParse {
-        long run();
-    }
-
     /**
-     * Single gate for every parse leg: runs the native call, then ends the
-     * parse. The hooks were fixed by the last commit, so nothing is
+     * Single gate for every parse leg: the native call runs through
+     * {@link #gate} — the count close refuses on — and the parse is ended
+     * afterwards. The hooks were fixed by the last commit, so nothing is
      * synchronized here.
      */
-    private int runParse(NativeParse nativeParse) {
+    private int runParse(HandleCall<Long> nativeParse) {
         long status;
         ParseHolder holder = new ParseHolder(this, INNERMOST_HOLDER.get());
         INNERMOST_HOLDER.set(holder);
         try {
-            status = nativeParse.run();
+            status = gate(nativeParse);
         } catch (Throwable thrown) {
             parseDoor = null;
             throw thrown;
@@ -294,26 +330,52 @@ public final class Session implements AutoCloseable {
         return completeParse(status, holder);
     }
 
-    public boolean isClosed() { return closed || handle == null || handle.equals(MemorySegment.NULL); }
+    public boolean isClosed() { return closed; }
 
     /**
-     * Closes the session. While a parse is in flight — from a hook or from
-     * another thread — the core refuses, so this throws and changes
-     * nothing: {@code handle}, {@code closed} and the parser's registration
-     * stay as they were and the session keeps working.
+     * Calls in flight against the handle: the claim a test waits on before
+     * it closes, read under {@code lifetime} so another thread's claim is
+     * visible.
+     */
+    int inFlightCount() {
+        synchronized (lifetime) {
+            return inFlight;
+        }
+    }
+
+    /**
+     * Closes the session: one transition, under the lock the gate claims on,
+     * from open-with-nothing-in-flight to closed. While any call is in flight
+     * — a parse from another thread, a node read, a hook's own crossing — it
+     * refuses with {@code session in use} and changes nothing: the handle, the
+     * registration and the running parse's hook state stay as they were, and
+     * the session keeps working. Closing twice is free.
      */
     @Override
     public void close() {
-        if (handle != null && !handle.equals(MemorySegment.NULL)) {
-            long status = lib.galley_session_destroy(handle);
-            if (status < 0) {
-                throw errorFromStatus(status);
+        long refusal = 0;
+        boolean closedNow = false;
+        synchronized (lifetime) {
+            if (closed) return;
+            if (inFlight > 0) {
+                refusal = StatusCode.ERROR_SESSION_IN_USE.getCode();
+            } else if (handle != null && !handle.equals(MemorySegment.NULL)) {
+                long status = lib.galley_session_destroy(handle);
+                if (status < 0) {
+                    refusal = status;
+                } else {
+                    handle = MemorySegment.NULL;
+                    closed = closedNow = true;
+                }
+            } else {
+                closed = closedNow = true;
             }
-            handle = MemorySegment.NULL;
-            parser.unregister(handleId);
         }
-        closed = true;
-        parseDoor = null;
+        if (closedNow) {
+            parser.unregister(handleId);
+            parseDoor = null;
+        }
+        if (refusal != 0) throw errorFromStatus(refusal);
     }
 
     // -- hooks --
@@ -396,7 +458,8 @@ public final class Session implements AutoCloseable {
             for (int index = 0; index < count; index++) {
                 enabled.set(ValueLayout.JAVA_BYTE, index, (byte) (byIndex[index] != null ? 1 : 0));
             }
-            checkStatus(lib.galley_session_set_hooks(handle, parser.dispatchStub(), MemorySegment.ofAddress(handleId), enabled, count));
+            checkStatus(gate(sessionHandle -> lib.galley_session_set_hooks(sessionHandle,
+                    parser.dispatchStub(), MemorySegment.ofAddress(handleId), enabled, count)));
         }
         hooksByIndex = byIndex;
         hooks = table;
@@ -431,11 +494,11 @@ public final class Session implements AutoCloseable {
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment outDoor = arena.allocate(ValueLayout.ADDRESS);
                 MemorySegment out = arena.allocate(ValueLayout.JAVA_LONG);
-                if (lib.galley_procedure_door(handle, hook, outDoor) >= 0) {
+                if (gate(sessionHandle -> lib.galley_procedure_door(sessionHandle, hook, outDoor)) >= 0) {
                     MemorySegment door = outDoor.get(ValueLayout.ADDRESS, 0);
-                    if (lib.galley_hook_generation(door, out) >= 0) {
+                    if (gate(sessionHandle -> lib.galley_hook_generation(door, out)) >= 0) {
                         parseGeneration = out.get(ValueLayout.JAVA_LONG, 0);
-                        hookDoor = NodeDoor.ofHook(lib, door);
+                        hookDoor = NodeDoor.ofHook(lib, this, door);
                         parseDoor = hookDoor;
                     }
                 }
@@ -466,12 +529,12 @@ public final class Session implements AutoCloseable {
         requireOpen();
         if (input == null) throw new IllegalArgumentException("input is null");
         if (input.length == 0) {
-            return runParse(() -> lib.galley_parse(handle, MemorySegment.NULL, 0));
+            return runParse(sessionHandle -> lib.galley_parse(sessionHandle, MemorySegment.NULL, 0));
         }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment dataSeg = arena.allocateFrom(ValueLayout.JAVA_BYTE, input);
             long len = input.length;
-            return runParse(() -> lib.galley_parse(handle, dataSeg, len));
+            return runParse(sessionHandle -> lib.galley_parse(sessionHandle, dataSeg, len));
         }
     }
 
@@ -480,11 +543,11 @@ public final class Session implements AutoCloseable {
         if (buffer == null) throw new IllegalArgumentException("buffer is null");
         int len = buffer.remaining();
         if (len == 0) {
-            return runParse(() -> lib.galley_parse(handle, MemorySegment.NULL, 0));
+            return runParse(sessionHandle -> lib.galley_parse(sessionHandle, MemorySegment.NULL, 0));
         }
         if (buffer.isDirect()) {
             MemorySegment dataSeg = MemorySegment.ofBuffer(buffer);
-            return runParse(() -> lib.galley_parse(handle, dataSeg, len));
+            return runParse(sessionHandle -> lib.galley_parse(sessionHandle, dataSeg, len));
         } else {
             // Heap ByteBuffer: copy to native via arena
             byte[] tmp;
@@ -506,7 +569,7 @@ public final class Session implements AutoCloseable {
             }
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment dataSeg = arena.allocateFrom(ValueLayout.JAVA_BYTE, tmp);
-                return runParse(() -> lib.galley_parse(handle, dataSeg, len));
+                return runParse(sessionHandle -> lib.galley_parse(sessionHandle, dataSeg, len));
             }
         }
     }
@@ -536,7 +599,7 @@ public final class Session implements AutoCloseable {
         if (path.indexOf('\0') >= 0) throw new IllegalArgumentException("path contains NUL");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment cPath = arena.allocateFrom(path, StandardCharsets.UTF_8);
-            return runParse(() -> lib.galley_parse_file(handle, cPath));
+            return runParse(sessionHandle -> lib.galley_parse_file(sessionHandle, cPath));
         }
     }
 
@@ -570,7 +633,7 @@ public final class Session implements AutoCloseable {
      * nothing published is never a zero.
      */
     long nodeCount(long generation) {
-        long count = lib.galley_node_count(handle, generation);
+        long count = gate(sessionHandle -> lib.galley_node_count(sessionHandle, generation));
         checkStatus(count);
         return count;
     }
@@ -581,13 +644,13 @@ public final class Session implements AutoCloseable {
      */
     private long[] published() {
         Scratch scratch = Scratch.local();
-        checkStatus(lib.galley_root_node(handle, scratch.first, scratch.second));
+        checkStatus(gate(sessionHandle -> lib.galley_root_node(sessionHandle, scratch.first, scratch.second)));
         return new long[]{scratch.firstLong(), scratch.secondLong()};
     }
 
     public void reserveNodes(long capacity) {
         requireOpen();
-        long st = lib.galley_reserve_nodes(handle, capacity);
+        long st = gate(sessionHandle -> lib.galley_reserve_nodes(sessionHandle, capacity));
         checkStatus(st);
     }
 
@@ -598,7 +661,7 @@ public final class Session implements AutoCloseable {
      */
     public long nodeCapacity() {
         requireOpen();
-        long capacity = lib.galley_node_capacity(handle);
+        long capacity = gate(sessionHandle -> lib.galley_node_capacity(sessionHandle));
         checkStatus(capacity);
         return capacity;
     }
@@ -691,8 +754,8 @@ public final class Session implements AutoCloseable {
             MemorySegment spanLen = arena.allocate(ValueLayout.JAVA_LONG, count);
             MemorySegment semantic = arena.allocate(ValueLayout.JAVA_INT, count);
             MemorySegment recovered = arena.allocate(ValueLayout.JAVA_INT, count);
-            long total = lib.galley_tree_snapshot(handle, generation, parent, firstChild, next,
-                    childCount, variable, spanStart, spanLen, semantic, recovered, count);
+            long total = gate(sessionHandle -> lib.galley_tree_snapshot(sessionHandle, generation, parent, firstChild, next,
+                    childCount, variable, spanStart, spanLen, semantic, recovered, count));
             if (total < 0) throw errorFromStatus(total);
             if (total != count) throw new IllegalStateException("node count changed during snapshot");
             long[] parentArray = parent.toArray(ValueLayout.JAVA_LONG);
@@ -730,7 +793,7 @@ public final class Session implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
-            checkStatus(lib.galley_last_input(handle, outData, outLen));
+            checkStatus(gate(sessionHandle -> lib.galley_last_input(sessionHandle, outData, outLen)));
             MemorySegment data = outData.get(ValueLayout.ADDRESS, 0);
             long length = outLen.get(ValueLayout.JAVA_LONG, 0);
             if (length == 0) return new byte[0];
@@ -819,14 +882,14 @@ public final class Session implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outLine = arena.allocate(ValueLayout.JAVA_INT);
             MemorySegment outCol = arena.allocate(ValueLayout.JAVA_INT);
-            checkStatus(lib.galley_last_position(handle, outLine, outCol));
+            checkStatus(gate(sessionHandle -> lib.galley_last_position(sessionHandle, outLine, outCol)));
             return new int[]{outLine.get(ValueLayout.JAVA_INT, 0), outCol.get(ValueLayout.JAVA_INT, 0)};
         }
     }
 
     public boolean hasDiagnostic() {
         requireOpen();
-        return lib.galley_has_diagnostic(handle) != 0;
+        return gate(sessionHandle -> lib.galley_has_diagnostic(sessionHandle) != 0);
     }
 
     /**
@@ -849,9 +912,9 @@ public final class Session implements AutoCloseable {
             byte[] nameBytes = name.getBytes(StandardCharsets.UTF_8);
             MemorySegment nameSeg = nameBytes.length == 0 ? MemorySegment.NULL : arena.allocateFrom(ValueLayout.JAVA_BYTE, nameBytes);
             MemorySegment msgSeg = message.length == 0 ? MemorySegment.NULL : arena.allocateFrom(ValueLayout.JAVA_BYTE, message);
-            long st = lib.galley_session_set_message_override(handle,
+            long st = gate(sessionHandle -> lib.galley_session_set_message_override(sessionHandle,
                     nameSeg, nameBytes.length,
-                    msgSeg, message.length);
+                    msgSeg, message.length));
             checkStatus(st);
         }
     }
@@ -859,12 +922,17 @@ public final class Session implements AutoCloseable {
     // -- diagnostics helpers --
 
     private Diagnostic buildDiagnosticSingular() {
-        long kind = lib.galley_diagnostic_kind(handle);
+        return gate(this::buildDiagnosticSingularWith);
+    }
+
+    /** The snapshot proper: one handle the gate claimed, held across every read it makes. */
+    private Diagnostic buildDiagnosticSingularWith(MemorySegment sessionHandle) {
+        long kind = lib.galley_diagnostic_kind(sessionHandle);
         int line, col;
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outLine = arena.allocate(ValueLayout.JAVA_INT);
             MemorySegment outCol = arena.allocate(ValueLayout.JAVA_INT);
-            lib.galley_diagnostic_position(handle, outLine, outCol);
+            lib.galley_diagnostic_position(sessionHandle, outLine, outCol);
             line = outLine.get(ValueLayout.JAVA_INT, 0);
             col = outCol.get(ValueLayout.JAVA_INT, 0);
         }
@@ -873,14 +941,14 @@ public final class Session implements AutoCloseable {
         String messageAnsi = "";
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outMsg = arena.allocate(ValueLayout.ADDRESS);
-            if (lib.galley_diagnostic_message(handle, outMsg) == 0) {
+            if (lib.galley_diagnostic_message(sessionHandle, outMsg) == 0) {
                 MemorySegment p = outMsg.get(ValueLayout.ADDRESS, 0);
                 if (!p.equals(MemorySegment.NULL)) message = p.reinterpret(Long.MAX_VALUE).getString(0);
             }
         }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outMsg = arena.allocate(ValueLayout.ADDRESS);
-            if (lib.galley_diagnostic_message_ansi(handle, outMsg) == 0) {
+            if (lib.galley_diagnostic_message_ansi(sessionHandle, outMsg) == 0) {
                 MemorySegment p = outMsg.get(ValueLayout.ADDRESS, 0);
                 if (!p.equals(MemorySegment.NULL)) messageAnsi = p.reinterpret(Long.MAX_VALUE).getString(0);
             }
@@ -890,7 +958,7 @@ public final class Session implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
-            if (lib.galley_diagnostic_unexpected_token(handle, outData, outLen) == 0) {
+            if (lib.galley_diagnostic_unexpected_token(sessionHandle, outData, outLen) == 0) {
                 MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
                 long len = outLen.get(ValueLayout.JAVA_LONG, 0);
                 if (!ptr.equals(MemorySegment.NULL) && len > 0) unexpected = ptr.reinterpret(len).toArray(ValueLayout.JAVA_BYTE);
@@ -898,13 +966,13 @@ public final class Session implements AutoCloseable {
         }
 
         List<byte[]> expected = new ArrayList<>();
-        long expCount = lib.galley_diagnostic_expected_count(handle);
+        long expCount = lib.galley_diagnostic_expected_count(sessionHandle);
         if (expCount > 0) {
             for (long i = 0; i < expCount; i++) {
                 try (Arena arena = Arena.ofConfined()) {
                     MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
                     MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
-                    if (lib.galley_diagnostic_expected_at(handle, i, outData, outLen) == 0) {
+                    if (lib.galley_diagnostic_expected_at(sessionHandle, i, outData, outLen) == 0) {
                         MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
                         long len = outLen.get(ValueLayout.JAVA_LONG, 0);
                         if (!ptr.equals(MemorySegment.NULL)) {
@@ -918,13 +986,13 @@ public final class Session implements AutoCloseable {
 
         List<String> context = new ArrayList<>();
         List<byte[]> contextBytes = new ArrayList<>();
-        long ctxCount = lib.galley_diagnostic_context_count(handle);
+        long ctxCount = lib.galley_diagnostic_context_count(sessionHandle);
         if (ctxCount > 0) {
             for (long i = 0; i < ctxCount; i++) {
                 try (Arena arena = Arena.ofConfined()) {
                     MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
                     MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
-                    if (lib.galley_diagnostic_context_at(handle, i, outData, outLen) == 0) {
+                    if (lib.galley_diagnostic_context_at(sessionHandle, i, outData, outLen) == 0) {
                         MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
                         long len = outLen.get(ValueLayout.JAVA_LONG, 0);
                         if (!ptr.equals(MemorySegment.NULL)) {
@@ -937,25 +1005,25 @@ public final class Session implements AutoCloseable {
             }
         }
 
-        long sec = lib.galley_syntax_error_count(handle);
+        long sec = lib.galley_syntax_error_count(sessionHandle);
         int syntaxErrorCount = sec < 0 ? 0 : (int) sec;
 
-        long semc = lib.galley_semantic_error_count(handle);
+        long semc = lib.galley_semantic_error_count(sessionHandle);
         int semanticErrorCount = semc < 0 ? 0 : (int) semc;
 
-        String[] semantic = readSemantic(-1, false);
+        String[] semantic = readSemanticWith(-1, false, sessionHandle);
 
         int[] indentation = null;
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outSpaces = arena.allocate(ValueLayout.JAVA_INT);
             MemorySegment outWidth = arena.allocate(ValueLayout.JAVA_INT);
-            if (lib.galley_diagnostic_indentation(handle, outSpaces, outWidth) == 0) {
+            if (lib.galley_diagnostic_indentation(sessionHandle, outSpaces, outWidth) == 0) {
                 indentation = new int[]{outSpaces.get(ValueLayout.JAVA_INT, 0), outWidth.get(ValueLayout.JAVA_INT, 0)};
             }
         }
 
         RecoveryTarget recoveryKind = null;
-        long rk = lib.galley_diagnostic_recovery_kind(handle);
+        long rk = lib.galley_diagnostic_recovery_kind(sessionHandle);
         if (rk != 0) recoveryKind = RecoveryTarget.fromCode(rk);
 
         // Absent stays null: same rule as the recorded builder below.
@@ -963,7 +1031,7 @@ public final class Session implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
-            if (lib.galley_diagnostic_recovery_terminal(handle, outData, outLen) == 0) {
+            if (lib.galley_diagnostic_recovery_terminal(sessionHandle, outData, outLen) == 0) {
                 MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
                 long len = outLen.get(ValueLayout.JAVA_LONG, 0);
                 if (!ptr.equals(MemorySegment.NULL) && len > 0) recoveryTerminal = ptr.reinterpret(len).toArray(ValueLayout.JAVA_BYTE);
@@ -973,7 +1041,7 @@ public final class Session implements AutoCloseable {
         ResumeSide recoveryResume = null;
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outResume = arena.allocate(ValueLayout.JAVA_LONG);
-            if (lib.galley_diagnostic_recovery_resume(handle, outResume) == 0) {
+            if (lib.galley_diagnostic_recovery_resume(sessionHandle, outResume) == 0) {
                 recoveryResume = ResumeSide.fromCode(outResume.get(ValueLayout.JAVA_LONG, 0));
             }
         }
@@ -982,7 +1050,7 @@ public final class Session implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
-            if (lib.galley_diagnostic_recovery_lhs_variable(handle, outData, outLen) == 0) {
+            if (lib.galley_diagnostic_recovery_lhs_variable(sessionHandle, outData, outLen) == 0) {
                 MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
                 long len = outLen.get(ValueLayout.JAVA_LONG, 0);
                 if (!ptr.equals(MemorySegment.NULL)) {
@@ -997,7 +1065,7 @@ public final class Session implements AutoCloseable {
             MemorySegment outVar = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outVarLen = arena.allocate(ValueLayout.JAVA_LONG);
             MemorySegment outIdx = arena.allocate(ValueLayout.JAVA_INT);
-            if (lib.galley_diagnostic_recovery_production(handle, outVar, outVarLen, outIdx) == 0) {
+            if (lib.galley_diagnostic_recovery_production(sessionHandle, outVar, outVarLen, outIdx) == 0) {
                 MemorySegment ptr = outVar.get(ValueLayout.ADDRESS, 0);
                 long len = outVarLen.get(ValueLayout.JAVA_LONG, 0);
                 int idx = outIdx.get(ValueLayout.JAVA_INT, 0);
@@ -1016,7 +1084,7 @@ public final class Session implements AutoCloseable {
             MemorySegment outSym = arena.allocate(ValueLayout.JAVA_INT);
             MemorySegment outVar = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outVarLen = arena.allocate(ValueLayout.JAVA_LONG);
-            if (lib.galley_diagnostic_recovery_occurrence(handle, outParent, outParentLen, outRhs, outSym, outVar, outVarLen) == 0) {
+            if (lib.galley_diagnostic_recovery_occurrence(sessionHandle, outParent, outParentLen, outRhs, outSym, outVar, outVarLen) == 0) {
                 MemorySegment pb = outParent.get(ValueLayout.ADDRESS, 0);
                 long pl = outParentLen.get(ValueLayout.JAVA_LONG, 0);
                 MemorySegment vb = outVar.get(ValueLayout.ADDRESS, 0);
@@ -1035,23 +1103,28 @@ public final class Session implements AutoCloseable {
     }
 
     private Diagnostic buildRecordedDiagnostic(long diagIndex) {
+        return gate(sessionHandle -> buildRecordedDiagnosticWith(diagIndex, sessionHandle));
+    }
+
+    /** The recorded-snapshot proper: one handle the gate claimed, held across every read it makes. */
+    private Diagnostic buildRecordedDiagnosticWith(long diagIndex, MemorySegment sessionHandle) {
         int line, col;
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outLine = arena.allocate(ValueLayout.JAVA_INT);
             MemorySegment outCol = arena.allocate(ValueLayout.JAVA_INT);
-            long st = lib.galley_recorded_diagnostic_position(handle, diagIndex, outLine, outCol);
+            long st = lib.galley_recorded_diagnostic_position(sessionHandle, diagIndex, outLine, outCol);
             if (st < 0) return null;
             line = outLine.get(ValueLayout.JAVA_INT, 0);
             col = outCol.get(ValueLayout.JAVA_INT, 0);
         }
 
-        long kind = lib.galley_recorded_diagnostic_kind(handle, diagIndex);
+        long kind = lib.galley_recorded_diagnostic_kind(sessionHandle, diagIndex);
 
         String message = "";
         String messageAnsi = "";
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outMsg = arena.allocate(ValueLayout.ADDRESS);
-            if (lib.galley_recorded_diagnostic_message(handle, diagIndex, outMsg) == 0) {
+            if (lib.galley_recorded_diagnostic_message(sessionHandle, diagIndex, outMsg) == 0) {
                 MemorySegment p = outMsg.get(ValueLayout.ADDRESS, 0);
                 if (!p.equals(MemorySegment.NULL)) message = p.reinterpret(Long.MAX_VALUE).getString(0);
                 // No recorded-ANSI entry in the C ABI; the plain message stands in.
@@ -1063,7 +1136,7 @@ public final class Session implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
-            if (lib.galley_recorded_unexpected_token(handle, diagIndex, outData, outLen) == 0) {
+            if (lib.galley_recorded_unexpected_token(sessionHandle, diagIndex, outData, outLen) == 0) {
                 MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
                 long len = outLen.get(ValueLayout.JAVA_LONG, 0);
                 if (!ptr.equals(MemorySegment.NULL) && len > 0) unexpected = ptr.reinterpret(len).toArray(ValueLayout.JAVA_BYTE);
@@ -1071,13 +1144,13 @@ public final class Session implements AutoCloseable {
         }
 
         List<byte[]> expected = new ArrayList<>();
-        long expCount = lib.galley_recorded_expected_count(handle, diagIndex);
+        long expCount = lib.galley_recorded_expected_count(sessionHandle, diagIndex);
         if (expCount > 0) {
             for (long i = 0; i < expCount; i++) {
                 try (Arena arena = Arena.ofConfined()) {
                     MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
                     MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
-                    if (lib.galley_recorded_expected_token(handle, diagIndex, i, outData, outLen) == 0) {
+                    if (lib.galley_recorded_expected_token(sessionHandle, diagIndex, i, outData, outLen) == 0) {
                         MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
                         long len = outLen.get(ValueLayout.JAVA_LONG, 0);
                         if (!ptr.equals(MemorySegment.NULL)) {
@@ -1091,13 +1164,13 @@ public final class Session implements AutoCloseable {
 
         List<String> context = new ArrayList<>();
         List<byte[]> contextBytes = new ArrayList<>();
-        long ctxCount = lib.galley_recorded_context_count(handle, diagIndex);
+        long ctxCount = lib.galley_recorded_context_count(sessionHandle, diagIndex);
         if (ctxCount > 0) {
             for (long i = 0; i < ctxCount; i++) {
                 try (Arena arena = Arena.ofConfined()) {
                     MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
                     MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
-                    if (lib.galley_recorded_context_name(handle, diagIndex, i, outData, outLen) == 0) {
+                    if (lib.galley_recorded_context_name(sessionHandle, diagIndex, i, outData, outLen) == 0) {
                         MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
                         long len = outLen.get(ValueLayout.JAVA_LONG, 0);
                         if (!ptr.equals(MemorySegment.NULL)) {
@@ -1114,20 +1187,20 @@ public final class Session implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outSpaces = arena.allocate(ValueLayout.JAVA_INT);
             MemorySegment outWidth = arena.allocate(ValueLayout.JAVA_INT);
-            if (lib.galley_recorded_indentation(handle, diagIndex, outSpaces, outWidth) == 0) {
+            if (lib.galley_recorded_indentation(sessionHandle, diagIndex, outSpaces, outWidth) == 0) {
                 indentation = new int[]{outSpaces.get(ValueLayout.JAVA_INT, 0), outWidth.get(ValueLayout.JAVA_INT, 0)};
             }
         }
 
         RecoveryTarget recoveryKind = null;
-        long rk = lib.galley_recorded_diagnostic_recovery_kind(handle, diagIndex);
+        long rk = lib.galley_recorded_diagnostic_recovery_kind(sessionHandle, diagIndex);
         if (rk != 0) recoveryKind = RecoveryTarget.fromCode(rk);
 
         byte[] recoveryTerminal = null;
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
-            if (lib.galley_recorded_recovery_terminal(handle, diagIndex, outData, outLen) == 0) {
+            if (lib.galley_recorded_recovery_terminal(sessionHandle, diagIndex, outData, outLen) == 0) {
                 MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
                 long len = outLen.get(ValueLayout.JAVA_LONG, 0);
                 if (!ptr.equals(MemorySegment.NULL) && len > 0) recoveryTerminal = ptr.reinterpret(len).toArray(ValueLayout.JAVA_BYTE);
@@ -1137,7 +1210,7 @@ public final class Session implements AutoCloseable {
         ResumeSide recoveryResume = null;
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outResume = arena.allocate(ValueLayout.JAVA_LONG);
-            if (lib.galley_recorded_recovery_resume(handle, diagIndex, outResume) == 0) {
+            if (lib.galley_recorded_recovery_resume(sessionHandle, diagIndex, outResume) == 0) {
                 recoveryResume = ResumeSide.fromCode(outResume.get(ValueLayout.JAVA_LONG, 0));
             }
         }
@@ -1146,7 +1219,7 @@ public final class Session implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
-            if (lib.galley_recorded_recovery_lhs_variable(handle, diagIndex, outData, outLen) == 0) {
+            if (lib.galley_recorded_recovery_lhs_variable(sessionHandle, diagIndex, outData, outLen) == 0) {
                 MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
                 long len = outLen.get(ValueLayout.JAVA_LONG, 0);
                 if (!ptr.equals(MemorySegment.NULL)) {
@@ -1161,7 +1234,7 @@ public final class Session implements AutoCloseable {
             MemorySegment outVar = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outVarLen = arena.allocate(ValueLayout.JAVA_LONG);
             MemorySegment outIdx = arena.allocate(ValueLayout.JAVA_INT);
-            if (lib.galley_recorded_recovery_production(handle, diagIndex, outVar, outVarLen, outIdx) == 0) {
+            if (lib.galley_recorded_recovery_production(sessionHandle, diagIndex, outVar, outVarLen, outIdx) == 0) {
                 MemorySegment ptr = outVar.get(ValueLayout.ADDRESS, 0);
                 long len = outVarLen.get(ValueLayout.JAVA_LONG, 0);
                 int idx = outIdx.get(ValueLayout.JAVA_INT, 0);
@@ -1180,7 +1253,7 @@ public final class Session implements AutoCloseable {
             MemorySegment outSym = arena.allocate(ValueLayout.JAVA_INT);
             MemorySegment outVar = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outVarLen = arena.allocate(ValueLayout.JAVA_LONG);
-            if (lib.galley_recorded_recovery_occurrence(handle, diagIndex, outParent, outParentLen, outRhs, outSym, outVar, outVarLen) == 0) {
+            if (lib.galley_recorded_recovery_occurrence(sessionHandle, diagIndex, outParent, outParentLen, outRhs, outSym, outVar, outVarLen) == 0) {
                 MemorySegment pb = outParent.get(ValueLayout.ADDRESS, 0);
                 long pl = outParentLen.get(ValueLayout.JAVA_LONG, 0);
                 MemorySegment vb = outVar.get(ValueLayout.ADDRESS, 0);
@@ -1194,19 +1267,19 @@ public final class Session implements AutoCloseable {
 
         return new Diagnostic(DiagnosticKind.fromCode(kind), line, col, message, messageAnsi, unexpected, expected, context,
                 contextBytes,
-                0, 0, readSemantic(diagIndex, true), indentation, recoveryKind, recoveryTerminal, recoveryResume,
+                0, 0, readSemanticWith(diagIndex, true, sessionHandle), indentation, recoveryKind, recoveryTerminal, recoveryResume,
                 recoveryLhs, recoveryProd, recoveryOcc);
     }
 
-    private String[] readSemantic(long diagIndex, boolean recorded) {
+    private String[] readSemanticWith(long diagIndex, boolean recorded, MemorySegment sessionHandle) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outVar = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outVarLen = arena.allocate(ValueLayout.JAVA_LONG);
             MemorySegment outMsg = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outMsgLen = arena.allocate(ValueLayout.JAVA_LONG);
             long st = recorded
-                    ? lib.galley_recorded_semantic(handle, diagIndex, outVar, outVarLen, outMsg, outMsgLen)
-                    : lib.galley_diagnostic_semantic(handle, outVar, outVarLen, outMsg, outMsgLen);
+                    ? lib.galley_recorded_semantic(sessionHandle, diagIndex, outVar, outVarLen, outMsg, outMsgLen)
+                    : lib.galley_diagnostic_semantic(sessionHandle, outVar, outVarLen, outMsg, outMsgLen);
             if (st != 0) return null;
             MemorySegment vb = outVar.get(ValueLayout.ADDRESS, 0);
             long vl = outVarLen.get(ValueLayout.JAVA_LONG, 0);
@@ -1221,13 +1294,13 @@ public final class Session implements AutoCloseable {
 
     public Diagnostic diagnostic() {
         requireOpen();
-        if (lib.galley_has_diagnostic(handle) == 0) return null;
+        if (!gate(sessionHandle -> lib.galley_has_diagnostic(sessionHandle) != 0)) return null;
         return buildDiagnosticSingular();
     }
 
     public List<Diagnostic> diagnostics() {
         requireOpen();
-        long count = lib.galley_recorded_diagnostic_count(handle);
+        long count = gate(sessionHandle -> lib.galley_recorded_diagnostic_count(sessionHandle));
         if (count <= 0) return new ArrayList<>();
         List<Diagnostic> out = new ArrayList<>((int) count);
         for (long i = 0; i < count; i++) {
@@ -1296,7 +1369,7 @@ public final class Session implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
-            long st = lib.galley_symbol_name(handle, index, outData, outLen);
+            long st = gate(sessionHandle -> lib.galley_symbol_name(sessionHandle, index, outData, outLen));
             if (st < 0) return null;
             MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
             long len = outLen.get(ValueLayout.JAVA_LONG, 0);
@@ -1307,7 +1380,7 @@ public final class Session implements AutoCloseable {
 
     public boolean symbolIsTerminal(long index) {
         requireOpen();
-        return lib.galley_symbol_is_terminal(handle, index) != 0;
+        return gate(sessionHandle -> lib.galley_symbol_is_terminal(sessionHandle, index) != 0);
     }
 
     /**
@@ -1325,7 +1398,7 @@ public final class Session implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
-            long st = lib.galley_variable_name(handle, index, outData, outLen);
+            long st = gate(sessionHandle -> lib.galley_variable_name(sessionHandle, index, outData, outLen));
             if (st < 0) return null;
             MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
             long len = outLen.get(ValueLayout.JAVA_LONG, 0);
@@ -1366,7 +1439,5 @@ public final class Session implements AutoCloseable {
 
     public String statusString(StatusCode status) { return parser.statusString(status); }
 
-    // Expose handle for internal use
-    MemorySegment getHandle() { return handle; }
     GalleyLibrary getLibrary() { return lib; }
 }
