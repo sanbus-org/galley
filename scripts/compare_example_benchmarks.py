@@ -3,7 +3,9 @@
 
 Build the example benchmark binaries first (see .github/workflows/ci.yml).
 This script runs them round-robin, scores the best of the non-warmup rounds,
-and fails if a C-ABI example is below --min-ratio of Zig's median.
+and fails if a C-ABI example is below --min-ratio of Zig's second-best scored
+round. The report shows each language's best and median against Zig's best and
+median; those display ratios never decide pass or fail.
 Per-language bars (--min-ratio-override) replace the global bar for the
 named languages; currently only the WebAssembly example uses one, since it
 runs the same parser compiled to wasm, which trails native codegen.
@@ -14,11 +16,14 @@ named languages.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import os
 import re
 import statistics
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -31,9 +36,10 @@ DEFAULT_MIN_RATIO = 0.94
 # languages. Only wasm uses one today.
 DEFAULT_MIN_RATIO_OVERRIDES: dict[str, float] = {"wasm": 0.7}
 # Per-language round counts replacing --rounds for the named languages.
-# zig is the reference every other language is divided by, so its median
-# has to be stable; extra runs pin the baseline down. wasm has measured
-# noisier than the rest in CI, so it gets extra runs too.
+# zig is the reference every other language is divided by, so its
+# second-best scored round has to be stable; extra runs pin the baseline
+# down. wasm has measured noisier than the rest in CI, so it gets extra
+# runs too.
 DEFAULT_ROUNDS_OVERRIDES: dict[str, int] = {"zig": 5, "wasm": 5}
 INFO_RATIO = 0.97
 LANGUAGE_ORDER = (
@@ -63,7 +69,8 @@ class Report:
     rounds: dict[str, list[int]]
     scored: dict[str, list[int]]
     scores: dict[str, int]
-    zig_median: float
+    medians: dict[str, float]
+    zig_second_best: int
     failures: list[str] = field(default_factory=list)
     info_band_misses: list[str] = field(default_factory=list)
 
@@ -80,6 +87,14 @@ def median(values: list[int]) -> float:
     if not values:
         raise ValueError("median of empty sample")
     return float(statistics.median(values))
+
+
+def second_best(values: list[int]) -> int:
+    """Highest scored round after the best one; the only round if there is one."""
+    if not values:
+        raise ValueError("second-best of empty sample")
+    ordered = sorted(values, reverse=True)
+    return ordered[1] if len(ordered) > 1 else ordered[0]
 
 
 def evaluate(
@@ -104,16 +119,17 @@ def evaluate(
         if not values:
             raise ValueError(f"{name}: no scored rounds (warmup={warmup})")
     scores = {name: max(values) for name, values in scored.items()}
-    zig_median = median(scored[reference])
-    if zig_median <= 0:
-        raise ValueError(f"{reference} median throughput is {zig_median}")
+    medians = {name: median(values) for name, values in scored.items()}
+    zig_second_best = second_best(scored[reference])
+    if zig_second_best <= 0:
+        raise ValueError(f"{reference} second-best throughput is {zig_second_best}")
     failures: list[str] = []
     info_band_misses: list[str] = []
     for name, score in scores.items():
         if name == reference:
             continue
         bar = overrides.get(name, min_ratio)
-        ratio = score / zig_median
+        ratio = score / zig_second_best
         if ratio < bar:
             failures.append(name)
         if ratio < info_ratio:
@@ -122,7 +138,8 @@ def evaluate(
         rounds=rounds,
         scored=scored,
         scores=scores,
-        zig_median=zig_median,
+        medians=medians,
+        zig_second_best=zig_second_best,
         failures=failures,
         info_band_misses=info_band_misses,
     )
@@ -238,39 +255,57 @@ def print_report(
             cell = format_int(values[index]) if index < len(values) else "-"
             print(f"{index + 1:>5}  {name:<13} {cell}")
     print()
-    print(f"zig median (scored rounds): {format_int(report.zig_median)}")
-    bars = f"fail below {min_ratio:.0%} of zig median"
+    print(f"zig median (scored rounds): {format_int(report.medians['zig'])}")
+    print(f"zig second-best (scored rounds): {format_int(report.zig_second_best)}")
+    bars = f"fail below {min_ratio:.0%} of zig second-best"
     if min_ratio_overrides:
         bars += f" (overrides: {format_overrides(min_ratio_overrides)})"
     bars += f"; {info_ratio:.0%} band is informational"
     print(bars)
-    print("language       best        vs zig")
+    print(
+        f"{'language':<13} {'best':>11} {'median':>11}  "
+        f"{'vs zig best':>13}  {'vs zig median':>13}"
+    )
     for name in names:
         score = report.scores[name]
+        median_bytes = report.medians[name]
+        prefix = f"{name:<13} {format_int(score):>11} {format_int(median_bytes):>11}  "
         if name == "zig":
-            print(f"{name:<13} {format_int(score):>11}  reference")
+            print(prefix + f"{'reference':>13}  {'reference':>13}")
             continue
-        ratio = score / report.zig_median
         note = ""
         if name in report.failures:
             note = "  FAIL"
         elif name in report.info_band_misses:
             note = f"  outside {1 - info_ratio:.0%} band (info)"
-        print(f"{name:<13} {format_int(score):>11}  {ratio:6.1%}{note}")
+        best_ratio = score / report.scores["zig"]
+        median_ratio = score / report.medians["zig"]
+        print(prefix + f"{best_ratio:>13.1%}  {median_ratio:>13.1%}{note}")
 
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a", encoding="utf-8") as handle:
             handle.write("### Example benchmark throughput vs examples/zig\n\n")
-            handle.write("| language | best bytes/s | vs zig |\n")
-            handle.write("| --- | ---: | ---: |\n")
+            handle.write(
+                "| language | best bytes/s | median bytes/s "
+                "| vs zig best | vs zig median |\n"
+            )
+            handle.write("| --- | ---: | ---: | ---: | ---: |\n")
             for name in names:
                 score = report.scores[name]
+                median_bytes = report.medians[name]
                 if name == "zig":
-                    handle.write(f"| {name} | {format_int(score)} | reference |\n")
+                    handle.write(
+                        f"| {name} | {format_int(score)} "
+                        f"| {format_int(median_bytes)} "
+                        f"| reference | reference |\n"
+                    )
                 else:
                     handle.write(
-                        f"| {name} | {format_int(score)} | {score / report.zig_median:.1%} |\n"
+                        f"| {name} | {format_int(score)} "
+                        f"| {format_int(median_bytes)} "
+                        f"| {score / report.scores['zig']:.1%} "
+                        f"| {score / report.medians['zig']:.1%} |\n"
                     )
             if warmup == 0:
                 warmup_text = "no warmup"
@@ -288,21 +323,60 @@ def print_report(
                 rounds_text += f" (overrides: {format_rounds_overrides(shown)})"
             handle.write(
                 f"\n{rounds_text} including zig; {warmup_text}; "
-                f"score is best of the remaining rounds; "
-                f"reference is zig median of those rounds. "
-                f"Fail below {min_ratio:.0%} of that median"
+                f"score and median are over the remaining rounds, and the "
+                f"vs-zig columns divide by zig's best and median of those "
+                f"rounds. Fail below {min_ratio:.0%} of zig's second-best "
+                f"scored round ({format_int(report.zig_second_best)} bytes/s)"
             )
             if min_ratio_overrides:
                 handle.write(f" (overrides: {format_overrides(min_ratio_overrides)})")
             handle.write(f". {info_ratio:.0%} band is informational.\n")
 
 
+def self_test_report_table(report: Report) -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        summary = Path(directory) / "summary.md"
+        previous = os.environ.get("GITHUB_STEP_SUMMARY")
+        os.environ["GITHUB_STEP_SUMMARY"] = str(summary)
+        try:
+            with contextlib.redirect_stdout(io.StringIO()) as console:
+                print_report(
+                    report,
+                    min_ratio=DEFAULT_MIN_RATIO,
+                    min_ratio_overrides=dict(DEFAULT_MIN_RATIO_OVERRIDES),
+                    info_ratio=INFO_RATIO,
+                    rounds=3,
+                    round_counts={"zig": 5, "c": 3, "rust": 3, "python": 3},
+                    warmup=1,
+                )
+        finally:
+            if previous is None:
+                os.environ.pop("GITHUB_STEP_SUMMARY", None)
+            else:
+                os.environ["GITHUB_STEP_SUMMARY"] = previous
+        table = summary.read_text(encoding="utf-8")
+        output = console.getvalue()
+    assert (
+        "| language | best bytes/s | median bytes/s | vs zig best | vs zig median |"
+        in table
+    )
+    assert "| zig | 200 | 190 | reference | reference |" in table
+    assert "| c | 190 | 188 | 95.0% | 100.0% |" in table
+    assert "| rust | 174 | 172 | 87.0% | 91.6% |" in table
+    assert "zig's second-best scored round (180 bytes/s)" in table
+    assert "vs zig best" in output
+    assert "vs zig median" in output
+    assert "FAIL" in output
+    assert "outside 3% band (info)" in output
+
+
 def self_test() -> None:
     assert parse_bps("bytes_per_second: 1,234,567\n") == 1_234_567
+    assert second_best([180]) == 180
     rounds = {
         "zig": [100, 200, 180],
         "c": [90, 190, 185],
-        "rust": [80, 180, 180],
+        "rust": [80, 174, 170],
         "python": [10, 20, 30],
     }
     report = evaluate(
@@ -312,10 +386,14 @@ def self_test() -> None:
         info_ratio=INFO_RATIO,
     )
     assert report.scores["zig"] == 200
-    assert report.zig_median == 190
+    assert report.medians["zig"] == 190
+    assert report.zig_second_best == 180
     assert report.scores["c"] == 190
+    assert report.medians["c"] == 187.5
     assert "c" not in report.failures
     assert "c" not in report.info_band_misses
+    # rust's 174 clears the 94% bar against zig's second-best (174/180) but
+    # misses the 97% info band; against zig's median (174/190) it would fail.
     assert "rust" not in report.failures
     assert "rust" in report.info_band_misses
     assert "python" in report.failures
@@ -328,6 +406,7 @@ def self_test() -> None:
     )
     assert "python" not in overridden.failures
     assert "python" in overridden.info_band_misses
+    self_test_report_table(report)
     assert parse_rounds_override("zig=6") == ("zig", 6)
     for bad in ("zig", "=6", "cobol=6", "zig=six", "zig=0", "zig=-2"):
         try:
@@ -552,7 +631,7 @@ def main() -> int:
     )
     if report.info_band_misses:
         print(
-            f"info: outside {1 - INFO_RATIO:.0%} of zig median: "
+            f"info: outside {1 - INFO_RATIO:.0%} of zig second-best: "
             + ", ".join(report.info_band_misses),
             flush=True,
         )
@@ -562,15 +641,15 @@ def main() -> int:
             bar = overrides.get(name, args.min_ratio)
             parts.append(f"{name} below {bar:.0%}")
         message = (
-            f"example-benchmarks: {', '.join(parts)} of zig median "
-            f"({format_int(report.zig_median)} bytes/s)"
+            f"example-benchmarks: {', '.join(parts)} of zig second-best "
+            f"({format_int(report.zig_second_best)} bytes/s)"
         )
         print(f"::error::{message}")
         print(message, file=sys.stderr)
         return 1
     print(
-        f"all C-ABI examples are >= {args.min_ratio:.0%} of zig median "
-        f"({format_int(report.zig_median)} bytes/s)"
+        f"all C-ABI examples are >= {args.min_ratio:.0%} of zig second-best "
+        f"({format_int(report.zig_second_best)} bytes/s)"
     )
     return 0
 
