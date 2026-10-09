@@ -111,7 +111,7 @@ export interface AddonApi extends AddonDoorNames<""> , AddonDoorNames<"hook_"> {
   // session
   galley_session_create(): bigint;
   galley_session_create_ex(options: SessionCOptionsOut): bigint;
-  galley_session_destroy(session: bigint): void;
+  galley_session_destroy(session: bigint): bigint;
   galley_session_set_message_override(
     session: bigint,
     name: string,
@@ -526,8 +526,8 @@ export class NodePort implements FfiPort {
     return handle;
   }
 
-  destroySession(handle: Handle): void {
-    this.api.galley_session_destroy(handle as bigint);
+  destroySession(handle: Handle): number {
+    return toNumber(this.api.galley_session_destroy(handle as bigint));
   }
 
   setMessageOverride(handle: Handle, name: Uint8Array, message: Uint8Array): number {

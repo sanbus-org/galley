@@ -28,7 +28,7 @@ extern "C" {
     fn galley_version() -> *const c_char;
     fn galley_session_create() -> *mut GalleySessionRaw;
     fn galley_session_create_ex(options: *const RawOptions) -> *mut GalleySessionRaw;
-    fn galley_session_destroy(session: *mut GalleySessionRaw);
+    fn galley_session_destroy(session: *mut GalleySessionRaw) -> i64;
     fn galley_parse_sentinel(session: *mut GalleySessionRaw, input: *const c_char) -> i64;
     fn galley_parse(session: *mut GalleySessionRaw, data: *const c_char, len: usize) -> i64;
     fn galley_parse_file(session: *mut GalleySessionRaw, path: *const c_char) -> i64;

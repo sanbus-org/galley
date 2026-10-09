@@ -95,7 +95,7 @@ interface GalleyWasmExports extends DoorNames<"">, DoorNames<"hook_"> {
   galley_variable_name(session: number, index: bigint, outData: number, outLen: number): bigint;
   galley_session_create(): number;
   galley_session_create_ex(options: number): number;
-  galley_session_destroy(session: number): void;
+  galley_session_destroy(session: number): bigint;
   galley_session_set_message_override(
     session: number,
     name: number,
@@ -749,8 +749,8 @@ export class WasmPort implements FfiPort {
     }
   }
 
-  destroySession(handle: Handle): void {
-    this.wasm.galley_session_destroy(handle as number);
+  destroySession(handle: Handle): number {
+    return toNumber(this.wasm.galley_session_destroy(handle as number));
   }
 
   setMessageOverride(handle: Handle, name: Uint8Array, message: Uint8Array): number {

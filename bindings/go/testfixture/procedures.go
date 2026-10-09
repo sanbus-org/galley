@@ -204,6 +204,15 @@ var (
 	// root through the session door mid-parse, which the core refuses.
 	sessionProbe *galley.Session
 	hookRootErr  error
+	// closeProbe is the session under test when a hook closes it mid-parse:
+	// reduction_Pair closes it once, closeHookErr keeps what that answered,
+	// and laterHookAfterClose records that a later hook of that same parse
+	// opened its door and read through it. A refused close must leave the
+	// running parse's hook state alone.
+	closeProbe          *galley.Session
+	closeHookErr        error
+	closeAttempted      bool
+	laterHookAfterClose bool
 	// previousDocument is the Document node of the parse before, kept
 	// across parses by door_test.go's stale test; staleReads records what
 	// every hook-door read of it answered during the next parse.
@@ -233,6 +242,8 @@ func resetDoorRecording() {
 	hookWalkErr = nil
 	sessionProbe = nil
 	hookRootErr = nil
+	closeProbe, closeHookErr = nil, nil
+	closeAttempted, laterHookAfterClose = false, false
 	staleReads = nil
 	previousSeen = false
 	keptWalker, keptDoor, keptNode = nil, galley.HookDoor{}, galley.Node{}
@@ -242,6 +253,10 @@ func resetDoorRecording() {
 
 //export reduction_Pair
 func reduction_Pair(session unsafe.Pointer, hook C.ulonglong) {
+	if closeProbe != nil && !closeAttempted {
+		closeAttempted = true
+		closeHookErr = closeProbe.Close()
+	}
 	args := galley.Args(session, uint64(hook))
 	door, err := args.Door()
 	if err != nil {
@@ -283,6 +298,14 @@ func reduction_Document(session unsafe.Pointer, hook C.ulonglong) {
 	node, ok, err := args.CurrentNode()
 	if err != nil || !ok {
 		return
+	}
+	if closeAttempted {
+		// This is a later hook of the parse a close was refused in: its door
+		// must open and answer, which it would not if that close had torn the
+		// parse's hook state down.
+		if _, err := door.ChildCount(node); err == nil {
+			laterHookAfterClose = true
+		}
 	}
 	if sessionProbe != nil {
 		_, _, hookRootErr = sessionProbe.RootNode()

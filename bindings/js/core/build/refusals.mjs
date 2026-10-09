@@ -158,6 +158,37 @@ export async function runRefusalScenarios({ test, assert, newParser, GalleyError
     }
   });
 
+  await test("close inside a hook is refused and the session keeps working", async () => {
+    // Closing takes the session's lease like every other mutation: a hook of
+    // the running parse gets `session in use`, nothing is freed, and the
+    // session still reads its published tree and closes afterwards.
+    const parser = await newParser();
+    const s = await parser.openSession();
+    const refusals = [];
+    s.installProcedure("reduction_Document", () => {
+      try {
+        s.close();
+        refusals.push(null);
+      } catch (error) {
+        refusals.push(error);
+      }
+    });
+    try {
+      s.parse(FIRST);
+      assert.equal(refusals.length, 1);
+      assert.ok(refusals[0] instanceof GalleyError);
+      assert.equal(refusals[0].code, Status.ErrorSessionInUse);
+      s.clearProcedures();
+      assert.ok(!s.isClosed);
+      assert.equal(decode(s.rootNode().text()), FIRST);
+      s.close();
+      assert.ok(s.isClosed);
+      s.close(); // idempotent after a real close
+    } finally {
+      s.close();
+    }
+  });
+
   await test("parsing copies the input", async () => {
     // The caller may overwrite its buffer once parse returns.
     const parser = await newParser();

@@ -869,14 +869,35 @@ static int Session_init(SessionObject *self, PyObject *args, PyObject *keywords)
         Py_DECREF(defaults);
         return -1;
     }
+    /* The live session's hook tables, so a refused re-init can put them
+     * back: commit_hooks retires them below, and a kept old session must
+     * keep reporting its own hooks, not the new session's defaults. */
+    PyObject *old_hooks = self->hooks != NULL ? Py_NewRef(self->hooks) : NULL;
+    PyObject *old_hooks_by_index =
+        self->hooks_by_index != NULL ? Py_NewRef(self->hooks_by_index) : NULL;
     if (commit_hooks(self, session, defaults) < 0) {
         Py_DECREF(defaults);
+        Py_XDECREF(old_hooks);
+        Py_XDECREF(old_hooks_by_index);
         galley_session_destroy(session);
         return -1;
     }
     Py_DECREF(defaults);
-    if (self->session != NULL)
-        galley_session_destroy(self->session);
+    if (self->session != NULL) {
+        long long status = galley_session_destroy(self->session);
+        if (status < 0) {
+            /* Re-`__init__` while a parse runs (from a hook or another
+             * thread): the live session is in use, so it stays. Restore
+             * its hook tables, drop the new session, and raise. */
+            Py_XSETREF(self->hooks, old_hooks);
+            Py_XSETREF(self->hooks_by_index, old_hooks_by_index);
+            (void)galley_session_destroy(session);
+            set_error_from_status(status);
+            return -1;
+        }
+    }
+    Py_XDECREF(old_hooks);
+    Py_XDECREF(old_hooks_by_index);
     self->session = session;
     /* A re-init orphans prior nodes and walkers: nothing is published on
      * the new session, so their next access raises instead of reading the
@@ -885,17 +906,26 @@ static int Session_init(SessionObject *self, PyObject *args, PyObject *keywords)
     return 0;
 }
 
-static void close_session(SessionObject *self)
+/* Frees the session, or refuses it: returns -1 with an exception set when
+ * a parse holds the session, in which case nothing was freed and the
+ * object keeps it. */
+static int close_session(SessionObject *self)
 {
-    if (self->session != NULL) {
-        galley_session_destroy(self->session);
-        self->session = NULL;
+    if (self->session == NULL)
+        return 0;
+    long long status = galley_session_destroy(self->session);
+    if (status < 0) {
+        set_error_from_status(status);
+        return -1;
     }
+    self->session = NULL;
+    return 0;
 }
 
 static PyObject *Session_close(SessionObject *self, PyObject *Py_UNUSED(ignored))
 {
-    close_session(self);
+    if (close_session(self) < 0)
+        return NULL;
     Py_RETURN_NONE;
 }
 
@@ -964,7 +994,10 @@ static PyObject *Session_enter(SessionObject *self, PyObject *Py_UNUSED(ignored)
 static PyObject *Session_exit(SessionObject *self, PyObject *Py_UNUSED(args),
                               Py_ssize_t Py_UNUSED(count))
 {
-    close_session(self);
+    /* The scoped-resource form closes exactly like close(): a refusal
+     * raises rather than dropping the status. */
+    if (close_session(self) < 0)
+        return NULL;
     Py_RETURN_NONE;
 }
 
@@ -987,7 +1020,10 @@ static int Session_clear(SessionObject *self)
 static void Session_dealloc(SessionObject *self)
 {
     PyObject_GC_UnTrack(self);
-    close_session(self);
+    /* A running parse's method holds a reference to self, so a parse cannot
+     * be in flight here and the status can only be ok; were a refusal ever
+     * possible, close_session keeps the session instead of freeing it. */
+    (void)close_session(self);
     Session_clear(self);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }

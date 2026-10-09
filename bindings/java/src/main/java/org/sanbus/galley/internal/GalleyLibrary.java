@@ -145,7 +145,7 @@ public final class GalleyLibrary {
         this.mh_galley_variable_name = downcall("galley_variable_name", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.mh_galley_session_create = downcall("galley_session_create", FunctionDescriptor.of(ValueLayout.ADDRESS));
         this.mh_galley_session_create_ex = downcall("galley_session_create_ex", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        this.mh_galley_session_destroy = downcall("galley_session_destroy", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+        this.mh_galley_session_destroy = downcall("galley_session_destroy", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
         this.mh_galley_session_set_message_override = downcall("galley_session_set_message_override", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
         this.mh_galley_parse = downcall("galley_parse", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
         this.mh_galley_parse_sentinel = downcall("galley_parse_sentinel", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
@@ -269,8 +269,8 @@ public final class GalleyLibrary {
             return (MemorySegment) mh_galley_session_create_ex.invoke(options);
         } catch (Throwable t) { throw new RuntimeException(t); }
     }
-    public void galley_session_destroy(MemorySegment session) {
-        try { mh_galley_session_destroy.invoke(session); } catch (Throwable t) { throw new RuntimeException(t); }
+    public long galley_session_destroy(MemorySegment session) {
+        try { return (long) mh_galley_session_destroy.invoke(session); } catch (Throwable t) { throw new RuntimeException(t); }
     }
     public long galley_session_set_message_override(MemorySegment session, MemorySegment name, long nameLen, MemorySegment message, long messageLen) {
         try { return (long) mh_galley_session_set_message_override.invoke(session, name, nameLen, message, messageLen); } catch (Throwable t) { throw new RuntimeException(t); }

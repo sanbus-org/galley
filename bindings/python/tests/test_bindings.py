@@ -536,6 +536,84 @@ class SessionTests(unittest.TestCase):
         self.session.set_message_override("Number", text)
         self.assertIn(text, message_of_broken_parse())
 
+    def test_close_is_refused_while_a_parse_runs(self) -> None:
+        # Closing takes the same lease: from inside a hook and from another
+        # thread it raises `session in use`, frees nothing, and leaves the
+        # session open and usable.
+        entered = threading.Event()
+        release = threading.Event()
+        from_hook: list[int] = []
+        from_thread: list[int] = []
+
+        def reduction_Document(args: grammar.ProcedureArguments) -> None:
+            try:
+                self.session.close()
+            except grammar.GalleyError as error:
+                from_hook.append(error.code)
+            entered.set()
+            self.assertTrue(release.wait(30))
+
+        self.session.install_procedure("reduction_Document", reduction_Document)
+        parser = threading.Thread(target=lambda: self.session.parse("alpha:12,beta:3"))
+        parser.start()
+        try:
+            self.assertTrue(entered.wait(30))
+            try:
+                self.session.close()
+            except grammar.GalleyError as error:
+                from_thread.append(error.code)
+        finally:
+            release.set()
+            parser.join(30)
+            self.session.clear_procedures()
+
+        self.assertEqual(from_hook, [grammar.Status.ERROR_SESSION_IN_USE])
+        self.assertEqual(from_thread, [grammar.Status.ERROR_SESSION_IN_USE])
+        self.assertFalse(self.session.is_closed())
+        root = self.session.root_node()
+        assert root is not None
+        self.assertEqual(root.text(), b"alpha:12,beta:3")
+        self.session.close()
+        self.assertTrue(self.session.is_closed())
+
+    def test_reinit_from_a_hook_is_refused_and_keeps_the_session(self) -> None:
+        # Session.__init__ of a live session from inside its own parse must
+        # not swap that session out from under the parse: the refusal keeps
+        # the old one, with the hooks it had, and the new one is dropped.
+        entered = threading.Event()
+        release = threading.Event()
+        from_hook: list[int] = []
+
+        def reduction_Document(args: grammar.ProcedureArguments) -> None:
+            try:
+                self.session.__init__()
+            except grammar.GalleyError as error:
+                from_hook.append(error.code)
+            entered.set()
+            self.assertTrue(release.wait(30))
+
+        self.session.install_procedure("reduction_Document", reduction_Document)
+        parser = threading.Thread(target=lambda: self.session.parse("alpha:12,beta:3"))
+        parser.start()
+        try:
+            self.assertTrue(entered.wait(30))
+        finally:
+            release.set()
+            parser.join(30)
+
+        self.assertEqual(from_hook, [grammar.Status.ERROR_SESSION_IN_USE])
+        self.assertFalse(self.session.is_closed())
+        # The kept session still reports its own hooks, not the dropped
+        # new session's defaults.
+        self.assertIn("reduction_Document", self.session.list_procedures())
+        self.session.clear_procedures()
+        self.session.parse("alpha:4,beta:5")
+        root = self.session.root_node()
+        assert root is not None
+        self.assertEqual(root.text(), b"alpha:4,beta:5")
+        self.session.close()
+        self.assertTrue(self.session.is_closed())
+
     def test_parsing_copies_the_input(self) -> None:
         # The caller may overwrite its buffer once parse returns.
         buffer = bytearray(b"alpha:12,beta:3")

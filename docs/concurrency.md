@@ -49,8 +49,20 @@ language in its own binary.
 * `ParseOptions.input_path` and `ParseOptions.syntax_error_reporter` are borrowed for the session lifetime, not copied. Only `message_overrides` are duplicated.
 * Do not copy a live `Session` by value. A copy forks the lock while sharing storage; it is a host bug Zig cannot forbid.
 * After `SessionGenerationExhausted`, recreate the session. It is permanently read-only.
-* Do not destroy a session while one of its parses is running on any thread.
-  Mutate message overrides only through `Session.setMessageOverride`, never by
+* Closing a session refuses while a parse holds it, from another thread or
+  from a hook: `galley_session_destroy` calls `tryDeinit` first and returns
+  `galley_error_session_in_use` with nothing freed, and `Session.deinit`
+  keeps its panic (Zig callers who must not crash call `Session.tryDeinit`,
+  which returns `SessionInUse`). Hosts that expose `close` — Python, Java,
+  JS and Go — pass that refusal through to their caller and keep the session
+  open, so no layer frees state a running parse still reads.
+* The host still owns the handle's lifetime. The refusal above covers only
+  parses the core can see: a caller holding the pointer before the core
+  takes its lock is invisible to the core and reaches it afterwards, so no
+  call may race a destroy that succeeds. Keep one owner per handle — or a
+  count the host checks before the pointer can go — and free nothing while a
+  call that reads the handle is in flight.
+* Mutate message overrides only through `Session.setMessageOverride`, never by
   writing `Session.message_overrides` directly.
 * Unload a Galley library only when no session with recovery enabled is live.
 * Barrier and overlap tests must not synchronize through shared `std.testing.io`. Use `std.Thread.Mutex` / `std.Thread.Condition` / atomics with a per-worker `Io`.

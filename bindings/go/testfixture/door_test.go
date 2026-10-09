@@ -15,7 +15,7 @@ func TestHookDoorServesLaterHooksOfTheSameParse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("session: %v", err)
 	}
-	t.Cleanup(session.Close)
+	t.Cleanup(func() { _ = session.Close() })
 	if _, err := session.Parse([]byte("alpha:12,beta:3")); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -36,7 +36,7 @@ func TestHookDoorRefusesANodeOfAnEarlierParse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("session: %v", err)
 	}
-	t.Cleanup(session.Close)
+	t.Cleanup(func() { _ = session.Close() })
 	if _, err := session.Parse([]byte("alpha:12")); err != nil {
 		t.Fatalf("first parse: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestHookDoorEndsWithItsParse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("session: %v", err)
 	}
-	t.Cleanup(session.Close)
+	t.Cleanup(func() { _ = session.Close() })
 	if _, err := session.Parse([]byte("alpha:12,beta:3")); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -91,7 +91,9 @@ func TestHookDoorEndsWithItsParse(t *testing.T) {
 		t.Fatalf("second parse: %v", err)
 	}
 	expectStale("after the next parse")
-	session.Close()
+	if err := session.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
 	expectStale("after the session closed")
 }
 
@@ -103,14 +105,14 @@ func TestHookDoorOfOneSessionSurvivesAnotherSessionsParse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("session: %v", err)
 	}
-	t.Cleanup(other.Close)
+	t.Cleanup(func() { _ = other.Close() })
 	siblingSession = other
 	t.Cleanup(func() { siblingSession = nil })
 	session, err := galley.New()
 	if err != nil {
 		t.Fatalf("session: %v", err)
 	}
-	t.Cleanup(session.Close)
+	t.Cleanup(func() { _ = session.Close() })
 	if _, err := session.Parse([]byte("alpha:12")); err != nil {
 		t.Fatalf("parse: %v", err)
 	}

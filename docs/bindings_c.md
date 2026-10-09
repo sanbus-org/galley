@@ -278,10 +278,25 @@ GalleySession *session = galley_session_create();
 const GalleyCOptions options = { .max_errors = 10 };
 GalleySession *session = galley_session_create_ex(&options);
 /* ... */
-galley_session_destroy(session);
+if (galley_session_destroy(session) != galley_ok) {
+    /* A parse is in flight (another thread or a hook): nothing was freed,
+       the session still works. Retry once the parse is done. */
+}
 ```
 
-Sessions are **not thread-safe** — use one per thread or guard externally.
+Destroy returns `galley_ok`, and `galley_session_destroy(NULL)` is a no-op
+that also returns `galley_ok`, so a repeated close stays harmless. It takes
+the session's exclusive lease, so `galley_error_session_in_use` means a parse
+was running and **nothing was touched**: the session keeps parsing, reading
+and closing.
+
+Sessions are **not thread-safe** — use one per thread or guard externally,
+including the handle's lifetime. Destroy refuses only while the core can see
+a parse in flight: a caller holding the pointer before the core takes its
+lock is invisible to the core and enters it afterwards, so no call may race a
+`galley_session_destroy` that succeeds. Keep one owner per handle — or a
+count checked before the pointer can go.
+
 All result data (node addresses, text pointers, input pointers, diagnostic
 strings) remains valid until the next parse on the same session or session
 destruction; on the hook door, text and input pointers only until the calling

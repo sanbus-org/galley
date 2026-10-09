@@ -70,7 +70,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "failed to create a parser session\n")
 		os.Exit(1)
 	}
-	defer session.Close()
+	defer func() {
+		if err := session.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "close failed: %v\n", err)
+		}
+	}()
 
 	parsed, err := session.Parse(data)
 	if err != nil || parsed != expected {

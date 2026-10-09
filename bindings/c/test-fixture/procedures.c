@@ -146,6 +146,9 @@ static long long hook_range_status[3] = {galley_ok, galley_ok, galley_ok};
 static long long stashed_kind_status = galley_ok;
 /* What galley_session_set_message_override answers from inside a hook. */
 static long long stashed_override_status = galley_ok;
+/* What galley_session_destroy answers from inside a hook: refused while the
+ * parse holds the session. */
+static long long stashed_destroy_status = galley_ok;
 /* What the post-parse reads that describe a finished parse answer from
  * inside a hook: capacity, node count, last input, last position. */
 enum { FIXTURE_STASHED_READS = 4 };
@@ -357,6 +360,7 @@ void fixture_stash_session(GalleySession *session) {
     memset(stale_hook_status, 0, sizeof stale_hook_status);
     memset(stashed_read_status, 0, sizeof stashed_read_status);
     stashed_override_status = galley_ok;
+    stashed_destroy_status = galley_ok;
     memset(own_hook_status, 0, sizeof own_hook_status);
     later_hook_shares_door = 0;
     later_hook_child_count = -1;
@@ -418,6 +422,8 @@ long long fixture_hook_range_status(int which) { return hook_range_status[which]
 long long fixture_stashed_kind_status(void) { return stashed_kind_status; }
 
 long long fixture_stashed_override_status(void) { return stashed_override_status; }
+
+long long fixture_stashed_destroy_status(void) { return stashed_destroy_status; }
 
 long long fixture_stashed_read_status(int which) {
     if (which < 0 || which >= FIXTURE_STASHED_READS) return galley_ok;
@@ -506,6 +512,9 @@ void reduction_Document(GalleySession *session, unsigned long long hook) {
         stashed_kind_status = galley_diagnostic_kind(stashed_session);
         stashed_override_status = galley_session_set_message_override(
             stashed_session, "Number", 6, "set from a hook", 15);
+        /* Closing from inside a hook is the same lease: refused, and the
+         * session the parse is running on stays alive. */
+        stashed_destroy_status = galley_session_destroy(session);
         {
             const char *input = NULL;
             size_t input_length = 0;

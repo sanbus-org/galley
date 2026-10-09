@@ -293,7 +293,7 @@ typedef long long (*fn_galley_root_node_t)(GalleySession *session, GalleyNodeAdd
 typedef long long (*fn_galley_semantic_error_count_t)(GalleySession *session);
 typedef GalleySession * (*fn_galley_session_create_t)(void);
 typedef GalleySession * (*fn_galley_session_create_ex_t)(const GalleyCOptions *options);
-typedef void (*fn_galley_session_destroy_t)(GalleySession *session);
+typedef long long (*fn_galley_session_destroy_t)(GalleySession *session);
 typedef size_t (*fn_galley_hooks_count_t)(void);
 typedef const char * (*fn_galley_hooks_name_data_t)(size_t index);
 typedef size_t (*fn_galley_hooks_name_length_t)(size_t index);
@@ -1142,10 +1142,9 @@ static napi_value method_galley_session_destroy(napi_env env, Lib *lib, size_t a
                                                napi_value *argv) {
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
-  ((fn_galley_session_destroy_t)lib->fn[SLOT_galley_session_destroy])(session);
-  napi_value undefined_value;
-  if (napi_get_undefined(env, &undefined_value) != napi_ok) return NULL;
-  return undefined_value;
+  long long status =
+      ((fn_galley_session_destroy_t)lib->fn[SLOT_galley_session_destroy])(session);
+  return make_i64(env, status);
 }
 
 static napi_value method_galley_session_set_message_override(napi_env env, Lib *lib, size_t argc,

@@ -73,7 +73,7 @@ func TestRootNodeDistinguishesNothingPublishedFromARefusal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("session: %v", err)
 	}
-	t.Cleanup(session.Close)
+	t.Cleanup(func() { _ = session.Close() })
 	if _, ok, err := session.RootNode(); ok || err != nil {
 		t.Fatalf("root before any parse = (ok %v, %v), want (false, nil)", ok, err)
 	}

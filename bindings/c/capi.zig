@@ -990,15 +990,24 @@ export fn galley_session_create_ex(options: ?*const GalleyCOptions) ?*GalleySess
     return @ptrCast(embedded);
 }
 
-/// Destroys a session created by `galley_session_create`. Null is ignored,
-/// which makes guarded cleanup paths easy to write.
-export fn galley_session_destroy(session_ptr: ?*GalleySession) void {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return));
+/// Destroys a session created by `galley_session_create`. Null is ignored
+/// and returns `galley_ok`, which makes guarded cleanup paths (and a
+/// repeated close) easy to write, like `free(NULL)`.
+///
+/// Takes the session's exclusive lease first: while a parse holds it, from
+/// another thread or from a hook, this returns
+/// `galley_error_session_in_use` and has touched nothing — the session
+/// stays fully usable. Only a lease that was acquired frees the embedded
+/// buffers and the session itself, so a refused close cannot free state the
+/// running parse still reads.
+export fn galley_session_destroy(session_ptr: ?*GalleySession) i64 {
+    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_ok));
+    embedded.session.tryDeinit() catch return galley_error_session_in_use;
     embedded.clearRenderedDiagnostic();
     if (embedded.retained_input.len != 0) std.heap.c_allocator.free(embedded.retained_input);
-    embedded.session.deinit();
     embedded.threaded.deinit();
     std.heap.c_allocator.destroy(embedded);
+    return galley_ok;
 }
 
 // Host-memory helpers for the WebAssembly build (`bindings/js/wasm`): the

@@ -231,7 +231,11 @@ session, err := galley.WithOptions(galley.SessionOptions{
     RecoveryWindow: 500,
 })
 if err != nil { ... }
-defer session.Close()
+defer func() {
+    if err := session.Close(); err != nil {
+        ... // ErrSessionInUse: a parse was in flight, nothing was freed
+    }
+}()
 
 parsed, err := session.ParseSentinel("alpha:12,beta:3")
 ```

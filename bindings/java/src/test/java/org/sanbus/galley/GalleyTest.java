@@ -2421,6 +2421,50 @@ public class GalleyTest {
         }
 
         @Test
+        void closeIsRefusedWhileAParseRuns() throws Exception {
+            // Closing takes the same lease: from inside a hook and from
+            // another thread it throws session in use, frees nothing, and
+            // leaves the session open and reading.
+            CountDownLatch entered = new CountDownLatch(1);
+            CountDownLatch release = new CountDownLatch(1);
+            List<StatusCode> fromHook = new ArrayList<>();
+            List<StatusCode> fromThread = new ArrayList<>();
+            session.installProcedure("reduction_Document", args -> {
+                try {
+                    session.close();
+                } catch (GalleyException error) {
+                    fromHook.add(error.getCode());
+                }
+                entered.countDown();
+                try {
+                    release.await(30, TimeUnit.SECONDS);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+            Thread parser = new Thread(() -> session.parse("alpha:12,beta:3"));
+            parser.start();
+            try {
+                assertTrue(entered.await(30, TimeUnit.SECONDS));
+                try {
+                    session.close();
+                } catch (GalleyException error) {
+                    fromThread.add(error.getCode());
+                }
+            } finally {
+                release.countDown();
+                parser.join(30_000);
+                session.clearProcedures();
+            }
+            assertEquals(List.of(StatusCode.ERROR_SESSION_IN_USE), fromHook);
+            assertEquals(List.of(StatusCode.ERROR_SESSION_IN_USE), fromThread);
+            assertFalse(session.isClosed());
+            assertEquals("alpha:12,beta:3", new String(session.rootNode().text(), StandardCharsets.UTF_8));
+            session.close();
+            assertTrue(session.isClosed());
+        }
+
+        @Test
         void parsingCopiesTheInput() {
             // The caller may overwrite or release its buffer once parse returns.
             ByteBuffer buffer = ByteBuffer.allocateDirect(15);

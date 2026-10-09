@@ -115,11 +115,13 @@ static void test_status_strings(void) {
 static void test_session_lifetime(void) {
     GalleySession *session = make_session();
     CHECK(session != NULL);
-    galley_session_destroy(session);
-    galley_session_destroy(NULL);
+    CHECK(galley_session_destroy(session) == galley_ok);
+    /* Destroying nothing is a no-op that reports ok, like free(NULL), so a
+     * repeated close stays harmless. */
+    CHECK(galley_session_destroy(NULL) == galley_ok);
     session = galley_session_create_ex(NULL);
     CHECK(session != NULL);
-    galley_session_destroy(session);
+    CHECK(galley_session_destroy(session) == galley_ok);
 }
 
 static void test_symbol_table(void) {
@@ -801,6 +803,7 @@ long long fixture_hook_text_status(void);
 long long fixture_hook_range_status(int which);
 long long fixture_stashed_kind_status(void);
 long long fixture_stashed_override_status(void);
+long long fixture_stashed_destroy_status(void);
 long long fixture_stashed_read_status(int which);
 unsigned long long fixture_first_pair_hook(void);
 int fixture_stale_hook_calls(void);
@@ -848,6 +851,9 @@ static void test_hook_door(void) {
     CHECK(fixture_stashed_kind_status() == galley_error_session_in_use);
     /* A message override set from a hook is refused and changes nothing. */
     CHECK(fixture_stashed_override_status() == galley_error_session_in_use);
+    /* So is closing the session from inside a hook: the destroy runs but
+     * frees nothing, so the session below still closes with galley_ok. */
+    CHECK(fixture_stashed_destroy_status() == galley_error_session_in_use);
     {
         const char *message = NULL;
         CHECK(galley_parse_sentinel(session, broken_sample) == galley_error_syntax);
@@ -1365,6 +1371,47 @@ static void test_message_override_is_refused_while_a_parse_runs(void) {
     galley_session_destroy(session);
 }
 
+/* Destroying a session takes its lease like every other mutation: from
+ * another thread while a parse holds it, and from inside a hook of that
+ * same parse, it is refused with session in use and frees nothing. The
+ * session still parses, still reads and still destroys afterwards. */
+static void test_destroy_is_refused_while_a_parse_runs(void) {
+    GalleySession *session = make_session();
+    fixture_stash_session(session);
+    fixture_arm_gate();
+    GatedParse gated = {session, 0};
+    pthread_t parser;
+    CHECK(pthread_create(&parser, NULL, parse_while_gated, &gated) == 0);
+    int entered = wait_for_gate();
+    CHECK(entered);
+    if (entered) {
+        /* Repeated refusals are all refusals: the session is never freed. */
+        CHECK(galley_session_destroy(session) == galley_error_session_in_use);
+        CHECK(galley_session_destroy(session) == galley_error_session_in_use);
+    }
+    fixture_release_gate();
+    CHECK(pthread_join(parser, NULL) == 0);
+    fixture_stash_session(NULL);
+    CHECK(gated.parse_status >= 0);
+
+    /* The hook's own destroy was refused too, from inside the parse. */
+    CHECK(fixture_stashed_destroy_status() == galley_error_session_in_use);
+
+    /* Nothing was freed: the session parses and reads as before. */
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    unsigned long long generation = 0;
+    GalleyNodeAddress root = GALLEY_INVALID_NODE;
+    CHECK(galley_root_node(session, &root, &generation) == galley_ok);
+    CHECK(root != GALLEY_INVALID_NODE);
+    CHECK(galley_node_count(session, generation) > 0);
+    const char *input = NULL;
+    size_t input_length = 0;
+    CHECK(galley_last_input(session, &input, &input_length) == galley_ok);
+    CHECK(input_length == strlen(valid_sample));
+    CHECK(galley_session_destroy(session) == galley_ok);
+    CHECK(galley_session_destroy(NULL) == galley_ok);
+}
+
 /* Parsing copies the input: the caller may overwrite or release its buffer
  * right after the call, and last_input still reads the parsed text from the
  * session's own copy, for every parse entry and for a failure that
@@ -1729,6 +1776,7 @@ int main(void) {
     test_walk_in_use();
     test_live_ticket_is_the_dispatching_threads_and_sessions();
     test_message_override_is_refused_while_a_parse_runs();
+    test_destroy_is_refused_while_a_parse_runs();
     test_parsing_copies_the_input();
     test_walk_in_hook();
     test_walk_semantic_skip_in_hook();

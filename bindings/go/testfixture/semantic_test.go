@@ -12,7 +12,7 @@ func TestSemanticErrorsAggregateAndFail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("session: %v", err)
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 
 	if _, err := session.Parse([]byte("alpha:1,beta:2000,gamma:3000")); !errors.Is(err, galley.ErrSemantic) {
 		t.Fatalf("expected ErrSemantic, got %v", err)
@@ -41,7 +41,7 @@ func TestCleanParseAfterSemanticFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("session: %v", err)
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 
 	if _, err := session.Parse([]byte("alpha:2000")); !errors.Is(err, galley.ErrSemantic) {
 		t.Fatalf("expected ErrSemantic, got %v", err)

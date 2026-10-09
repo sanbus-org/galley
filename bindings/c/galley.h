@@ -188,8 +188,13 @@ typedef struct GalleyCOptions {
  * equivalent to galley_session_create. */
 GalleySession *galley_session_create_ex(const GalleyCOptions *options);
 
-/* Destroys a session created by galley_session_create. NULL is ignored. */
-void galley_session_destroy(GalleySession *session);
+/* Destroys a session created by galley_session_create. NULL is ignored and
+ * returns galley_ok (like free(NULL)), so a repeated close stays a no-op.
+ * Takes the session's exclusive lease first: while a parse is in flight
+ * (from another thread or from a hook) this returns
+ * galley_error_session_in_use, changes nothing, and the session keeps
+ * working; only a success frees it. */
+long long galley_session_destroy(GalleySession *session);
 
 /* Registers one message override: when a syntax-error site's resolution
  * chain contains name (an exact hook name, its variable-level family, or

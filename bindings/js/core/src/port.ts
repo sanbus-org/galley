@@ -200,7 +200,11 @@ export interface FfiPort {
   // -- sessions ---------------------------------------------------------
   /** Null handle on initialization failure (most commonly allocation failure). */
   createSession(options: SessionCOptions | null): Handle;
-  destroySession(handle: Handle): void;
+  /**
+   * Destroys the session: `galley_ok` (0) when it is gone, or the core's
+   * negative status when a parse holds it — then nothing was freed.
+   */
+  destroySession(handle: Handle): number;
   /** Negative status on failure. */
   setMessageOverride(handle: Handle, name: Uint8Array, message: Uint8Array): number;
 

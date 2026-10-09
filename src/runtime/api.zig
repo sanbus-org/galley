@@ -1592,6 +1592,22 @@ test "a message override is refused while a parse holds the session and changes 
     try std.testing.expectEqualStrings("added", session.message_overrides.get("Other").?);
 }
 
+test "destroying the session is refused while a parse holds it and changes nothing" {
+    const valid = "Start\n| \"x\"\n";
+    var session = try Session.init(std.Io.failing, std.testing.allocator, .{});
+    defer session.deinit();
+
+    var lease = try session.parseBytesLeased(valid, null);
+    try std.testing.expectError(error.SessionInUse, session.tryDeinit());
+    lease.deinit();
+
+    // The refusal touched nothing: the session still parses and reads.
+    const reparsed = try session.parseBytes(valid, null);
+    try std.testing.expectEqual(valid.len, reparsed.parsed_bytes);
+    var published = try session.readCurrent();
+    published.deinit();
+}
+
 test "an allocation failure while setting a message override changes nothing" {
     var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
     var session = try Session.init(std.Io.failing, failing.allocator(), .{

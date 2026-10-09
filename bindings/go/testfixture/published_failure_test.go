@@ -20,7 +20,7 @@ func publishedSession(t *testing.T, options galley.SessionOptions) *galley.Sessi
 	if err != nil {
 		t.Fatalf("session: %v", err)
 	}
-	t.Cleanup(session.Close)
+	t.Cleanup(func() { _ = session.Close() })
 	return session
 }
 

@@ -75,7 +75,7 @@ interface GalleySymbols extends DoorNames<"">, DoorNames<"hook_"> {
   galley_variable_name(session: NativeHandle, index: bigint, outData: number, outLen: number): bigint;
   galley_session_create(): NativeHandle;
   galley_session_create_ex(options: number): NativeHandle;
-  galley_session_destroy(session: NativeHandle): void;
+  galley_session_destroy(session: NativeHandle): bigint;
   galley_session_set_message_override(session: NativeHandle, name: number, nameLen: bigint, message: number, messageLen: bigint): bigint;
   galley_parse(session: NativeHandle, data: number, len: bigint): bigint;
   galley_parse_file(session: NativeHandle, path: number): bigint;
@@ -225,7 +225,7 @@ const BASE_SYMBOLS = {
   galley_variable_name: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   galley_session_create: { args: [], returns: FFIType.ptr },
   galley_session_create_ex: { args: [FFIType.ptr], returns: FFIType.ptr },
-  galley_session_destroy: { args: [FFIType.ptr], returns: FFIType.void },
+  galley_session_destroy: { args: [FFIType.ptr], returns: FFIType.i64 },
   galley_session_set_message_override: { args: [FFIType.ptr, FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
   galley_parse: { args: [FFIType.ptr, FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
   galley_parse_file: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
@@ -597,8 +597,8 @@ export class BunPort implements FfiPort {
     return handle;
   }
 
-  destroySession(handle: Handle): void {
-    this.native.galley_session_destroy(handle as NativeHandle);
+  destroySession(handle: Handle): number {
+    return Number(this.native.galley_session_destroy(handle as NativeHandle));
   }
 
   setMessageOverride(handle: Handle, name: Uint8Array, message: Uint8Array): number {

@@ -480,7 +480,12 @@ class Session:
         ast_preallocation_cap: int = 0,
     ) -> None: ...
     def close(self) -> None:
-        """Release the underlying session; safe to call more than once."""
+        """Release the underlying session; safe to call more than once.
+
+        Raises ``GalleyError`` (``ERROR_SESSION_IN_USE``) while a parse is
+        in flight, whether from a hook or another thread, and closes
+        nothing: the session stays open and parses normally afterwards.
+        """
         ...
 
     def is_closed(self) -> bool:

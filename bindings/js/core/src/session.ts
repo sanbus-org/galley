@@ -632,11 +632,18 @@ export class Session implements HookOwner {
   /**
    * Idempotent: closing an already-closed session does nothing — no
    * second destroy, no generation advance.
+   *
+   * While a parse is in flight (a hook of it calling this, or another
+   * thread's parse through a shared handle) the core refuses, so this
+   * throws `session in use` and changes nothing: the handle, the router
+   * registration, `#closed` and the intern table stay as they were and the
+   * session keeps working.
    */
   close(): void {
     if (this.#closed) return;
     if (this.#handle !== null) {
-      this.#port.destroySession(this.#handle);
+      const status = this.#port.destroySession(this.#handle);
+      if (status < 0) throw this.errorFromStatus(status);
       this.#handle = null;
       routerFor(this.#port).unregister(this.#hookHandle);
     }

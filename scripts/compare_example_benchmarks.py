@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 BPS_RE = re.compile(r"^bytes_per_second:\s*([0-9,]+)\s*$")
-DEFAULT_ROUNDS = 3
+DEFAULT_ROUNDS = 7
 DEFAULT_WARMUP = 1
 DEFAULT_ITERATIONS = 10
 DEFAULT_MIN_RATIO = 0.94
@@ -40,7 +40,7 @@ DEFAULT_MIN_RATIO_OVERRIDES: dict[str, float] = {"wasm": 0.7}
 # second-best scored round has to be stable; extra runs pin the baseline
 # down. wasm has measured noisier than the rest in CI, so it gets extra
 # runs too.
-DEFAULT_ROUNDS_OVERRIDES: dict[str, int] = {"zig": 5, "wasm": 5}
+DEFAULT_ROUNDS_OVERRIDES: dict[str, int] = {}
 INFO_RATIO = 0.97
 LANGUAGE_ORDER = (
     "zig",

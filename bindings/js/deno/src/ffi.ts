@@ -74,7 +74,7 @@ interface GalleySymbols extends DoorNames<"">, DoorNames<"hook_"> {
   galley_variable_name(session: Deno.PointerValue, index: bigint, outData: FfiOut, outLen: FfiOut): bigint;
   galley_session_create(): Deno.PointerValue;
   galley_session_create_ex(options: FfiOut): Deno.PointerValue;
-  galley_session_destroy(session: Deno.PointerValue): void;
+  galley_session_destroy(session: Deno.PointerValue): bigint;
   galley_session_set_message_override(session: Deno.PointerValue, name: FfiOut, nameLen: number, message: FfiOut, messageLen: number): bigint;
   galley_parse(session: Deno.PointerValue, data: FfiOut, len: number): bigint;
   galley_parse_file(session: Deno.PointerValue, path: FfiOut): bigint;
@@ -231,7 +231,7 @@ const BASE_SYMBOLS = {
   galley_variable_name: { parameters: ["pointer", "u64", "buffer", "buffer"], result: "i64" },
   galley_session_create: { parameters: [], result: "pointer" },
   galley_session_create_ex: { parameters: ["buffer"], result: "pointer" },
-  galley_session_destroy: { parameters: ["pointer"], result: "void" },
+  galley_session_destroy: { parameters: ["pointer"], result: "i64" },
   galley_session_set_message_override: { parameters: ["pointer", "buffer", "usize", "buffer", "usize"], result: "i64" },
   galley_parse: { parameters: ["pointer", "buffer", "usize"], result: "i64" },
   galley_parse_file: { parameters: ["pointer", "buffer"], result: "i64" },
@@ -621,8 +621,8 @@ export class DenoPort implements FfiPort {
     return handle;
   }
 
-  destroySession(handle: Handle): void {
-    this.native.galley_session_destroy(handle as Deno.PointerValue);
+  destroySession(handle: Handle): number {
+    return Number(this.native.galley_session_destroy(handle as Deno.PointerValue));
   }
 
   setMessageOverride(handle: Handle, name: Uint8Array, message: Uint8Array): number {

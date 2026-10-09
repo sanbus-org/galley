@@ -56,8 +56,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "failed to create a parser session\n")
 		os.Exit(1)
 	}
-	defer session.Close()
-
+	defer func() {
+		if err := session.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "close failed: %v\n", err)
+		}
+	}()
 
 	/* With a path argument: parse the file and nothing else. */
 	args := os.Args[1:]

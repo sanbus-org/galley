@@ -296,10 +296,19 @@ public final class Session implements AutoCloseable {
 
     public boolean isClosed() { return closed || handle == null || handle.equals(MemorySegment.NULL); }
 
+    /**
+     * Closes the session. While a parse is in flight — from a hook or from
+     * another thread — the core refuses, so this throws and changes
+     * nothing: {@code handle}, {@code closed} and the parser's registration
+     * stay as they were and the session keeps working.
+     */
     @Override
     public void close() {
         if (handle != null && !handle.equals(MemorySegment.NULL)) {
-            try { lib.galley_session_destroy(handle); } catch (Exception ignored) {}
+            long status = lib.galley_session_destroy(handle);
+            if (status < 0) {
+                throw errorFromStatus(status);
+            }
             handle = MemorySegment.NULL;
             parser.unregister(handleId);
         }

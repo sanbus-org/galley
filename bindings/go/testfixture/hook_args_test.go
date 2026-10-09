@@ -15,7 +15,7 @@ func TestProcedureArgumentsDieWithTheirHook(t *testing.T) {
 	if err != nil {
 		t.Fatalf("session: %v", err)
 	}
-	t.Cleanup(session.Close)
+	t.Cleanup(func() { _ = session.Close() })
 	if _, err := session.Parse([]byte("alpha:12,beta:3")); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -52,7 +52,9 @@ func TestProcedureArgumentsAfterTheSessionIsClosed(t *testing.T) {
 	if _, err := session.Parse([]byte("alpha:12,beta:3")); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	session.Close()
+	if err := session.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
 	calls := staleHookCalls(firstPairArgs, galley.Node{})
 	if len(calls) == 0 {
 		t.Fatal("no calls were made")
@@ -72,7 +74,7 @@ func TestNodeCapacityIsRefusedInsideAHook(t *testing.T) {
 	if err != nil {
 		t.Fatalf("session: %v", err)
 	}
-	t.Cleanup(session.Close)
+	t.Cleanup(func() { _ = session.Close() })
 	sessionProbe = session
 	if _, err := session.Parse([]byte("alpha:12,beta:3")); err != nil {
 		t.Fatalf("parse: %v", err)

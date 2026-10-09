@@ -212,14 +212,23 @@ func WithOptions(options SessionOptions) (*Session, error) {
 	return session, nil
 }
 
-// Close destroys the session. Safe to call more than once.
-func (s *Session) Close() {
-	if s.ptr != nil {
-		sessions.Delete(uintptr(unsafe.Pointer(s.ptr)))
-		s.parseEnded()
-		C.galley_session_destroy(s.ptr)
-		s.ptr = nil
+// Close destroys the session. Safe to call more than once: a session that is
+// already closed answers nil. While a parse is in flight — from another
+// thread or from one of the session's own hooks — the core refuses, so Close
+// returns that error and touches nothing: the registration, the running
+// parse's hook state and the pointer all stay as they were, and the session
+// keeps parsing and closes later.
+func (s *Session) Close() error {
+	if s.ptr == nil {
+		return nil
 	}
+	if _, err := s.status(C.galley_session_destroy(s.ptr)); err != nil {
+		return err
+	}
+	sessions.Delete(uintptr(unsafe.Pointer(s.ptr)))
+	s.parseEnded()
+	s.ptr = nil
+	return nil
 }
 
 func (s *Session) status(status C.longlong) (int, error) {

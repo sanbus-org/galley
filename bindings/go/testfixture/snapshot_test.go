@@ -140,7 +140,7 @@ func TestSnapshotAfterAParseThatPublishesNothingRefuses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("session: %v", err)
 	}
-	t.Cleanup(session.Close)
+	t.Cleanup(func() { _ = session.Close() })
 	if _, err := session.Parse([]byte("alpha:12,beta:3")); err != nil {
 		t.Fatalf("parse: %v", err)
 	}

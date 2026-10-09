@@ -43,7 +43,7 @@ static int ran = 0;
 typedef struct Library {
     void *image;
     GalleySession *(*session_create)(void);
-    void (*session_destroy)(GalleySession *);
+    long long (*session_destroy)(GalleySession *);
     long long (*parse)(GalleySession *, const char *, size_t);
     long long (*root_node)(GalleySession *, GalleyNodeAddress *, unsigned long long *);
     long long (*set_hooks)(GalleySession *, GalleyHookDispatch, void *, const unsigned char *, size_t);
