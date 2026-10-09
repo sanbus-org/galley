@@ -238,8 +238,12 @@ class SessionTests(unittest.TestCase):
                     self.assertNotIsInstance(error, grammar.StaleTreeError)
 
         names = [
-            "node_capacity", "node_count", "snapshot", "last_input",
-            "last_position", "root_node",
+            "node_capacity",
+            "node_count",
+            "snapshot",
+            "last_input",
+            "last_position",
+            "root_node",
         ]
         refused = [(name, grammar.Status.ERROR_SESSION_IN_USE) for name in names]
         for attempt in range(2):  # nothing published, then a tree published
@@ -265,9 +269,13 @@ class SessionTests(unittest.TestCase):
         thread.start()
         try:
             self.assertTrue(entered.wait(30))
-            for read in (self.session.node_capacity, self.session.node_count,
-                         self.session.snapshot, self.session.last_input,
-                         self.session.last_position):
+            for read in (
+                self.session.node_capacity,
+                self.session.node_count,
+                self.session.snapshot,
+                self.session.last_input,
+                self.session.last_position,
+            ):
                 with self.assertRaises(grammar.GalleyError) as refusal:
                     read()
                 outcome.append(refusal.exception.code)
@@ -370,7 +378,9 @@ class SessionTests(unittest.TestCase):
         calls = len(uses(stashed[0]))
         # Every call refused, none as a stale tree, and the later hook's own
         # arguments were served the whole time (the parse succeeded).
-        self.assertEqual(during, [("GalleyError", grammar.Status.ERROR_STALE_HOOK)] * calls)
+        self.assertEqual(
+            during, [("GalleyError", grammar.Status.ERROR_STALE_HOOK)] * calls
+        )
         # After the parse the same arguments, and the last hook's, still refuse.
         root = self.session.root_node()
         assert root is not None
@@ -378,7 +388,9 @@ class SessionTests(unittest.TestCase):
             for use in uses(args, root):
                 with self.assertRaises(grammar.GalleyError) as refusal:
                     use()
-                self.assertEqual(refusal.exception.code, grammar.Status.ERROR_STALE_HOOK)
+                self.assertEqual(
+                    refusal.exception.code, grammar.Status.ERROR_STALE_HOOK
+                )
                 self.assertNotIsInstance(refusal.exception, grammar.StaleTreeError)
         self.assertEqual(root.text(), b"alpha:12,beta:3")
 
@@ -558,9 +570,7 @@ class SessionTests(unittest.TestCase):
         root = self.session.root_node()
         assert root is not None
         pairs = [
-            step.node
-            for step in root.walk()
-            if step.node.symbol_name() == b"Pair"
+            step.node for step in root.walk() if step.node.symbol_name() == b"Pair"
         ]
         self.assertEqual([pair.text() for pair in pairs], [b"alpha:12", b"beta:3"])
 
@@ -967,9 +977,7 @@ class HookDispatchTests(unittest.TestCase):
         def hook(prefix: str, args: Any) -> None:
             seen.append((prefix, args))
 
-        self.session.install_procedure(
-            "reduction_Pair", functools.partial(hook, "tag")
-        )
+        self.session.install_procedure("reduction_Pair", functools.partial(hook, "tag"))
         try:
             self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
         finally:
@@ -1053,8 +1061,7 @@ class HookDispatchTests(unittest.TestCase):
             self.session.clear_procedures()
         self.assertEqual(len(with_args), 2)
         self.assertTrue(
-            all(args is not None and tag == "kw"
-                for args, tag in with_args)
+            all(args is not None and tag == "kw" for args, tag in with_args)
         )
         self.assertEqual(without_args, ["kw", "kw"])
 
@@ -1105,9 +1112,7 @@ class HookDispatchTests(unittest.TestCase):
 
     def test_lambda_hook_receives_the_arguments(self) -> None:
         seen: list[Any] = []
-        self.session.install_procedure(
-            "reduction_Pair", lambda args: seen.append(args)
-        )
+        self.session.install_procedure("reduction_Pair", lambda args: seen.append(args))
         try:
             self.assertEqual(self.session.parse("alpha:12,beta:3"), 15)
         finally:
@@ -2529,7 +2534,13 @@ class BorrowedMemoryTests(unittest.TestCase):
         self.assertTrue(failure.expected_tokens)
         # Failures of the same shape rewrite the input buffers and the
         # rendered message; successes release the diagnostic memory.
-        for text in ("beta:?", "gamma:", "alpha:12,beta:3", "delta:", "alpha:12,beta:3"):
+        for text in (
+            "beta:?",
+            "gamma:",
+            "alpha:12,beta:3",
+            "delta:",
+            "alpha:12,beta:3",
+        ):
             try:
                 self.session.parse(text)
             except grammar.GalleyError:
@@ -2936,9 +2947,7 @@ class LoaderTests(unittest.TestCase):
         for parser in parsers:
             self.assertIs(parser.GalleyError, parsers[0].GalleyError)
             self.assertIs(parser.StaleTreeError, parsers[0].StaleTreeError)
-            self.assertTrue(
-                issubclass(parser.StaleTreeError, parser.GalleyError)
-            )
+            self.assertTrue(issubclass(parser.StaleTreeError, parser.GalleyError))
             with parser.Session() as session:
                 session.parse("alpha:12")
                 with self.assertRaises(parsers[0].GalleyError):
@@ -3179,8 +3188,12 @@ class SessionHookTests(unittest.TestCase):
         # the escaped terminal names install and fire like any other hook.
         fired: list[str] = []
         with grammar.Session() as session:
-            session.install_procedure("reduction_Pair_0", lambda: fired.append("Pair_0"))
-            session.install_procedure("reduction_terminal__x58", lambda: fired.append(":"))
+            session.install_procedure(
+                "reduction_Pair_0", lambda: fired.append("Pair_0")
+            )
+            session.install_procedure(
+                "reduction_terminal__x58", lambda: fired.append(":")
+            )
             session.install_procedure(
                 "reduction_generative_terminal_digit", lambda: fired.append("digit")
             )
@@ -3231,7 +3244,9 @@ class SessionHookTests(unittest.TestCase):
 
         fired: list[str] = []
         with grammar.Session() as session:
-            session.install_procedures({Name("reduction_Pair"): lambda: fired.append("Pair")})
+            session.install_procedures(
+                {Name("reduction_Pair"): lambda: fired.append("Pair")}
+            )
             self.assertEqual(list(session.list_procedures()), ["reduction_Pair"])
             self.assertIs(type(next(iter(session.list_procedures()))), str)
             session.parse("alpha:12")

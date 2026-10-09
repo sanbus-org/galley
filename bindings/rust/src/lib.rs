@@ -43,7 +43,8 @@ extern "C" {
     fn galley_node_first_child(session: *mut GalleySessionRaw, generation: u64, node: u64) -> i64;
     fn galley_node_last_child(session: *mut GalleySessionRaw, generation: u64, node: u64) -> i64;
     fn galley_node_next_sibling(session: *mut GalleySessionRaw, generation: u64, node: u64) -> i64;
-    fn galley_node_prior_sibling(session: *mut GalleySessionRaw, generation: u64, node: u64) -> i64;
+    fn galley_node_prior_sibling(session: *mut GalleySessionRaw, generation: u64, node: u64)
+        -> i64;
     fn galley_node_parent(session: *mut GalleySessionRaw, generation: u64, node: u64) -> i64;
     fn galley_node_variable_index(
         session: *mut GalleySessionRaw,
@@ -705,7 +706,10 @@ impl Session {
 
     /// Direct child count of `node`.
     pub fn child_count(&self, node: NodeHandle) -> Result<u32, Error> {
-        Ok(value(unsafe { galley_node_child_count(self.inner, node.generation, node.address) })? as u32)
+        Ok(
+            value(unsafe { galley_node_child_count(self.inner, node.generation, node.address) })?
+                as u32,
+        )
     }
 
     pub fn first_child(&self, node: NodeHandle) -> Result<Option<NodeHandle>, Error> {
@@ -729,7 +733,11 @@ impl Session {
         let index = value(unsafe {
             galley_node_variable_index(self.inner, node.generation, node.address)
         })?;
-        Ok(if index == NO_VARIABLE { None } else { Some(index as i64) })
+        Ok(if index == NO_VARIABLE {
+            None
+        } else {
+            Some(index as i64)
+        })
     }
 
     /// Flat bulk read of the published parse in a single call: one
@@ -788,7 +796,13 @@ impl Session {
             child_count,
             variable: variable
                 .into_iter()
-                .map(|index| if index == NO_VARIABLE as i64 { -1 } else { index })
+                .map(|index| {
+                    if index == NO_VARIABLE as i64 {
+                        -1
+                    } else {
+                        index
+                    }
+                })
                 .collect(),
             span_start,
             span_len,
@@ -886,7 +900,13 @@ impl Session {
         let mut data: *const c_char = std::ptr::null();
         let mut len = 0usize;
         map_status(unsafe {
-            galley_node_symbol_name(self.inner, node.generation, node.address, &mut data, &mut len)
+            galley_node_symbol_name(
+                self.inner,
+                node.generation,
+                node.address,
+                &mut data,
+                &mut len,
+            )
         })?;
         Ok(bytes(data, len))
     }
@@ -896,7 +916,13 @@ impl Session {
         let mut data: *const c_char = std::ptr::null();
         let mut len = 0usize;
         map_status(unsafe {
-            galley_node_text(self.inner, node.generation, node.address, &mut data, &mut len)
+            galley_node_text(
+                self.inner,
+                node.generation,
+                node.address,
+                &mut data,
+                &mut len,
+            )
         })?;
         Ok(bytes(data, len))
     }
@@ -906,7 +932,13 @@ impl Session {
         let mut start = 0u64;
         let mut len = 0u64;
         map_status(unsafe {
-            galley_node_span(self.inner, node.generation, node.address, &mut start, &mut len)
+            galley_node_span(
+                self.inner,
+                node.generation,
+                node.address,
+                &mut start,
+                &mut len,
+            )
         })?;
         Ok((start, len))
     }
