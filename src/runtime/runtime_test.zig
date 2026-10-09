@@ -109,3 +109,44 @@ test "a live hook ticket is refused on any thread but the dispatching one" {
     try std.testing.expectEqual(@as(?anyerror, error.OtherThread), result);
     try std.testing.expectEqual(&args, try runtime.hookArguments(ticket));
 }
+
+test "a foreign thread overlapping a running parse is refused before its ticket is read" {
+    if (comptime @import("builtin").single_threaded) return error.SkipZigTest;
+    var runtime: galley.data_structures.RuntimeContext = .{ .io = std.testing.io, .arena_allocator = std.testing.allocator };
+    var context: galley.data_structures.Context = .{ .runtime_context = &runtime };
+    var args: ProcedureArguments = .{ .context = &context, .rule = null, .node_address = null };
+    const Probe = struct {
+        fn run(target: *galley.data_structures.RuntimeContext, hook: u64, result: *?anyerror) void {
+            result.* = if (target.hookArguments(hook)) |_| null else |err| err;
+        }
+        fn from(target: *galley.data_structures.RuntimeContext, hook: u64) !?anyerror {
+            var result: ?anyerror = null;
+            const thread = try std.Thread.spawn(.{}, run, .{ target, hook, &result });
+            thread.join();
+            return result;
+        }
+    };
+
+    // No parse runs: a stale ticket is stale on every thread.
+    const returned = runtime.enterHook(&args);
+    runtime.exitHook();
+    try std.testing.expectEqual(@as(?anyerror, error.StaleHook), try Probe.from(&runtime, returned));
+
+    runtime.beginParse();
+    // Between hooks of a running parse, another thread overlaps the parse.
+    try std.testing.expectEqual(@as(?anyerror, error.OtherThread), try Probe.from(&runtime, returned));
+    try std.testing.expectEqual(@as(?anyerror, error.OtherThread), try Probe.from(&runtime, 0));
+
+    // While a different hook runs, a stale or invented ticket is still an
+    // overlap first; the dispatching thread's own stale ticket stays stale.
+    const running = runtime.enterHook(&args);
+    try std.testing.expectEqual(@as(?anyerror, error.OtherThread), try Probe.from(&runtime, returned));
+    try std.testing.expectEqual(@as(?anyerror, error.OtherThread), try Probe.from(&runtime, running));
+    try std.testing.expectError(error.StaleHook, runtime.hookArguments(returned));
+    try std.testing.expectEqual(&args, try runtime.hookArguments(running));
+    runtime.exitHook();
+
+    // Once the parse ends the overlap is gone and the ticket decides again.
+    runtime.endParse();
+    try std.testing.expectEqual(@as(?anyerror, error.StaleHook), try Probe.from(&runtime, returned));
+}

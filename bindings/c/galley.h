@@ -34,7 +34,10 @@
  * A hook is named by its session and a ticket (unsigned long long) the core
  * issues for that one call; the galley_procedure_* functions take the pair and
  * refuse with galley_error_stale_hook once the hook has returned, in every
- * build. Tickets are never reused.
+ * build. Tickets are never reused. A call from any thread other than the one
+ * running the parse overlaps that parse and is refused with
+ * galley_error_session_in_use before the ticket is looked at, so a stale
+ * ticket from another thread is a session in use, not a stale hook.
  *
  * Scope notes: semantic payloads are unavailable; procedure hooks and
  * error-message hooks are compiled into the library from the consumer's
@@ -192,7 +195,10 @@ void galley_session_destroy(GalleySession *session);
  * chain contains name (an exact hook name, its variable-level family, or
  * the general "syntax_error"), the site reports message verbatim, taking
  * priority over grammar hooks and the built-in renderer. Both strings are
- * copied; the override persists for the session's lifetime. */
+ * copied; the override persists for the session's lifetime. Takes the
+ * session's exclusive lease: returns galley_error_session_in_use, changing
+ * nothing, while a parse is in flight (from another thread or from a hook),
+ * and galley_error_out_of_memory, also changing nothing, when a copy fails. */
 long long galley_session_set_message_override(GalleySession *session,
                                               const char *name, size_t name_len,
                                               const char *message, size_t message_len);
@@ -492,11 +498,11 @@ long long galley_tree_snapshot(GalleySession *session,
                                unsigned long long capacity);
 
 /* Writes the source text matched by a node into *out_data / *out_len. The
- * pointer references the input of the most recent parse: keep that input
- * alive until the next parse (galley_parse_sentinel) or rely on the session,
- * which copies it (galley_parse). During an in-progress parse (procedure
- * hooks) the pointer references the live input of that parse and is valid
- * only until the calling hook returns. */
+ * pointer references the session's own copy of the input of the most recent
+ * parse, valid until the next parse: every parse entry copies its input, so
+ * the caller may reuse or release its buffer as soon as the call returns.
+ * During an in-progress parse (procedure hooks) the pointer references the
+ * live input of that parse and is valid only until the calling hook returns. */
 long long galley_node_text(GalleySession *session, unsigned long long generation,
                            GalleyNodeAddress node,
                            const char **out_data, size_t *out_len);
@@ -786,8 +792,10 @@ long long galley_recorded_recovery_occurrence(GalleySession *session, unsigned l
  * or outside their hook: the current node, the reducing rule, scanner
  * line/column, and the drop/replace channel. Every one answers with a status
  * (or, for a value, a result >= 0 and a negative status otherwise) and
- * refuses a ticket whose hook has returned with galley_error_stale_hook;
- * galley_error_null_argument is a NULL session or output. galley_tree_remove_self
+ * refuses a ticket whose hook has returned with galley_error_stale_hook, after
+ * refusing any call from a thread other than the parse's with
+ * galley_error_session_in_use; galley_error_null_argument is a NULL session
+ * or output. galley_tree_remove_self
  * is not a substitute for galley_procedure_drop_self. */
 long long galley_procedure_door(GalleySession *session, unsigned long long hook,
                                 GalleyHookDoor **out_door);

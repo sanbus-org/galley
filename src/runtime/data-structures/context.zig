@@ -80,7 +80,8 @@ fn currentThread() usize {
 pub const HookError = error{
     /// The hook has returned, or the ticket was never issued by this session.
     StaleHook,
-    /// The hook is running, but on another thread than the caller's.
+    /// The caller is on another thread than the one running the parse or
+    /// dispatching the hook: it overlaps a running parse.
     OtherThread,
 };
 
@@ -137,6 +138,23 @@ pub const RuntimeContext = struct {
     live_hook_thread: std.atomic.Value(usize) = .init(0),
     /// The arguments of the hook `live_hook` names, as an address.
     live_hook_arguments: std.atomic.Value(usize) = .init(0),
+    /// Whether a parse is running on this state, and the thread running it:
+    /// the only thread whose calls are not an overlap with that parse. Set by
+    /// the session when it takes the parse lease and cleared when it
+    /// releases it.
+    parse_running: std.atomic.Value(bool) = .init(false),
+    parse_thread: std.atomic.Value(usize) = .init(0),
+
+    /// Marks a parse as running on the calling thread.
+    pub fn beginParse(self: *RuntimeContext) void {
+        self.parse_thread.store(currentThread(), .monotonic);
+        self.parse_running.store(true, .release);
+    }
+
+    /// Marks the running parse as over.
+    pub fn endParse(self: *RuntimeContext) void {
+        self.parse_running.store(false, .release);
+    }
 
     /// Marks `arguments` as those of the hook now running, on the calling
     /// thread, and returns its ticket, the only way to reach them from
@@ -155,10 +173,19 @@ pub const RuntimeContext = struct {
     }
 
     /// The arguments of the hook `hook` names, for a caller on the thread
-    /// that dispatches it. The pointer is read only after both checks, so a
-    /// returned hook's dead stack frame and another thread's race with the
-    /// running hook are refused before anything is dereferenced.
+    /// that dispatches it. The refusals apply in order. A caller on any other
+    /// thread while a parse runs overlaps that parse and is refused first
+    /// (`OtherThread`), whatever its ticket is, so a stale ticket does not
+    /// hide the overlap. Then a ticket that names no running hook is
+    /// `StaleHook`. The arguments pointer is read only after both, and only
+    /// on the thread whose stack holds the arguments (the last check, which
+    /// also covers a hook entered outside a parse), so a returned hook's
+    /// dead stack frame and another thread's race with the running hook are
+    /// refused before anything is dereferenced.
     pub fn hookArguments(self: *RuntimeContext, hook: u64) HookError!*data_structures.ProcedureArguments {
+        if (self.parse_running.load(.acquire) and self.parse_thread.load(.monotonic) != currentThread()) {
+            return error.OtherThread;
+        }
         if (hook == 0 or self.live_hook.load(.acquire) != hook) return error.StaleHook;
         if (self.live_hook_thread.load(.monotonic) != currentThread()) return error.OtherThread;
         return @ptrFromInt(self.live_hook_arguments.load(.monotonic));

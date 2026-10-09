@@ -880,6 +880,26 @@ pub const Session = struct {
         self.user_data = handle;
     }
 
+    /// Registers one message override, replacing any earlier entry for
+    /// `name`; both strings are copied. Exclusive and fail-fast like `edit`:
+    /// the parse reads the table without a lock, so a change during a parse
+    /// (from another thread or from a hook) is `SessionInUse` and changes
+    /// nothing. An allocation failure also changes nothing.
+    pub fn setMessageOverride(self: *Session, name: []const u8, message: []const u8) error{ SessionInUse, OutOfMemory }!void {
+        var guard = try self.edit();
+        defer guard.deinit();
+        const owned_message = try self.allocator.dupe(u8, message);
+        errdefer self.allocator.free(owned_message);
+        if (self.message_overrides.getPtr(name)) |existing| {
+            self.allocator.free(existing.*);
+            existing.* = owned_message;
+            return;
+        }
+        const owned_name = try self.allocator.dupe(u8, name);
+        errdefer self.allocator.free(owned_name);
+        try self.message_overrides.put(self.allocator, owned_name, owned_message);
+    }
+
     /// Single parse-acquire site. Every parse entry funnels through here so
     /// the lock and generation cannot disagree. The nested-recovery gate
     /// runs first, before the lock, so a rejected nested parse leaves
@@ -900,10 +920,12 @@ pub const Session = struct {
         // retires the previous tree's generation), so a walker over the
         // previous tree is stale from the moment the new parse begins.
         if (comptime parser.is_ast_enabled) self.node_allocator.generation = self.generation;
+        self.runtime_context.beginParse();
     }
 
     /// Single parse-release site. Unlocks the write lease held by the parse.
     fn releaseParse(self: *Session) void {
+        self.runtime_context.endParse();
         self.session_lock.unlock();
     }
 
@@ -1541,4 +1563,89 @@ test "while parsing stack renders with <~ separators, coloring only variables" {
     try std.testing.expect(std.mem.indexOf(u8, ansi, "\x1b[34mValue\x1b[0m <~ \x1b[34mArrayMembers\x1b[0m") != null);
     try std.testing.expect(std.mem.indexOf(u8, ansi, "\x1b[34m_OptionalBlank <~") == null);
     try std.testing.expect(std.mem.indexOf(u8, ansi, "<~ \x1b[34m\x1b[34m") == null);
+}
+
+test "a message override is refused while a parse holds the session and changes nothing" {
+    const valid = "Start\n| \"x\"\n";
+    var session = try Session.init(std.Io.failing, std.testing.allocator, .{
+        .message_overrides = &.{.{ .name = "Start", .message = "original" }},
+    });
+    defer session.deinit();
+
+    var lease = try session.parseBytesLeased(valid, null);
+    try std.testing.expectError(error.SessionInUse, session.setMessageOverride("Start", "replaced"));
+    try std.testing.expectError(error.SessionInUse, session.setMessageOverride("Other", "added"));
+    try std.testing.expectEqualStrings("original", session.message_overrides.get("Start").?);
+    try std.testing.expect(session.message_overrides.get("Other") == null);
+    lease.deinit();
+
+    try session.setMessageOverride("Start", "replaced");
+    try session.setMessageOverride("Other", "added");
+    try std.testing.expectEqualStrings("replaced", session.message_overrides.get("Start").?);
+    try std.testing.expectEqualStrings("added", session.message_overrides.get("Other").?);
+}
+
+test "an allocation failure while setting a message override changes nothing" {
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    var session = try Session.init(std.Io.failing, failing.allocator(), .{
+        .message_overrides = &.{.{ .name = "Start", .message = "original" }},
+    });
+    defer session.deinit();
+
+    var fail_after: usize = 0;
+    while (true) : (fail_after += 1) {
+        failing.fail_index = failing.alloc_index + fail_after;
+        failing.has_induced_failure = false;
+        session.setMessageOverride("Fresh", "added") catch |err| {
+            try std.testing.expectEqual(error.OutOfMemory, err);
+            try std.testing.expect(session.message_overrides.get("Fresh") == null);
+            try std.testing.expectEqualStrings("original", session.message_overrides.get("Start").?);
+            continue;
+        };
+        break;
+    }
+    failing.fail_index = std.math.maxInt(usize);
+    try std.testing.expectEqualStrings("added", session.message_overrides.get("Fresh").?);
+}
+
+test "an allocation failure during a parse publishes nothing" {
+    const valid = "Start\n| \"x\"\n";
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    var session = try Session.init(std.Io.failing, failing.allocator(), .{});
+    defer session.deinit();
+
+    // The first parse sizes every buffer the later ones reuse; fail the
+    // allocations of a fresh session's first parse, one position at a time.
+    var fresh_failures: usize = 0;
+    var fail_after: usize = 0;
+    while (true) : (fail_after += 1) {
+        var attempt = try Session.init(std.Io.failing, failing.allocator(), .{});
+        defer attempt.deinit();
+        failing.fail_index = failing.alloc_index + fail_after;
+        failing.has_induced_failure = false;
+        if (attempt.parseBytes(valid, null)) |_| {
+            failing.fail_index = std.math.maxInt(usize);
+            break;
+        } else |err| {
+            failing.fail_index = std.math.maxInt(usize);
+            try std.testing.expectEqual(error.OutOfMemory, err);
+            try std.testing.expectError(error.NoParseResult, attempt.readCurrent());
+            fresh_failures += 1;
+        }
+    }
+    try std.testing.expect(fresh_failures > 0);
+
+    // A later parse of a session that already published must also publish
+    // nothing when its input copy fails: the old tree is retired, not kept.
+    _ = try session.parseBytes(valid, null);
+    var published = try session.readCurrent();
+    published.deinit();
+    const larger = try std.testing.allocator.alloc(u8, 1 << 20);
+    defer std.testing.allocator.free(larger);
+    @memset(larger, '\n');
+    failing.fail_index = failing.alloc_index;
+    failing.has_induced_failure = false;
+    try std.testing.expectError(error.OutOfMemory, session.parseBytes(larger, null));
+    failing.fail_index = std.math.maxInt(usize);
+    try std.testing.expectError(error.StaleParseResult, session.readCurrent());
 }

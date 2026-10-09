@@ -216,20 +216,23 @@ const Embedded = struct {
         }
     }
 
-    /// Takes ownership of the session's just-parsed input buffer on success:
-    /// the retained side keeps the parsed bytes while the session receives
-    /// a scratch buffer for its next parse (the previous spare, or a fresh
-    /// faulted one on the first success, so both buffers are born before
-    /// timed code). No bytes move, so steady-state parses allocate only
-    /// when input outgrows the spare.
-    /// Returns false when the session does not own `source`; the caller
-    /// then falls back to copying.
-    fn adoptSessionInput(self: *Embedded, source: []const u8, bounded_len: usize) bool {
-        const owned = self.session.owned_input orelse return false;
-        if (@intFromPtr(source.ptr) != @intFromPtr(owned.ptr)) return false;
+    /// Takes ownership of the session's just-parsed input buffer: the
+    /// retained side keeps the first `parsed` bytes (clipped to the buffer)
+    /// while the session receives a scratch buffer for its next parse (the
+    /// previous spare, or a fresh faulted one on the first success, so both
+    /// buffers are born before timed code). No bytes move, so steady-state
+    /// parses allocate only when input outgrows the spare. When the session
+    /// holds no buffer (a parse that read nothing into one) nothing is
+    /// retained and node text is empty.
+    fn retainSessionInput(self: *Embedded, parsed: usize) void {
+        const owned = self.session.owned_input orelse {
+            self.last_input = &.{};
+            return;
+        };
+        const bounded_len = @min(parsed, owned.len);
         if (bounded_len == 0) {
             self.last_input = self.retained_input[0..0];
-            return true;
+            return;
         }
         const spare = self.retained_input;
         self.retained_input = owned;
@@ -249,27 +252,6 @@ const Embedded = struct {
             self.session.owned_input = spare;
         }
         self.last_input = self.retained_input[0..bounded_len];
-        return true;
-    }
-
-    /// Copies `input` into the session-owned retained buffer. Only used for
-    /// sources the session does not own; session-owned inputs move through
-    /// `adoptSessionInput` with no copy. Returns false when growth was
-    /// needed and allocation failed; the caller then keeps aliasing the
-    /// live source instead.
-    fn retainCopiedInput(self: *Embedded, input: []const u8) bool {
-        if (input.len == 0) return true;
-        if (self.retained_input.len < input.len) {
-            // Grow to at least double the current capacity so repeated
-            // one-byte-larger inputs stay amortized.
-            const target = @max(input.len, self.retained_input.len *| 2);
-            self.retained_input = if (self.retained_input.len == 0)
-                std.heap.c_allocator.alloc(u8, target) catch return false
-            else
-                std.heap.c_allocator.realloc(self.retained_input, target) catch return false;
-        }
-        @memcpy(self.retained_input[0..input.len], input);
-        return true;
     }
 };
 
@@ -1039,7 +1021,11 @@ export fn galley_js_free(ptr: [*]u8, len: usize) void {
 /// chain contains `name`, the site reports `message` verbatim instead of
 /// consulting grammar hooks or the built-in renderer. Overrides set here
 /// take priority over `ParseOptions.message_overrides` entries and persist
-/// for the session's lifetime.
+/// for the session's lifetime. Takes the exclusive lease, so it returns
+/// `galley_error_session_in_use` while a parse is in flight (from another
+/// thread or from a hook) and changes nothing; the table a parse runs with
+/// is fixed for that parse. `galley_error_out_of_memory` also changes
+/// nothing.
 export fn galley_session_set_message_override(
     session_ptr: ?*GalleySession,
     name_ptr: ?[*]const u8,
@@ -1049,22 +1035,7 @@ export fn galley_session_set_message_override(
 ) i64 {
     const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (name_ptr == null or message_ptr == null) return galley_error_null_argument;
-    const allocator = embedded.session.allocator;
-    const name = allocator.dupe(u8, name_ptr.?[0..name_len]) catch return galley_error_out_of_memory;
-    const message = allocator.dupe(u8, message_ptr.?[0..message_len]) catch {
-        allocator.free(name);
-        return galley_error_out_of_memory;
-    };
-    const gop = embedded.session.message_overrides.getOrPut(allocator, name) catch {
-        allocator.free(name);
-        allocator.free(message);
-        return galley_error_out_of_memory;
-    };
-    if (gop.found_existing) {
-        allocator.free(name);
-        allocator.free(gop.value_ptr.*);
-    }
-    gop.value_ptr.* = message;
+    embedded.session.setMessageOverride(name_ptr.?[0..name_len], message_ptr.?[0..message_len]) catch |err| return statusForError(err);
     return galley_ok;
 }
 
@@ -1153,13 +1124,18 @@ fn statusForError(err: anyerror) i64 {
 }
 
 /// Pairs the retained input with the result the session published: the
-/// input swap — and the `owned_input` read behind `source` — run under the
-/// same exclusive hold that stamped the parse's generation, so an older
-/// result can never overwrite a newer one and no reader can observe the pair
+/// input swap — and the `owned_input` read behind it — run under the same
+/// exclusive hold that stamped the parse's generation, so an older result
+/// can never overwrite a newer one and no reader can observe the pair
 /// mid-swap. A parse that failed after publishing (recovered syntax errors,
 /// or only semantic errors) comes through here too: its tree is served with
 /// its input, and the failure's status is returned.
-fn finishParse(embedded: *Embedded, lease: *const root.ParseLease, source: []const u8) i64 {
+///
+/// The retained input is always the session's own buffer, never the caller's:
+/// every parse entry copies its input into `owned_input` (or reads the file
+/// into it) before parsing, so retaining it moves ownership and cannot fail.
+/// Nothing here may keep a pointer into a caller's buffer.
+fn finishParse(embedded: *Embedded, lease: *const root.ParseLease) i64 {
     const result = lease.result;
     // A parse that failed after publishing may have stopped short of the end
     // of its input (recovery skipped to the end without consuming the final
@@ -1180,13 +1156,7 @@ fn finishParse(embedded: *Embedded, lease: *const root.ParseLease, source: []con
     // the count parse reported.
     // Only published parses reach here: one that publishes nothing never
     // touches the retained side, which its older tree no longer needs anyway.
-    const bounded = source[0..@min(parsed, source.len)];
-    if (embedded.adoptSessionInput(source, bounded.len)) {
-        // Ownership transferred (or the parse was empty); last_input is set.
-    } else if (embedded.retainCopiedInput(bounded))
-        embedded.last_input = embedded.retained_input[0..bounded.len]
-    else
-        embedded.last_input = bounded; // allocation failure: alias the live source as before
+    embedded.retainSessionInput(parsed);
     if (lease.failure) |failure| return statusForError(failure);
     return @intCast(result.parsed_bytes);
 }
@@ -1200,7 +1170,7 @@ export fn galley_parse_sentinel(session_ptr: ?*GalleySession, input: ?[*:0]const
     const text = std.mem.sliceTo(input orelse return galley_error_null_argument, 0);
     var lease = embedded.session.parseSentinelBytesLeased(text, null) catch |err| return statusForError(err);
     defer lease.deinit();
-    return finishParse(embedded, &lease, embedded.session.owned_input orelse text);
+    return finishParse(embedded, &lease);
 }
 
 /// Parses a byte buffer that may contain NUL bytes. Same return contract as
@@ -1215,7 +1185,7 @@ export fn galley_parse(session_ptr: ?*GalleySession, data: ?[*]const u8, len: us
         return galley_error_null_argument;
     var lease = embedded.session.parseBytesLeased(bytes, null) catch |err| return statusForError(err);
     defer lease.deinit();
-    return finishParse(embedded, &lease, embedded.session.owned_input orelse bytes);
+    return finishParse(embedded, &lease);
 }
 
 fn nodeCountCore(door: *const Door) i64 {
@@ -1994,7 +1964,7 @@ export fn galley_parse_file(session_ptr: ?*GalleySession, path: ?[*:0]const u8) 
 
     var lease = embedded.session.parseFileLeased(file, path_slice) catch |err| return statusForError(err);
     defer lease.deinit();
-    return finishParse(embedded, &lease, embedded.session.owned_input orelse &.{});
+    return finishParse(embedded, &lease);
 }
 
 /// Writes the end position (1-based line and column) of the published parse,
@@ -3101,9 +3071,11 @@ inline fn allowsNoAstTreeProcedures() bool {
 }
 
 /// The single gate of every `galley_procedure_*` call: the arguments of the
-/// hook `hook` names on `session_ptr`, or `StaleHook` once that hook has
-/// returned (a ticket is never reused, so a later hook cannot revive it) and
-/// `OtherThread` from a thread that is not the one running it.
+/// hook `hook` names on `session_ptr`. Refusals apply in order: `OtherThread`
+/// (reported as `galley_error_session_in_use`) from a thread that is not the
+/// one running the parse, whatever the ticket is, then `StaleHook` once that
+/// hook has returned (a ticket is never reused, so a later hook cannot revive
+/// it).
 fn hookArguments(session_ptr: ?*GalleySession, hook: u64) (root.data_structures.HookError || error{NullArgument})!*root.data_structures.ProcedureArguments {
     const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return error.NullArgument));
     return embedded.session.runtime_context.hookArguments(hook);

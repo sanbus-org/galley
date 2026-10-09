@@ -120,6 +120,59 @@ export async function runRefusalScenarios({ test, assert, newParser, GalleyError
     }
   });
 
+  await test("a message override change inside a hook is refused and changes nothing", async () => {
+    // The parse reads the override table, so a change made from one of its
+    // hooks is `session in use`, never absorbed; with no parse running the
+    // same call works and takes effect.
+    const parser = await newParser();
+    const s = await parser.openSession();
+    const text = "expected digits here";
+    const messageOfBrokenParse = () => {
+      try {
+        s.parse("alpha:");
+      } catch (error) {
+        return error.diagnostic.message;
+      }
+      assert.fail("the broken sample must raise");
+    };
+    try {
+      const refusals = [];
+      s.installProcedure("reduction_Document", () => {
+        try {
+          s.setMessageOverride("Number", text);
+          refusals.push(null);
+        } catch (error) {
+          refusals.push(error);
+        }
+      });
+      s.parse(FIRST);
+      assert.equal(refusals.length, 1);
+      assert.ok(refusals[0] instanceof GalleyError);
+      assert.equal(refusals[0].code, Status.ErrorSessionInUse);
+      s.clearProcedures();
+      assert.ok(!messageOfBrokenParse().includes(text));
+      s.setMessageOverride("Number", text);
+      assert.ok(messageOfBrokenParse().includes(text));
+    } finally {
+      s.close();
+    }
+  });
+
+  await test("parsing copies the input", async () => {
+    // The caller may overwrite its buffer once parse returns.
+    const parser = await newParser();
+    const s = await parser.openSession();
+    try {
+      const buffer = new TextEncoder().encode(FIRST);
+      s.parse(buffer);
+      buffer.fill(0x5a);
+      assert.equal(decode(s.lastInput()), FIRST);
+      assert.equal(decode(s.rootNode().text()), FIRST);
+    } finally {
+      s.close();
+    }
+  });
+
   await test("finished-parse queries are refused inside a hook", async () => {
     // Inside a hook (this session, this thread) nothing that describes a
     // finished parse answers: not before the first parse publishes, not with

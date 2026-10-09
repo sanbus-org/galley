@@ -2318,6 +2318,120 @@ public class GalleyTest {
         }
 
         @Test
+        void staleArgumentsOnAnotherThreadAreRefusedAsInUseFirst() throws Exception {
+            // Refusals apply in the stated order: a call that overlaps a
+            // running parse from another thread is session in use even when
+            // the arguments belong to a hook that has returned. On the
+            // dispatching thread the same arguments are a stale hook, and once
+            // the parse is over nothing overlaps, so any thread gets stale hook.
+            AtomicReference<ProcedureArguments> stashed = new AtomicReference<>();
+            List<StatusCode> foreign = new ArrayList<>();
+            List<StatusCode> own = new ArrayList<>();
+            session.installProcedure("reduction_Pair", args -> {
+                if (stashed.get() == null) stashed.set(args);
+            });
+            session.installProcedure("reduction_Document", args -> {
+                ProcedureArguments returned = stashed.get();
+                Thread thread = new Thread(() -> {
+                    for (Runnable use : List.<Runnable>of(returned::currentLine, returned::currentNode,
+                            returned::dropSelf, () -> returned.reportSemanticError("late"))) {
+                        try {
+                            use.run();
+                        } catch (GalleyException error) {
+                            foreign.add(error.getCode());
+                        }
+                    }
+                });
+                thread.start();
+                try {
+                    thread.join(30_000);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+                try {
+                    returned.currentLine();
+                } catch (GalleyException error) {
+                    own.add(error.getCode());
+                }
+            });
+            try {
+                session.parse("alpha:12,beta:3");
+            } finally {
+                session.clearProcedures();
+            }
+            assertEquals(Collections.nCopies(4, StatusCode.ERROR_SESSION_IN_USE), foreign);
+            assertEquals(List.of(StatusCode.ERROR_STALE_HOOK), own);
+            List<StatusCode> after = new ArrayList<>();
+            Thread thread = new Thread(() -> {
+                try {
+                    stashed.get().currentLine();
+                } catch (GalleyException error) {
+                    after.add(error.getCode());
+                }
+            });
+            thread.start();
+            thread.join(30_000);
+            assertEquals(List.of(StatusCode.ERROR_STALE_HOOK), after);
+        }
+
+        @Test
+        void messageOverrideIsRefusedWhileAParseRuns() throws Exception {
+            // A message override changes what the running parse reads, so
+            // from another thread and from inside a hook it is session in use
+            // and changes nothing; with no parse running it works.
+            String text = "expected digits here";
+            CountDownLatch entered = new CountDownLatch(1);
+            CountDownLatch release = new CountDownLatch(1);
+            List<StatusCode> fromHook = new ArrayList<>();
+            List<StatusCode> fromThread = new ArrayList<>();
+            session.installProcedure("reduction_Document", args -> {
+                try {
+                    session.setMessageOverride("Number", text);
+                } catch (GalleyException error) {
+                    fromHook.add(error.getCode());
+                }
+                entered.countDown();
+                try {
+                    release.await(30, TimeUnit.SECONDS);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+            Thread parser = new Thread(() -> session.parse("alpha:12,beta:3"));
+            parser.start();
+            try {
+                assertTrue(entered.await(30, TimeUnit.SECONDS));
+                try {
+                    session.setMessageOverride("Number", text);
+                } catch (GalleyException error) {
+                    fromThread.add(error.getCode());
+                }
+            } finally {
+                release.countDown();
+                parser.join(30_000);
+                session.clearProcedures();
+            }
+            assertEquals(List.of(StatusCode.ERROR_SESSION_IN_USE), fromHook);
+            assertEquals(List.of(StatusCode.ERROR_SESSION_IN_USE), fromThread);
+            GalleyException before = assertThrows(GalleyException.class, () -> session.parse("alpha:"));
+            assertFalse(before.getDiagnostic().getMessage().contains(text));
+            session.setMessageOverride("Number", text);
+            GalleyException after = assertThrows(GalleyException.class, () -> session.parse("alpha:"));
+            assertTrue(after.getDiagnostic().getMessage().contains(text));
+        }
+
+        @Test
+        void parsingCopiesTheInput() {
+            // The caller may overwrite or release its buffer once parse returns.
+            ByteBuffer buffer = ByteBuffer.allocateDirect(15);
+            buffer.put("alpha:12,beta:3".getBytes(StandardCharsets.UTF_8)).flip();
+            session.parse(buffer);
+            for (int i = 0; i < buffer.limit(); i++) buffer.put(i, (byte) 'Z');
+            assertEquals("alpha:12,beta:3", new String(session.lastInput(), StandardCharsets.UTF_8));
+            assertEquals("alpha:12,beta:3", new String(session.rootNode().text(), StandardCharsets.UTF_8));
+        }
+
+        @Test
         void aRefusedCallWithReturnedArgumentsChangesNothing() {
             // drop_self through the first Pair's arguments, made from a later
             // Pair hook, is refused and cannot drop that hook's node.

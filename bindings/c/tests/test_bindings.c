@@ -16,6 +16,7 @@
 #include <pthread.h>
 #include <sched.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -799,6 +800,7 @@ void fixture_stash_session(GalleySession *session);
 long long fixture_hook_text_status(void);
 long long fixture_hook_range_status(int which);
 long long fixture_stashed_kind_status(void);
+long long fixture_stashed_override_status(void);
 long long fixture_stashed_read_status(int which);
 unsigned long long fixture_first_pair_hook(void);
 int fixture_stale_hook_calls(void);
@@ -844,6 +846,14 @@ static void test_hook_door(void) {
     CHECK(fixture_hook_range_status(1) == galley_error_invalid_node);
     CHECK(fixture_hook_range_status(2) == galley_error_invalid_node);
     CHECK(fixture_stashed_kind_status() == galley_error_session_in_use);
+    /* A message override set from a hook is refused and changes nothing. */
+    CHECK(fixture_stashed_override_status() == galley_error_session_in_use);
+    {
+        const char *message = NULL;
+        CHECK(galley_parse_sentinel(session, broken_sample) == galley_error_syntax);
+        CHECK(galley_diagnostic_message(session, &message) == galley_ok);
+        CHECK(message != NULL && strstr(message, "set from a hook") == NULL);
+    }
     /* What describes a finished parse is refused inside a hook, even on the
      * very first parse when nothing is published yet. */
     for (int which = 0; which < 4; ++which)
@@ -1186,6 +1196,21 @@ static void *parse_while_gated(void *argument) {
     return NULL;
 }
 
+/* Waits, bounded, until the gated parse's hook has reached the gate: a gate
+ * never reached fails the caller's check instead of hanging. */
+static int wait_for_gate(void) {
+    struct timespec deadline;
+    clock_gettime(CLOCK_MONOTONIC, &deadline);
+    deadline.tv_sec += 10;
+    for (;;) {
+        if (fixture_gate_entered()) return 1;
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        if (now.tv_sec >= deadline.tv_sec) return 0;
+        sched_yield();
+    }
+}
+
 /* A parse holds the session exclusively for its whole run, hooks included:
  * a step from another thread mid-parse is refused as in-use, and the
  * cursor is stale once that parse publishes a new generation. The wait is
@@ -1207,18 +1232,7 @@ static void test_walk_in_use(void) {
     GatedParse gated = {session, 0};
     pthread_t parser;
     CHECK(pthread_create(&parser, NULL, parse_while_gated, &gated) == 0);
-    struct timespec deadline;
-    clock_gettime(CLOCK_MONOTONIC, &deadline);
-    deadline.tv_sec += 10;
-    int entered = 0;
-    while (!entered) {
-        entered = fixture_gate_entered();
-        if (entered) break;
-        struct timespec now;
-        clock_gettime(CLOCK_MONOTONIC, &now);
-        if (now.tv_sec >= deadline.tv_sec) break;
-        sched_yield();
-    }
+    int entered = wait_for_gate();
     CHECK(entered);
     if (entered) {
         CHECK(galley_walk_next(session, &cursor) == galley_error_session_in_use);
@@ -1255,9 +1269,9 @@ static void test_walk_in_use(void) {
 }
 
 /* A live hook's arguments live on the dispatching thread's stack: the core
- * refuses its ticket from any other thread with session in use before it
- * reads anything, and refuses it on any other session as a stale hook, since
- * tickets are unique across sessions. The hook is held at the gate while the
+ * refuses any ticket from any other thread with session in use, before it
+ * reads the ticket or anything else, and refuses it on any other session as a
+ * stale hook, since tickets are unique across sessions. The hook is held at the gate while the
  * suite calls from its own thread and from a second session. */
 static void test_live_ticket_is_the_dispatching_threads_and_sessions(void) {
     GalleySession *session = make_session();
@@ -1266,18 +1280,7 @@ static void test_live_ticket_is_the_dispatching_threads_and_sessions(void) {
     GatedParse gated = {session, 0};
     pthread_t parser;
     CHECK(pthread_create(&parser, NULL, parse_while_gated, &gated) == 0);
-    struct timespec deadline;
-    clock_gettime(CLOCK_MONOTONIC, &deadline);
-    deadline.tv_sec += 10;
-    int entered = 0;
-    while (!entered) {
-        entered = fixture_gate_entered();
-        if (entered) break;
-        struct timespec now;
-        clock_gettime(CLOCK_MONOTONIC, &now);
-        if (now.tv_sec >= deadline.tv_sec) break;
-        sched_yield();
-    }
+    int entered = wait_for_gate();
     CHECK(entered);
     if (entered) {
         GalleySession *held = fixture_gate_session();
@@ -1291,14 +1294,116 @@ static void test_live_ticket_is_the_dispatching_threads_and_sessions(void) {
         CHECK(galley_procedure_drop_self(session, hook) == galley_error_session_in_use);
         CHECK(galley_procedure_report_semantic_error(session, hook, message, 4) == galley_error_session_in_use);
         CHECK(galley_procedure_set_current_node(session, hook, 1, GALLEY_INVALID_NODE) == galley_error_session_in_use);
-        /* Another session never accepts it. */
+        /* Another thread overlaps the running parse whatever its ticket is:
+         * session in use comes before stale hook, for a hook that has
+         * returned and for one never issued alike. */
+        unsigned long long returned_hook = hook - 1;
+        CHECK(galley_procedure_current_node(session, returned_hook) == galley_error_session_in_use);
+        CHECK(galley_procedure_door(session, returned_hook, &door) == galley_error_session_in_use);
+        CHECK(galley_procedure_drop_self(session, returned_hook) == galley_error_session_in_use);
+        CHECK(galley_procedure_report_semantic_error(session, returned_hook, message, 4) ==
+              galley_error_session_in_use);
+        CHECK(galley_procedure_set_current_node(session, returned_hook, 1, GALLEY_INVALID_NODE) ==
+              galley_error_session_in_use);
+        CHECK(galley_procedure_current_node(session, 0) == galley_error_session_in_use);
+        CHECK(galley_procedure_current_node(session, hook + 1000000) == galley_error_session_in_use);
+        /* Another session runs no parse: nothing overlaps, so it never
+         * accepts the ticket and answers stale hook. */
         CHECK(galley_procedure_current_node(other, hook) == galley_error_stale_hook);
         CHECK(galley_procedure_drop_self(other, hook) == galley_error_stale_hook);
+        CHECK(galley_procedure_current_node(other, returned_hook) == galley_error_stale_hook);
     }
     fixture_release_gate();
     CHECK(pthread_join(parser, NULL) == 0);
     CHECK(gated.parse_status >= 0);
+    /* The parse is over: from this thread, which never dispatched the hook,
+     * its ticket is stale and nothing overlaps. */
+    CHECK(galley_procedure_current_node(session, fixture_gate_hook()) == galley_error_stale_hook);
+    CHECK(galley_procedure_current_node(session, fixture_gate_hook() - 1) == galley_error_stale_hook);
     galley_session_destroy(other);
+    galley_session_destroy(session);
+}
+
+/* A message override is a change to state the parse reads, so it takes the
+ * session's lease like every other mutator: mid-parse it is refused with
+ * session in use from another thread, and changes nothing; with no parse
+ * running it works. */
+static void test_message_override_is_refused_while_a_parse_runs(void) {
+    GalleySession *session = make_session();
+    const char *override_text = "expected digits here";
+    fixture_arm_gate();
+    GatedParse gated = {session, 0};
+    pthread_t parser;
+    CHECK(pthread_create(&parser, NULL, parse_while_gated, &gated) == 0);
+    int entered = wait_for_gate();
+    CHECK(entered);
+    if (entered) {
+        CHECK(galley_session_set_message_override(session, "Number", strlen("Number"), override_text,
+                                                  strlen(override_text)) ==
+              galley_error_session_in_use);
+        /* Argument checks still come first. */
+        CHECK(galley_session_set_message_override(session, NULL, 0, override_text,
+                                                  strlen(override_text)) ==
+              galley_error_null_argument);
+    }
+    fixture_release_gate();
+    CHECK(pthread_join(parser, NULL) == 0);
+    CHECK(gated.parse_status >= 0);
+
+    /* The refused change left no trace. */
+    const char *message = NULL;
+    CHECK(galley_parse_sentinel(session, broken_sample) == galley_error_syntax);
+    CHECK(galley_diagnostic_message(session, &message) == galley_ok);
+    CHECK(message != NULL && strstr(message, override_text) == NULL);
+
+    /* With no parse running the same call works and takes effect. */
+    CHECK(galley_session_set_message_override(session, "Number", strlen("Number"), override_text,
+                                              strlen(override_text)) == galley_ok);
+    CHECK(galley_parse_sentinel(session, broken_sample) == galley_error_syntax);
+    CHECK(galley_diagnostic_message(session, &message) == galley_ok);
+    CHECK(message != NULL && strstr(message, override_text) != NULL);
+    galley_session_destroy(session);
+}
+
+/* Parsing copies the input: the caller may overwrite or release its buffer
+ * right after the call, and last_input still reads the parsed text from the
+ * session's own copy, for every parse entry and for a failure that
+ * publishes. */
+static void test_parsing_copies_the_input(void) {
+    GalleySession *session = make_session();
+    const char *input = NULL;
+    size_t input_length = 0;
+    size_t sample_length = strlen(valid_sample);
+    char *buffer = (char *)malloc(sample_length + 1);
+    CHECK(buffer != NULL);
+    if (buffer == NULL) {
+        galley_session_destroy(session);
+        return;
+    }
+
+    memcpy(buffer, valid_sample, sample_length + 1);
+    CHECK(galley_parse_sentinel(session, buffer) >= 0);
+    CHECK(galley_last_input(session, &input, &input_length) == galley_ok);
+    CHECK(input != buffer && input_length == sample_length);
+    memset(buffer, 'Z', sample_length);
+    CHECK(memcmp(input, valid_sample, sample_length) == 0);
+
+    memcpy(buffer, valid_sample, sample_length);
+    CHECK(galley_parse(session, buffer, sample_length) >= 0);
+    CHECK(galley_last_input(session, &input, &input_length) == galley_ok);
+    CHECK(input != buffer && input_length == sample_length);
+    memset(buffer, 'Z', sample_length);
+    CHECK(memcmp(input, valid_sample, sample_length) == 0);
+
+    size_t broken_length = strlen(broken_sample);
+    memcpy(buffer, broken_sample, broken_length + 1);
+    CHECK(galley_parse(session, buffer, broken_length) == galley_error_syntax);
+    CHECK(galley_last_input(session, &input, &input_length) == galley_ok);
+    CHECK(input != buffer && input_length == broken_length);
+    memset(buffer, 'Z', broken_length);
+    CHECK(memcmp(input, broken_sample, broken_length) == 0);
+
+    free(buffer);
     galley_session_destroy(session);
 }
 
@@ -1623,6 +1728,8 @@ int main(void) {
     test_walk_sees_edits();
     test_walk_in_use();
     test_live_ticket_is_the_dispatching_threads_and_sessions();
+    test_message_override_is_refused_while_a_parse_runs();
+    test_parsing_copies_the_input();
     test_walk_in_hook();
     test_walk_semantic_skip_in_hook();
     test_semantic_only_failure_publishes();

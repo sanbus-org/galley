@@ -420,6 +420,120 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(codes, [grammar.Status.ERROR_SESSION_IN_USE] * 4)
         self.assertEqual(self.session.root_node().text(), b"alpha:12,beta:3")
 
+    def test_stale_arguments_on_another_thread_are_refused_as_in_use_first(
+        self,
+    ) -> None:
+        # Refusals apply in the stated order: a call that overlaps a running
+        # parse from another thread is `session in use` even when the
+        # arguments belong to a hook that has returned. On the dispatching
+        # thread the same arguments are a stale hook, and once the parse is
+        # over nothing overlaps, so any thread gets stale hook.
+        stashed: list[grammar.ProcedureArguments] = []
+        foreign: list[int] = []
+        own: list[int] = []
+
+        def reduction_Pair(args: grammar.ProcedureArguments) -> None:
+            if not stashed:
+                stashed.append(args)
+
+        def reduction_Document(args: grammar.ProcedureArguments) -> None:
+            returned = stashed[0]
+
+            def probe() -> None:
+                for use in (
+                    returned.current_line,
+                    returned.current_node,
+                    returned.drop_self,
+                    lambda: returned.report_semantic_error("late"),
+                ):
+                    try:
+                        use()
+                    except grammar.GalleyError as error:
+                        foreign.append(error.code)
+
+            thread = threading.Thread(target=probe)
+            thread.start()
+            thread.join(30)
+            try:
+                returned.current_line()
+            except grammar.GalleyError as error:
+                own.append(error.code)
+
+        self.session.install_procedure("reduction_Pair", reduction_Pair)
+        self.session.install_procedure("reduction_Document", reduction_Document)
+        try:
+            self.session.parse("alpha:12,beta:3")
+        finally:
+            self.session.clear_procedures()
+        self.assertEqual(foreign, [grammar.Status.ERROR_SESSION_IN_USE] * 4)
+        self.assertEqual(own, [grammar.Status.ERROR_STALE_HOOK])
+        after: list[int] = []
+
+        def probe_after() -> None:
+            try:
+                stashed[0].current_line()
+            except grammar.GalleyError as error:
+                after.append(error.code)
+
+        thread = threading.Thread(target=probe_after)
+        thread.start()
+        thread.join(30)
+        self.assertEqual(after, [grammar.Status.ERROR_STALE_HOOK])
+
+    def test_message_override_is_refused_while_a_parse_runs(self) -> None:
+        # A message override changes what the running parse reads, so from
+        # another thread and from inside a hook it is `session in use` and
+        # changes nothing; with no parse running it works.
+        text = "expected digits here"
+        entered = threading.Event()
+        release = threading.Event()
+        from_hook: list[int] = []
+        from_thread: list[int] = []
+
+        def reduction_Document(args: grammar.ProcedureArguments) -> None:
+            try:
+                self.session.set_message_override("Number", text)
+            except grammar.GalleyError as error:
+                from_hook.append(error.code)
+            entered.set()
+            self.assertTrue(release.wait(30))
+
+        def message_of_broken_parse() -> str:
+            with self.assertRaises(grammar.GalleyError) as raised:
+                self.session.parse("alpha:")
+            diagnostic = raised.exception.diagnostic
+            assert diagnostic is not None
+            return diagnostic.message
+
+        self.session.install_procedure("reduction_Document", reduction_Document)
+        parser = threading.Thread(target=lambda: self.session.parse("alpha:12,beta:3"))
+        parser.start()
+        try:
+            self.assertTrue(entered.wait(30))
+            try:
+                self.session.set_message_override("Number", text)
+            except grammar.GalleyError as error:
+                from_thread.append(error.code)
+        finally:
+            release.set()
+            parser.join(30)
+            self.session.clear_procedures()
+        self.assertEqual(from_hook, [grammar.Status.ERROR_SESSION_IN_USE])
+        self.assertEqual(from_thread, [grammar.Status.ERROR_SESSION_IN_USE])
+        self.assertNotIn(text, message_of_broken_parse())
+        self.session.set_message_override("Number", text)
+        self.assertIn(text, message_of_broken_parse())
+
+    def test_parsing_copies_the_input(self) -> None:
+        # The caller may overwrite its buffer once parse returns.
+        buffer = bytearray(b"alpha:12,beta:3")
+        self.session.parse(buffer)
+        buffer[:] = b"Z" * len(buffer)
+        self.assertEqual(self.session.last_input(), b"alpha:12,beta:3")
+        root = self.session.root_node()
+        assert root is not None
+        self.assertEqual(root.text(), b"alpha:12,beta:3")
+
     def test_a_refused_call_with_returned_arguments_changes_nothing(self) -> None:
         # drop_self through the first Pair's arguments, made from a later
         # Pair hook, is refused and so cannot drop that later hook's node.

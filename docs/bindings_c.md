@@ -71,7 +71,9 @@ issues for that one call, never a pointer into the parser's stack. Every
 ticket of a hook that has returned is refused with `galley_error_stale_hook`,
 from a later hook of the same parse and after the parse alike, in every build.
 Tickets are never reused, so a later hook cannot revive an old one, and a
-host keeps no expiry flag of its own. Tree access crosses the parse's door
+host keeps no expiry flag of its own. A call from a thread other than the one
+running the parse overlaps that parse and gets `galley_error_session_in_use`
+first, whatever its ticket. Tree access crosses the parse's door
 instead: take it with `galley_procedure_door(session, hook, &door)` and
 inspect nodes with the `galley_hook_*` twins, which take no lock while the
 parse runs. The door is the same pointer for every hook of one parse and dies
@@ -172,7 +174,9 @@ galley_session_set_message_override(session,
     sizeof("expected a number after ':' (digits only) at line {line}") - 1);
 ```
 
-Both strings are copied; overrides persist for the session's lifetime.
+Both strings are copied; overrides persist for the session's lifetime. The call
+returns `galley_error_session_in_use`, changing nothing, while a parse runs
+(from another thread or from a hook).
 
 Placeholders inside override messages expand against the failing
 diagnostic: `{line}`, `{column}`, `{unexpected}`, `{expected}` (rendered
@@ -292,7 +296,8 @@ long long parsed = galley_parse_file(session, "file.json");    /* from disk */
 ```
 
 Returns the number of bytes parsed on success, or a negative
-`galley_error_*` code (`galley_status_string` renders any code).
+`galley_error_*` code (`galley_status_string` renders any code). Parsing copies
+the input: the caller may reuse or release its buffer once the call returns.
 
 ### Walking the AST
 
