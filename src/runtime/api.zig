@@ -63,7 +63,6 @@ pub const ParseError = error{
 /// consume no session state.
 pub const SessionError = error{
     SessionInUse,
-    SessionGenerationExhausted,
     StaleParseResult,
     /// No parse on this session has succeeded yet, so there is no published
     /// result to address (`readCurrent`, `editCurrent`).
@@ -248,7 +247,7 @@ pub const ParseResult = struct {
     column: if (position_tracking_enabled) u32 else void,
     ast_root: ?data_structures.Node.Pointer = null,
     semantic_root: if (procedures_enabled) ?data_structures.Payload else void = if (procedures_enabled) null else {},
-    _session_generation: usize = 0,
+    _session_generation: u64 = 0,
     _session_identity: ?*const anyopaque = null,
 };
 
@@ -288,7 +287,7 @@ pub const SessionReadGuard = struct {
 
     /// The parse generation this guard's result belongs to: the generation
     /// the parse stamped on its context while it ran.
-    pub fn generation(self: *const SessionReadGuard) usize {
+    pub fn generation(self: *const SessionReadGuard) u64 {
         return self.result._session_generation;
     }
 
@@ -369,7 +368,7 @@ pub const SessionEditGuard = struct {
 
     /// The parse generation of the session's live tree, the same source the
     /// read guard reports once its result is validated against it.
-    pub fn generation(self: *const SessionEditGuard) usize {
+    pub fn generation(self: *const SessionEditGuard) u64 {
         return self.session.generation;
     }
 
@@ -641,7 +640,7 @@ pub const Session = struct {
     ast_preallocation_ratio: if (parser.is_ast_enabled) f64 else void,
     ast_preallocation_cap: if (parser.is_ast_enabled) usize else void,
     session_lock: SessionLock = .init,
-    generation: usize = 0,
+    generation: u64 = 0,
     /// Byte length of the latest parse's input, when its entry point knows it
     /// (null for streamed input of unknown length). A parse that fails after
     /// publishing reports `parsed_bytes` as far as the parser consumed, which
@@ -913,10 +912,9 @@ pub const Session = struct {
             return error.NestedParseDuringStackOverflowRecovery;
         }
         if (!self.session_lock.tryLock()) return error.SessionInUse;
-        if (self.generation == std.math.maxInt(usize)) {
-            self.session_lock.unlock();
-            return error.SessionGenerationExhausted;
-        }
+        // Plain safety-checked addition: a wrapped generation would make a
+        // dead parse's nodes live again, and at 64 bits the overflow state is
+        // unreachable (millions of years at 10k parses/s).
         self.generation += 1;
         // The storage is stamped here, before any step of the parse can
         // recycle an address (a parse that fails before rewinding still
@@ -1671,4 +1669,44 @@ test "an allocation failure during a parse publishes nothing" {
     try std.testing.expectError(error.OutOfMemory, session.parseBytes(larger, null));
     failing.fail_index = std.math.maxInt(usize);
     try std.testing.expectError(error.StaleParseResult, session.readCurrent());
+}
+
+test "the session generation parses across the 32-bit boundary" {
+    const valid = "Start\n| \"x\"\n";
+    var session = try Session.init(std.Io.failing, std.testing.allocator, .{});
+    defer session.deinit();
+
+    // One under the 32-bit ceiling: the first parse lands on the ceiling,
+    // the second crosses the boundary a 32-bit counter refused to cross.
+    // This is the case that used to exhaust a 32-bit generation on wasm32.
+    session.generation = std.math.maxInt(u32) - 1;
+
+    _ = try session.parseBytes(valid, null);
+    var before_boundary: data_structures.TreeWalker = undefined;
+    {
+        var first = try session.readCurrent();
+        defer first.deinit();
+        try std.testing.expectEqual(@as(u64, std.math.maxInt(u32)), first.generation());
+        before_boundary = data_structures.TreeWalker.init(
+            &session.node_allocator,
+            first.result.ast_root orelse return error.MissingAstRoot,
+            .{},
+        );
+        _ = (try before_boundary.next()) orelse return error.TooFewSteps;
+    }
+
+    _ = try session.parseBytes(valid, null);
+    var current = try session.readCurrent();
+    defer current.deinit();
+    try std.testing.expectEqual(@as(u64, std.math.maxInt(u32)) + 1, current.generation());
+    try std.testing.expectEqual(session.generation, current.generation());
+
+    // The tree across the boundary reads; the walker from before it is stale.
+    var across = data_structures.TreeWalker.init(
+        &session.node_allocator,
+        current.result.ast_root orelse return error.MissingAstRoot,
+        .{},
+    );
+    _ = (try across.next()) orelse return error.TooFewSteps;
+    try std.testing.expectError(error.StaleTree, before_boundary.next());
 }

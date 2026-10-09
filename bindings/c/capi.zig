@@ -144,7 +144,7 @@ const Embedded = struct {
     /// is served only while this equals the session's generation, so no
     /// window between a parse's start and its lease can serve a message
     /// from the parse before it.
-    rendered_generation: usize = 0,
+    rendered_generation: u64 = 0,
     /// Input retained for the most recent published parse (a success, or a
     /// failure that ran to its end); node text offsets index it.
     /// Session-owned so the next parse — which reuses the session's input
