@@ -59,7 +59,11 @@ agree in both directions.
   runs from the variable's start through the input recovery skipped. The
   damaged variable's hooks do not run; its parent's do, and see the flagged
   node. A self-repeating parser keeps the chain of levels it had built, flagged
-  at the outermost.
+  at the outermost. A variable whose rules continue into it from their last
+  position parses as one loop, and recovers as its recursive calls would: the
+  recovered level is flagged and the levels around it finish normally, and an
+  explicit recovery that fails at one level is retried at each enclosing level,
+  outward.
 - **LR, explicit:** the entry that stands in for the recovered variable carries
   a flagged node, so the reduce above links it as a child where the damage was.
   It has no children (the entries recovery unwound are discarded) and spans

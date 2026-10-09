@@ -21,6 +21,14 @@ pub const ParserDecision = struct {
     tree: *switch_planning.Node,
 };
 
+/// Whether a variable's occurrence at `position` of `rule` continues the
+/// variable's parser as a loop: it is the rule's last symbol and captures no
+/// verbatim text. Self-references anywhere else repeat through
+/// `SelfRepeatingDecision`s.
+pub fn isTailLoopPosition(rule: common.Rule, position: usize) bool {
+    return position + 1 == rule.rhs.items.len and !rule.rhs_annotations.items[position].verbatim;
+}
+
 pub const SelfRepeatingDecision = struct {
     variable: usize,
     rule_index: usize,
@@ -1014,7 +1022,7 @@ const Builder = struct {
             for (self.grammar.rules.items, 0..) |rule, rule_index| {
                 if (rule.header != symbol_index) continue;
                 for (rule.rhs.items, 0..) |child, self_index| {
-                    if (child != symbol_index) continue;
+                    if (child != symbol_index or isTailLoopPosition(rule, self_index)) continue;
                     var self_repeating_entries = std.ArrayList(switch_planning.Entry).empty;
                     for (self.plan.parse_table.items) |entry| {
                         if (entry.variable != symbol_index or entry.rule != rule_index) continue;
@@ -1520,12 +1528,13 @@ test "self-repeating decisions discriminate on full terminal bytes" {
     const star = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, " *", .terminal);
     const slash = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, " /", .terminal);
     const comparison = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, " <", .terminal);
+    const close = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, ")", .terminal);
     grammar.augmented_start = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_AugmentedStart", .variable);
     grammar.eof = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "\x00", .end);
     grammar.generative_terminal = try common.addSymbol(allocator, &grammar.symbols, &grammar.variables, "_GenerativeTerminal", .variable);
 
     try appendTestRule(allocator, &grammar.rules, root, "0", &.{ tail, comparison });
-    try appendTestRule(allocator, &grammar.rules, tail, "0", &.{ operator, tail });
+    try appendTestRule(allocator, &grammar.rules, tail, "0", &.{ operator, tail, close });
     try appendTestRule(allocator, &grammar.rules, tail, "1", &.{});
     try appendTestRule(allocator, &grammar.rules, operator, "0", &.{plus});
     try appendTestRule(allocator, &grammar.rules, operator, "1", &.{minus});

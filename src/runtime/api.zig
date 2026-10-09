@@ -633,6 +633,7 @@ pub const Session = struct {
     reader_buffer: []u8,
     chunk_buffer: []u8,
     token_storage: if (config.indentation_syntax) data_structures.Token.Storage else void,
+    tail_frames: if (parser.is_ast_enabled) data_structures.TailFrameStack else void,
     owned_input: ?[]u8 = null,
     node_allocator: if (parser.is_ast_enabled) data_structures.ASTAllocator else void,
     verbosity: if (builtin.mode == .debug) usize else void,
@@ -733,6 +734,7 @@ pub const Session = struct {
             .reader_buffer = reader_buffer,
             .chunk_buffer = chunk_buffer,
             .token_storage = token_storage,
+            .tail_frames = if (parser.is_ast_enabled) .{ .allocator = allocator } else {},
             .node_allocator = node_allocator,
             .message_overrides = message_overrides,
             .verbosity = if (builtin.mode == .debug) options.verbosity else {},
@@ -756,6 +758,7 @@ pub const Session = struct {
         }
         if (parser.is_ast_enabled) {
             self.node_allocator.deinit(self.allocator);
+            self.tail_frames.deinit();
         }
         self.freeMessageOverrides();
         self.allocator.free(self.chunk_buffer);
@@ -1145,6 +1148,10 @@ pub const Session = struct {
             context_value.verbosity = self.verbosity;
         }
         if (comptime config.indentation_syntax) context_value.token.attach(self.token_storage);
+        if (comptime parser.is_ast_enabled) {
+            self.tail_frames.frames.clearRetainingCapacity();
+            context_value.tail_frames = &self.tail_frames;
+        }
         return context_value;
     }
 

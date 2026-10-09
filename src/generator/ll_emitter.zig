@@ -50,6 +50,14 @@ const Generator = struct {
     /// Largest `functionBodyBranchQuota` computed since it was last reset, so
     /// a terminal's cost is measured exactly like any caller's body.
     largest_body_branch_quota: usize = 0,
+    /// The tail loop whose rule dispatch is being rendered, if any.
+    tail_loop: ?TailLoop = null,
+    /// Whether the occurrence being emitted is the last symbol of the tail
+    /// loop variable's rule, counting through inlined helpers.
+    in_last_position: bool = false,
+    /// Which of the current level's occurrence values the code emitted since
+    /// the last reset names, so a tail loop declares exactly those.
+    occurrence_uses: OccurrenceUses = .{},
 
     fn init(allocator: std.mem.Allocator, options: Options, grammar: *const common.PreparedGrammar, plan: *const LLPlan) Generator {
         return .{
@@ -343,18 +351,39 @@ const Generator = struct {
         try writer.print("// {s}Parser for Symbol \"", .{if (skip_ast_construction) "AST-Suppressed " else ""});
         try std.zig.stringEscape(self.symbols.items[variable].id, writer);
         try writer.print("\" with index {d}\n", .{variable});
-        try writer.print("fn parse_{s}{s}(context: *data_structures.Context", .{ name, if (skip_ast_construction) "_" else "" });
+        // A tail loop that builds nodes stays out of line, as the recursive
+        // parser it replaces did: inlined into its callers it bloats them
+        // (JSON with AST: -10%), while loops without nodes gain from
+        // inlining. One generated file serves every build, so a wrapper picks
+        // when the build compiles.
+        const suffix = if (skip_ast_construction) "_" else "";
+        const loops = try self.tailLoopEnabled(variable, skip_ast_construction);
+        if (loops) {
+            try writer.print("inline fn parse_{s}{s}(context: *data_structures.Context", .{ name, suffix });
+            if (self.has_occurrence_procedures) try writer.writeAll(", occurrence_procedures: ?*const ProcedureSequenceNode");
+            if (self.uses_explicit_recovery) try writer.writeAll(", occurrence_recovery: ?*const ExplicitRecoveryScope");
+            try writer.print(") anyerror!nodeReturnType({d}, {s}) {{\n", .{ variable, if (skip_ast_construction) "true" else "false" });
+            try writer.print("    return @call(if (symbolReturnsNodeSuppressed({d}, {s})) .never_inline else .auto, parse_{s}{s}_loop, .{{context", .{ variable, if (skip_ast_construction) "true" else "false", name, suffix });
+            if (self.has_occurrence_procedures) try writer.writeAll(", occurrence_procedures");
+            if (self.uses_explicit_recovery) try writer.writeAll(", occurrence_recovery");
+            try writer.writeAll("});\n}\n");
+        }
+        // A loop's levels each have their own occurrence; the caller's is
+        // the outermost level's.
+        const parameter_prefix = if (loops) "outer_" else "";
+        try writer.print("fn parse_{s}{s}{s}(context: *data_structures.Context", .{ name, suffix, if (loops) "_loop" else "" });
         if (self.has_occurrence_procedures) {
-            try writer.writeAll(", occurrence_procedures: ?*const ProcedureSequenceNode");
+            try writer.print(", {s}occurrence_procedures: ?*const ProcedureSequenceNode", .{parameter_prefix});
         }
         if (self.uses_explicit_recovery) {
-            try writer.writeAll(", occurrence_recovery: ?*const ExplicitRecoveryScope");
+            try writer.print(", {s}occurrence_recovery: ?*const ExplicitRecoveryScope", .{parameter_prefix});
         }
         if (variable == self.plan.augmented_start) {
             try writer.writeAll(", root_reduction: *RootReduction");
         }
         try writer.print(") anyerror!nodeReturnType({d}, {s}) {{\n", .{ variable, if (skip_ast_construction) "true" else "false" });
-        try emitter_common.emitModeGatedBody(Generator, self, writer, VariableParserBody, .{ .variable = variable, .skip_ast_construction = skip_ast_construction }, self.has_occurrence_procedures, renderVariableParserBody);
+        // A loop body names its own `outer_` parameters.
+        try emitter_common.emitModeGatedBody(Generator, self, writer, VariableParserBody, .{ .variable = variable, .skip_ast_construction = skip_ast_construction }, self.has_occurrence_procedures and !loops, renderVariableParserBody);
         try writer.writeAll("}\n");
     }
 
@@ -373,6 +402,7 @@ const Generator = struct {
         if (variable == self.plan.augmented_start) {
             try writer.writeAll("    root_reduction.* = .{};\n");
         }
+        if (try self.tailLoopEnabled(variable, skip_ast_construction)) return self.renderTailLoopBody(writer, variable, skip_ast_construction, returns_node);
         if (returns_node) {
             const variable_index = self.variableIndex(variable);
             if (self.options.with_ast) {
@@ -410,13 +440,424 @@ const Generator = struct {
         }
     }
 
+    const TailReach = enum { never, sometimes, always };
+
+    /// Whether `rule`'s last position reaches `variable` again, directly or
+    /// through the last position of inlined helpers: on no path, on some, or
+    /// on every path.
+    fn tailReach(self: *Generator, variable: usize, rule: Rule) TailReach {
+        if (rule.rhs.items.len == 0) return .never;
+        const last_index = rule.rhs.items.len - 1;
+        const last = rule.rhs.items[last_index];
+        if (last == variable) return if (planning.isTailLoopPosition(rule, last_index)) .always else .never;
+        const symbol = self.symbols.items[last];
+        if (symbol.kind != .variable or !symbol.synthetic_transparent) return .never;
+        var any = false;
+        var all = true;
+        for (self.rules.items) |helper_rule| {
+            if (helper_rule.header != last) continue;
+            switch (self.tailReach(variable, helper_rule)) {
+                .never => all = false,
+                .sometimes => {
+                    any = true;
+                    all = false;
+                },
+                .always => any = true,
+            }
+        }
+        if (!any) return .never;
+        return if (all) .always else .sometimes;
+    }
+
+    /// Whether the parser of `variable`, in the variant `skip_ast_construction`
+    /// selects, is a tail loop: some rule reaches the variable again from its
+    /// last position. A variant whose self-references call the other variant
+    /// (the variable is not AST-enabled) leaves the looping to that one, and a
+    /// byte run is a loop of its own.
+    fn tailLoopEnabled(self: *Generator, variable: usize, skip_ast_construction: bool) EmitError!bool {
+        if (variable == self.plan.augmented_start) return false;
+        if (!skip_ast_construction and !self.symbols.items[variable].ast_enabled) return false;
+        if (try self.byteRunBytes(variable) != null) return false;
+        for (self.rules.items) |rule| {
+            if (rule.header != variable) continue;
+            if (self.tailReach(variable, rule) != .never) return true;
+        }
+        return false;
+    }
+
+    /// An occurrence where a variable's rule reaches the variable again from
+    /// its last symbol; the variable's parser loops there instead of calling
+    /// itself.
+    const TailSite = struct {
+        /// The variable's rule whose expansion holds the occurrence.
+        rule_index: usize,
+        /// The rule holding the occurrence: that rule, or an inlined helper's.
+        occurrence_rule: Rule,
+        position: usize,
+        /// The occurrence's child slot, where a node built by value lands.
+        slot: usize,
+    };
+
+    const TailLoop = struct {
+        variable: usize,
+        skip_ast_construction: bool,
+        /// Each open level keeps a frame, to reduce its node around the inner
+        /// one or to retry explicit recovery outward.
+        keeps_frames: bool,
+        rule_index: usize = 0,
+        sites: std.ArrayList(TailSite) = .empty,
+    };
+
+    /// The tail loop around the body being rendered when it keeps frames. A
+    /// level inside it does not return: its result, or its failure, ends
+    /// the descent, and the open levels then finish around it as their
+    /// recursive calls did.
+    fn framedTailLoop(self: *Generator) ?*TailLoop {
+        if (self.tail_loop) |*loop| {
+            if (loop.keeps_frames) return loop;
+        }
+        return null;
+    }
+
+    /// Hands `expression` (or nothing) back as the current level's result.
+    fn emitLevelReturn(self: *Generator, writer: *std.Io.Writer, indent: []const u8, expression: ?[]const u8) !void {
+        const loop = self.framedTailLoop() orelse {
+            if (expression) |value| {
+                try writer.print("{s}return {s};\n", .{ indent, value });
+            } else {
+                try writer.print("{s}return;\n", .{indent});
+            }
+            return;
+        };
+        if (expression) |value| {
+            if (self.symbolReturnsNode(loop.variable, loop.skip_ast_construction)) {
+                try writer.print("{s}{s} = {s};\n", .{ indent, if (self.options.with_ast) "node_address" else "tail_result", value });
+            } else {
+                try writer.print("{s}{s};\n", .{ indent, value });
+            }
+        }
+        try writer.print("{s}break :descend;\n", .{indent});
+    }
+
+    /// Fails the current level after its explicit recovery found nothing, so
+    /// the level around it tries its own.
+    fn emitLevelFailure(self: *Generator, writer: *std.Io.Writer, indent: []const u8) !void {
+        if (self.framedTailLoop() == null) {
+            try writer.print("{s}return err;\n", .{indent});
+            return;
+        }
+        try writer.print("{s}tail_failure = err;\n{s}break :descend;\n", .{ indent, indent });
+    }
+
+    /// Writes `call` so that, inside a framed loop with explicit recovery, a
+    /// recovery failure fails the current level instead of the whole parser.
+    fn emitHandledCall(self: *Generator, writer: *std.Io.Writer, indent: []const u8, call: []const u8) !void {
+        if (self.framedTailLoop() == null or !self.uses_explicit_recovery) {
+            try writer.print("try {s}", .{call});
+            return;
+        }
+        try writer.print("{s} catch |err| switch (err) {{\n", .{call});
+        try writer.print("{s}    error.ExplicitSyntaxRecovery => {{\n", .{indent});
+        try self.emitLevelFailure(writer, try indented(self.allocator, indent, 8));
+        try writer.print("{s}    }},\n{s}    else => return err,\n{s}}}", .{ indent, indent, indent });
+    }
+
+    /// Starts the next level at `site`: the open level keeps a frame, and
+    /// the loop parses the variable again.
+    fn emitTailDescent(self: *Generator, writer: *std.Io.Writer, indent: []const u8, site: usize) !void {
+        const loop = self.tail_loop.?;
+        if (loop.keeps_frames) {
+            if (self.options.with_ast) {
+                const node = if (self.symbolReturnsNode(loop.variable, loop.skip_ast_construction)) "node_address" else "data_structures.Node.invalid_pointer";
+                try writer.print("{s}try context.tail_frames.push(.{{ .node = {s}, .site = {d} }});\n", .{ indent, node, site });
+            } else if (self.symbolReturnsNode(loop.variable, loop.skip_ast_construction)) {
+                try writer.print("{s}try tail_frames.append(context.runtime().arena_allocator, .{{ .level = level, .site = {d} }});\n", .{ indent, site });
+            } else {
+                try writer.print("{s}try tail_frames.append(context.runtime().arena_allocator, .{{ .site = {d} }});\n", .{ indent, site });
+            }
+        } else if (self.has_occurrence_procedures) {
+            try writer.print("{s}tail_depth += 1;\n", .{indent});
+        }
+        try writer.print("{s}continue :descend;\n", .{indent});
+    }
+
+    /// How generated loop code reads its frames: the session's stack above
+    /// this call's base with AST construction, a local list otherwise.
+    const TailFrameAccess = struct {
+        count: []const u8,
+        top_site: []const u8,
+        pop: []const u8,
+    };
+
+    fn tailFrameAccess(self: *Generator) TailFrameAccess {
+        if (self.options.with_ast) return .{
+            .count = "context.tail_frames.frames.items.len - tail_frame_base",
+            .top_site = "context.tail_frames.frames.items[context.tail_frames.frames.items.len - 1].site",
+            .pop = "context.tail_frames.frames.pop().?",
+        };
+        return .{
+            .count = "tail_frames.items.len",
+            .top_site = "tail_frames.items[tail_frames.items.len - 1].site",
+            .pop = "tail_frames.pop().?",
+        };
+    }
+
+    const OccurrenceUses = struct {
+        procedures: bool = false,
+        recovery: bool = false,
+
+        fn merge(self: OccurrenceUses, other: OccurrenceUses) OccurrenceUses {
+            return .{ .procedures = self.procedures or other.procedures, .recovery = self.recovery or other.recovery };
+        }
+    };
+
+    /// Names, in emitted code, the occurrence procedures of the node the body
+    /// builds. Every such name goes through here, so the use is recorded.
+    fn occurrenceProceduresName(self: *Generator) []const u8 {
+        self.occurrence_uses.procedures = true;
+        return "occurrence_procedures";
+    }
+
+    /// Names, in emitted code, the recovery scope of the occurrence being
+    /// parsed. Every such name goes through here, so the use is recorded.
+    fn occurrenceRecoveryName(self: *Generator) []const u8 {
+        self.occurrence_uses.recovery = true;
+        return "occurrence_recovery";
+    }
+
+    /// Declares the current level's occurrence procedures and recovery scope,
+    /// as far as `uses` names them: the caller's at the outermost level, and
+    /// at a deeper one those of the site the level above continued at.
+    fn emitLevelOccurrences(self: *Generator, writer: *std.Io.Writer, indent: []const u8, uses: OccurrenceUses, loop: TailLoop) !void {
+        const access = self.tailFrameAccess();
+        const returns_node = self.symbolReturnsNode(loop.variable, loop.skip_ast_construction);
+        if (uses.procedures) {
+            if (!loop.keeps_frames) {
+                // Without frames the variable builds no node, so deeper levels
+                // were called without occurrence procedures.
+                try writer.print("{s}const occurrence_procedures: ?*const ProcedureSequenceNode = if (tail_depth == 0) outer_occurrence_procedures else null;\n", .{indent});
+            } else {
+                try writer.print("{s}const occurrence_procedures: ?*const ProcedureSequenceNode = if ({s} == 0) outer_occurrence_procedures else switch ({s}) {{\n", .{ indent, access.count, access.top_site });
+                for (loop.sites.items, 0..) |site, site_index| {
+                    try writer.print("{s}    {d} => ", .{ indent, site_index });
+                    if (returns_node) {
+                        try emitter_common.emitProcedureSequenceExpression(writer, &self.plan.hooks, site.occurrence_rule.rhs_annotations.items[site.position].procedures.items);
+                    } else {
+                        try writer.writeAll("null");
+                    }
+                    try writer.writeAll(",\n");
+                }
+                try writer.print("{s}    else => unreachable,\n{s}}};\n", .{ indent, indent });
+            }
+        }
+        if (uses.recovery) {
+            try writer.print("{s}const occurrence_recovery: ?*const ExplicitRecoveryScope = if ({s} == 0) outer_occurrence_recovery else switch ({s}) {{\n", .{ indent, access.count, access.top_site });
+            for (loop.sites.items, 0..) |site, site_index| {
+                try writer.print("{s}    {d} => ", .{ indent, site_index });
+                if (site.occurrence_rule.rhs_annotations.items[site.position].recovery_points.items.len != 0) {
+                    try self.emitOccurrenceRecoveryScope(writer, site.occurrence_rule, site.position);
+                } else {
+                    try writer.writeAll("null");
+                }
+                try writer.writeAll(",\n");
+            }
+            try writer.print("{s}    else => unreachable,\n{s}}};\n", .{ indent, indent });
+        }
+    }
+
+    /// Pops the error-message variable of the level a frame count names,
+    /// when that level pushed one.
+    fn emitLeaveLevel(writer: *std.Io.Writer, indent: []const u8, level: []const u8) !void {
+        try writer.print(
+            \\{s}if (comptime is_syntax_error_stack_enabled) {{
+            \\{s}    if ({s} < syntax_error_depth) {{
+            \\{s}        context.popSyntaxErrorVariable();
+            \\{s}        syntax_error_depth -= 1;
+            \\{s}    }}
+            \\{s}}}
+            \\
+        , .{ indent, indent, level, indent, indent, indent, indent });
+    }
+
+    /// The variable's parser as a loop: where a rule reaches the variable
+    /// again from its last position, the next level starts instead of a
+    /// recursive call, so input depth costs no stack. A level that keeps a
+    /// frame finishes after the levels inside it, innermost first, exactly
+    /// as its recursive call would have: it takes the inner result as its
+    /// last child, reduces, and pops its error-message variable.
+    fn renderTailLoopBody(self: *Generator, writer: *std.Io.Writer, variable: usize, skip_ast_construction: bool, returns_node: bool) !void {
+        const with_ast = self.options.with_ast;
+        const explicit = self.uses_explicit_recovery;
+        const keeps_frames = returns_node or explicit;
+        const value_nodes = returns_node and !with_ast;
+        const variable_index = self.variableIndex(variable);
+        const access = self.tailFrameAccess();
+
+        // The dispatch first: it names the sites the frames refer to.
+        var dispatch = std.Io.Writer.Allocating.init(self.allocator);
+        self.occurrence_uses = .{};
+        self.tail_loop = .{ .variable = variable, .skip_ast_construction = skip_ast_construction, .keeps_frames = keeps_frames };
+        const decision = self.plan.parserDecision(variable, skip_ast_construction);
+        self.emitRuleDispatch(&dispatch.writer, variable, decision.tree, "        ", skip_ast_construction, VariableRuleBody{
+            .generator = self,
+            .variable = variable,
+            .skip_ast_construction = skip_ast_construction,
+        }, VariableRuleBody.emit) catch |err| {
+            self.tail_loop = null;
+            return err;
+        };
+        const loop = self.tail_loop.?;
+        self.tail_loop = null;
+        const dispatch_uses = self.occurrence_uses;
+        var all_uses = dispatch_uses;
+
+        // Sites of one rule finish alike unless their child slots differ.
+        var unwind = std.Io.Writer.Allocating.init(self.allocator);
+        const uw = &unwind.writer;
+        if (keeps_frames) {
+            try emitLeaveLevel(uw, "    ", access.count);
+            if (explicit) {
+                try uw.writeAll("    if (tail_failure) |failure| {\n        while (true) {\n");
+                try uw.print("            if ({s} == 0) return failure;\n", .{access.count});
+                try uw.print("            const tail_frame = {s};\n", .{access.pop});
+                var recovery_text = std.Io.Writer.Allocating.init(self.allocator);
+                self.occurrence_uses = .{};
+                try recovery_text.writer.writeAll("            const recovered = switch (tail_frame.site) {\n");
+                for (loop.sites.items, 0..) |site, site_index| {
+                    try recovery_text.writer.print("                {d} => try llTryRecoveryRule_{d}(context, {s}),\n", .{ site_index, self.ruleIndex(site.occurrence_rule), self.occurrenceRecoveryName() });
+                }
+                try recovery_text.writer.writeAll("                else => unreachable,\n            };\n");
+                try self.emitLevelOccurrences(uw, "            ", self.occurrence_uses, loop);
+                all_uses = all_uses.merge(self.occurrence_uses);
+                try uw.writeAll(recovery_text.written());
+                try uw.writeAll("            if (recovered) {\n");
+                if (returns_node) {
+                    if (with_ast) {
+                        try uw.writeAll("                node_address = context.keepRecoveredNode(tail_frame.node);\n");
+                    } else {
+                        try uw.print("                tail_result = {s};\n", .{self.missingNode()});
+                    }
+                }
+                try emitLeaveLevel(uw, "                ", access.count);
+                try uw.writeAll("                break;\n            }\n");
+                try emitLeaveLevel(uw, "            ", access.count);
+                try uw.writeAll("        }\n    }\n");
+            }
+            try uw.print("    while ({s} > 0) {{\n", .{access.count});
+            try uw.print("        const tail_frame = {s};\n", .{access.pop});
+            if (returns_node and with_ast) {
+                try uw.writeAll(
+                    \\        const inner_node_address = node_address;
+                    \\        node_address = tail_frame.node;
+                    \\        if (inner_node_address != data_structures.Node.invalid_pointer) {
+                    \\            context.node_allocator.at(node_address).immediateAppendChildren(node_address, inner_node_address, context.node_allocator);
+                    \\        }
+                    \\
+                );
+            } else if (value_nodes) {
+                try uw.writeAll("        const inner_result = tail_result;\n        level = tail_frame.level;\n");
+            }
+            var finish = std.Io.Writer.Allocating.init(self.allocator);
+            self.occurrence_uses = .{};
+            try finish.writer.writeAll("        switch (tail_frame.site) {\n");
+            const handled = try self.allocator.alloc(bool, loop.sites.items.len);
+            @memset(handled, false);
+            for (loop.sites.items, 0..) |site, site_index| {
+                if (handled[site_index]) continue;
+                try finish.writer.print("            {d}", .{site_index});
+                handled[site_index] = true;
+                if (!value_nodes) {
+                    for (loop.sites.items[site_index + 1 ..], site_index + 1..) |other, other_index| {
+                        if (other.rule_index != site.rule_index) continue;
+                        try finish.writer.print(", {d}", .{other_index});
+                        handled[other_index] = true;
+                    }
+                }
+                try finish.writer.writeAll(" => {\n");
+                if (value_nodes) {
+                    try finish.writer.print(
+                        \\                if (inner_result) |value| {{
+                        \\                    level.children[{d}] = value;
+                        \\                    level.node.appendTemporaryChild(&level.children[{d}].?);
+                        \\                }}
+                        \\
+                    , .{ site.slot, site.slot });
+                }
+                try self.emitRuleFinalize(&finish.writer, site.rule_index, variable, "                ", skip_ast_construction, "level.node");
+                try finish.writer.writeAll("            },\n");
+            }
+            try finish.writer.writeAll("            else => unreachable,\n        }\n");
+            try self.emitLevelOccurrences(uw, "        ", self.occurrence_uses, loop);
+            all_uses = all_uses.merge(self.occurrence_uses);
+            try uw.writeAll(finish.written());
+            if (value_nodes) try uw.writeAll("        tail_result = level.node;\n");
+            try emitLeaveLevel(uw, "        ", access.count);
+            try uw.writeAll("    }\n");
+            if (returns_node) try uw.print("    return {s};\n", .{if (with_ast) "node_address" else "tail_result"});
+        }
+
+        // Declarations, then the descent. The caller's occurrence is read
+        // through the levels; a build that reads none still names it.
+        if (self.has_occurrence_procedures and !all_uses.procedures) {
+            try writer.writeAll("    _ = &outer_occurrence_procedures;\n");
+        }
+        if (explicit and !all_uses.recovery) {
+            try writer.writeAll("    _ = &outer_occurrence_recovery;\n");
+        }
+        if (keeps_frames and with_ast) {
+            try writer.writeAll(
+                \\    const tail_frame_base = context.tail_frames.frames.items.len;
+                \\    errdefer context.tail_frames.frames.shrinkRetainingCapacity(tail_frame_base);
+                \\
+            );
+        } else if (value_nodes) {
+            var slots: usize = 0;
+            for (self.rules.items) |rule| {
+                if (rule.header == variable) slots = @max(slots, self.expandedSlotCount(rule));
+            }
+            try writer.print(
+                \\    const TailLevel = struct {{ node: data_structures.Node, children: [{d}]?data_structures.Node }};
+                \\    var tail_frames: std.ArrayList(struct {{ level: *TailLevel, site: u32 }}) = .empty;
+                \\    var level: *TailLevel = undefined;
+                \\    var tail_result: data_structures.VariableResult = undefined;
+                \\
+            , .{slots});
+        } else if (keeps_frames) {
+            try writer.writeAll("    var tail_frames: std.ArrayList(struct { site: u32 }) = .empty;\n");
+        }
+        if (returns_node and with_ast) try writer.writeAll("    var node_address: data_structures.Node.Pointer = undefined;\n");
+        if (explicit) try writer.writeAll("    var tail_failure: ?anyerror = null;\n    _ = &tail_failure;\n");
+        if (!keeps_frames and self.has_occurrence_procedures) try writer.writeAll("    var tail_depth: usize = 0;\n    _ = &tail_depth;\n");
+        try writer.writeAll("    var syntax_error_depth: usize = 0;\n    _ = &syntax_error_depth;\n");
+        try writer.print("    {s} if (comptime is_syntax_error_stack_enabled) for (0..syntax_error_depth) |_| context.popSyntaxErrorVariable();\n", .{if (keeps_frames) "errdefer" else "defer"});
+
+        try writer.writeAll("    descend: while (true) {\n");
+        try self.emitLevelOccurrences(writer, "        ", dispatch_uses, loop);
+        if (returns_node and with_ast) {
+            try writer.print("        node_address = try context.node_allocator.create(context.currentTokenSourceOffset(), {d});\n", .{variable_index});
+        } else if (value_nodes) {
+            try writer.print(
+                \\        level = try context.runtime().arena_allocator.create(TailLevel);
+                \\        level.* = .{{ .node = .{{ .text_start = context.currentTokenSourceOffset(), .variable = {d}, .payload = .{{}} }}, .children = @splat(null) }};
+                \\
+            , .{variable_index});
+        }
+        try writer.writeAll("        if (comptime is_syntax_error_stack_enabled) {\n            if (context.pushSyntaxErrorVariable(");
+        try emitStringLiteral(writer, self.symbols.items[variable].id);
+        try writer.writeAll(")) syntax_error_depth += 1;\n        }\n");
+        try writer.writeAll(dispatch.written());
+        if (value_nodes) try writer.writeAll("        tail_result = level.node;\n");
+        try writer.writeAll("        break;\n    }\n");
+        try writer.writeAll(unwind.written());
+    }
+
     fn emitSelfRepeatingParsers(self: *Generator, writer: *std.Io.Writer, variable: usize, skip_ast_construction: bool) !void {
         // A byte run parses as one loop in its own parser.
         if (try self.byteRunBytes(variable) != null) return;
         for (self.rules.items, 0..) |rule, rule_index| {
             if (rule.header != variable) continue;
             for (rule.rhs.items, 0..) |symbol_index, child_index| {
-                if (symbol_index != variable) continue;
+                if (symbol_index != variable or planning.isTailLoopPosition(rule, child_index)) continue;
                 try self.emitSelfRepeatingParser(writer, variable, rule_index, child_index, skip_ast_construction);
                 try writer.writeByte('\n');
             }
@@ -560,7 +1001,7 @@ const Generator = struct {
                 \\    var frames: std.ArrayList(*SemanticReductionFrame) = .empty;
                 \\    defer frames.deinit(semantic_allocator);
                 \\
-            , .{rule.rhs.items.len});
+            , .{self.expandedSlotCount(rule)});
             if (self.has_occurrence_procedures) {
                 try writer.writeAll("    const recursive_occurrence_procedures = ");
                 try emitter_common.emitProcedureSequenceExpression(writer, &self.plan.hooks, rule.rhs_annotations.items[self_index].procedures.items);
@@ -946,17 +1387,27 @@ const Generator = struct {
         spec: SyntaxErrorHandlerSpec,
         indent: []const u8,
     ) EmitError!void {
-        const arguments = if (self.uses_explicit_recovery) "context, occurrence_recovery" else "context";
+        const arguments = if (self.uses_explicit_recovery) try std.fmt.allocPrint(self.allocator, "context, {s}", .{self.occurrenceRecoveryName()}) else "context";
         // A handler that returns recovered; one that cannot recover throws.
         // The node the parser was building outlives the recovery. The text
         // does not depend on whether recovery is enabled, so those
         // configurations keep sharing one body.
+        const call = try std.fmt.allocPrint(self.allocator, "{s}({s})", .{ spec.name, arguments });
         if (self.options.with_ast and self.symbolReturnsNode(spec.symbol_index, spec.skip_ast_construction)) {
-            try writer.print("{s}_ = try {s}({s});\n", .{ indent, spec.name, arguments });
-            try writer.print("{s}return {s};\n", .{ indent, recoveredNodeExpression(null) });
+            try writer.print("{s}_ = ", .{indent});
+            try self.emitHandledCall(writer, indent, call);
+            try writer.writeAll(";\n");
+            try self.emitLevelReturn(writer, indent, recoveredNodeExpression(null));
             return;
         }
-        try writer.print("{s}return {s}({s});\n", .{ indent, spec.name, arguments });
+        if (self.framedTailLoop() == null) {
+            try writer.print("{s}return {s};\n", .{ indent, call });
+            return;
+        }
+        // A loop level's handler result is its result.
+        var handled = std.Io.Writer.Allocating.init(self.allocator);
+        try self.emitHandledCall(&handled.writer, indent, call);
+        try self.emitLevelReturn(writer, indent, handled.written());
     }
 
     /// What a parser hands its caller after recovering, with AST
@@ -1086,25 +1537,32 @@ const Generator = struct {
         } else false;
         try self.emitDebugRuleExpansion(writer, rule, parent_variable, indent);
 
+        const in_tail_loop = if (self.tail_loop) |*loop| loop.variable == parent_variable else false;
+        if (in_tail_loop) self.tail_loop.?.rule_index = rule_index;
+        // A loop level builds its node by value in its own frame.
+        const value_node = if (in_tail_loop) "level.node" else "node";
+        const value_children = if (in_tail_loop) "level.children" else "child_nodes";
         if (rule.rhs.items.len != 0) {
-            if (!self.options.with_ast and parent_returns_node and self.ruleHasNodeChildren(rule, skip_ast_construction)) {
+            if (!self.options.with_ast and parent_returns_node and !in_tail_loop and self.ruleHasNodeChildren(rule, skip_ast_construction)) {
                 try writer.print("{s}var child_nodes: [{d}]?data_structures.Node = @splat(null);\n", .{ indent, self.expandedSlotCount(rule) });
             }
             if (captures_root) {
                 try writer.print("{s}var root_node: root.data_structures.VariableResult = {s};\n", .{ indent, self.missingNode() });
             }
+            defer self.in_last_position = false;
             for (rule.rhs.items, 0..) |symbol_index, child_index| {
+                self.in_last_position = in_tail_loop and child_index + 1 == rule.rhs.items.len;
                 try self.emitChildParseLine(
                     writer,
                     symbol_index,
                     parent_variable,
                     rule,
                     child_index,
-                    if (parent_returns_node) if (self.options.with_ast) "node_address" else "node" else null,
+                    if (parent_returns_node) if (self.options.with_ast) "node_address" else value_node else null,
                     if (captures_root and child_index == 0)
                         "root_node"
                     else if (parent_returns_node)
-                        if (self.options.with_ast) "node_address" else "child_nodes"
+                        if (self.options.with_ast) "node_address" else value_children
                     else
                         null,
                     indent,
@@ -1118,7 +1576,9 @@ const Generator = struct {
             }
         }
 
-        try self.emitRuleFinalize(writer, rule_index, parent_variable, indent, skip_ast_construction);
+        // A rule that always continues the loop reduces when it unwinds.
+        if (in_tail_loop and self.tailReach(parent_variable, rule) == .always) return;
+        try self.emitRuleFinalize(writer, rule_index, parent_variable, indent, skip_ast_construction, value_node);
     }
 
     fn emitRootCapture(self: *Generator, writer: *std.Io.Writer, indent: []const u8) !void {
@@ -1133,7 +1593,8 @@ const Generator = struct {
         }
     }
 
-    fn emitRuleFinalize(self: *Generator, writer: *std.Io.Writer, rule_index: usize, parent_variable: usize, indent: []const u8, skip_ast_construction: bool) !void {
+    /// `value_node` names the node built by value (without AST construction).
+    fn emitRuleFinalize(self: *Generator, writer: *std.Io.Writer, rule_index: usize, parent_variable: usize, indent: []const u8, skip_ast_construction: bool, value_node: []const u8) !void {
         const rule = self.rules.items[rule_index];
         const parent_returns_node = self.symbolReturnsNode(parent_variable, skip_ast_construction);
 
@@ -1141,7 +1602,7 @@ const Generator = struct {
             if (self.options.with_ast) {
                 try writer.print("{s}context.node_allocator.at(node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(node_address).text_start;\n", .{indent});
             } else {
-                try writer.print("{s}node.text_length = context.currentTokenSourceOffset() - node.text_start;\n", .{indent});
+                try writer.print("{s}{s}.text_length = context.currentTokenSourceOffset() - {s}.text_start;\n", .{ indent, value_node, value_node });
             }
         }
 
@@ -1150,8 +1611,8 @@ const Generator = struct {
                 writer,
                 rule_index,
                 parent_variable,
-                if (self.options.with_ast) "node_address" else "node",
-                if (self.has_occurrence_procedures) "occurrence_procedures" else "null",
+                if (self.options.with_ast) "node_address" else value_node,
+                if (self.has_occurrence_procedures) self.occurrenceProceduresName() else "null",
                 indent,
                 true,
             );
@@ -1163,7 +1624,7 @@ const Generator = struct {
         if (self.options.with_procedures and parent_returns_node) try writer.writeByte('\n');
         try emitter_common.emitDebugReduction(writer, self.symbols.items, rule, indent);
         if (!self.options.with_ast and parent_returns_node) {
-            try writer.print("{s}node.clearTemporaryChildren();\n", .{indent});
+            try writer.print("{s}{s}.clearTemporaryChildren();\n", .{ indent, value_node });
         }
     }
 
@@ -1183,6 +1644,14 @@ const Generator = struct {
         // grammar/callgraph fact — never a property of the combo rendered.
         const child_skips_ast_construction = skip_ast_construction or (child.kind == .variable and !child.ast_enabled);
         const child_returns_node = self.symbolReturnsNode(symbol_index, child_skips_ast_construction);
+        if (self.tail_loop) |*loop| {
+            if (symbol_index == loop.variable and self.in_last_position and planning.isTailLoopPosition(rule, child_index)) {
+                std.debug.assert(child_skips_ast_construction == loop.skip_ast_construction);
+                try loop.sites.append(self.allocator, .{ .rule_index = loop.rule_index, .occurrence_rule = rule, .position = child_index, .slot = slot_index });
+                try self.emitTailDescent(writer, indent, loop.sites.items.len - 1);
+                return;
+            }
+        }
         // The single transparency gate: synthetic factoring helpers never
         // emit a call. Their alternatives expand inline here so suffix
         // children parse exactly as direct children of the caller — same
@@ -1195,7 +1664,7 @@ const Generator = struct {
             return;
         }
         if (child.kind != .variable) self.inline_call_cost += self.terminal_inline_costs[symbol_index];
-        const call_name = if (symbol_index == parent_variable)
+        const call_name = if (symbol_index == parent_variable and !planning.isTailLoopPosition(rule, child_index))
             try std.fmt.allocPrint(self.allocator, "{s}_{s}_{d}", .{ name, rule.rhs_index, child_index })
         else
             name;
@@ -1296,6 +1765,7 @@ const Generator = struct {
     /// construction (see factorSharedPrefixStep), so nothing is dropped by
     /// not emitting a call for it.
     const TransparentInlineContext = struct {
+        in_last_position: bool,
         parent_rule: Rule,
         tail_position: usize,
         parent: ?[]const u8,
@@ -1319,6 +1789,7 @@ const Generator = struct {
         // child lines above, so lookahead begins fresh here.
         const decision = self.plan.parserDecision(tail, skip_ast_construction);
         const context: TransparentInlineContext = .{
+            .in_last_position = self.in_last_position,
             .parent_rule = parent_rule,
             .tail_position = tail_position,
             .parent = parent,
@@ -1581,7 +2052,9 @@ const Generator = struct {
         const leaf_indent = try indented(self.allocator, indent, 8);
         try self.emitDebugRuleExpansion(writer, tail_rule, tail, leaf_indent);
         const base_slot = self.expandedChildSlot(context.parent_rule, context.tail_position);
+        defer self.in_last_position = false;
         for (tail_rule.rhs.items, 0..) |symbol_index, suffix_index| {
+            self.in_last_position = context.in_last_position and suffix_index + 1 == tail_rule.rhs.items.len;
             try self.emitChildParseLine(
                 writer,
                 symbol_index,
@@ -1622,17 +2095,16 @@ const Generator = struct {
         const rule_index = self.ruleIndex(rule);
         try writer.writeAll(") catch |err| switch (err) {\n");
         try writer.print("{s}        error.ExplicitSyntaxRecovery => {{\n", .{indent});
-        try writer.print("{s}            if (try llTryRecoveryRule_{d}(context, occurrence_recovery)) {{\n", .{ indent, rule_index });
+        try writer.print("{s}            if (try llTryRecoveryRule_{d}(context, {s})) {{\n", .{ indent, rule_index, self.occurrenceRecoveryName() });
+        const recovered_indent = try indented(self.allocator, indent, 16);
         if (self.symbolReturnsNode(parent_variable, skip_ast_construction)) {
-            try writer.print("{s}                return {s};\n", .{
-                indent,
-                if (self.options.with_ast) recoveredNodeExpression(inner_level) else self.missingNode(),
-            });
+            try self.emitLevelReturn(writer, recovered_indent, if (self.options.with_ast) recoveredNodeExpression(inner_level) else self.missingNode());
         } else {
-            try writer.print("{s}                return;\n", .{indent});
+            try self.emitLevelReturn(writer, recovered_indent, null);
         }
-        try writer.print("{s}            }}\n{s}            return err;\n{s}        }},\n", .{ indent, indent, indent });
-        try writer.print("{s}        else => return err,\n{s}    }}", .{ indent, indent });
+        try writer.print("{s}            }}\n", .{indent});
+        try self.emitLevelFailure(writer, try indented(self.allocator, indent, 12));
+        try writer.print("{s}        }},\n{s}        else => return err,\n{s}    }}", .{ indent, indent, indent });
     }
 
     fn emitChildOccurrenceArgument(self: *Generator, writer: *std.Io.Writer, rule: Rule, child_index: usize, child_returns_node: bool) !void {

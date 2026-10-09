@@ -485,7 +485,7 @@ test "LL decision falls back to the shorter terminal when one literal prefixes a
     // ".l" is shared by ".length" and identifier tails like ".left": the
     // "ength" prong folds into the `else` that selects the empty IdTail rule,
     // which must survive; distinct ".length" routing is checked below.
-    const id_tail = fnBody(output, "fn parse_IdTail(") orelse return error.TestUnexpectedStructure;
+    const id_tail = fnBody(output, "fn parse_IdTail_loop(") orelse return error.TestUnexpectedStructure;
     const tail_switch = std.mem.indexOf(u8, id_tail, "head(u40, 2)") orelse return error.TestUnexpectedStructure;
     const tail_else = std.mem.indexOfPos(u8, id_tail, tail_switch, "else =>") orelse return error.TestUnexpectedStructure;
     try std.testing.expect(std.mem.startsWith(u8, id_tail[tail_else..], "else => break :decision_"));
@@ -715,7 +715,7 @@ test "LL generation writes each selected rule body once however many decision le
     try std.testing.expectEqual(once, std.mem.count(u8, start, "Rule expansion: Start_Tail -> Other\\n"));
 }
 
-test "LL self-repeating loops write their body once however many decision leaves continue them" {
+test "LL tail loops write each rule body once however many decision leaves continue them" {
     const source =
         \\Start
         \\| Sequence "end"
@@ -745,15 +745,14 @@ test "LL self-repeating loops write their body once however many decision leaves
     defer arena.deinit();
 
     const output = try generateParserAlloc(arena.allocator(), source, .ll, .{ .with_ast = false, .with_procedures = false });
-    // Each loop runs its body once per iteration, whichever input continues it.
-    for ([_]struct { signature: []const u8, expansion: []const u8 }{
-        .{ .signature = "fn parse_Sequence_0_1(", .expansion = "Rule expansion: Sequence -> Word, Sequence" },
-        .{ .signature = "fn parse_Sequence_1_1(", .expansion = "Rule expansion: Sequence -> Other, Sequence" },
-    }) |loop| {
-        const body = fnBody(output, loop.signature) orelse return error.TestUnexpectedStructure;
-        const loops = std.mem.count(u8, body, "while (true) {");
-        try std.testing.expect(loops > 0);
-        try std.testing.expectEqual(loops, std.mem.count(u8, body, loop.expansion));
+    // One loop serves both rules, and runs a rule's body once per iteration
+    // whichever input continues it.
+    try std.testing.expect(std.mem.indexOf(u8, output, "fn parse_Sequence_0_1(") == null);
+    const body = fnBody(output, "fn parse_Sequence_loop(") orelse return error.TestUnexpectedStructure;
+    const loops = std.mem.count(u8, body, "descend: while (true) {");
+    try std.testing.expect(loops > 0);
+    for ([_][]const u8{ "Rule expansion: Sequence -> Word, Sequence", "Rule expansion: Sequence -> Other, Sequence" }) |expansion| {
+        try std.testing.expectEqual(loops, std.mem.count(u8, body, expansion));
     }
 }
 
@@ -1841,5 +1840,5 @@ test "LL hidden byte runs parse as one loop without decisions or repetition help
     try std.testing.expect(std.mem.indexOf(u8, run, "selected_rule") == null);
     try std.testing.expect(std.mem.indexOf(u8, output, "fn parse__Run_0_1(") == null);
     // A visible repetition builds nodes per step, so it keeps the general shape.
-    try std.testing.expect(std.mem.indexOf(u8, output, "fn parse_Kept_0_1(") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "fn parse_Kept_loop(") != null);
 }

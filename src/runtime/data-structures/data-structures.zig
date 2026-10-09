@@ -41,6 +41,7 @@ else
 pub const ASTMemoryBenchmarkStats = @import("node.zig").ASTMemoryBenchmarkStats;
 pub const context = @import("context.zig");
 pub const Context = @import("context.zig").Context;
+pub const TailFrameStack = @import("context.zig").TailFrameStack;
 pub const newlineAfterBlockEndEnabled = @import("context.zig").newlineAfterBlockEndEnabled;
 pub const indentationSyntaxEnabled = @import("context.zig").indentationSyntaxEnabled;
 pub const RuntimeContext = @import("context.zig").RuntimeContext;

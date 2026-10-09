@@ -84,7 +84,11 @@ AST allocation is also decided at generation time, per symbol: helper variables 
 
 ## Self-Repeating Decisions
 
-Rules that repeat a variable on their own right-hand side (list and suffix shapes) are recognized statically during planning. Instead of re-parsing the repeated variable from scratch each time, the generator emits a dedicated decision that steps through the repetition and stops on the first token that no longer matches, folding the loop into the parse flow.
+Rules that repeat a variable on their own right-hand side (list and suffix shapes) are recognized statically during planning, so deep input repeats in a loop instead of a recursive call per repetition.
+
+When a rule reaches its variable again from its last position, directly or through the last position of helpers factoring created, the LL parser of that variable is a loop over all its rules: reaching the variable there starts the next level instead of calling the parser again, so a list or statement sequence of any length costs no stack. A level that builds a node keeps a frame (on a stack the session owns, or with nodes built by value, in the parse's arena), and the levels finish innermost first exactly as the recursive calls did: each takes the inner result as its last child, reduces, and runs its hooks. A parser that builds nodes is called out of line, and one that builds none may be inlined; one generated file serves every build, so a small wrapper picks at compile time.
+
+A variable repeated at any other position, before more symbols, uses a dedicated decision per rule that steps through the repetition and stops on the first token that no longer matches.
 
 In LL output a variable's byte-level decision yields a rule index and one `switch` over that index holds each rule body once, so generated size grows with leaves plus bodies rather than their product. Inlined factored tails use the same shape, and a repetition's decision yields only whether to continue, with the loop body written once after it.
 

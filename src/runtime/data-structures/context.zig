@@ -406,6 +406,36 @@ pub const SyntaxErrorStack = struct {
     }
 };
 
+/// A level of a generated tail loop (a variable whose rule reaches the
+/// variable again from its last position) waiting for the levels inside it:
+/// its node, and the occurrence it continued at.
+pub const TailFrame = struct {
+    node: data_structures.Node.Pointer,
+    site: u32,
+};
+
+/// The session's stack of open tail-loop levels, shared by every loop of a
+/// parse; each loop works above the length it found. It keeps its capacity
+/// across parses, so a warm session pushes without allocating.
+pub const TailFrameStack = struct {
+    frames: std.ArrayList(TailFrame) = .empty,
+    allocator: std.mem.Allocator,
+
+    pub inline fn push(self: *TailFrameStack, frame: TailFrame) !void {
+        if (self.frames.items.len == self.frames.capacity) try self.grow();
+        self.frames.appendAssumeCapacity(frame);
+    }
+
+    fn grow(self: *TailFrameStack) !void {
+        @branchHint(.cold);
+        try self.frames.ensureUnusedCapacity(self.allocator, @max(64, self.frames.capacity));
+    }
+
+    pub fn deinit(self: *TailFrameStack) void {
+        self.frames.deinit(self.allocator);
+    }
+};
+
 pub const Context = struct {
     pub const BytesSource = struct {
         input: []const u8,
@@ -443,6 +473,8 @@ pub const Context = struct {
 
     // These fields are defined only when ast is enabled
     node_allocator: if (root.parser.is_ast_enabled) *data_structures.ASTAllocator else void = if (root.parser.is_ast_enabled) undefined else {},
+    /// The session's tail-loop stack (see `TailFrameStack`).
+    tail_frames: if (root.parser.is_ast_enabled) *TailFrameStack else void = if (root.parser.is_ast_enabled) undefined else {},
 
     /// Host-owned pointer copied from `Session.user_data` for this parse. For
     /// a host shim build it is the session's dispatch handle.

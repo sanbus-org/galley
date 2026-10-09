@@ -1,0 +1,44 @@
+Start
+| List@!"!"^
+| "?" Endless
+| ">" _Chain "!"
+
+# Every List rule continues into List from its last position, through the
+# helpers factoring creates, so the LL parser loops instead of recursing.
+# Words and numbers alternate, and a parenthesized list nests through a
+# position that is not last. The recovery points cover an occurrence in
+# each helper, a production, and the variable itself; factoring keeps a
+# production with recovery points whole, so that one has its own prefix.
+List@!"#"^@count
+| Word ";" List@!"."^@mark
+| Number ";" List@!","^
+|@!"$"^ "+" Number ";" List
+| Word
+| Number
+| "(" List ")" ";" List@!"?"^
+| "(" List ")"
+
+# No rule ends the repetition, so only an error does.
+Endless
+| "x" Endless
+| "y" Endless
+
+# A hidden loop builds no node; with explicit recovery it still keeps a frame
+# per level to retry outward.
+_Chain
+| "c" _Chain@!";"^
+| "."
+
+Word
+| letter _Letters
+
+_Letters
+| letter _Letters
+|
+
+Number
+| digit _Digits
+
+_Digits
+| digit _Digits
+|
