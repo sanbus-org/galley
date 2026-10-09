@@ -79,7 +79,7 @@ test "JSON parser accepts valid UTF-8 scalar boundaries" {
     if (comptime !isJsonUnicodeCase()) return error.SkipZigTest;
 
     const input = "[\"\\u0000\",\"\u{80}\u{7ff}\u{800}\u{ffff}\u{10000}\u{10ffff}\"]";
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try std.testing.expectEqual(input.len, parsed.result.parsed_bytes);
 }
@@ -98,7 +98,7 @@ test "JSON parser rejects malformed UTF-8 and non-scalars" {
     for (invalid_inputs) |input| {
         try std.testing.expectError(
             parser.ParseError.SyntaxError,
-            parser.parseBytes(std.testing.io, std.testing.allocator, input, .{ .syntax_error_reporter = &ignoreDiagnostic }),
+            parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{ .syntax_error_reporter = &ignoreDiagnostic }),
         );
     }
 }
@@ -142,7 +142,7 @@ test "generated_parser_api parse bytes" {
     if (comptime !@hasDecl(parser.parser, "parseWithResult")) return error.SkipZigTest;
     if (comptime sample_inputs.len == 0) return error.SkipZigTest;
     for (sample_paths, sample_inputs) |sample_path, sample_input| {
-        var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, sample_input, .{ .input_path = sample_path });
+        var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, sample_input, sample_path, .{});
         defer parsed.deinit();
 
         try expectParsedAll(parsed.result, sample_path, sample_input, "parse bytes");
@@ -156,7 +156,7 @@ test "generated_parser_api parse sentinel bytes" {
         const input = try allocSentinelSample(sample_input);
         defer std.testing.allocator.free(input);
 
-        var parsed = try parser.parseSentinelBytes(std.testing.io, std.testing.allocator, input, .{ .input_path = sample_path });
+        var parsed = try parser.parseSentinelBytes(std.testing.io, std.testing.allocator, input, sample_path, .{});
         defer parsed.deinit();
 
         try expectParsedAll(parsed.result, sample_path, sample_input, "parse sentinel bytes");
@@ -316,7 +316,7 @@ test "generated_parser_api LR empty input is rejected" {
     for ([_][]const u8{ "", "\x00" }) |input| {
         try std.testing.expectError(
             parser.ParseError.SyntaxError,
-            parser.parseBytes(std.testing.io, std.testing.allocator, input, .{ .syntax_error_reporter = &ignoreDiagnostic }),
+            parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{ .syntax_error_reporter = &ignoreDiagnostic }),
         );
     }
 }

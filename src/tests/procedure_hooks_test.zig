@@ -8,7 +8,7 @@ var nested_callback_called = false;
 var concurrent_arrivals = std.atomic.Value(u8).init(0);
 
 fn parse(input: []const u8) !void {
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try std.testing.expectEqual(input.len, parsed.result.parsed_bytes);
 }
@@ -16,7 +16,7 @@ fn parse(input: []const u8) !void {
 fn exerciseNestedSessions(args: *parser.data_structures.ProcedureArguments) !void {
     nested_callback_called = true;
     const outer_runtime = args.context.runtime();
-    try std.testing.expectEqualStrings("outer", outer_runtime.input_path orelse return error.MissingOuterInputPath);
+    try std.testing.expectEqualStrings("outer", args.context.input_path orelse return error.MissingOuterInputPath);
 
     const same_session = nested_same_session orelse return error.MissingNestedSession;
     try std.testing.expectError(error.SessionInUse, same_session.parseBytes("c", "same"));
@@ -29,14 +29,12 @@ fn exerciseNestedSessions(args: *parser.data_structures.ProcedureArguments) !voi
     const nested_result = try separate_session.parseBytes("c", "inner");
     try std.testing.expectEqual(@as(usize, 1), nested_result.parsed_bytes);
     try std.testing.expect(args.context.runtime() == outer_runtime);
-    try std.testing.expectEqualStrings("outer", args.context.runtimeConst().input_path orelse return error.MissingRestoredInputPath);
 }
 
 fn synchronizeRuntimeContexts(args: *parser.data_structures.ProcedureArguments) !void {
-    const input_path = args.context.runtimeConst().input_path orelse return error.MissingConcurrentInputPath;
+    _ = args.context.input_path orelse return error.MissingConcurrentInputPath;
     _ = concurrent_arrivals.fetchAdd(1, .seq_cst);
     while (concurrent_arrivals.load(.seq_cst) != 2) try std.Thread.yield();
-    try std.testing.expectEqualStrings(input_path, args.context.runtimeConst().input_path orelse return error.LostConcurrentInputPath);
 }
 
 const ConcurrentSessionParse = struct {
@@ -338,6 +336,30 @@ test "procedure-hooks keep concurrent session runtime contexts separate" {
     if (second.parse_error) |err| return err;
 }
 
+var recorded_input_path: ?[]const u8 = null;
+
+fn recordInputPath(args: *parser.data_structures.ProcedureArguments) !void {
+    recorded_input_path = args.context.input_path;
+}
+
+test "procedure-hooks input path belongs to the parse call that passed it" {
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer session.deinit();
+
+    procedures.setNestedCallback(recordInputPath);
+    defer procedures.setNestedCallback(null);
+
+    recorded_input_path = "unset";
+    _ = try session.parseBytes("k", "earlier");
+    try std.testing.expectEqualStrings("earlier", recorded_input_path orelse return error.MissingEarlierInputPath);
+
+    // A later parse that passes null must see null, not the path an earlier
+    // parse on the same session passed.
+    recorded_input_path = "unset";
+    _ = try session.parseBytes("k", null);
+    try std.testing.expect(recorded_input_path == null);
+}
+
 test "procedure-hooks AST nodes retain source text lengths" {
     if (comptime !parser.parser.is_ast_enabled) return;
 
@@ -567,11 +589,12 @@ test "procedure-hooks protected parse rejects an unprotected nested parse" {
     try std.testing.expect(protected_nested_called);
 
     // The rejected nested parse ran before any session mutation: the inner
-    // session's generation, node storage, owned input, and input path are
-    // untouched, so it reuses cleanly.
+    // session's generation, node storage, and owned input are untouched, so
+    // it reuses cleanly. The input path is not session state at all — it
+    // lives on the parse's own `Context`, which a rejected parse never
+    // builds.
     try std.testing.expectEqual(@as(usize, 0), inner_session.generation);
     try std.testing.expect(inner_session.owned_input == null);
-    try std.testing.expect(inner_session.runtime_context.input_path == null);
     if (comptime parser.parser.is_ast_enabled) {
         try std.testing.expectEqual(@as(usize, 0), inner_session.node_allocator.totalNodeCapacity());
     }

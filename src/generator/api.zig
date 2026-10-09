@@ -26,7 +26,7 @@ pub fn parseGrammar(allocator: std.mem.Allocator, source: []const u8) !*Grammar 
 }
 
 pub fn parseGrammarWithOptions(allocator: std.mem.Allocator, source: []const u8, options: Options) !*Grammar {
-    var parsed = try galley_grammar.parseBytes(std.Io.failing, allocator, source, .{ .syntax_error_reporter = options.error_reporter });
+    var parsed = try galley_grammar.parseBytes(std.Io.failing, allocator, source, null, .{ .syntax_error_reporter = options.error_reporter });
     defer parsed.deinit();
 
     var read_guard = try parsed.session.read(parsed.result);
@@ -157,7 +157,7 @@ pub fn emitParserFromSource(
     parser_type: ParserType,
     options: Options,
 ) !void {
-    var parsed = try galley_grammar.parseBytes(std.Io.failing, allocator, source, .{ .syntax_error_reporter = options.error_reporter });
+    var parsed = try galley_grammar.parseBytes(std.Io.failing, allocator, source, null, .{ .syntax_error_reporter = options.error_reporter });
     defer parsed.deinit();
 
     var read_guard = try parsed.session.read(parsed.result);
@@ -175,7 +175,7 @@ pub fn emitErrorMessagesFromSource(
     parser_type: ParserType,
     options: Options,
 ) !void {
-    var parsed = try galley_grammar.parseBytes(std.Io.failing, allocator, source, .{ .syntax_error_reporter = options.error_reporter });
+    var parsed = try galley_grammar.parseBytes(std.Io.failing, allocator, source, null, .{ .syntax_error_reporter = options.error_reporter });
     defer parsed.deinit();
 
     var read_guard = try parsed.session.read(parsed.result);

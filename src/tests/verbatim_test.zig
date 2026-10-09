@@ -19,7 +19,7 @@ fn findCapture(name: []const u8) ?parser.procedures.Capture {
 test "verbatim variable terminator consumes the raw body" {
     const input = "<<<EN\n{raw $ body}\nENtail";
     parser.procedures.resetCaptures();
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try std.testing.expectEqual(@as(usize, input.len), parsed.result.parsed_bytes);
 
@@ -38,7 +38,7 @@ test "verbatim variable terminator consumes the raw body" {
 test "verbatim literal terminal terminator consumes the raw body" {
     const input = "]]]%%%{raw $ body}%%tail";
     parser.procedures.resetCaptures();
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try std.testing.expectEqual(@as(usize, input.len), parsed.result.parsed_bytes);
 
@@ -54,7 +54,7 @@ test "verbatim literal terminal terminator consumes the raw body" {
 test "verbatim raw body bytes are not lexed" {
     const input = "<<<EN\n$@# %^&*(){}[] 1|2\nENtail";
     parser.procedures.resetCaptures();
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try std.testing.expectEqual(@as(usize, input.len), parsed.result.parsed_bytes);
 
@@ -65,7 +65,7 @@ test "verbatim raw body bytes are not lexed" {
 test "verbatim capture stops at the first reappearing terminator" {
     const input = "<<<EN\nbody ENtail";
     parser.procedures.resetCaptures();
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try std.testing.expectEqual(@as(usize, input.len), parsed.result.parsed_bytes);
 
@@ -79,7 +79,7 @@ test "verbatim capture stops at the first reappearing terminator" {
 test "verbatim terminator matching is case-sensitive" {
     const input = "<<<EN\nen en\nENtail";
     parser.procedures.resetCaptures();
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try std.testing.expectEqual(@as(usize, input.len), parsed.result.parsed_bytes);
 
@@ -90,7 +90,7 @@ test "verbatim terminator matching is case-sensitive" {
 test "verbatim capture of an empty raw body" {
     const input = "<<<EN\nENtail";
     parser.procedures.resetCaptures();
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try std.testing.expectEqual(@as(usize, input.len), parsed.result.parsed_bytes);
 
@@ -103,6 +103,7 @@ test "unterminated verbatim variable terminator reports UnterminatedRawString" {
         std.testing.io,
         std.testing.allocator,
         "<<<EN\nno terminator here",
+        null,
         .{},
     ));
 }
@@ -112,6 +113,7 @@ test "unterminated verbatim literal terminator reports UnterminatedRawString" {
         std.testing.io,
         std.testing.allocator,
         "]]]%% no terminator",
+        null,
         .{},
     ));
 }
@@ -119,7 +121,7 @@ test "unterminated verbatim literal terminator reports UnterminatedRawString" {
 test "verbatim literal terminator on a variable anchor consumes the raw body" {
     const input = "{{{EN{raw $ body}/>tail";
     parser.procedures.resetCaptures();
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try std.testing.expectEqual(@as(usize, input.len), parsed.result.parsed_bytes);
 
@@ -140,6 +142,7 @@ test "unterminated verbatim literal terminator on a variable anchor reports Unte
         std.testing.io,
         std.testing.allocator,
         "{{{EN raw body without the marker",
+        null,
         .{},
     ));
 }

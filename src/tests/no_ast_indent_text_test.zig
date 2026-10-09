@@ -13,7 +13,7 @@ test "no-AST indentation node text spans are exact source offsets" {
 
     parser.procedures.resetCaptures();
     const input = "State\n  Value\nFinal";
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try std.testing.expectEqual(@as(usize, input.len), parsed.result.parsed_bytes);
 

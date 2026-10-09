@@ -116,13 +116,13 @@ test "input streaming sliding parses bytes, sentinel bytes, and files" {
     defer std.testing.allocator.free(input);
     try std.testing.expect(input.len > std.math.maxInt(u16));
 
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try expectParsedAll(parsed.result, input);
 
     const sentinel = try allocSentinel(input);
     defer std.testing.allocator.free(sentinel);
-    var parsed_sentinel = try parser.parseSentinelBytes(std.testing.io, std.testing.allocator, sentinel, .{});
+    var parsed_sentinel = try parser.parseSentinelBytes(std.testing.io, std.testing.allocator, sentinel, null, .{});
     defer parsed_sentinel.deinit();
     try expectParsedAll(parsed_sentinel.result, input);
 
@@ -134,12 +134,12 @@ test "input streaming sliding preserves position across a boundary" {
 
     const short_input = try makePositionJson(4);
     defer std.testing.allocator.free(short_input);
-    var short = try parser.parseBytes(std.testing.io, std.testing.allocator, short_input, .{});
+    var short = try parser.parseBytes(std.testing.io, std.testing.allocator, short_input, null, .{});
     defer short.deinit();
 
     const long_input = try makePositionJson(parser.input_window_size - 2);
     defer std.testing.allocator.free(long_input);
-    var long = try parser.parseBytes(std.testing.io, std.testing.allocator, long_input, .{});
+    var long = try parser.parseBytes(std.testing.io, std.testing.allocator, long_input, null, .{});
     defer long.deinit();
 
     try expectParsedAll(long.result, long_input);
@@ -180,13 +180,13 @@ test "indentation parsing accepts input beyond a fixed chunk" {
     defer std.testing.allocator.free(input);
     try std.testing.expect(input.len > std.math.maxInt(u16));
 
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try expectParsedAll(parsed.result, input);
 
     const sentinel = try allocSentinel(input);
     defer std.testing.allocator.free(sentinel);
-    var parsed_sentinel = try parser.parseSentinelBytes(std.testing.io, std.testing.allocator, sentinel, .{});
+    var parsed_sentinel = try parser.parseSentinelBytes(std.testing.io, std.testing.allocator, sentinel, null, .{});
     defer parsed_sentinel.deinit();
     try expectParsedAll(parsed_sentinel.result, input);
 
@@ -249,7 +249,7 @@ test "indentation lexing ignores blank lines inside a block" {
     // the block: the rows stay one `new_line` apart. The grammar has no
     // close/reopen acceptance, so a successful parse is the assertion.
     const input = "Rule:\n  - field: int\n\n  - other: int\n";
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try expectParsedAll(parsed.result, input);
 }
@@ -261,7 +261,7 @@ test "indentation lexing ignores whitespace-only lines of any width" {
     // content line that is an IndentationError; as a blank line it is
     // ignored before the divisibility check runs.
     const input = "Rule:\n  - field: int\n   \n  - other: int\n";
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try expectParsedAll(parsed.result, input);
 }
@@ -272,7 +272,7 @@ test "trailing blank lines still close open blocks at end of input" {
     // The blank line is skipped, but the boundary it leaves behind — the
     // file's final newline meeting end of input — still closes the block.
     const input = "Rule:\n  - field: int\n\n";
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try expectParsedAll(parsed.result, input);
 }
@@ -366,7 +366,7 @@ test "blank line at a streaming chunk boundary is still skipped" {
     // The blank's newline sits at the seam, outside the first window.
     try std.testing.expectEqual('\n', input[parser.read_chunk_size]);
 
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try expectParsedAll(parsed.result, input);
 }
@@ -475,19 +475,19 @@ test "input streaming AST mode accepts input beyond the former offset limit" {
     if (!test_options.ast_large_input) return error.SkipZigTest;
 
     const small_input = "[]";
-    var small = try parser.parseBytes(std.testing.io, std.testing.allocator, small_input, .{});
+    var small = try parser.parseBytes(std.testing.io, std.testing.allocator, small_input, null, .{});
     defer small.deinit();
     try expectParsedAll(small.result, small_input);
 
     const oversized = try makeWindowCrossingJson();
     defer std.testing.allocator.free(oversized);
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, oversized, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, oversized, null, .{});
     defer parsed.deinit();
     try expectParsedAll(parsed.result, oversized);
 
     const sentinel = try allocSentinel(oversized);
     defer std.testing.allocator.free(sentinel);
-    var parsed_sentinel = try parser.parseSentinelBytes(std.testing.io, std.testing.allocator, sentinel, .{});
+    var parsed_sentinel = try parser.parseSentinelBytes(std.testing.io, std.testing.allocator, sentinel, null, .{});
     defer parsed_sentinel.deinit();
     try expectParsedAll(parsed_sentinel.result, oversized);
 

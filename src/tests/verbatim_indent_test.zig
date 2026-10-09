@@ -14,7 +14,7 @@ fn findCapture(name: []const u8) ?parser.procedures.Capture {
 test "verbatim indentation-mode capture consumes the raw body" {
     const input = "<<<EN\n{raw $ body}\nENtail";
     parser.procedures.resetCaptures();
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try std.testing.expectEqual(@as(usize, input.len), parsed.result.parsed_bytes);
 
@@ -30,7 +30,7 @@ test "verbatim indentation-mode capture consumes the raw body" {
 test "verbatim indentation-mode literal terminator capture" {
     const input = "]]]%%%{raw $ body}%%tail";
     parser.procedures.resetCaptures();
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try std.testing.expectEqual(@as(usize, input.len), parsed.result.parsed_bytes);
 
@@ -43,6 +43,7 @@ test "unterminated verbatim indentation-mode capture reports UnterminatedRawStri
         std.testing.io,
         std.testing.allocator,
         "<<<EN\nno terminator here",
+        null,
         .{},
     ));
 }

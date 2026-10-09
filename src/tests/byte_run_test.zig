@@ -9,7 +9,7 @@ const parser = @import("parser-under-test");
 fn ignoreDiagnostic(_: []const u8) void {}
 
 fn parseAll(input: []const u8) !void {
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try std.testing.expectEqual(input.len, parsed.result.parsed_bytes);
 }
@@ -35,7 +35,7 @@ test "byte run: run ended by a double dedent" {
 }
 
 test "byte run: a byte outside the run is rejected" {
-    try std.testing.expectError(error.SyntaxError, parser.parseBytes(std.testing.io, std.testing.allocator, "ab%", .{}));
+    try std.testing.expectError(error.SyntaxError, parser.parseBytes(std.testing.io, std.testing.allocator, "ab%", null, .{}));
 }
 
 test "an indent jump that fills the position buffers leaves no room to read ahead" {
@@ -44,7 +44,7 @@ test "an indent jump that fills the position buffers leaves no room to read ahea
     // 128-entry line-offset buffer before the rest of the line is read.
     const spaces: [128]u8 = @splat(' ');
     const input = "a:\n b:\n" ++ spaces ++ "cd";
-    try std.testing.expectError(error.SyntaxError, parser.parseBytes(std.testing.io, std.testing.allocator, input, .{ .syntax_error_reporter = &ignoreDiagnostic }));
+    try std.testing.expectError(error.SyntaxError, parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{ .syntax_error_reporter = &ignoreDiagnostic }));
 }
 
 fn expectUnexpectedToken(input: []const u8, expected: []const u8) !void {

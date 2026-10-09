@@ -8,7 +8,7 @@ test "many procedures compile and all hooks run" {
     procedures.resetHookCallCount();
     var input_buffer: [160]u8 = @splat('a');
     const input = input_buffer[0..];
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try std.testing.expectEqual(input.len, parsed.result.parsed_bytes);
     try std.testing.expectEqual(@as(usize, 161), procedures.hook_call_count);

@@ -11,7 +11,7 @@ test "no-AST tree helpers compile and run as no-ops" {
         .{ .input = "a,a", .expected = 2 },
     };
     for (cases) |case| {
-        var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, case.input, .{});
+        var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, case.input, null, .{});
         defer parsed.deinit();
         try std.testing.expectEqual(@as(usize, case.expected), parsed.result.semantic_root.?.value);
     }

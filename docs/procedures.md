@@ -90,7 +90,7 @@ reductions as each hook runs. After parsing, the start symbol's payload is
 available as `ParseResult.semantic_root`:
 
 ```zig
-var parsed = try parser.parseBytes(io, allocator, input, .{});
+var parsed = try parser.parseBytes(io, allocator, input, null, .{});
 defer parsed.deinit();
 if (parsed.result.semantic_root) |root| {
     std.debug.print("value = {d}\n", .{root.value});

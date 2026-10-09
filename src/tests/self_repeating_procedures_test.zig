@@ -45,7 +45,7 @@ fn expectCall(call: procedures.Call, name: []const u8, has_parent: bool, childre
 test "self-repeating loop with procedures: dropping inner wrappers keeps every outer procedure and trailing child" {
     procedures.resetTrace();
     const input = "d(((((x)))))";
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try std.testing.expectEqual(input.len, parsed.result.parsed_bytes);
 
@@ -71,7 +71,7 @@ test "self-repeating loop with procedures: dropping inner wrappers keeps every o
 test "self-repeating loop with procedures: replacing inner wrappers keeps every outer procedure and trailing child" {
     procedures.resetTrace();
     const input = "r(((((x)))))";
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try std.testing.expectEqual(input.len, parsed.result.parsed_bytes);
 
@@ -100,7 +100,7 @@ test "self-repeating loop with procedures: replacing inner wrappers keeps every 
 test "self-repeating loop with procedures: a single wrapper is not part of the loop" {
     procedures.resetTrace();
     const input = "r(x)";
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try std.testing.expectEqual(input.len, parsed.result.parsed_bytes);
 

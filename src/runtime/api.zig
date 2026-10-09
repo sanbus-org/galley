@@ -170,7 +170,6 @@ pub const MessageOverride = struct {
 };
 
 pub const ParseOptions = struct {
-    input_path: ?[]const u8 = null,
     verbosity: usize = 0,
     max_errors: usize = 10,
     recovery_window: usize = 500,
@@ -196,6 +195,9 @@ pub const ParseOptions = struct {
     /// release builds the stack stays off unless the build was compiled with
     /// `-Dsyntax-error-stack-depth` above 1.
     syntax_error_stack_depth: usize = 0,
+    /// Receives every rendered syntax-error message instead of the default
+    /// stderr printer. A bare function pointer with no context: the function
+    /// it names must stay loaded for as long as the session lives.
     syntax_error_reporter: ?SyntaxErrorMessageReporter = null,
     /// Message overrides copied into the session at creation. Entries are
     /// matched against syntax-error site names in the same fallback order
@@ -406,20 +408,20 @@ comptime {
     }
 }
 
-pub fn parseBytes(io: std.Io, allocator: std.mem.Allocator, input: []const u8, options: ParseOptions) !ParsedInput {
+pub fn parseBytes(io: std.Io, allocator: std.mem.Allocator, input: []const u8, input_path: ?[]const u8, options: ParseOptions) !ParsedInput {
     var session = try Session.init(io, allocator, options);
     errdefer session.deinit();
-    const result = try session.parseBytes(input, options.input_path);
+    const result = try session.parseBytes(input, input_path);
     return .{
         .session = session,
         .result = result,
     };
 }
 
-pub fn parseSentinelBytes(io: std.Io, allocator: std.mem.Allocator, input: [:0]const u8, options: ParseOptions) !ParsedInput {
+pub fn parseSentinelBytes(io: std.Io, allocator: std.mem.Allocator, input: [:0]const u8, input_path: ?[]const u8, options: ParseOptions) !ParsedInput {
     var session = try Session.init(io, allocator, options);
     errdefer session.deinit();
-    const result = try session.parseSentinelBytes(input, options.input_path);
+    const result = try session.parseSentinelBytes(input, input_path);
     return .{
         .session = session,
         .result = result,
@@ -720,7 +722,6 @@ pub const Session = struct {
             .arena = arena,
             .runtime_context = .{
                 .io = io,
-                .input_path = options.input_path,
                 .arena_allocator = arena.allocator(),
                 .max_errors = options.max_errors,
                 .recovery_window = options.recovery_window,
@@ -905,8 +906,7 @@ pub const Session = struct {
     /// Single parse-acquire site. Every parse entry funnels through here so
     /// the lock and generation cannot disagree. The nested-recovery gate
     /// runs first, before the lock, so a rejected nested parse leaves
-    /// generation, node storage, `owned_input`, and
-    /// `runtime_context.input_path` untouched.
+    /// generation, node storage, and `owned_input` untouched.
     fn acquireParse(self: *Session) SessionError!void {
         if (stack_overflow_utilities.isActive() and !self.stack_overflow_recovery) {
             return error.NestedParseDuringStackOverflowRecovery;
@@ -1131,12 +1131,12 @@ pub const Session = struct {
     }
 
     pub fn _makeContext(self: *Session, source: data_structures.Context.Source, input_path: ?[]const u8) data_structures.Context {
-        self.runtime_context.input_path = input_path;
         self.runtime_context.arena_allocator = self.arena.allocator();
 
         var context_value = data_structures.Context{
             .runtime_context = &self.runtime_context,
             .source = source,
+            .input_path = input_path,
             .node_allocator = if (parser.is_ast_enabled) &self.node_allocator else {},
             .chunk_buffer = self.chunk_buffer,
             .user_data = self.user_data,

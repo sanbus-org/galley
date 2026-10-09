@@ -2,7 +2,7 @@ const std = @import("std");
 const parser = @import("parser-under-test");
 
 fn parseAll(input: []const u8) !void {
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try std.testing.expectEqual(input.len, parsed.result.parsed_bytes);
 }
@@ -12,6 +12,7 @@ fn parseFails(input: []const u8) !void {
         std.testing.io,
         std.testing.allocator,
         input,
+        null,
         .{},
     ));
 }

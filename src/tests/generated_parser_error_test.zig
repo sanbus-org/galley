@@ -86,7 +86,7 @@ test "generated_parser_error recovery capability" {
 test "generated_parser_error parse bytes" {
     try std.testing.expectError(
         parser.ParseError.SyntaxError,
-        parser.parseBytes(std.testing.io, std.testing.allocator, malformed_input, expected_error_options),
+        parser.parseBytes(std.testing.io, std.testing.allocator, malformed_input, null, expected_error_options),
     );
 }
 
@@ -96,7 +96,7 @@ test "generated_parser_error parse sentinel bytes" {
 
     try std.testing.expectError(
         parser.ParseError.SyntaxError,
-        parser.parseSentinelBytes(std.testing.io, std.testing.allocator, input, expected_error_options),
+        parser.parseSentinelBytes(std.testing.io, std.testing.allocator, input, null, expected_error_options),
     );
 }
 

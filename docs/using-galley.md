@@ -279,7 +279,7 @@ The generated parser type is selected by this build wiring, so parsing does not
 take a `.ll` or `.lr` argument:
 
 ```zig
-var parsed = try parser.parseBytes(io, allocator, input, .{});
+var parsed = try parser.parseBytes(io, allocator, input, null, .{});
 defer parsed.deinit();
 ```
 
@@ -299,7 +299,8 @@ var parsed = try parser.parseBytes(
     io,
     allocator,
     "some input",
-    .{ .input_path = "inline" },
+    "inline",
+    .{},
 );
 defer parsed.deinit();
 
@@ -308,7 +309,7 @@ var reader = try parsed.session.read(result);
 defer reader.deinit();
 ```
 
-`parseBytes` makes a sentinel-terminated copy of the input. The returned `ParsedInput` owns that copy, the parser session, and any AST storage, so it must remain alive while its result or AST is being inspected.
+`parseBytes` makes a sentinel-terminated copy of the input. The returned `ParsedInput` owns that copy, the parser session, and any AST storage, so it must remain alive while its result or AST is being inspected. The `"inline"` path argument is the input path procedure hooks of this parse read from `args.context.input_path`; it belongs to this call only and is never retained afterwards.
 
 For repeated parsing, reuse a `Session`:
 

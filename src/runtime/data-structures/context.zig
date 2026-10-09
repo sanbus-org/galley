@@ -87,7 +87,6 @@ pub const HookError = error{
 
 pub const RuntimeContext = struct {
     io: std.Io,
-    input_path: ?[]const u8 = null,
     arena_allocator: std.mem.Allocator,
     /// Every diagnostic recorded during the current parse, in recording
     /// order. Syntax records are bounded by the generated parsers' limit
@@ -475,6 +474,10 @@ pub const Context = struct {
     node_allocator: if (root.parser.is_ast_enabled) *data_structures.ASTAllocator else void = if (root.parser.is_ast_enabled) undefined else {},
     /// The session's tail-loop stack (see `TailFrameStack`).
     tail_frames: if (root.parser.is_ast_enabled) *TailFrameStack else void = if (root.parser.is_ast_enabled) undefined else {},
+
+    /// The input path this parse's caller passed, borrowed for the duration
+    /// of the call only: nothing outlives the parse that received it.
+    input_path: ?[]const u8 = null,
 
     /// Host-owned pointer copied from `Session.user_data` for this parse. For
     /// a host shim build it is the session's dispatch handle.

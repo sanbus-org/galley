@@ -21,7 +21,7 @@ test "generated parser keeps same-text variables and terminals distinct" {
     try expectVariableAndTerminal("TerminalFirst");
 
     const input = "vVariableFirstTerminalFirstt";
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try std.testing.expectEqual(input.len, parsed.result.parsed_bytes);
 }

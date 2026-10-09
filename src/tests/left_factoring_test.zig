@@ -3,7 +3,7 @@ const parser = @import("parser-under-test");
 const procedures = parser.procedures;
 
 fn parse(input: []const u8) !void {
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try std.testing.expectEqual(input.len, parsed.result.parsed_bytes);
 }
@@ -64,7 +64,7 @@ const Node = parser.data_structures.Node;
 /// the total count pins the splice: Start + Item/Pair + terminals.
 fn expectShape(input: []const u8, first_children: usize, total_nodes: usize) !void {
     if (comptime !parser.parser.is_ast_enabled) return;
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try std.testing.expectEqual(input.len, parsed.result.parsed_bytes);
 

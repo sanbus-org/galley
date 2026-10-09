@@ -12,7 +12,8 @@ pub fn main(init: std.process.Init) !void {
         init.io,
         init.gpa,
         grammar,
-        .{ .input_path = "inline.grm" },
+        "inline.grm",
+        .{},
     );
     defer parsed.deinit();
     if (parsed.result.parsed_bytes != grammar.len) return error.ShortParse;

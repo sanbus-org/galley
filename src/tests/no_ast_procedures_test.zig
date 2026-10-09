@@ -12,7 +12,7 @@ fn variableIndex(name: []const u8) u16 {
 }
 
 fn parse(input: []const u8) !parser.ParsedInput {
-    return parser.parseBytes(std.testing.io, std.testing.allocator, input, .{ .syntax_error_reporter = &ignoreDiagnostic });
+    return parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{ .syntax_error_reporter = &ignoreDiagnostic });
 }
 
 fn expectAstRootMatchesSemantic(parsed: *parser.ParsedInput, root_name: []const u8, child_names: []const []const u8) !void {

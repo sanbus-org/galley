@@ -133,7 +133,6 @@ Pass runtime behavior to `Session.init` or one-shot parse helpers through
 
 ```zig
 var session = try parser.Session.init(io, allocator, .{
-    .input_path = "input.json",
     .verbosity = 0,
     .max_errors = 10,
     .recovery_window = 500,
@@ -162,9 +161,13 @@ zig build
 ```
 
 ```zig
-var parsed = try json_parser.parseBytes(io, allocator, input, .{});
+var parsed = try json_parser.parseBytes(io, allocator, input, null, .{});
 defer parsed.deinit();
 ```
+
+The fourth argument is the optional input path: passed per parse call, not
+through `ParseOptions`, and read by hooks of that parse as
+`args.context.input_path`.
 
 ### High-Precision API Benchmark
 ```sh

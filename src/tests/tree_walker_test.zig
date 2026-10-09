@@ -53,7 +53,7 @@ fn findRoot(session: *parser.Session, name: []const u8) !Node.Pointer {
 }
 
 test "walker matches hand-rolled recursion on a parsed tree" {
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, "aa", .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, "aa", null, .{});
     defer parsed.deinit();
     const tree_root = parsed.result.ast_root orelse return error.MissingAstRoot;
 
@@ -104,7 +104,7 @@ test "walker yields depths on a nested synthetic tree" {
 }
 
 test "walker skipChildren prunes the yielded subtree" {
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, "aa", .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, "aa", null, .{});
     defer parsed.deinit();
     const tree_root = parsed.result.ast_root orelse return error.MissingAstRoot;
 

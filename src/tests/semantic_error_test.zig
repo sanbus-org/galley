@@ -2,7 +2,7 @@ const std = @import("std");
 const parser = @import("parser-under-test");
 
 fn parseClean(input: []const u8) !void {
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try std.testing.expectEqual(input.len, parsed.result.parsed_bytes);
 }
@@ -107,7 +107,7 @@ test "a semantic-only failure without AST construction still publishes" {
 
 test "clean tree carries no semantic error marks" {
     if (comptime !parser.parser.is_ast_enabled) return;
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, "aa", .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, "aa", null, .{});
     defer parsed.deinit();
     const root = parsed.result.ast_root orelse return error.MissingAstRoot;
     try std.testing.expect(!parser.data_structures.Node.hasSemanticErrorSubtree(root, &parsed.session.node_allocator));

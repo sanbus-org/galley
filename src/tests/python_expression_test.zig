@@ -15,7 +15,7 @@ const Tree = struct {
     input: []const u8,
 
     fn parse(input: []const u8) !Tree {
-        var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+        var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
         errdefer parsed.deinit();
         try std.testing.expectEqual(input.len, parsed.result.parsed_bytes);
         return .{ .parsed = parsed, .input = input };

@@ -10,7 +10,7 @@ test "verbatim capture with nullable tag tail restores enclosing block indentati
         \\    x
         \\  y
     ;
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try std.testing.expectEqual(@as(usize, input.len), parsed.result.parsed_bytes);
 }

@@ -14,7 +14,7 @@ pub fn main(init: std.process.Init) !void {
     const source = try std.Io.Dir.cwd().readFileAlloc(init.io, input_path, init.gpa, .limited(1024 * 1024 * 1024));
     defer init.gpa.free(source);
 
-    var parsed = galley.parseBytes(init.io, init.gpa, source, .{ .input_path = input_path }) catch |err| switch (err) {
+    var parsed = galley.parseBytes(init.io, init.gpa, source, input_path, .{}) catch |err| switch (err) {
         error.SyntaxError, error.SemanticError => std.process.exit(1),
         else => return err,
     };

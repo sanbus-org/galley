@@ -39,7 +39,7 @@ test "a list far deeper than recursion allows parses" {
     const input = try alternatingList(depth - 1, "b");
     defer std.testing.allocator.free(input);
     resetProcedures();
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try std.testing.expectEqual(input.len, parsed.result.parsed_bytes);
     try expectListReductions(depth);
@@ -47,7 +47,7 @@ test "a list far deeper than recursion allows parses" {
 
 test "each level's node holds the next level as its last child" {
     if (comptime !parser.parser.is_ast_enabled) return error.SkipZigTest;
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, "a;1;b", .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, "a;1;b", null, .{});
     defer parsed.deinit();
     const nodes = &parsed.session.node_allocator;
     var address = nodes.at(parsed.result.ast_root.?).first_child;
@@ -70,7 +70,7 @@ test "each level's node holds the next level as its last child" {
 test "a list nests at a position that is not last" {
     resetProcedures();
     const input = "(a;1);b;(c;(2));3";
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try std.testing.expectEqual(input.len, parsed.result.parsed_bytes);
     if (comptime has_procedures) try std.testing.expectEqual(@as(usize, 9), parser.procedures.listCount());
@@ -84,7 +84,7 @@ test "each level reduces with the next level as a child" {
         .{ .input = "(a;1);b", .children = &.{ 1, 2, 1, 2 } },
     }) |case| {
         resetProcedures();
-        var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, case.input, .{});
+        var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, case.input, null, .{});
         defer parsed.deinit();
         try std.testing.expectEqualSlices(u32, case.children, parser.procedures.childCounts());
     }
@@ -244,7 +244,7 @@ test "explicit recovery deep in a list uses the variable's own scope" {
 test "a hidden loop parses deep input" {
     const input = try repeat(">", "c", depth, ".!");
     defer std.testing.allocator.free(input);
-    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, .{});
+    var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
     try std.testing.expectEqual(input.len, parsed.result.parsed_bytes);
 }

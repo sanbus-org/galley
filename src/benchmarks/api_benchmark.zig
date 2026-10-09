@@ -29,7 +29,7 @@ pub fn main(init: std.process.Init) !void {
     defer init.gpa.free(sentinel_input);
     @memcpy(sentinel_input, input);
 
-    var session = try galley.Session.init(init.io, init.gpa, .{ .input_path = input_path, .verbosity = options.verbosity });
+    var session = try galley.Session.init(init.io, init.gpa, .{ .verbosity = options.verbosity });
     defer session.deinit();
 
     if (comptime galley.ast_memory_benchmark_enabled) {
