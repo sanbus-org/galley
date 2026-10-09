@@ -138,6 +138,80 @@ end
 bus:emit("stop")
 `;
 
+export const pythonSample = `"""A tiny task queue: imports, a dataclass task, retries, and dispatch."""
+
+import os
+import sys as system
+from collections.abc import Callable
+
+RETRIES = 3
+timeout = 1.5
+label = "worker"
+tags = {"fast", "io"}
+routes = {"pop": 0, "push": 1}
+
+
+def backoff(attempt: int, base: float = 0.5) -> float:
+    return base * (2**attempt)
+
+
+def run(task: str, *args: str, strict: bool = False, **options: str) -> int:
+    print(f"run {task} {args} {options}")
+    if strict and not args:
+        raise ValueError("need args")
+    return len(args)
+
+
+@decorator
+class Queue:
+    def __init__(self) -> None:
+        self.items: list = []
+
+    def push(self, task: str) -> None:
+        self.items.append(task)
+
+    def pop(self) -> str:
+        if not self.items:
+            raise LookupError("empty")
+        return self.items.pop()
+
+
+def serve(queue: Queue) -> None:
+    attempts = 0
+    while queue.items:
+        task = queue.pop()
+        attempts = attempts + 1
+        if attempts > RETRIES:
+            break
+        for index, name in enumerate(queue.items):
+            print(index, name)
+        else:
+            print("drained")
+    match attempts:
+        case 0:
+            print("idle")
+        case 1 | 2:
+            print("busy")
+        case _:
+            print("done")
+
+
+try:
+    queue = Queue()
+    with open("tasks.txt") as handle:
+        queue.push(handle.read())
+except OSError as exc:
+    print(exc)
+    raise SystemExit(1) from exc
+else:
+    print("loaded")
+finally:
+    print(system.argv)
+
+if __name__ == "__main__":
+    serve(queue)
+`;
+
 export const galleySample = `# A tiny CSV-flavoured table: a header row, then rows of cells.
 # Cells are bare words, quoted strings, or numbers.
 

@@ -12,12 +12,12 @@ Item
 | String
 | LongString
 | DashItem
-| "{" BraceItems "}"
-| "(" ParenItems ")"
+|@countGroup "{" BraceItems "}"
+|@countGroup "(" ParenItems ")"
 | "[" BracketAfter
 | character^"\u{22}"^"'"^"-"^"{"^"}"^"("^")"^"["^"]"
 
-DashItem
+DashItem@countComment
 | "-" "-[[" _LongStringContent
 | "-" "-" _LineCommentTail
 | "-" character^"-"
@@ -30,8 +30,8 @@ BraceItem
 | String
 | LongString
 | DashItem
-| "{" BraceItems "}"
-| "(" ParenItems ")"
+|@countGroup "{" BraceItems "}"
+|@countGroup "(" ParenItems ")"
 | "[" BracketAfter
 | character^"\u{22}"^"'"^"-"^"{"^"}"^"("^")"^"["^"]"
 
@@ -43,14 +43,14 @@ ParenItem
 | String
 | LongString
 | DashItem
-| "{" BraceItems "}"
-| "(" ParenItems ")"
+|@countGroup "{" BraceItems "}"
+|@countGroup "(" ParenItems ")"
 | "[" BracketAfter
 | character^"\u{22}"^"'"^"-"^"{"^"}"^"("^")"^"["^"]"
 
 BracketAfter
-| "[" _LongStringContent
-| BracketItems "]"
+|@countLongString "[" _LongStringContent
+|@countGroup BracketItems "]"
 
 BracketItems
 | BracketItem BracketItems
@@ -60,11 +60,11 @@ BracketItem
 | String
 | LongString
 | DashItem
-| "{" BraceItems "}"
-| "(" ParenItems ")"
+|@countGroup "{" BraceItems "}"
+|@countGroup "(" ParenItems ")"
 | character^"\u{22}"^"'"^"-"^"{"^"}"^"("^")"^"["^"]"
 
-String
+String@countString
 | "\u{22}" _DoubleStringContent "\u{22}"
 | "'" _SingleStringContent "'"
 
@@ -80,7 +80,7 @@ _SingleStringContent
 | new_line _SingleStringContent
 |
 
-LongString
+LongString@countLongString
 | "[[" _LongStringContent
 
 _LongStringContent

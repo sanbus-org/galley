@@ -1,4 +1,5 @@
-//! Parser-generation configuration.
+//! Try-it Python checker (docs page): stats-annotated copy of
+//! `languages/python` for the hooks setup (see README.txt).
 //!
 //! Contract of this file:
 //! - **Constants only.** Never define functions here.
@@ -14,14 +15,14 @@
 /// true  - construct AST nodes and expose tree APIs.
 /// false - skip AST construction entirely for maximum throughput;
 ///         procedure hooks still run.
-pub const ast = true;
+pub const ast = false;
 
 /// Enable grammar-annotated procedure hooks.
 ///
 /// true  - procedures attached with @Name annotations run at
 ///         their annotated positions.
 /// false - procedure hooks are never invoked.
-pub const procedures = false;
+pub const procedures = true;
 
 /// Allow standard tree-manipulation helper procedures to be called when
 /// AST construction is disabled.
@@ -29,7 +30,7 @@ pub const procedures = false;
 /// true  - helpers become no-ops instead of failing to compile.
 /// false - calling them without an AST is a compile-time error.
 /// Only meaningful when ast = false.
-pub const allow_no_ast_tree_procedures = false;
+pub const allow_no_ast_tree_procedures = true;
 
 /// Require every visible variable production to declare its automatic
 /// per-production hook.
@@ -44,7 +45,7 @@ pub const require_reduction_procedures = false;
 /// true  - recovery runs automatically, or through the grammar's
 ///         explicit @!"..." points when the grammar declares any.
 /// false - parsing stops at the first syntax error.
-pub const error_recovery = true;
+pub const error_recovery = false;
 
 /// Include terminal tokens as AST leaf nodes.
 ///
@@ -73,7 +74,7 @@ pub const input_streaming = false;
 /// true  - the lexer emits indentation/deduction tokens derived from
 ///         leading whitespace.
 /// false - whitespace is insignificant.
-pub const indentation_syntax = false;
+pub const indentation_syntax = true;
 
 /// After each dedent, emit a control byte that `new_line` matches and
 /// every other expected terminal skips.
@@ -84,7 +85,10 @@ pub const indentation_syntax = false;
 /// false - a dedent yields only `block_end` tokens (the default).
 ///
 /// Only meaningful when indentation_syntax is enabled.
-pub const newline_after_block_end = false;
+///
+/// Python statement lists continue across dedents (a block followed by
+/// more statements at the outer level), so this must stay on.
+pub const newline_after_block_end = true;
 
 /// Static syntax-error message overrides baked into the generated
 /// parser.

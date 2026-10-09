@@ -12,7 +12,7 @@ Unless noted otherwise, results were recorded on an **Apple M1 Pro**.
 
 ## Bundled Grammar Coverage
 
-Galley benchmarks track parser throughput across grammar shapes. JSON is also the head-to-head comparison target because mature third-party parsers exist for it (see [BENCHMARKS.md](BENCHMARKS.md)); Lisp, Lua, and the grammar parser exercise different language shapes and should not be read as direct comparisons against JSON.
+Galley benchmarks track parser throughput across grammar shapes. JSON is also the head-to-head comparison target because mature third-party parsers exist for it (see [BENCHMARKS.md](BENCHMARKS.md)); Lisp, Lua, Python, and the grammar parser exercise different language shapes and should not be read as direct comparisons against JSON.
 
 | Grammar        | What it exercises                                                                  | Parsers |
 | -------------- | ---------------------------------------------------------------------------------- | ------- |
@@ -84,6 +84,38 @@ _AST = build syntax tree_
 ```
   LL  ✗ast  ████████████████████████████████████████     494.1 MB/s
   LL  ✓ast  ██████████████████████░░░░░░░░░░░░░░░░░░     272.1 MB/s
+```
+
+---
+
+## Python
+
+_A Python grammar that exercises statements, expressions, decorators, async functions, match cases, and type aliases across two feature-coverage samples._
+
+_AST = build syntax tree_
+
+### `languages/python/samples/code-01.py`
+
+| AST | LL         |
+| --- | ---------- |
+| ✗   | 227.0 MB/s |
+| ✓   | 137.4 MB/s |
+
+```
+  LL  ✗ast  ████████████████████████████████████████     227.0 MB/s
+  LL  ✓ast  ████████████████████████░░░░░░░░░░░░░░░░     137.4 MB/s
+```
+
+### `languages/python/samples/code-02.py`
+
+| AST | LL         |
+| --- | ---------- |
+| ✗   | 227.2 MB/s |
+| ✓   | 140.9 MB/s |
+
+```
+  LL  ✗ast  ████████████████████████████████████████     227.2 MB/s
+  LL  ✓ast  ████████████████████████░░░░░░░░░░░░░░░░     140.9 MB/s
 ```
 
 ---

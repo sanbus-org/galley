@@ -21,8 +21,8 @@
       </div>
       <textarea v-else v-model="checker.text" spellcheck="false" rows="8" :disabled="!checker.ready"
         @input="() => inputEdited(checker)"></textarea>
-      <div v-if="checker.id === 'json'" class="modes">
-        <button v-for="mode in JSON_MODES" :key="mode.id" class="tab"
+      <div class="modes">
+        <button v-for="mode in MODES" :key="mode.id" class="tab"
           :class="{ active: checker.mode === mode.id }" :disabled="actionDisabled(checker)"
           @click="() => setMode(checker, mode.id)">
           <span v-if="actionPending(checker, mode.id)" class="spinner" aria-hidden="true"></span>
@@ -38,13 +38,15 @@
           {{ action.describe(checker) }}
         </button>
       </div>
-      <!-- One result box, green when valid, red on a diagnostic: the
-           rerun action sits in its top-right corner and stays mounted
-           while its own work runs, so its spinner is never lost. -->
-      <div class="status" :class="checker.result ? 'ok' : checker.statusClass"><button v-if="rerunShown(checker)" class="tab rerun" :disabled="actionDisabled(checker)"
-          @click="() => rerun(checker)">
-          <span v-if="actionPending(checker, RERUN_ID)" class="spinner" aria-hidden="true"></span>
-          Rerun
+      <!-- One result box, green when valid, red on a diagnostic: one
+           corner slot serves two states — Stop while a benchmark batch
+           runs, Rerun once it settles — and stays mounted while its own
+           work runs, so its spinner is never lost. -->
+      <div class="status" :class="checker.result ? 'ok' : checker.statusClass"><button v-if="cornerShown(checker)" class="tab corner"
+          :disabled="stopShown(checker) ? !checker.ready : actionDisabled(checker)"
+          @click="() => cornerClick(checker)">
+          <span v-if="!stopShown(checker) && actionPending(checker, RERUN_ID)" class="spinner" aria-hidden="true"></span>
+          {{ stopShown(checker) ? "■ Stop" : "▶ Rerun" }}
         </button><template v-if="checker.result">
         <div>valid {{ checker.result.label }}<template v-if="checker.benchmark && checker.benchmark.runs > 1"> · {{ plural(checker.benchmark.runs, "run", "runs") }}</template></div>
         <!-- One row: the batch that actually ran — its own measured
@@ -78,8 +80,19 @@
 import { reactive, ref, onMounted, watch } from "vue";
 import { galley } from "@sanbus/galley";
 import * as jsonHooks from "../../try-it/lang/json/procedures.js";
-import { countSnapshot } from "../../try-it/lang/json-ast/snapshot-stats.js";
-import { galleySample, jsonSample, lispSample, luaSample } from "../../try-it/samples.js";
+import * as lispHooks from "../../try-it/lang/lisp/procedures.js";
+import * as luaHooks from "../../try-it/lang/lua/procedures.js";
+import * as galleyHooks from "../../try-it/lang/galley/procedures.js";
+import * as pythonHooks from "../../try-it/lang/python/procedures.js";
+import { countSnapshot } from "../../try-it/lang/json/snapshot-stats.js";
+import { countNodes } from "../../try-it/snapshot-nodes.js";
+import {
+  galleySample,
+  jsonSample,
+  lispSample,
+  luaSample,
+  pythonSample,
+} from "../../try-it/samples.js";
 
 function formatRate(bytes, elapsedMs) {
   // A parse that measures 0 ms has no rate to show.
@@ -98,11 +111,11 @@ function formatBytes(bytes) {
 
 const active = ref("lisp");
 
-// The JSON tab's four measurements: each button picks what the single
+// Every tab's four measurements: each button picks what the single
 // table row times — a bare parse, that same build with its counting
 // hooks firing, the AST build's snapshot materialized on top, or the
 // snapshot walked to totals as well.
-const JSON_MODES = [
+const MODES = [
   { id: "raw", label: "Raw parse" },
   { id: "hooks", label: "Hooks" },
   { id: "ast", label: "AST" },
@@ -177,6 +190,8 @@ const checkers = reactive([
     progress: null,
     runs: 1,
     benchmark: null,
+    mode: "hooks",
+    result: null,
   },
   {
     id: "json",
@@ -211,6 +226,26 @@ const checkers = reactive([
     progress: null,
     runs: 1,
     benchmark: null,
+    mode: "hooks",
+    result: null,
+  },
+  {
+    id: "python",
+    title: "Python",
+    ext: ".py",
+    text: pythonSample,
+    status: "loading parser…",
+    statusClass: "",
+    dragOver: false,
+    ready: false,
+    file: null,
+    busy: null,
+    pending: null,
+    progress: null,
+    runs: 1,
+    benchmark: null,
+    mode: "hooks",
+    result: null,
   },
   {
     id: "galley",
@@ -227,8 +262,20 @@ const checkers = reactive([
     progress: null,
     runs: 1,
     benchmark: null,
+    mode: "hooks",
+    result: null,
   },
 ]);
+
+// Host hook modules by checker: the hooks session installs its own
+// counters, so raw and hooks differ by the hooks alone in every tab.
+const hooksFor = {
+  json: jsonHooks,
+  lisp: lispHooks,
+  lua: luaHooks,
+  galley: galleyHooks,
+  python: pythonHooks,
+};
 
 // Parser sessions and uploaded file bytes live outside reactivity: Vue
 // proxies break the adapter's private methods (Safari: "Cannot access
@@ -274,26 +321,30 @@ function showError(checker, diagnostic) {
 
 function countsLine(stats) {
   if (!stats) return "";
-  return (
-    `${plural(stats.object, "object", "objects")}, ` +
-    `${plural(stats.array, "array", "arrays")}, ` +
-    `${plural(stats.string, "string", "strings")}, ` +
-    `${plural(stats.number, "number", "numbers")}, ` +
-    `${plural(stats.boolean, "boolean", "booleans")}, ` +
-    `${plural(stats.null, "null", "nulls")}, ` +
-    `${plural(stats.key, "key", "keys")}`
-  );
+  return Object.entries(stats)
+    .map(([name, count]) => plural(count, name, PLURALS[name] ?? `${name}s`))
+    .join(", ");
 }
+
+// Construct names the naive `${name}s` rule gets wrong. Everything
+// else pluralizes regularly, so this map is the whole exception list.
+const PLURALS = {
+  class: "classes",
+  match: "matches",
+  hash: "hashes",
+  try: "tries",
+  with: "with statements",
+  escaped: "escapes",
+};
 
 function sessionFor(checker) {
   // Raw and Hooks share the no-AST build — no procedures installed
   // versus the counting hooks — so the gap between those two buttons
   // is the hooks alone; the AST buttons use the build that constructs
-  // a tree during the parse.
-  if (checker.id !== "json") return sessions[checker.id];
-  if (checker.mode === "raw") return sessions["json-raw"];
-  if (checker.mode === "hooks") return sessions["json-hooks"];
-  return sessions["json-snapshot"];
+  // a tree during the parse. Same layout in every tab.
+  if (checker.mode === "raw") return sessions[`${checker.id}-raw`];
+  if (checker.mode === "hooks") return sessions[`${checker.id}-hooks`];
+  return sessions[`${checker.id}-snapshot`];
 }
 
 function showOk(checker, label, bytes, runMs, stats) {
@@ -504,6 +555,31 @@ function rerun(checker) {
   startRuns(checker, checker.runs, RERUN_ID);
 }
 
+// The corner slot's other state: while a benchmark batch runs, the
+// button stops it instead. Stopping only supersedes the batch — the
+// in-flight loop exits at its next chunk repaint — then parks the tab
+// on a single unmeasured run, so the lit button never describes a
+// batch that never ran.
+function stopShown(checker) {
+  return checker.busy === "benchmark";
+}
+
+function cornerShown(checker) {
+  return stopShown(checker) || rerunShown(checker);
+}
+
+function cornerClick(checker) {
+  if (stopShown(checker)) stopBenchmark(checker);
+  else rerun(checker);
+}
+
+function stopBenchmark(checker) {
+  if (checker.busy !== "benchmark") return;
+  invalidateBenchmark(checker);
+  checker.runs = 1;
+  resetMeasurement(checker, "stopped");
+}
+
 // One entry for the repeat row, mirroring the mode row: an ask equal
 // to what is already in effect does nothing.
 function askRun(checker, action) {
@@ -601,17 +677,23 @@ function timeWindowed(op) {
 // One definition of what one run of the workload costs — the call the
 // table times and the batch loops: a bare parse for raw and hooks
 // (the hooks fire inside session.parse), plus snapshot materialization
-// for AST, plus the host walk for AST + visit. Hooks reset first so
-// their stats describe this run; the input is shared bytes, never
-// re-encoded here.
+// for AST, plus the host walk for AST + visit. JSON classifies its
+// snapshot by grammar; every other tab counts its nodes. Hooks reset
+// first so their stats describe this run; the input is shared bytes,
+// never re-encoded here.
 function runWorkload(checker, session, input) {
-  const hooksMode = checker.id === "json" && checker.mode === "hooks";
-  if (hooksMode) jsonHooks.resetStats();
+  const hooks = hooksFor[checker.id];
+  const hooksMode = checker.mode === "hooks";
+  if (hooksMode) hooks.resetStats();
   const bytes = session.parse(input);
   let stats = null;
   if (checker.mode === "ast") session.snapshot();
-  else if (checker.mode === "ast-visit") stats = countSnapshot(session, input);
-  else if (hooksMode) stats = { ...jsonHooks.stats };
+  else if (checker.mode === "ast-visit")
+    stats =
+      checker.id === "json"
+        ? countSnapshot(session, input)
+        : countNodes(session);
+  else if (hooksMode) stats = { ...hooks.stats };
   return { bytes, stats };
 }
 
@@ -719,27 +801,21 @@ async function ensureChecker(checker) {
   try {
     const url = `${import.meta.env.BASE_URL}try-it/${checker.id}.wasm`;
     const parser = await galley.loadUrl(url);
-    if (checker.id === "json") {
-      // Raw and Hooks share this no-AST build. A session copies the
-      // parser's procedures as it opens, so the raw session opens
-      // first, then the counters are installed for the hooks session.
-      // The AST buttons load the build that constructs a tree.
-      const raw = parser.openSession();
-      openedSessions.push(raw);
-      parser.installProcedures(jsonHooks);
-      const hooks = parser.openSession();
-      openedSessions.push(hooks);
-      const snapshotUrl = `${import.meta.env.BASE_URL}try-it/json-ast.wasm`;
-      const snapshot = (await galley.loadUrl(snapshotUrl)).openSession();
-      openedSessions.push(snapshot);
-      sessions["json-raw"] = raw;
-      sessions["json-hooks"] = hooks;
-      sessions["json-snapshot"] = snapshot;
-    } else {
-      const session = parser.openSession();
-      openedSessions.push(session);
-      sessions[checker.id] = session;
-    }
+    // Raw and Hooks share this no-AST build. A session copies the
+    // parser's procedures as it opens, so the raw session opens
+    // first, then the counters are installed for the hooks session.
+    // The AST buttons load the build that constructs a tree.
+    const raw = parser.openSession();
+    openedSessions.push(raw);
+    parser.installProcedures(hooksFor[checker.id]);
+    const hooks = parser.openSession();
+    openedSessions.push(hooks);
+    const snapshotUrl = `${import.meta.env.BASE_URL}try-it/${checker.id}-ast.wasm`;
+    const snapshot = (await galley.loadUrl(snapshotUrl)).openSession();
+    openedSessions.push(snapshot);
+    sessions[`${checker.id}-raw`] = raw;
+    sessions[`${checker.id}-hooks`] = hooks;
+    sessions[`${checker.id}-snapshot`] = snapshot;
     checker.ready = true;
     // A tab's first measurement is the default offer: the button the
     // page lights must be the batch it actually ran.
@@ -957,7 +1033,7 @@ onMounted(async () => {
   white-space: pre-wrap;
   margin-top: 0.75rem;
   padding: 0.75rem;
-  /* Reserve the top-right corner for the rerun button in every state,
+  /* Reserve the top-right corner for the corner button in every state,
      so the layout never jumps when it appears or disappears. */
   padding-right: 6.5rem;
   border: 1px solid var(--vp-c-border);
@@ -965,7 +1041,7 @@ onMounted(async () => {
   min-height: 3rem;
 }
 
-.try-it .status .rerun {
+.try-it .status .corner {
   position: absolute;
   top: 0.5rem;
   right: 0.5rem;
@@ -975,7 +1051,7 @@ onMounted(async () => {
   display: block;
   width: 100%;
   height: 6px;
-  margin-top: 0.5rem;
+  margin-top: 2rem;
   appearance: none;
   border: none;
   border-radius: 4px;

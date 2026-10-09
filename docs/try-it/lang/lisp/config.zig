@@ -21,7 +21,7 @@ pub const ast = false;
 /// true  - procedures attached with @Name annotations run at
 ///         their annotated positions.
 /// false - procedure hooks are never invoked.
-pub const procedures = false;
+pub const procedures = true;
 
 /// Allow standard tree-manipulation helper procedures to be called when
 /// AST construction is disabled.

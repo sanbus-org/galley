@@ -1,0 +1,1186 @@
+# Python 3.14 LL grammar: files, statements, suites, expressions.
+# Requires indentation_syntax=true, newline_after_block_end=true.
+#
+# Covers: imports (dotted, as-lists, from-lists, relative dots),
+# type aliases with type params, match/case with as-patterns and guards,
+# def (annotated/default/star params, returns), async def, decorators,
+# class with call-style bases, comprehensions (incl. async for),
+# generators, slices, walrus, yield/yield-from, f/t-strings (balanced
+# braces, nested strings), full operator precedence, elif/else,
+# while/for-else, with-items, try/except/except*/else/finally,
+# assert/raise/del with tails, global/nonlocal, tuple/star/annotated/
+# chained/augmented/attribute/subscript assignment, kwargs/stars in calls.
+#
+# Accepted limitations (Black-style input assumed):
+# - Blank lines anywhere (including unindented blanks inside blocks)
+#   are skipped by the indentation lexer; this needs a galley runtime
+#   with blank-line skipping (present in the current working tree).
+#   Blank lines between top-level statements were always fine.
+# - Spaces only for indentation and single spaces around infix and word
+#   operators (`x  +  y` with doubled spaces fails; `x+1` works).
+# - No trailing space before closers; no space before `,`/`:`.
+# - Full-line `#` comments work (top level and indented); trailing
+#   `x = 1 # comment` does not. No explicit `\` line continuation;
+#   no `;` statement separators; no one-line suites
+#   (`if x: pass` needs a block).
+# - Soft keywords match/case/type act as hard keywords except for
+#   tight `name=value` form (`match=1` works, `match = 1` does not).
+# - f/t-string interpolation is structural (balanced braces, nested
+#   strings, opaque `!`/`:`/`=` tails); triple-quoted f/t-strings stay
+#   opaque (no nesting); `{` always opens interpolation while a stray
+#   `}` reads as a literal (so `f"}"` is accepted).
+# - Bare conditionals need parens in case patterns, else branches,
+#   lambda bodies and yield-from operands (`a if b else (c if d else e)`,
+#   `lambda: (x if y else z)`); walrus right-hand sides take
+#   `Disjunction` only (`x := (a if b else c)`).
+# - Do not name variables exactly `yield` (`yield = 5` fails).
+# - `0.`-style floats need the trailing digit (`0.0`); identifiers
+#   are ASCII letters/digits/`_` (no PEP 3131 names); strings accept
+#   full UTF-8 (validated scalars, same shapes as json-unicode);
+#   `**` dict unpacking and trailing commas work in displays but
+#   `{*x}` set-unpacking does not.
+# - Comprehension targets are bare names (`k, v` works; `(k, v)`,
+#   `*rest`, attribute targets do not); def/class take no type params,
+#   no `/` or bare-`*` markers; `global`/`nonlocal` take single names.
+# - `match` patterns accept an expression superset (e.g. `case a + b:`
+#   parses though invalid); `except (A, B)` tuples work; `from` import
+#   lists take parens but no trailing commas; relative imports allow
+#   up to `...`; `with (a as b):` needs the parens dropped.
+# - Adjacent string literal concatenation (`"a" "b"`, including across
+#   lines) is not folded: any blank-separated optional continuation
+#   collides with downstream blanks in the LL(1) table. Write one
+#   string per expression or use explicit `+`.
+# - After* fallthroughs: a keyword-prefixed name continues as a full
+#   expression statement (`input(x)`, `notx == 1`).
+# Tab is "\u{9}".
+
+Start
+| File
+
+File@flattenLists
+| _FileLead Statements _FileTail
+| _FileLead
+
+_FileLead
+| new_line _FileLead
+|
+
+_FileTail
+| block_end _FileTail
+|
+
+# Statements
+#
+# Every statement kind is its own node, listed flat under File or Block.
+# Keywords carry their delimiter ("if ", "else:"), so an identifier that
+# merely starts with a keyword ("iffy", "matched") lexes as a Name through
+# longest-match. Only keywords that can stand alone (return, pass, break,
+# continue, raise) need a fallback for such identifiers; identifierStatement
+# turns that fallback into an ExpressionStatement.
+#
+# Clauses (elif, else, except, finally) are sibling statements: a dedent is
+# followed by the control byte that new_line matches, so the statement list
+# always continues before a clause could attach to its compound statement.
+
+Statements
+| Comment
+| Comment _StatementEnd
+| Comment _StatementEnd Statements
+| If
+| If _StatementEnd
+| If _StatementEnd Statements
+| Elif
+| Elif _StatementEnd
+| Elif _StatementEnd Statements
+| Else
+| Else _StatementEnd
+| Else _StatementEnd Statements
+| While
+| While _StatementEnd
+| While _StatementEnd Statements
+| For
+| For _StatementEnd
+| For _StatementEnd Statements
+| With
+| With _StatementEnd
+| With _StatementEnd Statements
+| Try
+| Try _StatementEnd
+| Try _StatementEnd Statements
+| Except
+| Except _StatementEnd
+| Except _StatementEnd Statements
+| Finally
+| Finally _StatementEnd
+| Finally _StatementEnd Statements
+| Return
+| Return _StatementEnd
+| Return _StatementEnd Statements
+| Raise
+| Raise _StatementEnd
+| Raise _StatementEnd Statements
+| Assert
+| Assert _StatementEnd
+| Assert _StatementEnd Statements
+| Delete
+| Delete _StatementEnd
+| Delete _StatementEnd Statements
+| Global
+| Global _StatementEnd
+| Global _StatementEnd Statements
+| Nonlocal
+| Nonlocal _StatementEnd
+| Nonlocal _StatementEnd Statements
+| Import
+| Import _StatementEnd
+| Import _StatementEnd Statements
+| ImportFrom
+| ImportFrom _StatementEnd
+| ImportFrom _StatementEnd Statements
+| ClassDefinition
+| ClassDefinition _StatementEnd
+| ClassDefinition _StatementEnd Statements
+| FunctionDefinition
+| FunctionDefinition _StatementEnd
+| FunctionDefinition _StatementEnd Statements
+| Decorated
+| Decorated _StatementEnd
+| Decorated _StatementEnd Statements
+| Pass
+| Pass _StatementEnd
+| Pass _StatementEnd Statements
+| Break
+| Break _StatementEnd
+| Break _StatementEnd Statements
+| Continue
+| Continue _StatementEnd
+| Continue _StatementEnd Statements
+| Match
+| Match _StatementEnd
+| Match _StatementEnd Statements
+| Case
+| Case _StatementEnd
+| Case _StatementEnd Statements
+| TypeAlias
+| TypeAlias _StatementEnd
+| TypeAlias _StatementEnd Statements
+| ExpressionStatement
+| ExpressionStatement _StatementEnd
+| ExpressionStatement _StatementEnd Statements
+
+_StatementEnd
+| _TrailComment new_line _BlankLines
+
+_BlankLines
+| new_line _BlankLines
+|
+
+_TrailComment
+| "#"@>^"\n"
+| " #"@>^"\n"
+| "  #"@>^"\n"
+|
+
+Block@flattenLists
+| _TrailComment block_start Statements block_end
+
+Comment
+| "#"@>^"\n"
+
+If@countIf
+| "if " _OptBlank Expression ":" Block
+| "if(" _OptBlank Expression ")" ":" Block
+
+Elif@countIf
+| "elif " _OptBlank Expression ":" Block
+| "elif(" _OptBlank Expression ")" ":" Block
+
+Else@countIf
+| "else:" Block
+| "else " _OptBlank ":" Block
+
+While@countLoop
+| "while " _OptBlank Expression ":" Block
+| "while(" _OptBlank Expression ")" ":" Block
+
+For@flattenLists@countLoop
+| "for " _OptBlank ForTargets
+| "async for " _OptBlank ForTargets
+
+ForTargets
+| Name "," _OptBlank ForTargets
+| Name " in" _OptBlank Expression ":" Block
+
+With@flattenLists@countWith
+| "with " _OptBlank WithItems
+| "async with " _OptBlank WithItems
+
+WithItems
+| Expression ":" Block
+| Expression "," _OptBlank WithItems
+| Expression AsName ":" Block
+| Expression AsName "," _OptBlank WithItems
+
+AsName
+| " as" _OptBlank Name
+
+Try@countTry
+| "try:" Block
+| "try " _OptBlank ":" Block
+
+Except@countTry
+| "except:" Block
+| "except " _OptBlank ":" Block
+| "except " _OptBlank Expression ":" Block
+| "except " _OptBlank Expression AsName ":" Block
+| "except*" _OptBlank Expression ":" Block
+| "except*" _OptBlank Expression AsName ":" Block
+
+Finally@countTry
+| "finally:" Block
+| "finally " _OptBlank ":" Block
+
+Return@flattenLists@identifierStatement
+| "return"
+| "return" space _OptBlank
+| "return" space _OptBlank Expression
+| "return" space _OptBlank Expression "," _OptBlank ExpressionList
+| "return" space _OptBlank Starred
+| "return" space _OptBlank Starred "," _OptBlank ExpressionList
+| "return" Parenthesized
+| "return" KeywordStatement
+
+Raise@flattenLists@identifierStatement
+| "raise"
+| "raise" space _OptBlank
+| "raise" space _OptBlank Expression
+| "raise" space _OptBlank Expression RaiseFrom
+| "raise" Parenthesized
+| "raise" KeywordStatement
+
+RaiseFrom
+| " from" _OptBlank Expression
+
+Assert
+| "assert " _OptBlank Expression
+| "assert " _OptBlank Expression "," _OptBlank Expression
+
+Delete@flattenLists
+| "del " _OptBlank ExpressionList
+
+Global
+| "global " _OptBlank Name
+
+Nonlocal
+| "nonlocal " _OptBlank Name
+
+Import@flattenLists@countImport
+| "import " _OptBlank ImportNames
+
+ImportNames
+| DottedName
+| DottedName "," _OptBlank ImportNames
+| DottedName AsName
+| DottedName AsName "," _OptBlank ImportNames
+
+DottedName
+| _IdStart _IdTail _DottedRest
+
+_DottedRest
+| "." _IdStart _IdTail _DottedRest
+|
+
+ImportFrom@flattenLists@countImport
+| "from " _OptBlank ModuleName " import" _OptBlank "*"
+| "from " _OptBlank ModuleName " import" _OptBlank FromNames
+| "from " _OptBlank ModuleName " import" _OptBlank "(" _InsideBlank ParenthesizedFromNames
+
+ModuleName
+| _IdStart _IdTail _DottedRest
+| "." _RelativeModule
+
+_RelativeModule
+| "." _RelativeModule
+| _IdStart _IdTail _DottedRest
+|
+
+FromNames
+| Name
+| Name "," _OptBlank FromNames
+| Name AsName
+| Name AsName "," _OptBlank FromNames
+
+ParenthesizedFromNames
+| Name _InsideBlank ")"
+| Name "," _InsideBlank ")"
+| Name "," _InsideBlank ParenthesizedFromNames
+| Name AsName _InsideBlank ")"
+| Name AsName "," _InsideBlank ")"
+| Name AsName "," _InsideBlank ParenthesizedFromNames
+
+ClassDefinition@countClass
+| "class " _OptBlank Name ":" Block
+| "class " _OptBlank Name Call ":" Block
+
+FunctionDefinition@flattenLists@countFunction
+| "def " _OptBlank Name "(" _InsideBlank ")" ":" Block
+| "def " _OptBlank Name "(" _InsideBlank ")" ReturnAnnotation ":" Block
+| "def " _OptBlank Name "(" _InsideBlank Parameters
+| "async def " _OptBlank Name "(" _InsideBlank ")" ":" Block
+| "async def " _OptBlank Name "(" _InsideBlank ")" ReturnAnnotation ":" Block
+| "async def " _OptBlank Name "(" _InsideBlank Parameters
+
+Parameters
+| Parameter ")" ":" Block
+| Parameter ")" ReturnAnnotation ":" Block
+| Parameter "," _InsideBlank ")" ":" Block
+| Parameter "," _InsideBlank ")" ReturnAnnotation ":" Block
+| Parameter "," _InsideBlank Parameters
+
+Parameter
+| Name
+| Name Annotation
+| Name Annotation Default
+| Name Default
+| "*" _OptBlank Name
+| "*" _OptBlank Name Annotation
+| "**" _OptBlank Name
+| "**" _OptBlank Name Annotation
+
+Annotation
+| ":" _OptBlank Expression
+
+Default
+| "=" _OptBlank Expression
+| " =" _OptBlank Expression
+
+ReturnAnnotation
+| "->" _OptBlank Expression
+| " ->" _OptBlank Expression
+
+Decorated@rightRecursiveReduction
+| "@" _OptBlank Expression _TrailComment new_line Decorated
+| "@" _OptBlank Expression _TrailComment new_line FunctionDefinition
+| "@" _OptBlank Expression _TrailComment new_line ClassDefinition
+
+Pass@flattenLists@identifierStatement
+| "pass"
+| "pass" space _OptBlank
+| "pass" KeywordStatement
+
+Break@flattenLists@identifierStatement
+| "break"
+| "break" space _OptBlank
+| "break" KeywordStatement
+
+Continue@flattenLists@identifierStatement
+| "continue"
+| "continue" space _OptBlank
+| "continue" KeywordStatement
+
+Match@countMatch
+| "match " _OptBlank Expression ":" Block
+
+Case@countCase
+| "case " _OptBlank Disjunction ":" Block
+| "case " _OptBlank Disjunction AsName ":" Block
+| "case " _OptBlank Disjunction Guard ":" Block
+| "case " _OptBlank Disjunction AsName Guard ":" Block
+
+Guard
+| " if" _OptBlank Expression
+
+TypeAlias
+| "type " _OptBlank Name _Eq Expression
+| "type " _OptBlank Name "[" _InsideBlank TypeParameters _Eq Expression
+
+TypeParameters@replaceWithChildren
+| TypeParameter "]"
+| TypeParameter "," _InsideBlank TypeParameters
+
+TypeParameter
+| Name
+| Name Annotation
+| Name Default
+| "*" _OptBlank Name
+| "**" _OptBlank Name
+
+ExpressionStatement@flattenLists
+| Expression
+| Expression Assignments
+| Expression AugmentedValue
+| Expression Annotation
+| Expression Annotation AssignedValue
+| Expression "," _OptBlank TargetList
+
+Assignments
+| AssignedValue
+| AssignedValue Assignments
+
+AssignedValue@flattenLists
+| _Eq Expression
+| _Eq Expression "," _OptBlank ExpressionList
+
+AugmentedValue
+| _AugAssign Expression
+
+TargetList
+| Expression Assignments
+| Expression "," _OptBlank TargetList
+| Starred Assignments
+| Starred "," _OptBlank TargetList
+
+ExpressionList
+| Expression
+| Expression "," _OptBlank ExpressionList
+| Starred
+| Starred "," _OptBlank ExpressionList
+
+# An identifier that starts with a standalone keyword ("passed",
+# "return_value"); identifierStatement makes the statement an
+# ExpressionStatement whose first child is this Name.
+KeywordStatement@replaceWithChildren
+| KeywordName
+| KeywordName Trailers
+| KeywordName Assignments
+| KeywordName Trailers Assignments
+| KeywordName AugmentedValue
+| KeywordName Trailers AugmentedValue
+| KeywordName Annotation
+| KeywordName Annotation AssignedValue
+| KeywordName "," _OptBlank TargetList
+
+KeywordName@extendIdentifierStart
+| letter _IdTail
+| digit _IdTail
+| "_" _IdTail
+
+_Eq
+| "=" _OptBlank
+| " =" _OptBlank
+
+_AugAssign
+| "//=" _OptBlank
+| "**=" _OptBlank
+| "<<=" _OptBlank
+| ">>=" _OptBlank
+| "+=" _OptBlank
+| "-=" _OptBlank
+| "*=" _OptBlank
+| "/=" _OptBlank
+| "%=" _OptBlank
+| "@=" _OptBlank
+| "&=" _OptBlank
+| "|=" _OptBlank
+| "^=" _OptBlank
+| " //=" _OptBlank
+| " **=" _OptBlank
+| " <<=" _OptBlank
+| " >>=" _OptBlank
+| " +=" _OptBlank
+| " -=" _OptBlank
+| " *=" _OptBlank
+| " /=" _OptBlank
+| " %=" _OptBlank
+| " @=" _OptBlank
+| " &=" _OptBlank
+| " |=" _OptBlank
+| " ^=" _OptBlank
+
+Name
+| _IdStart _IdTail
+
+_IdStart
+| lowercase_letter
+| uppercase_letter
+| "_"
+
+_IdTail
+| letter _IdTail
+| digit _IdTail
+| "_" _IdTail
+|
+
+_OptBlank
+| space _OptBlank
+|
+
+Number@countNumber
+| "0" _AfterZero
+| _NonZeroDec _ExpTail _ImagTail
+| _NonZeroDec ".0" _DecTail _ExpTail _ImagTail
+| _NonZeroDec ".1" _DecTail _ExpTail _ImagTail
+| _NonZeroDec ".2" _DecTail _ExpTail _ImagTail
+| _NonZeroDec ".3" _DecTail _ExpTail _ImagTail
+| _NonZeroDec ".4" _DecTail _ExpTail _ImagTail
+| _NonZeroDec ".5" _DecTail _ExpTail _ImagTail
+| _NonZeroDec ".6" _DecTail _ExpTail _ImagTail
+| _NonZeroDec ".7" _DecTail _ExpTail _ImagTail
+| _NonZeroDec ".8" _DecTail _ExpTail _ImagTail
+| _NonZeroDec ".9" _DecTail _ExpTail _ImagTail
+| "." digit _DecTail _ExpTail _ImagTail
+
+_NonZeroDec
+| digit^"0" _DecTail
+
+_AfterZero
+| "x" _HexDigit _HexTail _ImagTail
+| "X" _HexDigit _HexTail _ImagTail
+| "o" _OctDigit _OctTail _ImagTail
+| "O" _OctDigit _OctTail _ImagTail
+| "b" _BinDigit _BinTail _ImagTail
+| "B" _BinDigit _BinTail _ImagTail
+| ".0" _DecTail _ExpTail _ImagTail
+| ".1" _DecTail _ExpTail _ImagTail
+| ".2" _DecTail _ExpTail _ImagTail
+| ".3" _DecTail _ExpTail _ImagTail
+| ".4" _DecTail _ExpTail _ImagTail
+| ".5" _DecTail _ExpTail _ImagTail
+| ".6" _DecTail _ExpTail _ImagTail
+| ".7" _DecTail _ExpTail _ImagTail
+| ".8" _DecTail _ExpTail _ImagTail
+| ".9" _DecTail _ExpTail _ImagTail
+| "e" _ExpSign digit _DecTail _ImagTail
+| "E" _ExpSign digit _DecTail _ImagTail
+| "j"
+| "J"
+| "_" digit _DecTail _ExpTail _ImagTail
+| digit _DecTail _ExpTail _ImagTail
+|
+
+_DecTail
+| digit _DecTail
+| "_" digit _DecTail
+|
+
+_ExpTail
+| "e" _ExpSign digit _DecTail
+| "E" _ExpSign digit _DecTail
+|
+
+_ExpSign
+| "+"
+| "-"
+|
+
+_ImagTail
+| "j"
+| "J"
+|
+
+_HexTail
+| _HexDigit _HexTail
+| "_" _HexDigit _HexTail
+|
+
+_OctTail
+| _OctDigit _OctTail
+| "_" _OctDigit _OctTail
+|
+
+_BinTail
+| _BinDigit _BinTail
+| "_" _BinDigit _BinTail
+|
+
+_HexDigit
+| digit
+| "a"
+| "b"
+| "c"
+| "d"
+| "e"
+| "f"
+| "A"
+| "B"
+| "C"
+| "D"
+| "E"
+| "F"
+
+_OctDigit
+| "0"
+| "1"
+| "2"
+| "3"
+| "4"
+| "5"
+| "6"
+| "7"
+
+_BinDigit
+| "0"
+| "1"
+
+String@countString
+| "\u{22}" _DblContent "\u{22}"
+| "'" _SglContent "'"
+| "\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "'''" _TplSglContent "'''"
+| "r\u{22}" _DblContent "\u{22}"
+| "r'" _SglContent "'"
+| "r\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "r'''" _TplSglContent "'''"
+| "R\u{22}" _DblContent "\u{22}"
+| "R'" _SglContent "'"
+| "R\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "R'''" _TplSglContent "'''"
+| "b\u{22}" _DblContent "\u{22}"
+| "b'" _SglContent "'"
+| "b\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "b'''" _TplSglContent "'''"
+| "B\u{22}" _DblContent "\u{22}"
+| "B'" _SglContent "'"
+| "B\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "B'''" _TplSglContent "'''"
+| "u\u{22}" _DblContent "\u{22}"
+| "u'" _SglContent "'"
+| "u\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "u'''" _TplSglContent "'''"
+| "U\u{22}" _DblContent "\u{22}"
+| "U'" _SglContent "'"
+| "U\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "U'''" _TplSglContent "'''"
+| "f\u{22}" _FDblContent "\u{22}"
+| "f'" _FSglContent "'"
+| "f\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "f'''" _TplSglContent "'''"
+| "F\u{22}" _FDblContent "\u{22}"
+| "F'" _FSglContent "'"
+| "F\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "F'''" _TplSglContent "'''"
+| "t\u{22}" _FDblContent "\u{22}"
+| "t'" _FSglContent "'"
+| "t\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "t'''" _TplSglContent "'''"
+| "T\u{22}" _FDblContent "\u{22}"
+| "T'" _FSglContent "'"
+| "T\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "T'''" _TplSglContent "'''"
+| "rb\u{22}" _DblContent "\u{22}"
+| "rb'" _SglContent "'"
+| "rb\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "rb'''" _TplSglContent "'''"
+| "rB\u{22}" _DblContent "\u{22}"
+| "rB'" _SglContent "'"
+| "rB\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "rB'''" _TplSglContent "'''"
+| "Rb\u{22}" _DblContent "\u{22}"
+| "Rb'" _SglContent "'"
+| "Rb\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "Rb'''" _TplSglContent "'''"
+| "RB\u{22}" _DblContent "\u{22}"
+| "RB'" _SglContent "'"
+| "RB\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "RB'''" _TplSglContent "'''"
+| "br\u{22}" _DblContent "\u{22}"
+| "br'" _SglContent "'"
+| "br\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "br'''" _TplSglContent "'''"
+| "bR\u{22}" _DblContent "\u{22}"
+| "bR'" _SglContent "'"
+| "bR\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "bR'''" _TplSglContent "'''"
+| "Br\u{22}" _DblContent "\u{22}"
+| "Br'" _SglContent "'"
+| "Br\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "Br'''" _TplSglContent "'''"
+| "BR\u{22}" _DblContent "\u{22}"
+| "BR'" _SglContent "'"
+| "BR\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "BR'''" _TplSglContent "'''"
+| "fr\u{22}" _FDblContent "\u{22}"
+| "fr'" _FSglContent "'"
+| "fr\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "fr'''" _TplSglContent "'''"
+| "fR\u{22}" _FDblContent "\u{22}"
+| "fR'" _FSglContent "'"
+| "fR\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "fR'''" _TplSglContent "'''"
+| "Fr\u{22}" _FDblContent "\u{22}"
+| "Fr'" _FSglContent "'"
+| "Fr\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "Fr'''" _TplSglContent "'''"
+| "FR\u{22}" _FDblContent "\u{22}"
+| "FR'" _FSglContent "'"
+| "FR\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "FR'''" _TplSglContent "'''"
+| "rf\u{22}" _FDblContent "\u{22}"
+| "rf'" _FSglContent "'"
+| "rf\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "rf'''" _TplSglContent "'''"
+| "rF\u{22}" _FDblContent "\u{22}"
+| "rF'" _FSglContent "'"
+| "rF\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "rF'''" _TplSglContent "'''"
+| "Rf\u{22}" _FDblContent "\u{22}"
+| "Rf'" _FSglContent "'"
+| "Rf\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "Rf'''" _TplSglContent "'''"
+| "RF\u{22}" _FDblContent "\u{22}"
+| "RF'" _FSglContent "'"
+| "RF\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "RF'''" _TplSglContent "'''"
+| "tr\u{22}" _FDblContent "\u{22}"
+| "tr'" _FSglContent "'"
+| "tr\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "tr'''" _TplSglContent "'''"
+| "tR\u{22}" _FDblContent "\u{22}"
+| "tR'" _FSglContent "'"
+| "tR\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "tR'''" _TplSglContent "'''"
+| "Tr\u{22}" _FDblContent "\u{22}"
+| "Tr'" _FSglContent "'"
+| "Tr\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "Tr'''" _TplSglContent "'''"
+| "TR\u{22}" _FDblContent "\u{22}"
+| "TR'" _FSglContent "'"
+| "TR\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "TR'''" _TplSglContent "'''"
+| "rt\u{22}" _FDblContent "\u{22}"
+| "rt'" _FSglContent "'"
+| "rt\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "rt'''" _TplSglContent "'''"
+| "rT\u{22}" _FDblContent "\u{22}"
+| "rT'" _FSglContent "'"
+| "rT\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "rT'''" _TplSglContent "'''"
+| "Rt\u{22}" _FDblContent "\u{22}"
+| "Rt'" _FSglContent "'"
+| "Rt\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "Rt'''" _TplSglContent "'''"
+| "RT\u{22}" _FDblContent "\u{22}"
+| "RT'" _FSglContent "'"
+| "RT\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
+| "RT'''" _TplSglContent "'''"
+
+_DblContent
+| "\\" character _DblContent
+| character^"\u{22}"^"\\"^"\n" _DblContent
+| _Utf8Scalar _DblContent
+|
+
+_SglContent
+| "\\" character _SglContent
+| character^"'"^"\\"^"\n" _SglContent
+| _Utf8Scalar _SglContent
+|
+
+_TplDblContent
+| "\\" character _TplDblContent
+| new_line _TplDblContent
+| character^"\u{22}"^"\\"^"\n" _TplDblContent
+| _Utf8Scalar _TplDblContent
+| "\u{22}" _TplDblQuoteTail
+|
+
+_TplDblQuoteTail
+| "\u{22}" _TplDblQuoteEnd
+| character^"\u{22}"^"\\"^"\n" _TplDblContent
+| "\\" character _TplDblContent
+|
+
+_TplDblQuoteEnd
+| "\u{22}"
+| character^"\u{22}"^"\\"^"\n" _TplDblContent
+| "\\" character _TplDblContent
+|
+
+_TplSglContent
+| "\\" character _TplSglContent
+| new_line _TplSglContent
+| character^"'"^"\\"^"\n" _TplSglContent
+| _Utf8Scalar _TplSglContent
+| "'" _TplSglQuoteTail
+|
+
+_TplSglQuoteTail
+| "'" _TplSglQuoteEnd
+| character^"'"^"\\"^"\n" _TplSglContent
+| "\\" character _TplSglContent
+|
+
+_TplSglQuoteEnd
+| "'"
+| character^"'"^"\\"^"\n" _TplSglContent
+| "\\" character _TplSglContent
+|
+_FDblContent
+| "\\" character _FDblContent
+| "{" _FBody "}" _FDblContent
+| character^"\u{22}"^"\\"^"\n"^"{" _FDblContent
+| _Utf8Scalar _FDblContent
+|
+
+_FSglContent
+| "\\" character _FSglContent
+| "{" _FBody "}" _FSglContent
+| character^"'"^"\\"^"\n"^"{" _FSglContent
+| _Utf8Scalar _FSglContent
+|
+
+_FBody
+| "{" _FBody "}" _FBody
+| "\\" character _FBody
+| String _FBody
+| _Utf8Scalar _FBody
+| character^"{"^"}"^"\\"^"\n"^"\u{22}"^"'" _FBody
+|
+
+_Utf8Scalar
+| _Utf8TwoByte
+| _Utf8ThreeByte
+| _Utf8FourByte
+
+_Utf8TwoByte
+| utf8_lead_two utf8_continuation
+
+_Utf8ThreeByte
+| "\xe0" utf8_continuation_a0_bf utf8_continuation
+| utf8_lead_three_general utf8_continuation utf8_continuation
+| "\xed" utf8_continuation_80_9f utf8_continuation
+
+_Utf8FourByte
+| "\xf0" utf8_continuation_90_bf utf8_continuation utf8_continuation
+| utf8_lead_four_general utf8_continuation utf8_continuation utf8_continuation
+| "\xf4" utf8_continuation_80_8f utf8_continuation
+
+
+
+# Expressions
+#
+# An expression is a flat sequence: prefix operators, an operand with its
+# trailers, then optionally a binary operator and the rest of the sequence.
+# Every optional continuation is a shared prefix, so the generator factors it
+# into a helper that allocates no node; only real operands, operators and
+# trailers allocate. The resolveExpression hook nests each sequence as it
+# reduces: BinaryOperation and UnaryOperation nodes take their operands as
+# children, trailers take their object as first child, and Conditional and
+# NamedExpression take their leading operand. A node's operator is the source
+# text between its children.
+#
+# Disjunction is the same sequence without the conditional and walrus
+# continuations, for positions Python restricts to a disjunction:
+# comprehension iterables and conditions, conditional tests, lambda bodies,
+# walrus values, yield operands and case patterns.
+
+Expression@resolveExpression
+| Name
+| Name Trailers
+| Name BinaryOperation Expression
+| Name Trailers BinaryOperation Expression
+| Name Conditional
+| Name Trailers Conditional
+| Number
+| Number Trailers
+| Number BinaryOperation Expression
+| Number Trailers BinaryOperation Expression
+| Number Conditional
+| Number Trailers Conditional
+| String
+| String Trailers
+| String BinaryOperation Expression
+| String Trailers BinaryOperation Expression
+| String Conditional
+| String Trailers Conditional
+| Constant
+| Constant Trailers
+| Constant BinaryOperation Expression
+| Constant Trailers BinaryOperation Expression
+| Constant Conditional
+| Constant Trailers Conditional
+| Parenthesized
+| Parenthesized Trailers
+| Parenthesized BinaryOperation Expression
+| Parenthesized Trailers BinaryOperation Expression
+| Parenthesized Conditional
+| Parenthesized Trailers Conditional
+| List
+| List Trailers
+| List BinaryOperation Expression
+| List Trailers BinaryOperation Expression
+| List Conditional
+| List Trailers Conditional
+| Brace
+| Brace Trailers
+| Brace BinaryOperation Expression
+| Brace Trailers BinaryOperation Expression
+| Brace Conditional
+| Brace Trailers Conditional
+| Name NamedExpression
+| UnaryOperation Expression
+| Lambda
+| Yield
+
+Disjunction@resolveExpression
+| Name
+| Name Trailers
+| Name BinaryOperation Disjunction
+| Name Trailers BinaryOperation Disjunction
+| Number
+| Number Trailers
+| Number BinaryOperation Disjunction
+| Number Trailers BinaryOperation Disjunction
+| String
+| String Trailers
+| String BinaryOperation Disjunction
+| String Trailers BinaryOperation Disjunction
+| Constant
+| Constant Trailers
+| Constant BinaryOperation Disjunction
+| Constant Trailers BinaryOperation Disjunction
+| Parenthesized
+| Parenthesized Trailers
+| Parenthesized BinaryOperation Disjunction
+| Parenthesized Trailers BinaryOperation Disjunction
+| List
+| List Trailers
+| List BinaryOperation Disjunction
+| List Trailers BinaryOperation Disjunction
+| Brace
+| Brace Trailers
+| Brace BinaryOperation Disjunction
+| Brace Trailers BinaryOperation Disjunction
+| UnaryOperation Disjunction
+
+BinaryOperation
+| " or" _OptBlank
+| " and" _OptBlank
+| " not" space _OptBlank "in" _OptBlank
+| " in" _OptBlank
+| " is" _OptBlank
+| "==" _OptBlank
+| "!=" _OptBlank
+| "<" _OptBlank _OptEqual
+| ">" _OptBlank _OptEqual
+| " ==" _OptBlank
+| " !=" _OptBlank
+| " <" _OptBlank _OptEqual
+| " >" _OptBlank _OptEqual
+| "|" _OptBlank
+| " |" _OptBlank
+| "^" _OptBlank
+| " ^" _OptBlank
+| "&" _OptBlank
+| " &" _OptBlank
+| "<<" _OptBlank
+| ">>" _OptBlank
+| " <<" _OptBlank
+| " >>" _OptBlank
+| "+" _OptBlank
+| "-" _OptBlank
+| " +" _OptBlank
+| " -" _OptBlank
+| "*" _OptBlank
+| "/" _OptBlank _OptSlash
+| "%" _OptBlank
+| "@" _OptBlank
+| " *" _OptBlank
+| " /" _OptBlank _OptSlash
+| " %" _OptBlank
+| " @" _OptBlank
+| "**" _OptBlank
+| " **" _OptBlank
+
+_OptEqual
+| "=" _OptBlank
+|
+
+_OptSlash
+| "/" _OptBlank
+|
+
+UnaryOperation
+| "not " _OptBlank
+| "await " _OptBlank
+| "+" _OptBlank
+| "-" _OptBlank
+| "~" _OptBlank
+
+Conditional
+| " if" _OptBlank Disjunction " else" _OptBlank Expression
+
+NamedExpression
+| ":=" _OptBlank Disjunction
+| " :=" _OptBlank Disjunction
+
+Lambda@flattenLists
+| "lambda:" _OptBlank Disjunction
+| "lambda " _OptBlank ":" _OptBlank Disjunction
+| "lambda " _OptBlank LambdaParameters
+
+LambdaParameters
+| LambdaParameter ":" _OptBlank Disjunction
+| LambdaParameter "," _OptBlank LambdaParameters
+
+LambdaParameter
+| "**" _OptBlank Name
+| "*" _OptBlank Name
+| Name
+| Name "=" _OptBlank Expression
+| Name " =" _OptBlank Expression
+
+Yield
+| "yield " _OptBlank "from " _OptBlank Disjunction
+| "yield " _OptBlank "from(" _OptBlank Disjunction ")"
+| "yield " _OptBlank Disjunction
+| "yield" _YieldBare
+
+_YieldBare
+| letter _IdTail
+| digit _IdTail
+| "_" _IdTail
+|
+
+Constant
+| "True" _TrueTail
+| "False" _FalseTail
+| "None" _NoneTail
+| "..."
+
+_TrueTail
+| letter _IdTail
+| digit _IdTail
+| "_" _IdTail
+|
+
+_FalseTail
+| letter _IdTail
+| digit _IdTail
+| "_" _IdTail
+|
+
+_NoneTail
+| letter _IdTail
+| digit _IdTail
+| "_" _IdTail
+|
+
+Starred
+| "*" _OptBlank Expression
+
+DoubleStarred
+| "**" _OptBlank Expression
+
+Parenthesized@flattenLists
+| "(" _InsideBlank ")"
+| "(" _InsideBlank ParenthesizedItems
+
+ParenthesizedItems
+| Expression ")"
+| Expression "," _InsideBlank ")"
+| Expression "," _InsideBlank ParenthesizedItems
+| Expression Comprehension ")"
+| Starred ")"
+| Starred "," _InsideBlank ")"
+| Starred "," _InsideBlank ParenthesizedItems
+
+List@flattenLists
+| "[" _InsideBlank "]"
+| "[" _InsideBlank ListItems
+
+ListItems
+| Expression "]"
+| Expression "," _InsideBlank "]"
+| Expression "," _InsideBlank ListItems
+| Expression Comprehension "]"
+| Starred "]"
+| Starred "," _InsideBlank "]"
+| Starred "," _InsideBlank ListItems
+
+Brace@flattenLists
+| "{" _InsideBlank "}"
+| "{" _InsideBlank BraceItems
+
+BraceItems
+| Expression "}"
+| Expression "," _InsideBlank "}"
+| Expression "," _InsideBlank BraceItems
+| Expression Comprehension "}"
+| Expression DictionaryValue "}"
+| Expression DictionaryValue "," _InsideBlank "}"
+| Expression DictionaryValue "," _InsideBlank BraceItems
+| Expression DictionaryValue Comprehension "}"
+| DoubleStarred "}"
+| DoubleStarred "," _InsideBlank "}"
+| DoubleStarred "," _InsideBlank BraceItems
+
+DictionaryValue
+| ":" _InsideBlank Expression
+
+Comprehension@flattenLists
+| " for" _OptBlank ComprehensionTargets
+| " async" _OptBlank "for" _OptBlank ComprehensionTargets
+
+ComprehensionTargets
+| Name "," _OptBlank ComprehensionTargets
+| Name " in" _OptBlank Disjunction
+| Name " in" _OptBlank Disjunction ComprehensionTail
+
+ComprehensionTail
+| " if" _OptBlank Disjunction
+| " if" _OptBlank Disjunction ComprehensionTail
+| Comprehension
+
+Trailers@replaceWithChildren
+| Call
+| Call Trailers
+| Subscript
+| Subscript Trailers
+| Attribute
+| Attribute Trailers
+
+Call@flattenLists
+| "(" _InsideBlank ")"
+| "(" _InsideBlank CallArguments
+
+CallArguments
+| Expression _InsideBlank ")"
+| Expression "," _InsideBlank ")"
+| Expression "," _InsideBlank CallArguments
+| Expression Comprehension _InsideBlank ")"
+| Expression KeywordValue _InsideBlank ")"
+| Expression KeywordValue "," _InsideBlank ")"
+| Expression KeywordValue "," _InsideBlank CallArguments
+| Starred _InsideBlank ")"
+| Starred "," _InsideBlank ")"
+| Starred "," _InsideBlank CallArguments
+| DoubleStarred _InsideBlank ")"
+| DoubleStarred "," _InsideBlank ")"
+| DoubleStarred "," _InsideBlank CallArguments
+
+KeywordValue
+| "=" _OptBlank Expression
+
+Subscript@flattenLists
+| "[" _InsideBlank SubscriptItems
+
+SubscriptItems
+| Expression "]"
+| Expression "," _InsideBlank "]"
+| Expression "," _InsideBlank SubscriptItems
+| Expression Slice "]"
+| Expression Slice "," _InsideBlank SubscriptItems
+| Slice "]"
+| Slice "," _InsideBlank SubscriptItems
+| Starred "]"
+| Starred "," _InsideBlank SubscriptItems
+
+Slice
+| ":" _InsideBlank
+| ":" _InsideBlank Expression
+| ":" _InsideBlank ":" _OptBlank
+| ":" _InsideBlank ":" _OptBlank Expression
+| ":" _InsideBlank Expression ":" _OptBlank
+| ":" _InsideBlank Expression ":" _OptBlank Expression
+
+Attribute
+| "." _OptBlank Name
+
+_InsideBlank
+| space _InsideBlank
+| new_line _InsideBlank
+| block_start _InsideBlank
+| block_end _InsideBlank
+| "#"@>"\n"^ _InsideBlank
+|

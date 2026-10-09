@@ -32,7 +32,7 @@ features:
 
 ## Try it live
 
-Four live parsers in your browser — parsing runs locally in WebAssembly,
+Five live parsers in your browser — parsing runs locally in WebAssembly,
 nothing is uploaded. Type below or drop in a file.
 
 <ClientOnly>

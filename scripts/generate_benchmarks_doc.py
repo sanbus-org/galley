@@ -347,7 +347,7 @@ def section_bundled_grammar_coverage() -> str:
             "## Bundled Grammar Coverage\n",
             "Galley benchmarks track parser throughput across grammar shapes. "
             "JSON is also the head-to-head comparison target because mature third-party parsers "
-            "exist for it (see [BENCHMARKS.md](BENCHMARKS.md)); Lisp, Lua, and the grammar parser "
+            "exist for it (see [BENCHMARKS.md](BENCHMARKS.md)); Lisp, Lua, Python, and the grammar parser "
             "exercise different language shapes and should not be read as direct comparisons "
             "against JSON.\n",
             md_table(headers, rows),

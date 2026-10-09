@@ -27,7 +27,7 @@ Form
 
 # -- Quote abbreviations (read macros) ---------------------
 
-Abbreviation
+Abbreviation@countAbbrev
 | "'" _OptionalBlankTail Form
 | "`" _OptionalBlankTail Form
 | "," "@" _OptionalBlankTail Form
@@ -35,7 +35,7 @@ Abbreviation
 
 # -- Lists: proper and dotted pairs ------------------------
 
-List
+List@countList
 | "(" _OptionalBlankTail ListBody ")"
 
 ListBody
@@ -56,7 +56,7 @@ ListBodyAfterBlank
 # Booleans, characters, vectors, bytevectors, radix numbers,
 # datum comments (#;), and block comments (#| ... |#).
 
-HashForm
+HashForm@countHash
 | "#t" BooleanTrueTail
 | "#f" BooleanFalseTail
 | "#\\" CharacterContent
@@ -239,7 +239,7 @@ BlockCommentAfterPipe
 
 # -- Strings with escape sequences -------------------------
 
-String
+String@countString
 | "\u{22}" _StringContent "\u{22}"
 
 _StringContent
@@ -261,7 +261,7 @@ _EscapeSequence
 
 # -- Escaped symbols ---------------------------------------
 
-EscapedSymbol
+EscapedSymbol@countEscaped
 | "|" _EscapedSymbolContent "|" _SymbolTail
 
 _EscapedSymbolContent
@@ -275,7 +275,7 @@ _EscapedSymbolContent
 # Signed numbers are expressed as (- 1) or (negate x) by convention.
 # Radix numbers (#b #o #x) are in HashForm. + and - are symbols.
 
-DecimalNumber
+DecimalNumber@countNumber
 | digit _DigitTail "/" digit _DigitTail
 | digit _DigitTail "." digit _DigitTail ExponentTail
 | digit _DigitTail ExponentTail
@@ -312,7 +312,7 @@ ExpSign
 # R7RS-style identifiers. + and - are valid initials, enabling +, -, ->,
 # string->number, set!, call/cc, and :keyword to parse as symbols.
 
-Symbol
+Symbol@countSymbol
 | _SymbolInitial _SymbolTail
 
 _SymbolInitial

@@ -13,10 +13,10 @@
 export const stats = {
   object: 0,
   array: 0,
-  number: 0,
   string: 0,
-  null: 0,
+  number: 0,
   boolean: 0,
+  null: 0,
   key: 0,
 };
 

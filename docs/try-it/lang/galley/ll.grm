@@ -23,14 +23,14 @@ RightHandSides
 RightHandSideLine@!"\n"^
 | "|" AnnotationTail RightHandSide NewLine
 
-RightHandSide
+RightHandSide@countAlternative
 | space Symbol@!^"\n" AnnotationTail RightHandSide
 |
 
 Symbol
-| VariableSymbol
-| TerminalSymbol
-| GenerativeTerminalSymbol
+|@countVariable VariableSymbol
+|@countTerminal TerminalSymbol
+|@countGenerative GenerativeTerminalSymbol
 
 VariableSymbol
 | UppercaseId
@@ -57,7 +57,7 @@ AnnotationTail
 | "@" Annotation AnnotationTail
 |
 
-Annotation
+Annotation@countAnnotation
 | Procedure
 | "!" RecoveryPoint
 | ">" VerbatimMarker
@@ -142,7 +142,7 @@ BlockStart
 BlockEnd
 | block_end Comment
 
-CommentLine
+CommentLine@countComment
 | "#"@>^"\n" new_line
 
 Comment
