@@ -27,6 +27,27 @@ pub const GeneratedParserModule = struct {
     parser_mod: *std.Build.Module,
 };
 
+/// Whether a module is registered on the build for dependent packages
+/// (`b.module(name)`) or kept private to this build graph. A second
+/// instance of the same graph — built for another target — must be private:
+/// registration rejects duplicate names.
+pub const ModuleRegistration = enum {
+    exposed,
+    private,
+};
+
+fn registeredModule(
+    b: *std.Build,
+    registration: ModuleRegistration,
+    name: []const u8,
+    options: std.Build.Module.CreateOptions,
+) *std.Build.Module {
+    return switch (registration) {
+        .exposed => b.addModule(name, options),
+        .private => b.createModule(options),
+    };
+}
+
 /// The process-wide signal registry, registered once per build graph and
 /// shared by every runtime instantiation in it. Idempotent: repeated calls
 /// return the existing registration instead of silently overwriting it.
@@ -41,6 +62,18 @@ pub fn sharedSignalsModule(b: *std.Build) *std.Build.Module {
     return signals_mod;
 }
 
+/// True when `target` compiles for the machine doing the building: same
+/// arch, OS, and ABI, and every CPU feature it enables is one the host
+/// supports (`-Dcpu` can add features a native triple otherwise lacks).
+/// Only then may a build-time tool share the product's module graph: the
+/// build must be able to execute everything it compiles for itself.
+fn targetsHostPlatform(target: std.Build.ResolvedTarget, host: std.Build.ResolvedTarget) bool {
+    return target.result.cpu.arch == host.result.cpu.arch and
+        target.result.os.tag == host.result.os.tag and
+        target.result.abi == host.result.abi and
+        host.result.cpu.features.isSuperSetOf(target.result.cpu.features);
+}
+
 pub fn runtimeLinkLibC(target: std.Build.ResolvedTarget) ?bool {
     return switch (target.result.os.tag) {
         .linux, .macos => true,
@@ -52,8 +85,10 @@ pub fn addGeneratedParserModule(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
-    runtime_module_name: []const u8,
-    parser_module_name: []const u8,
+    // Non-null names register the modules for dependent packages;
+    // null keeps them private to this build graph.
+    runtime_module_name: ?[]const u8,
+    parser_module_name: ?[]const u8,
     parser_source: std.Build.LazyPath,
     procedures_mod: *std.Build.Module,
     config_mod: *std.Build.Module,
@@ -61,12 +96,16 @@ pub fn addGeneratedParserModule(
     runtime_options_mod: *std.Build.Module,
     signals_mod: *std.Build.Module,
 ) GeneratedParserModule {
-    const parser_mod = b.addModule(parser_module_name, .{
+    const parser_module_options: std.Build.Module.CreateOptions = .{
         .root_source_file = parser_source,
         .target = target,
         .optimize = optimize,
-    });
-    const runtime_mod = b.addModule(runtime_module_name, .{
+    };
+    const parser_mod = if (parser_module_name) |name|
+        b.addModule(name, parser_module_options)
+    else
+        b.createModule(parser_module_options);
+    const runtime_module_options: std.Build.Module.CreateOptions = .{
         .root_source_file = b.path("src/runtime/api.zig"),
         .target = target,
         .optimize = optimize,
@@ -79,7 +118,11 @@ pub fn addGeneratedParserModule(
             .{ .name = "runtime_options", .module = runtime_options_mod },
             .{ .name = "signals", .module = signals_mod },
         },
-    });
+    };
+    const runtime_mod = if (runtime_module_name) |name|
+        b.addModule(name, runtime_module_options)
+    else
+        b.createModule(runtime_module_options);
     connectParserModules(runtime_mod, procedures_mod, config_mod, error_messages_mod, parser_mod);
 
     return .{
@@ -399,21 +442,38 @@ pub const LanguageParser = struct {
     parser_mod: *std.Build.Module,
 };
 
+/// The build options that shape the generator graph. Read once per build
+/// with `readGeneratorBuildOptions`: `b.option` rejects a second declaration
+/// of the same name, so graph construction itself must not read options.
+pub const GeneratorBuildOptions = struct {
+    ast_memory_benchmark: bool,
+    syntax_error_stack_depth: usize,
+};
+
+pub fn readGeneratorBuildOptions(b: *std.Build) GeneratorBuildOptions {
+    return .{
+        .ast_memory_benchmark = b.option(
+            bool,
+            "ast-memory-benchmark",
+            "Instrument AST allocation and report final AST memory usage",
+        ) orelse false,
+        .syntax_error_stack_depth = b.option(
+            usize,
+            "syntax-error-stack-depth",
+            "Override the in-progress variable stack depth used in LL syntax error messages (defaults to 5 in debug and 1 in release builds; a value above 1 enables the stack)",
+        ) orelse 0,
+    };
+}
+
 pub fn addGeneratorModules(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
+    registration: ModuleRegistration,
+    build_options: GeneratorBuildOptions,
 ) GeneratorModules {
-    const ast_memory_benchmark = b.option(
-        bool,
-        "ast-memory-benchmark",
-        "Instrument AST allocation and report final AST memory usage",
-    ) orelse false;
-    const syntax_error_stack_depth = b.option(
-        usize,
-        "syntax-error-stack-depth",
-        "Override the in-progress variable stack depth used in LL syntax error messages (defaults to 5 in debug and 1 in release builds; a value above 1 enables the stack)",
-    ) orelse 0;
+    const ast_memory_benchmark = build_options.ast_memory_benchmark;
+    const syntax_error_stack_depth = build_options.syntax_error_stack_depth;
     const runtime_options = b.addOptions();
     runtime_options.addOption(bool, "include_tests", false);
     runtime_options.addOption(bool, "ast_memory_benchmark", ast_memory_benchmark);
@@ -421,31 +481,31 @@ pub fn addGeneratorModules(
     const runtime_options_mod = runtime_options.createModule();
     const signals_mod = sharedSignalsModule(b);
 
-    const generator_common_mod = b.addModule("generator_common", .{
+    const generator_common_mod = registeredModule(b, registration, "generator_common", .{
         .root_source_file = b.path("src/generator/common.zig"),
         .target = target,
         .optimize = optimize,
     });
-    const generator_switch_plan_mod = b.addModule("generator_switch_plan", .{
+    const generator_switch_plan_mod = registeredModule(b, registration, "generator_switch_plan", .{
         .root_source_file = b.path("src/generator/switch_plan.zig"),
         .target = target,
         .optimize = optimize,
     });
     generator_switch_plan_mod.addImport("generator_common", generator_common_mod);
-    const generator_emitter_common_mod = b.addModule("generator_emitter_common", .{
+    const generator_emitter_common_mod = registeredModule(b, registration, "generator_emitter_common", .{
         .root_source_file = b.path("src/generator/emitter_common.zig"),
         .target = target,
         .optimize = optimize,
     });
     generator_emitter_common_mod.addImport("generator_common", generator_common_mod);
     generator_emitter_common_mod.addImport("generator_switch_plan", generator_switch_plan_mod);
-    const generator_config_file_mod = b.addModule("generator_config_file", .{
+    const generator_config_file_mod = registeredModule(b, registration, "generator_config_file", .{
         .root_source_file = b.path("src/generator/config_file.zig"),
         .target = target,
         .optimize = optimize,
     });
     generator_config_file_mod.addImport("generator_common", generator_common_mod);
-    const ll_generator_mod = b.addModule("ll_generator", .{
+    const ll_generator_mod = registeredModule(b, registration, "ll_generator", .{
         .root_source_file = b.path("src/generator/ll.zig"),
         .target = target,
         .optimize = optimize,
@@ -453,7 +513,7 @@ pub fn addGeneratorModules(
     ll_generator_mod.addImport("generator_common", generator_common_mod);
     ll_generator_mod.addImport("generator_emitter_common", generator_emitter_common_mod);
     ll_generator_mod.addImport("generator_switch_plan", generator_switch_plan_mod);
-    const lr_generator_mod = b.addModule("lr_generator", .{
+    const lr_generator_mod = registeredModule(b, registration, "lr_generator", .{
         .root_source_file = b.path("src/generator/lr.zig"),
         .target = target,
         .optimize = optimize,
@@ -467,23 +527,24 @@ pub fn addGeneratorModules(
         optimize,
         generator_common_mod,
     );
-    const galley_grammar_config_mod = b.addModule("galley_grammar_config", .{
+    const galley_grammar_config_mod = registeredModule(b, registration, "galley_grammar_config", .{
         .root_source_file = b.path("languages/galley/config.zig"),
         .target = target,
         .optimize = optimize,
     });
-    const galley_grammar_error_messages_mod = b.addModule("galley_grammar_ll_error_messages", .{
+    const galley_grammar_error_messages_mod = registeredModule(b, registration, "galley_grammar_ll_error_messages", .{
         .root_source_file = b.path("languages/galley/ll_error_messages.zig"),
         .target = target,
         .optimize = optimize,
     });
     const galley_seed_parser = addGalleySeedParser(b);
+    const exposed = registration == .exposed;
     const galley_grammar = addGeneratedParserModule(
         b,
         target,
         optimize,
-        "galley_grammar",
-        "galley_grammar_parser",
+        if (exposed) "galley_grammar" else null,
+        if (exposed) "galley_grammar_parser" else null,
         galley_seed_parser,
         galley_grammar_procedures_mod,
         galley_grammar_config_mod,
@@ -493,7 +554,7 @@ pub fn addGeneratorModules(
     );
     const galley_grammar_library_mod = galley_grammar.runtime_mod;
 
-    const galley_generator_mod = b.addModule("galley_generator", .{
+    const galley_generator_mod = registeredModule(b, registration, "galley_generator", .{
         .root_source_file = b.path("src/generator/api.zig"),
         .target = target,
         .optimize = optimize,
@@ -635,12 +696,24 @@ pub fn addGalleyCli(
 
     var generate_parser_file_exe: ?*std.Build.Step.Compile = null;
     if (options.include_generate_parser_file) {
+        // The build spawns this tool, so a cross -Dtarget must never reach
+        // it: its graph is rebuilt for the host, while a same-platform
+        // target reuses the product graph.
+        const crosses_host = !targetsHostPlatform(target, b.graph.host);
+        const tool_target = if (crosses_host) b.graph.host else target;
+        const tool_generator = if (crosses_host)
+            addGeneratorModules(b, tool_target, optimize, .private, .{
+                .ast_memory_benchmark = generator.ast_memory_benchmark,
+                .syntax_error_stack_depth = generator.syntax_error_stack_depth,
+            })
+        else
+            generator;
         const generate_parser_file_mod = b.createModule(.{
             .root_source_file = b.path("src/tools/generate_parser_file.zig"),
-            .target = target,
+            .target = tool_target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "galley_generator", .module = generator.galley_generator_mod },
+                .{ .name = "galley_generator", .module = tool_generator.galley_generator_mod },
             },
         });
         generate_parser_file_exe = b.addExecutable(.{
@@ -815,11 +888,35 @@ pub fn addBenchmark(
     benchmark_step.dependOn(&install_benchmark_artifact.step);
 
     const benchmark_run_step = b.step(benchmark_run_step_name, benchmark_description);
-    const benchmark_run_cmd = b.addRunArtifact(benchmark_exe);
-    benchmark_run_step.dependOn(&benchmark_run_cmd.step);
-    benchmark_run_cmd.step.dependOn(&install_benchmark_artifact.step);
+    if (target.result.os.tag == .wasi) {
+        const benchmark_run_step_dep = addWasmRunStep(b, benchmark_exe);
+        benchmark_run_step.dependOn(benchmark_run_step_dep);
+        benchmark_run_step_dep.dependOn(&install_benchmark_artifact.step);
+    } else {
+        const benchmark_run_cmd = b.addRunArtifact(benchmark_exe);
+        benchmark_run_step.dependOn(&benchmark_run_cmd.step);
+        benchmark_run_cmd.step.dependOn(&install_benchmark_artifact.step);
+        benchmark_run_cmd.addPassthruArgs();
+    }
+}
 
-    benchmark_run_cmd.addPassthruArgs();
+/// Runs a wasm exe via wasmtime, falling back to Node with
+/// scripts/run-wasm.mjs, or failing with installation guidance.
+fn addWasmRunStep(b: *std.Build, wasm_exe: *std.Build.Step.Compile) *std.Build.Step {
+    if (b.findProgram(.{ .names = &.{"wasmtime"} })) |wasmtime| {
+        const run_cmd = b.addSystemCommand(&.{ wasmtime, "--dir=.", "-Sinherit-env" });
+        run_cmd.addFileArg(wasm_exe.getEmittedBin());
+        run_cmd.addPassthruArgs();
+        return &run_cmd.step;
+    }
+    if (b.findProgram(.{ .names = &.{"node"} })) |node| {
+        const run_cmd = b.addSystemCommand(&.{node});
+        run_cmd.addFileArg(b.path("scripts/run-wasm.mjs"));
+        run_cmd.addFileArg(wasm_exe.getEmittedBin());
+        run_cmd.addPassthruArgs();
+        return &run_cmd.step;
+    }
+    return &b.addFail("cannot run wasm binary: neither wasmtime nor node found on PATH; install wasmtime (recommended) or node").step;
 }
 
 pub fn addDelegatedTestStep(

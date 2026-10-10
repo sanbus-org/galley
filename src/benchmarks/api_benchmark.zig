@@ -12,6 +12,7 @@ const Options = struct {
 
 pub fn main(init: std.process.Init) !void {
     const options = try parseArgs(init);
+    defer if (options.input_path) |path| init.gpa.free(path);
     const input_path = options.input_path orelse {
         printUsage();
         return error.MissingInput;
@@ -95,6 +96,9 @@ fn percentage(numerator: usize, denominator: usize) f64 {
 
 fn parseArgs(init: std.process.Init) !Options {
     var options = Options{};
+    // The iterator owns its argument buffer and frees it at deinit, so the
+    // input path must be copied before it escapes this function.
+    errdefer if (options.input_path) |path| init.gpa.free(path);
     var args = try std.process.Args.Iterator.initAllocator(init.minimal.args, init.gpa);
     defer args.deinit();
 
@@ -121,7 +125,7 @@ fn parseArgs(init: std.process.Init) !Options {
             std.debug.print("error: unknown argument: {s}\n", .{arg});
             return error.UnknownArgument;
         } else if (options.input_path == null) {
-            options.input_path = arg;
+            options.input_path = try init.gpa.dupe(u8, arg);
         } else {
             std.debug.print("error: unexpected positional argument: {s}\n", .{arg});
             return error.UnexpectedArgument;

@@ -7,7 +7,13 @@ const test_selection = @import("build/test_selection.zig");
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const generator = common.addGeneratorModules(b, target, optimize);
+    const generator = common.addGeneratorModules(
+        b,
+        target,
+        optimize,
+        .exposed,
+        common.readGeneratorBuildOptions(b),
+    );
     const galley_cli = common.addGalleyCli(b, target, optimize, generator, .{
         .install_default = true,
         .add_galley_step = true,
