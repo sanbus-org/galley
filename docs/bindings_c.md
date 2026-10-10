@@ -415,8 +415,9 @@ Chains passed to edit functions must be detached orphans; edits never
 invalidate other addresses. Indexes and counts must stay within the
 siblings and children present. An index or count past the end returns
 `galley_error_invalid_node` in every build. The other rules are checked only
-in Debug builds, where a failed check aborts the process: in other builds,
-passing an attached chain corrupts the tree.
+in builds with runtime safety (Debug and ReleaseSafe), where a failed check
+aborts the process: in ReleaseFast and ReleaseSmall builds, passing an
+attached chain corrupts the tree.
 
 ```c
 GalleyNodeAddress head;

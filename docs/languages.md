@@ -11,10 +11,11 @@
   - [JSON Augmented (`languages/json-augmented`)](#json-augmented-languagesjson-augmented)
   - [Lisp (`languages/lisp`)](#lisp-languageslisp)
   - [Lua (`languages/lua`)](#lua-languageslua)
+  - [Python (`languages/python`)](#python-languagespython)
   - [Indentation (`languages/indentation`)](#indentation-languagesindentation)
   - [Grammar Parser (`languages/galley`)](#grammar-parser-languagesgalley)
 - [Choosing Between LL and LR](#choosing-between-ll-and-lr)
-- [Building and Running Included Languages](#building-and-running-included-languages)
+- [Generating and Benchmarking Included Languages](#generating-and-benchmarking-included-languages)
 
 ---
 
@@ -86,6 +87,15 @@ A Lisp grammar covering lists, symbols, numbers, strings, reader macros, comment
 A Lua grammar that demonstrates keyword-led statements, function declarations, returns, function-call expressions, integer literals, strings, comments, and keyed table constructors.
 
 - **Parser Engines:** `ll.grm` is provided.
+
+### Python (`languages/python`)
+
+A Python 3.14 grammar covering statements, indented suites, decorators,
+`match`/`case`, comprehensions, f-strings and full operator precedence.
+
+- **Parser Engines:** `ll.grm` is provided.
+- **Indentation lexing:** `config.zig` enables `indentation_syntax` and
+  `newline_after_block_end`.
 
 ### Indentation (`languages/indentation`)
 

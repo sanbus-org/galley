@@ -279,7 +279,7 @@ fn ASTAllocatorWithPointer(comptime PayloadType: type, comptime PointerType: typ
         /// goes through `setParent` or `setChainParent`.
         pub inline fn attachParent(self: *Self, address: NodeType.Pointer, parent: NodeType.Pointer) void {
             const node = self.at(address);
-            if (comptime builtin.mode == .debug) std.debug.assert(node.parent == invalid_pointer);
+            if (comptime std.debug.runtime_safety) std.debug.assert(node.parent == invalid_pointer);
             node.parent = parent;
         }
 
@@ -563,7 +563,7 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
         }
 
         fn debugAssertInsertable(node_allocator: NodeAllocator, anchor_address: Pointer, first_node: Pointer, index: ?usize) void {
-            if (comptime builtin.mode == .debug) {
+            if (comptime std.debug.runtime_safety) {
                 std.debug.assert(insertionFault(node_allocator, anchor_address, first_node, index) == null);
             }
         }
@@ -598,7 +598,7 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
         }
 
         fn debugAssertRemovable(node_allocator: NodeAllocator, anchor_address: Pointer, index: ?usize, count: usize) void {
-            if (comptime builtin.mode == .debug) {
+            if (comptime std.debug.runtime_safety) {
                 std.debug.assert(removalFault(node_allocator, anchor_address, index, count) == null);
             }
         }

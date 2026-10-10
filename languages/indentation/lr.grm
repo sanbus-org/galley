@@ -165,16 +165,6 @@ StringContent
 | character^"\u{22}" StringContent
 |
 
-LogicCondition
-| Condition WrappedLogicBody ElsePart
-
-ElsePart
-| "e" WrappedLogicBody
-|
-
-Condition
-| Id Operator Id
-
 Operator
 | operator
 | "{" Expression "}"
@@ -186,9 +176,6 @@ Blank
 OptionalBlank
 | Blank OptionalBlank
 |
-
-ForceBlank
-| Blank OptionalBlank
 
 OptionalNewLineMany
 | new_line OptionalNewLineMany

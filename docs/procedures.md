@@ -300,8 +300,8 @@ construction is enabled. Code that allocates or restructures tree nodes must
 use those fields and intentionally fails to compile in no-AST mode.
 
 Tree edits go through the public `Node` functions (`insertBefore`,
-`removeSelf`, `cleanChildren`, ...). They assert misuse in Debug builds only;
-release builds do not check, and misuse corrupts the tree. The `immediate*`
+`removeSelf`, `cleanChildren`, ...). They assert misuse in builds with runtime safety (Debug and ReleaseSafe);
+ReleaseFast and ReleaseSmall builds do not check, and misuse corrupts the tree. The `immediate*`
 tier is internal to generated parsers (see
 [Immediate Tree Edits](/architecture#immediate-tree-edits)).
 
