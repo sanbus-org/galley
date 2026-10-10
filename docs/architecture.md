@@ -122,7 +122,7 @@ When the LL planner finds two productions of a variable that share a terminal, i
 
 ## Role of the Self-Hosted Generator
 
-The grammar analysis engine is self-hosted in Zig. Galley ships an LL seed parser for its own grammar format in `languages/galley/_ll-parser.zig`. The seed parser constructs the grammar model; the generator API then:
+The grammar analysis engine is self-hosted in Zig. Galley ships an LL seed parser for its own grammar format as `languages/galley/_ll-parser.zig.zst`; the build expands it to `_ll-parser.zig` (gitignored) when that file is absent. The seed parser constructs the grammar model; the generator API then:
 
 1. Validates the parsed grammar model.
 2. Computes FIRST, FOLLOW, and nullable sets.

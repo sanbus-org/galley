@@ -11,6 +11,9 @@ pub fn build(b: *std.Build) !void {
 
     _ = common.sharedSignalsModule(b);
     const generator = common.addGeneratorModules(b, target, optimize);
+    // The expanded seed parser, for consumers that parse Galley grammars with
+    // `addParserModule` (`.parser_source = galley.namedLazyPath(...)`).
+    b.addNamedLazyPath("galley_seed_parser", generator.galley_seed_parser);
     _ = common.addGalleyCli(b, target, optimize, generator, .{
         .install_default = true,
         .add_galley_step = true,

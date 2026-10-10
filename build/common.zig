@@ -18,6 +18,8 @@ pub const GeneratorModules = struct {
     galley_grammar_procedures_mod: *std.Build.Module,
     galley_grammar_library_mod: *std.Build.Module,
     galley_generator_mod: *std.Build.Module,
+    /// Source of Galley's own LL parser, the bootstrap seed. See `addGalleySeedParser`.
+    galley_seed_parser: std.Build.LazyPath,
 };
 
 pub const GeneratedParserModule = struct {
@@ -341,6 +343,36 @@ pub fn addGalleyGrammarProceduresModule(
     return procedures_mod;
 }
 
+const galley_seed_directory = "languages/galley";
+const galley_seed_file_name = "_ll-parser.zig";
+
+/// Galley's own LL parser bootstraps the generator, so it must exist before
+/// any parser can be generated. The expanded file is gitignored because it
+/// is large; the repository tracks only `_ll-parser.zig.zst`. A present
+/// `_ll-parser.zig` (a local regeneration) wins; otherwise the compressed
+/// seed is expanded by a small tool that needs nothing beyond Zig.
+fn addGalleySeedParser(b: *std.Build) std.Build.LazyPath {
+    const expanded_path = galley_seed_directory ++ "/" ++ galley_seed_file_name;
+    // Whether the expanded file exists decides the source; the directory's
+    // entries cover it appearing or vanishing.
+    declareConfigureDependencyIfPresent(b, galley_seed_directory);
+    if (b.root.access(b.graph.io, expanded_path, .{})) |_| {
+        return b.path(expanded_path);
+    } else |_| {}
+
+    const expand_seed_exe = b.addExecutable(.{
+        .name = "expand-seed",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/tools/expand_seed.zig"),
+            .target = b.graph.host,
+            .optimize = .Debug,
+        }),
+    });
+    const expand_seed = b.addRunArtifact(expand_seed_exe);
+    expand_seed.addFileArg(b.path(expanded_path ++ ".zst"));
+    return expand_seed.addOutputFileArg(galley_seed_file_name);
+}
+
 pub const GalleyCli = struct {
     generator_cli_mod: *std.Build.Module,
     generator_cli_exe: *std.Build.Step.Compile,
@@ -445,13 +477,14 @@ pub fn addGeneratorModules(
         .target = target,
         .optimize = optimize,
     });
+    const galley_seed_parser = addGalleySeedParser(b);
     const galley_grammar = addGeneratedParserModule(
         b,
         target,
         optimize,
         "galley_grammar",
         "galley_grammar_parser",
-        b.path("languages/galley/_ll-parser.zig"),
+        galley_seed_parser,
         galley_grammar_procedures_mod,
         galley_grammar_config_mod,
         galley_grammar_error_messages_mod,
@@ -486,6 +519,7 @@ pub fn addGeneratorModules(
         .galley_grammar_procedures_mod = galley_grammar_procedures_mod,
         .galley_grammar_library_mod = galley_grammar_library_mod,
         .galley_generator_mod = galley_generator_mod,
+        .galley_seed_parser = galley_seed_parser,
     };
 }
 

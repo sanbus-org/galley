@@ -13,6 +13,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .language_dir = galley.path("languages/galley"),
+        .parser_source = galley.namedLazyPath("galley_seed_parser"),
         .parser_type = .ll,
         .procedures_imports = &.{
             .{ .name = "generator_common", .module = galley.module("generator_common") },

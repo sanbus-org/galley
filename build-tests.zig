@@ -298,7 +298,7 @@ pub fn add(b: *std.Build, options: Options) !void {
             .optimize = optimize,
         });
         const runtime_test_parser_mod = b.createModule(.{
-            .root_source_file = b.path("languages/galley/_ll-parser.zig"),
+            .root_source_file = generator.galley_seed_parser,
             .target = target,
             .optimize = optimize,
         });

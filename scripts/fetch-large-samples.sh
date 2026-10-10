@@ -16,7 +16,7 @@
 set -euo pipefail
 
 REPO="sanbus-org/galley"
-RELEASE_TAG="large-samples-v1"
+RELEASE_TAG="large-samples-v2"
 DEFAULT_BASE_URL="https://github.com/${REPO}/releases/download/${RELEASE_TAG}"
 BASE_URL="${GALLEY_SAMPLES_BASE_URL:-${DEFAULT_BASE_URL}}"
 
