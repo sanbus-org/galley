@@ -50,7 +50,7 @@ This guide details the syntax, conventions, and compile-time annotations support
 
 The parser generator statically configures the Abstract Syntax Tree (AST) node creation based on the naming style of the variable symbols:
 
-- **PascalCase Validation:** All variable names must be written in PascalCase. The generator validates this at compile-time.
+- **PascalCase Is a Grammar Rule:** All variable names are written in PascalCase. The grammar itself defines `VariableSymbol` as `UppercaseId` or `"_" UppercaseId` (an uppercase letter plus identifier tail), so a name that starts any other way fails to parse.
 - **AST-Enabled Variables:** Variables starting with a Capital letter (e.g. `Value`, `ObjectMembers`) allocate an AST node when matched.
 - **AST-Suppressed Helper Variables:** Variables starting with an underscore (e.g. `_StringContent`, `_OptionalBlank`) are helper rules. The generator completely skips allocating AST nodes for them, optimizing runtime parsing performance and memory footprint.
 - **Flattened Variables:** A variable annotated with `@<` keeps its children but builds no node of its own; see [Flattening](#9-flattening).
@@ -78,8 +78,8 @@ Terminals in rules represent either exact character literals or pre-defined gene
   - `operator`: Matches operator symbols (`+`, `*`, `/`, `&`, `|`, `>`, `>=`, `<`, `<=`, `=`)
   - `new_line`: Matches `\n`
   - `space`: Matches space `' '`
-  - `block_start`: Matches control character `\x01` (representing the start of a block when indentation syntax is enabled for the parser, see [Language Configuration](configuration.md#language-configuration) for details)
-  - `block_end`: Matches control character `\x02` (representing the end of a block when indentation syntax is enabled for the parser, see [Language Configuration](configuration.md#language-configuration) for details)
+  - `block_start`: Matches control character `\x01` (representing the start of a block when indentation syntax is enabled for the parser, see [Language Configuration](configuration.md#the-config-zig-contract) for details)
+  - `block_end`: Matches control character `\x02` (representing the end of a block when indentation syntax is enabled for the parser, see [Language Configuration](configuration.md#the-config-zig-contract) for details)
 - **UTF-8 Byte-Class Terminals:** These single-byte generative terminals can be composed into grammar rules that accept every valid UTF-8 scalar while rejecting overlong encodings, surrogate encodings, and values above `U+10FFFF`:
   - `utf8_lead_two`: Two-byte sequence leads (`0xC2`-`0xDF`)
   - `utf8_lead_three_general`: General three-byte leads (`0xE1`-`0xEC`, `0xEE`-`0xEF`)
@@ -89,7 +89,6 @@ Terminals in rules represent either exact character literals or pre-defined gene
 
   See `languages/json-unicode/ll.grm` and `languages/json-unicode/lr.grm` for complete LL and LR scalar rules built from these terminals.
 - **Generative Suffix Exceptions:** Any generative terminal can have exceptions appended as a suffix chain introduced by the `^` character followed by a normal terminal (e.g., `character^"\n"`, `character^"\u{22}"`, or multiple chained exceptions like `digit^"1"^"3"`). A class member is dropped only when it equals a decoded exception terminal as a whole string: `operator^">="` removes only `">="` while keeping `">"` and `"="`, and `character^"ab"` matches no single-byte `character` member so it removes nothing. Multiple exclusions are chained `^` suffixes (`digit^"1"^"3"`, `character^"<"^">"`), not one multi-character exception. Exception terminals use the same escape rules as normal terminals, so content is decoded once per exception rather than re-scanned from flattened text.
-- **Raw Strings:** A `"` character inside a grammar can also be matched with the raw-string form `\"~"~"`, whose content is taken verbatim (no escape decoding).
 
 ---
 
@@ -325,10 +324,6 @@ must live at different precedence levels, each with its own recursion direction
 (right recursion for right-associativity in LL, left recursion for
 left-associativity in LR).
 
-Galley's `languages/indentation/ll.grm` demonstrates the per-level pattern with
-`Expression` / `ExpressionTail`, `OperandAndNumber`, and `Operand`/`OperandTail`
-for suffix calls, list gets, and casts.
-
 ---
 
 ## 8. Verbatim Raw Capture (`@>>` / `@>^"..."` / `@>"..."^`)
@@ -346,8 +341,8 @@ is the anchor.
 Program
 | "<<<" UpperPair@>> LowerTail
 | "]]]" "%%"@>> LowerTail
-| "{{{" UpperPair@>^"/>" LowerTail
-| "(((" UpperPair@>"\n"^ LowerTail
+| "{{{" UpperPair@>"/>"^ LowerTail
+| "(((" UpperPair@>^"/>" LowerTail
 ```
 
 - The marker grammar lexes only the three marker forms: `@>>` (derived) and

@@ -76,9 +76,9 @@ The recovery scope installs an alternate signal stack and temporary `SIGSEGV`/`S
 
 When AST construction is enabled, Galley avoids allocating individual nodes via the system heap (`malloc`). Instead, nodes are allocated from the `ASTAllocator`'s node storage, which never relocates: on platforms with lazy-commit anonymous mappings (macOS, Linux, the BSDs) an address-space region sized to the requested capacity (page-rounded) is reserved up front and backed by the OS on first touch, with demand past the reservation covered by appended fixed-size segments; other platforms use segments throughout. Because neither region ever moves, integer node addresses stay valid for the allocator's lifetime. The only hard wall is address exhaustion (the pointer width minus the invalid sentinel), reported as `ASTCapacityExceeded`.
 
-Furthermore, AST nodes reference their parents, children, and siblings using integer indices rather than memory pointers. Because the storage never relocates, element addresses are stable for the allocator's lifetime: pointers resolved from an address (for example `args.currentNode()` inside a procedure hook) remain valid across subsequent node allocations. Session reuse retains the allocated storage, although reset currently clears the previously used node range before rewinding it.
+Furthermore, AST nodes reference their parents, children, and siblings using integer indices rather than memory pointers. Because the storage never relocates, element addresses are stable for the allocator's lifetime: pointers resolved from an address (for example `args.currentNode()` inside a procedure hook) remain valid across subsequent node allocations. Session reuse retains the allocated storage; reset rewinds the allocation counter and leaves the previously used node range as it is, since `create` fully initializes every node it hands out.
 
-AST allocation is also decided at generation time, per symbol: helper variables (written with a leading `_`) never allocate nodes, and the parser is emitted with exactly the node creation it needs, so no runtime branching decides whether to build a node. See [AST Node Allocations](/ast_node_allocations) for the full mechanics and the LR generator's static-analysis constraints.
+AST allocation is also decided at generation time, per symbol: helper variables (written with a leading `_`) never allocate nodes, and the parser is emitted with exactly the node creation it needs, so no runtime branching decides whether to build a node. See [AST Node Allocations](/ast_node_allocations) for the full mechanics and the parser-wide limit on LR terminal allocation.
 
 ---
 
@@ -128,7 +128,7 @@ The grammar analysis engine is self-hosted in Zig. Galley ships an LL seed parse
 
 1. Validates the parsed grammar model.
 2. Computes FIRST, FOLLOW, and nullable sets.
-3. Constructs deterministic LL(k) lookup tables or LR/LALR shift-reduce automata.
+3. Constructs LL(1) byte-level switch decisions or canonical LR(1) shift-reduce automata.
 4. Emits optimized Zig parser source (`_ll-parser.zig` or `_lr-parser.zig`).
 
 Because this step happens entirely ahead-of-time (AOT), the runtime Zig binary carries zero generator overhead. The original Python bootstrap generator was removed after commit `0190e40`.

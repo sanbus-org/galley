@@ -96,6 +96,9 @@ const options = generator.Options{
     .ast_for_terminals = false,
     .with_position_tracking = null,
     .with_input_streaming = false,
+    .allow_no_ast_tree_procedures = false,
+    .require_reduction_procedures = false,
+    .error_reporter = null,
 };
 ```
 
@@ -103,7 +106,9 @@ The defaults are shown above. A `null` position-tracking setting enables
 tracking except in `ReleaseFast`; set it explicitly to `true` or `false` to
 override that build-mode default. `with_input_streaming` selects incremental
 file input at generation time. When disabled, file inputs are loaded completely
-before parsing. No-AST streaming uses a bounded input window.
+before parsing. Streaming uses a bounded input window only when the parser has
+no AST, no procedures, and no verbatim capture; AST-, procedure-, and
+verbatim-enabled parsers retain the complete source.
 
 When the destination is already represented by a `std.Io.Writer`, use `emitParserFromSource` to avoid allocating the complete generated file:
 

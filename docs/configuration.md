@@ -42,7 +42,7 @@ Each language directory contains a user-owned `config.zig`. Its contract:
 | `error_recovery` | `bool` | Enable generated syntax-error recovery. Enabled unannotated grammars use automatic recovery; grammars containing recovery annotations use explicit-only recovery. |
 | `ast_for_terminals` | `bool` | Allocate AST nodes for individual terminals. Disabling keeps AST allocations minimal. |
 | `position_tracking` | `?bool` | Line/column tracking. `null` (the default) enables it except in `ReleaseFast`; `true`/`false` force it regardless of build mode. |
-| `input_streaming` | `bool` | Stream files incrementally. Only no-AST/no-procedure parsers use a bounded input window; AST or procedure-enabled parsers retain the complete source. |
+| `input_streaming` | `bool` | Stream files incrementally. Only parsers with no AST, no procedures, and no verbatim capture use a bounded input window; AST-, procedure-, or verbatim-enabled parsers retain the complete source. |
 | `indentation_syntax` | `bool` | Track indentation changes at line starts and emit virtual `block_start` (`\x01`) / `block_end` (`\x02`) tokens for indentation-sensitive grammars. |
 | `newline_after_block_end` | `bool` | After each `block_end` sequence, emit `\x03`. Productions that expect `new_line` match it as a newline; every other expected terminal skips it. No-op unless `indentation_syntax` is also enabled. |
 | `error_messages` | anonymous struct | Template overrides for syntax-error messages — see [below](#syntax-error-message-overrides). |

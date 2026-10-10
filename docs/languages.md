@@ -11,6 +11,7 @@
   - [JSON Augmented (`languages/json-augmented`)](#json-augmented-languagesjson-augmented)
   - [Lisp (`languages/lisp`)](#lisp-languageslisp)
   - [Lua (`languages/lua`)](#lua-languageslua)
+  - [Indentation (`languages/indentation`)](#indentation-languagesindentation)
   - [Grammar Parser (`languages/galley`)](#grammar-parser-languagesgalley)
 - [Choosing Between LL and LR](#choosing-between-ll-and-lr)
 - [Building and Running Included Languages](#building-and-running-included-languages)
@@ -86,6 +87,17 @@ A Lua grammar that demonstrates keyword-led statements, function declarations, r
 
 - **Parser Engines:** `ll.grm` is provided.
 
+### Indentation (`languages/indentation`)
+
+An indentation-sensitive schema language: uppercase headers open an indented
+block of dash-led field rows (`- name: type`, with an optional default), and
+each rule's action body adds nested blocks of expressions, state outcomes, and
+dispatch entries.
+
+- **Parser Engines:** Both `ll.grm` and `lr.grm` are provided.
+- **Indentation lexing:** `config.zig` enables `indentation_syntax`, so the
+  lexer emits `block_start` / `block_end` / `new_line` from leading spaces.
+
 ### Grammar Parser (`languages/galley`)
 
 The self-hosting definition of Galley's own `.grm` syntax! This language defines the exact structure of rule definitions, alternatives (`|`), variable symbols, quoted literals, and `@` annotations used across Galley.
@@ -98,12 +110,12 @@ The self-hosting definition of Galley's own `.grm` syntax! This language defines
 
 When working with or creating languages in Galley, you can choose between two parsing paradigms:
 
-1. **LL(k) Top-Down Parsing (`ll.grm`)**:
-   - Generates recursive-descent parsing tables.
+1. **LL(1) Top-Down Parsing (`ll.grm`)**:
+   - Generates recursive-descent parsers whose decisions are byte-level `switch`es over the input.
    - Ideal for clear, human-readable grammars where rules naturally decompose from top to bottom.
    - Requires eliminating left-recursion (e.g. rewrite `Expr | Expr "+" Number` to right-recursive or iterative form).
 
-2. **LR / LALR Bottom-Up Parsing (`lr.grm`)**:
+2. **Canonical LR(1) Bottom-Up Parsing (`lr.grm`)**:
    - Generates deterministic shift-reduce state machines.
    - Easily handles left-recursive rules and complex expressions without restructuring.
    - Often produces highly optimized state transitions for dense programming languages.

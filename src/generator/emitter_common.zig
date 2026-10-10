@@ -633,7 +633,7 @@ pub fn emitGrammarTables(
     try writer.writeAll("};\n\npub const is_variable = &[_]bool{\n");
     for (symbols) |symbol| try writer.print("    {},\n", .{symbol.kind == .variable});
     try writer.print("}};\n\npub const end_symbol = {d};\n", .{end_symbol});
-    try writer.writeAll("\n/// Per-symbol grammar fact: whether AST construction was enabled for this\n/// symbol by its grammar annotations (`@ast(...)`). Consumed at comptime by\n/// the generated `symbolReturnsNode` derivation.\npub const ast_enabled = &[_]bool{\n");
+    try writer.writeAll("\n/// Per-symbol grammar fact: whether AST construction applies to this\n/// symbol. A variable whose identifier begins with `_` is an AST-suppressed\n/// helper; every other variable is enabled. Consumed at comptime by\n/// the generated `symbolReturnsNode` derivation.\npub const ast_enabled = &[_]bool{\n");
     for (symbols) |symbol| try writer.print("    {},\n", .{symbol.ast_enabled});
     try writer.writeAll("};\n\n/// Comptime derivation shared by all generated parsers (ruling #1, Option\n/// A): mirrors generator-side `common.symbolReturnsNode`, but reads its\n/// option half from `config.zig` so configuration changes never require\n/// regeneration.\npub fn symbolReturnsNode(comptime symbol_index: usize) bool {\n    if (!is_ast_enabled and !are_procedures_enabled) return false;\n    if (comptime symbol_index == end_symbol) return false;\n    if (comptime is_variable[symbol_index]) return ast_enabled[symbol_index];\n    return ast_for_terminals;\n}\n\npub const variables = &[_][]const u8{\n");
     for (variables) |symbol_index| {

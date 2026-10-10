@@ -20,8 +20,8 @@ hero:
 
 features:
   - icon: 🚀
-    title: LL(k) and LR/LALR Engines
-    details: Generate top-down LL(k) recursive-descent or bottom-up LR/LALR recursive-ascent parsers from a single grammar.
+    title: LL(1) and Canonical LR(1) Engines
+    details: Generate top-down LL(1) recursive-descent or bottom-up LR(1) recursive-ascent parsers from the language's `ll.grm` and `lr.grm`.
   - icon: ⚡
     title: Scannerless Parsing
     details: Parse directly from character streams to ASTs without a separate tokenization phase. Merges lexical and syntactic analysis.

@@ -5,8 +5,8 @@
 - [What You Need](#what-you-need)
 - [Your First Parser](#your-first-parser)
   - [Parse existing JSON](#parse-existing-json)
-  - [Try the LR parser too](#try-the-lr-parser-too)
   - [Bootstrap a new language project](#bootstrap-a-new-language-project)
+  - [Try the LR parser too](#try-the-lr-parser-too)
 - [Next Steps](#next-steps)
 
 ---

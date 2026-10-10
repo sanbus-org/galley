@@ -63,10 +63,11 @@ whose child links are valid only during the current hook call. Payload values
 may be copied into later reductions, and the start symbol's final payload is
 returned as `ParseResult.semantic_root`.
 
-Procedure-enabled parsers retain complete source input so hooks can read a
-node's matched text from `args.context.getTextSlice(node.text_start,
-node.text_length)`. The bounded sliding input window is used only when both AST
-construction and procedures are disabled.
+Parsers that use AST, procedures, or verbatim capture retain complete source
+input so hooks can read a node's matched text from
+`args.context.getTextSlice(node.text_start, node.text_length)`. The bounded
+sliding input window is used only when AST construction, procedures, and
+verbatim capture are all disabled.
 
 ### No-AST Reduction Channel
 
@@ -232,13 +233,17 @@ For a terminal match enabled by `--ast-for-terminals`, only the applicable phase
 
 Variable hooks receive the selected variable rule in `args.rule`. Terminals do
 not have a reduction rule, so terminal hooks receive `args.rule = null`.
-`args.currentNode()` returns a direct pointer to the current `Node`; ordinary
-hooks mutate its span or payload in place. Node storage never relocates, so the
-pointer stays valid even when the hook (or a tree helper it calls) allocates
-further nodes. In AST mode, tree helpers may replace or remove the stable
-allocator address through `args.node_address`; `currentNode()` resolves from
-that address, so it reflects any drop or replacement performed by an earlier
-hook phase.
+
+In AST mode, `args.currentNode()` returns a direct pointer to the current
+`Node`, and ordinary hooks mutate its span or payload in place. Node storage
+never relocates, so that pointer stays valid even when the hook (or a tree
+helper it calls) allocates further nodes. Tree helpers may replace or remove
+the stable allocator address through `args.node_address`; `currentNode()`
+resolves from that address, so it reflects any drop or replacement performed
+by an earlier hook phase.
+
+In no-AST mode `currentNode()` returns the reduction's temporary node; the
+node and its child links are valid only during that hook call.
 
 An LR parser must know the parent occurrence when a variable reduces or terminal matches. If the active LR state and lookahead correspond to multiple occurrences with different hook chains, generation fails with `error.AmbiguousProcedureHooks` rather than running a hook for the wrong position. Identical chains may share the action.
 
