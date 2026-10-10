@@ -449,26 +449,40 @@ test "recovery lookahead skips blank lines like the lexer" {
     );
 }
 
-test "input streaming recovery handles EOF without reading beyond the window" {
+const EofPosition = struct { line: u32, column: u32 };
+
+fn expectEofSyntaxError(session: *parser.Session, parse_result: anyerror!parser.ParseResult) !EofPosition {
+    try std.testing.expectError(parser.ParseError.SyntaxError, parse_result);
+    var read_guard = try session.readLatest();
+    defer read_guard.deinit();
+    const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
+    return switch (diagnostic) {
+        .syntax => |syntax| .{ .line = syntax.line, .column = syntax.column },
+        .semantic, .indentation, .hook => error.ExpectedSyntaxDiagnostic,
+    };
+}
+
+test "input streaming recovery at EOF reports the same position as a whole-input parse" {
     if (!test_options.recovery_eof) return error.SkipZigTest;
 
     const input = try makeRecoveryEofJson();
     defer std.testing.allocator.free(input);
-    try std.testing.expect(input.len > std.math.maxInt(u16));
+    try std.testing.expect(input.len > parser.input_window_size);
 
-    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .syntax_error_reporter = &ignoreDiagnostic });
-    defer session.deinit();
-    try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes(input, "eof"));
+    var bytes_session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .syntax_error_reporter = &ignoreDiagnostic });
+    defer bytes_session.deinit();
+    const whole_input = try expectEofSyntaxError(&bytes_session, bytes_session.parseBytes(input, "eof"));
 
-    var read_guard = try session.readLatest();
-    defer read_guard.deinit();
-    const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
-    const syntax = switch (diagnostic) {
-        .syntax => |syntax| syntax,
-        .semantic, .indentation, .hook => return error.ExpectedSyntaxDiagnostic,
-    };
-    try std.testing.expect(syntax.line >= 1);
-    try std.testing.expect(syntax.column >= 1);
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "eof", .data = input });
+    var file = try tmp.dir.openFile(std.testing.io, "eof", .{ .mode = .read_only });
+    defer file.close(std.testing.io);
+    var file_session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .syntax_error_reporter = &ignoreDiagnostic });
+    defer file_session.deinit();
+    const streamed = try expectEofSyntaxError(&file_session, file_session.parseFile(file, "eof"));
+
+    try std.testing.expectEqual(whole_input, streamed);
 }
 
 test "input streaming AST mode accepts input beyond the former offset limit" {
