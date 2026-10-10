@@ -1,5 +1,6 @@
-# Extended JSON, LL engine: adds *(...) and (...) grouping for deep-nesting
-# stress inputs and the optional stack-overflow recovery mechanism.
+# Extended JSON, LL engine: adds * and ( grouping prefixes, each closed by
+# one ), for deep-nesting stress inputs and the optional stack-overflow
+# recovery mechanism.
 
 Start
 | Value
