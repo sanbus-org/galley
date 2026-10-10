@@ -165,7 +165,7 @@ Alongside the three explicit hook placements, Galley provides a fourth family of
 | `reduction_"<spelling>"`, `reduction_<stem>` | Execute whenever a terminal matches. See [Terminal Hooks](#terminal-hooks). |
 | `reduction` | Executes as the general hook for every eligible variable reduction and visible terminal match. |
 
-Missing automatic hooks are silent nulls by default. Set `require_reduction_procedures = true` in `config.zig` (or pass `--require-reduction-procedures`) to warn at generation and fail compilation for any visible production without `reduction_<SymbolName>_<RhsIndex>`, naming variable, index, and shape.
+Missing automatic hooks are silent nulls by default. Pass `--require-reduction-procedures` to the generator (or set `require_reduction_procedures` in the generator `Options`) to fail compilation of the generated parser for any visible production without `reduction_<SymbolName>_<RhsIndex>`, naming variable, index, and shape. The CLI also warns at generation.
 
 Variables whose names begin with `_` produce no visible node, so neither they nor their productions bind automatic hooks; that includes the generator's own `_AugmentedStart` and `_GenerativeTerminal`. Synthetic `<Variable>_Tail` helpers from automatic left-factoring expand inline into their parent and bind none either.
 
@@ -319,9 +319,7 @@ Two rules follow from how generated parsers use the tree:
 
 Many language implementations leverage standard tree-cleanup procedures:
 
-The helpers below manipulate AST nodes and require AST construction. In no-AST
-mode they fail to compile unless the parser is generated with
-`--allow-no-ast-tree-procedures`, in which case each becomes a no-op.
+In no-AST mode each helper below is a no-op.
 
 Each is a public function of `standard_procedures`; an annotation reaches it through a re-export under its `hook_` name, for example `pub const hook_dropIfEmpty = standard_procedures.dropIfEmpty;`. The sketches below show what each one does.
 

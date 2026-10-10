@@ -19,5 +19,4 @@ rewritten; both builds share one grammar and one config.
 - `python/`: stats-annotated copy of `languages/python` (see its
   README.txt). Same hooks setup; the AST twin inherits the
   indentation config. Stock tree-manipulation annotations stay as-is
-  and compile to no-ops in the hooks build via
-  `allow_no_ast_tree_procedures`.
+  and compile to no-ops in the hooks build.

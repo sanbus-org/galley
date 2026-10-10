@@ -20,8 +20,6 @@ const CliOptions = struct {
     ast_for_terminals_edited: bool = false,
     position_tracking_edited: bool = false,
     input_streaming_edited: bool = false,
-    allow_no_ast_tree_procedures_edited: bool = false,
-    require_reduction_procedures_edited: bool = false,
     indentation_syntax_edited: bool = false,
     newline_after_block_end_edited: bool = false,
 };
@@ -66,6 +64,7 @@ pub fn main(init: std.process.Init) !void {
             .source = source,
             .parser_type = parser_type,
             .strip_recovery_annotations = options.strip_recovery_annotations,
+            .require_reduction_procedures = options.generator_options.require_reduction_procedures,
         },
         ParserEmission.emit,
     ) catch |err| switch (err) {
@@ -85,8 +84,6 @@ fn editedConfigFromFlags(gpa: std.mem.Allocator, base: []const u8, options: CliO
         .{ "ast_for_terminals", if (options.ast_for_terminals_edited) (if (o.ast_for_terminals) "true" else "false") else null },
         .{ "position_tracking", if (options.position_tracking_edited) (if (o.with_position_tracking orelse false) "true" else "false") else null },
         .{ "input_streaming", if (options.input_streaming_edited) (if (o.with_input_streaming) "true" else "false") else null },
-        .{ "allow_no_ast_tree_procedures", if (options.allow_no_ast_tree_procedures_edited) (if (o.allow_no_ast_tree_procedures) "true" else "false") else null },
-        .{ "require_reduction_procedures", if (options.require_reduction_procedures_edited) (if (o.require_reduction_procedures) "true" else "false") else null },
         .{ "indentation_syntax", if (options.indentation_syntax_edited) (if (options.indentation_syntax) "true" else "false") else null },
         .{ "newline_after_block_end", if (options.newline_after_block_end_edited) (if (options.newline_after_block_end) "true" else "false") else null },
     }) |edit| {
@@ -104,17 +101,19 @@ const ParserEmission = struct {
     source: []const u8,
     parser_type: generator.ParserType,
     strip_recovery_annotations: bool,
+    require_reduction_procedures: bool,
 
     fn emit(self: ParserEmission, writer: *std.Io.Writer) !void {
-        // Single generation channel: emitted parsers are configuration
-        // independent and read `config.zig` at comptime. Option flags only
-        // shape `--config-output`.
+        // Emitted parsers are configuration independent and read `config.zig`
+        // at comptime. Option flags shape `--config-output`; only
+        // `--require-reduction-procedures` reaches the emitted parser, as a
+        // generation option.
         if (self.strip_recovery_annotations) {
             const grammar = try generator.parseGrammar(self.allocator, self.source);
             const automatic_grammar = try generator.grammarWithoutRecoveryAnnotations(self.allocator, grammar);
-            try generator.emitParser(self.allocator, automatic_grammar, writer, self.parser_type, .{});
+            try generator.emitParser(self.allocator, automatic_grammar, writer, self.parser_type, .{ .require_reduction_procedures = self.require_reduction_procedures });
         } else {
-            try generator.emitParserFromSource(self.allocator, self.source, writer, self.parser_type, .{});
+            try generator.emitParserFromSource(self.allocator, self.source, writer, self.parser_type, .{ .require_reduction_procedures = self.require_reduction_procedures });
         }
     }
 };
@@ -176,15 +175,8 @@ fn parseArgs(init: std.process.Init) !CliOptions {
         } else if (std.mem.eql(u8, arg, "--no-procedures")) {
             result.generator_options.with_procedures = false;
             result.procedures_edited = true;
-        } else if (std.mem.eql(u8, arg, "--allow-no-ast-tree-procedures")) {
-            result.generator_options.allow_no_ast_tree_procedures = true;
-            result.allow_no_ast_tree_procedures_edited = true;
         } else if (std.mem.eql(u8, arg, "--require-reduction-procedures")) {
             result.generator_options.require_reduction_procedures = true;
-            result.require_reduction_procedures_edited = true;
-        } else if (std.mem.eql(u8, arg, "--no-require-reduction-procedures")) {
-            result.generator_options.require_reduction_procedures = false;
-            result.require_reduction_procedures_edited = true;
         } else if (std.mem.eql(u8, arg, "--with-error-recovery")) {
             result.generator_options.with_error_recovery = true;
             result.error_recovery_edited = true;
@@ -245,14 +237,10 @@ fn printUsage(init: std.process.Init) !void {
         \\      --no-ast               Disables AST construction.
         \\      --with-procedures      Enables procedure hooks.
         \\      --no-procedures        Disables procedure hooks.
-        \\      --allow-no-ast-tree-procedures
-        \\                             Treats standard tree-manipulation helpers as
-        \\                             no-ops in no-AST mode instead of a compile error.
         \\      --require-reduction-procedures
-        \\                             Requires every visible production to declare
-        \\                             its `reduction_<Var>_<N>` hook.
-        \\      --no-require-reduction-procedures
-        \\                             Leaves missing hooks as silent nulls.
+        \\                             Fails compilation of the generated parser for
+        \\                             each visible production without its
+        \\                             `reduction_<Var>_<N>` hook.
         \\      --with-error-recovery  Enables syntax-error recovery.
         \\      --no-error-recovery    Disables syntax-error recovery.
         \\      --with-position-tracking

@@ -4068,8 +4068,6 @@ MODULE_QUERY(parser_type, galley_parser_type)
 MODULE_QUERY(error_recovery_mode, galley_error_recovery_mode)
 MODULE_FLAG(has_ast, galley_has_ast)
 MODULE_FLAG(has_procedures, galley_has_procedures)
-MODULE_FLAG(allows_no_ast_tree_procedures,
-            galley_allows_no_ast_tree_procedures)
 MODULE_FLAG(source_retention_enabled, galley_source_retention_enabled)
 MODULE_FLAG(has_position_tracking, galley_has_position_tracking)
 MODULE_FLAG(has_input_streaming, galley_has_input_streaming)
@@ -4123,10 +4121,6 @@ static PyMethodDef module_methods[] = {
      "construction."},
     {"has_procedures", module_has_procedures, METH_NOARGS,
      "has_procedures()\n\nReturns whether procedure hooks are compiled in."},
-    {"allows_no_ast_tree_procedures", module_allows_no_ast_tree_procedures,
-     METH_NOARGS,
-     "allows_no_ast_tree_procedures()\n\nReturns whether tree helpers work\n"
-     "in no-AST mode."},
     {"source_retention_enabled", module_source_retention_enabled, METH_NOARGS,
      "source_retention_enabled()\n\nReturns whether sessions retain source\n"
      "text."},

@@ -73,10 +73,6 @@ export class Parser {
     return this.#port.hasProcedures();
   }
 
-  allowsNoAstTreeProcedures(): boolean {
-    return this.#port.allowsNoAstTreeProcedures();
-  }
-
   sourceRetentionEnabled(): boolean {
     return this.#port.sourceRetentionEnabled();
   }

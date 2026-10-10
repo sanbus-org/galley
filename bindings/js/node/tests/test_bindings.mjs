@@ -232,7 +232,7 @@ await test("direct package import wires bundled hooks", async () => {
     }
     return [...names];
   })();
-  assert.equal(parserInterface.length, 22);
+  assert.equal(parserInterface.length, 21);
   assert.deepEqual(
     Object.keys(kv).sort(),
     [...parserInterface, ...surface].sort(),
@@ -260,7 +260,6 @@ await test("parser metadata flags are consistent", async () => {
   assertIn(parser.parserType(), [ParserType.Ll, ParserType.Lr]);
   assert.equal(parser.hasAst(), true);
   assert.equal(typeof parser.hasProcedures(), "boolean");
-  assert.equal(typeof parser.allowsNoAstTreeProcedures(), "boolean");
   assert.equal(typeof parser.sourceRetentionEnabled(), "boolean");
   assert.equal(typeof parser.hasPositionTracking(), "boolean");
   assert.equal(typeof parser.hasInputStreaming(), "boolean");

@@ -23,14 +23,6 @@ pub const ast = true;
 /// false - procedure hooks are never invoked.
 pub const procedures = true;
 
-/// Allow standard tree-manipulation helper procedures to be called when
-/// AST construction is disabled.
-///
-/// true  - helpers become no-ops instead of failing to compile.
-/// false - calling them without an AST is a compile-time error.
-/// Only meaningful when ast = false.
-pub const allow_no_ast_tree_procedures = false;
-
 /// Enable syntax-error recovery.
 ///
 /// true  - recovery runs automatically, or through the grammar's
@@ -42,6 +34,8 @@ pub const error_recovery = true;
 ///
 /// true  - terminals appear in the tree alongside variables.
 /// false - only variables produce AST nodes.
+///
+/// Requires ast or procedures to be enabled.
 pub const ast_for_terminals = true;
 
 /// Track line and column positions during lexing.
@@ -75,7 +69,7 @@ pub const indentation_syntax = false;
 ///         closers such as `}` do not see a leftover newline.
 /// false - a dedent yields only `block_end` tokens (the default).
 ///
-/// Only meaningful when indentation_syntax is enabled.
+/// Requires indentation_syntax to be enabled.
 pub const newline_after_block_end = false;
 
 /// Static syntax-error message overrides baked into the generated

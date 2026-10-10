@@ -603,7 +603,7 @@ test "generator supports procedures without AST construction" {
     try std.testing.expect(std.mem.indexOf(u8, output, "var node = data_structures.Node") != null);
 }
 
-test "generated parser gates missing reduction hooks behind strict config" {
+test "generated parser checks reduction hooks only when generation requires them" {
     const source =
         \\Start
         \\| Item "end"
@@ -618,9 +618,12 @@ test "generated parser gates missing reduction hooks behind strict config" {
     defer arena.deinit();
 
     for ([_]ParserType{ .ll, .lr }) |parser_type| {
-        const output = try generateParserAlloc(arena.allocator(), source, parser_type, .{});
-        try std.testing.expect(std.mem.indexOf(u8, output, "pub const require_reduction_procedures = ") != null);
-        try std.testing.expect(std.mem.indexOf(u8, output, "if (require_reduction_procedures and are_procedures_enabled and !binds_host_hooks) {") != null);
+        const relaxed = try generateParserAlloc(arena.allocator(), source, parser_type, .{});
+        try std.testing.expect(std.mem.indexOf(u8, relaxed, "missing reduction procedure") == null);
+        try std.testing.expect(std.mem.indexOf(u8, relaxed, "require_reduction_procedures") == null);
+
+        const output = try generateParserAlloc(arena.allocator(), source, parser_type, .{ .require_reduction_procedures = true });
+        try std.testing.expect(std.mem.indexOf(u8, output, "if (are_procedures_enabled and !binds_host_hooks) {") != null);
         try std.testing.expect(std.mem.indexOf(u8, output, "reduction_Item_0") != null);
         try std.testing.expect(std.mem.indexOf(u8, output, "reduction_Item_1") != null);
         try std.testing.expect(std.mem.indexOf(u8, output, "reduction_Start_0") != null);

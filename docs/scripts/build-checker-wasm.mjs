@@ -63,12 +63,6 @@ function flipAstConfig(configPath) {
   };
   flip("pub const ast = false;", "pub const ast = true;");
   flip("pub const procedures = true;", "pub const procedures = false;");
-  if (text.includes("pub const allow_no_ast_tree_procedures = true;")) {
-    text = text.replace(
-      "pub const allow_no_ast_tree_procedures = true;",
-      "pub const allow_no_ast_tree_procedures = false;",
-    );
-  }
   fs.writeFileSync(configPath, text);
 }
 

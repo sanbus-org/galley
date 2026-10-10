@@ -118,7 +118,6 @@ public class GalleyTest {
         assertTrue(parser.hasAst());
         // boolean flags
         assertNotNull(parser.hasProcedures());
-        assertNotNull(parser.allowsNoAstTreeProcedures());
         assertNotNull(parser.sourceRetentionEnabled());
         assertNotNull(parser.hasPositionTracking());
         assertNotNull(parser.hasInputStreaming());

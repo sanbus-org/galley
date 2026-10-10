@@ -61,7 +61,7 @@ const parserInterface = (() => {
   }
   return [...names];
 })();
-assert.equal(parserInterface.length, 22);
+assert.equal(parserInterface.length, 21);
 assert.deepEqual(Object.keys(kv).sort(), [...parserInterface, ...surface].sort());
 
 // Construction stays direct: the bare class needs a bound port.

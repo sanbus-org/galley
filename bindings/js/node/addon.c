@@ -218,7 +218,6 @@ static napi_value make_string_or_null(napi_env env, const char *text) {
 /* lib->fn, resolved from the dlopen probe at load (see method_load). */
 /* ------------------------------------------------------------------ */
 
-typedef int (*fn_galley_allows_no_ast_tree_procedures_t)(void);
 typedef long long (*fn_galley_diagnostic_context_at_t)(GalleySession *session, unsigned long long index, const char **out_data, size_t *out_len);
 typedef long long (*fn_galley_diagnostic_context_count_t)(GalleySession *session);
 typedef long long (*fn_galley_diagnostic_expected_at_t)(GalleySession *session, unsigned long long index, const char **out_data, size_t *out_len);
@@ -351,7 +350,6 @@ SHARED_FN_ALIAS(tree_remove_children_at)
  * name through BIND_OR_THROW.
  */
 #define GALLEY_FN_LIST(X) \
-  X(galley_allows_no_ast_tree_procedures) \
   X(galley_diagnostic_context_at) \
   X(galley_diagnostic_context_count) \
   X(galley_diagnostic_expected_at) \
@@ -938,7 +936,6 @@ NO_ARG_I64(galley_parser_type)
 NO_ARG_I64(galley_error_recovery_mode)
 NO_ARG_INT(galley_has_ast)
 NO_ARG_INT(galley_has_procedures)
-NO_ARG_INT(galley_allows_no_ast_tree_procedures)
 NO_ARG_INT(galley_source_retention_enabled)
 NO_ARG_INT(galley_has_position_tracking)
 NO_ARG_INT(galley_has_input_streaming)
@@ -2127,7 +2124,6 @@ static napi_value method_load(napi_env env, napi_callback_info info) {
   BIND_OR_THROW(api, lib, galley_error_recovery_mode);
   BIND_OR_THROW(api, lib, galley_has_ast);
   BIND_OR_THROW(api, lib, galley_has_procedures);
-  BIND_OR_THROW(api, lib, galley_allows_no_ast_tree_procedures);
   BIND_OR_THROW(api, lib, galley_source_retention_enabled);
   BIND_OR_THROW(api, lib, galley_has_position_tracking);
   BIND_OR_THROW(api, lib, galley_has_input_streaming);

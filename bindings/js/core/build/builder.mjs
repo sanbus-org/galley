@@ -679,7 +679,6 @@ export {};
     { name: "errorRecoveryMode" },
     { name: "hasAst" },
     { name: "hasProcedures" },
-    { name: "allowsNoAstTreeProcedures" },
     { name: "sourceRetentionEnabled" },
     { name: "hasPositionTracking" },
     { name: "hasInputStreaming" },

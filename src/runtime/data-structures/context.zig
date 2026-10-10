@@ -9,7 +9,7 @@ pub inline fn indentationSyntaxEnabled() bool {
 }
 
 pub inline fn newlineAfterBlockEndEnabled() bool {
-    return indentationSyntaxEnabled() and @hasDecl(root.config, "newline_after_block_end") and root.config.newline_after_block_end;
+    return @hasDecl(root.config, "newline_after_block_end") and root.config.newline_after_block_end;
 }
 
 const NewlineSummary = struct {

@@ -150,7 +150,6 @@ long long galley_error_recovery_mode(void);
 /* Feature flags: return nonzero when enabled. */
 int galley_has_ast(void);                      /* AST construction */
 int galley_has_procedures(void);               /* procedure hooks */
-int galley_allows_no_ast_tree_procedures(void);/* tree helpers in no-AST mode */
 int galley_source_retention_enabled(void);     /* session retains source text */
 int galley_has_position_tracking(void);        /* line/column data meaningful */
 int galley_has_input_streaming(void);          /* incremental input supported */

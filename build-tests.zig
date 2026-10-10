@@ -1,6 +1,7 @@
 const std = @import("std");
 const common = @import("build/common.zig");
 const generated_parser_matrix = @import("build/generated_parser_matrix.zig");
+const config_refusal_tests = @import("build/config_refusal_tests.zig");
 const option_matrix = @import("build/option_matrix.zig");
 const test_selection = @import("build/test_selection.zig");
 
@@ -108,6 +109,10 @@ pub fn add(b: *std.Build, options: Options) !void {
         });
         const run_config_override_tests = b.addRunArtifact(config_override_tests);
         test_step.dependOn(&run_config_override_tests.step);
+        // Compile steps have no test names, so a name filter skips them.
+        if (selection.names.len == 0) {
+            config_refusal_tests.addConfigRefusalTests(b, test_step, target, optimize, generator, generate_parser_file_exe);
+        }
         if (selection.names.len == 0) {
             test_step.dependOn(&run_benchmark_progress_tests.step);
         }
@@ -1153,7 +1158,7 @@ fn addNoAstTreeHelpersTests(
     const generated_parser_path = generate_parser.addOutputFileArg(b.fmt("{s}-parser.zig", .{parser_name}));
     generate_parser.addArg("--config-output");
     const generated_config_path = generate_parser.addOutputFileArg(b.fmt("{s}-config.zig", .{parser_name}));
-    generate_parser.addArgs(&.{ "--no-ast", "--with-procedures", "--allow-no-ast-tree-procedures", "--ast-for-terminals" });
+    generate_parser.addArgs(&.{ "--no-ast", "--with-procedures", "--ast-for-terminals" });
     generate_parser.stdio = .inherit;
 
     const procedures_mod = b.createModule(.{

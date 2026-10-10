@@ -14,10 +14,9 @@ lives in `procedures.js`, registered explicitly by the page (browsers
 cannot auto-scan `procedures.*`).
 
 Stock tree-manipulation annotations (`@flattenLists` and friends) stay
-untouched and compile to no-ops in this no-AST config via
-`allow_no_ast_tree_procedures`. Error recovery stays off as in stock
-(the grammar is untested with recovery on); everything else mirrors the
-lean validation configs. The AST twin (`python-ast.wasm`) is built from
+untouched and compile to no-ops in this no-AST config. Error recovery
+stays off as in stock (the grammar is untested with recovery on);
+everything else mirrors the lean validation configs. The AST twin (`python-ast.wasm`) is built from
 this same directory by `docs/scripts/build-checker-wasm.mjs`.
 
 If the stock Python grammar changes, re-copy `ll.grm` here and re-apply

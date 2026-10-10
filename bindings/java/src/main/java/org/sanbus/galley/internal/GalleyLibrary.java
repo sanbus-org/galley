@@ -41,7 +41,6 @@ public final class GalleyLibrary {
     private final MethodHandle mh_galley_error_recovery_mode;
     private final MethodHandle mh_galley_has_ast;
     private final MethodHandle mh_galley_has_procedures;
-    private final MethodHandle mh_galley_allows_no_ast_tree_procedures;
     private final MethodHandle mh_galley_source_retention_enabled;
     private final MethodHandle mh_galley_has_position_tracking;
     private final MethodHandle mh_galley_has_input_streaming;
@@ -130,7 +129,6 @@ public final class GalleyLibrary {
         this.mh_galley_error_recovery_mode = downcall("galley_error_recovery_mode", FunctionDescriptor.of(ValueLayout.JAVA_LONG));
         this.mh_galley_has_ast = downcall("galley_has_ast", FunctionDescriptor.of(ValueLayout.JAVA_INT));
         this.mh_galley_has_procedures = downcall("galley_has_procedures", FunctionDescriptor.of(ValueLayout.JAVA_INT));
-        this.mh_galley_allows_no_ast_tree_procedures = downcall("galley_allows_no_ast_tree_procedures", FunctionDescriptor.of(ValueLayout.JAVA_INT));
         this.mh_galley_source_retention_enabled = downcall("galley_source_retention_enabled", FunctionDescriptor.of(ValueLayout.JAVA_INT));
         this.mh_galley_has_position_tracking = downcall("galley_has_position_tracking", FunctionDescriptor.of(ValueLayout.JAVA_INT));
         this.mh_galley_has_input_streaming = downcall("galley_has_input_streaming", FunctionDescriptor.of(ValueLayout.JAVA_INT));
@@ -230,7 +228,6 @@ public final class GalleyLibrary {
     }
     public int galley_has_ast() { try { return (int) mh_galley_has_ast.invoke(); } catch (Throwable t) { throw new RuntimeException(t); } }
     public int galley_has_procedures() { try { return (int) mh_galley_has_procedures.invoke(); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public int galley_allows_no_ast_tree_procedures() { try { return (int) mh_galley_allows_no_ast_tree_procedures.invoke(); } catch (Throwable t) { throw new RuntimeException(t); } }
     public int galley_source_retention_enabled() { try { return (int) mh_galley_source_retention_enabled.invoke(); } catch (Throwable t) { throw new RuntimeException(t); } }
     public int galley_has_position_tracking() { try { return (int) mh_galley_has_position_tracking.invoke(); } catch (Throwable t) { throw new RuntimeException(t); } }
     public int galley_has_input_streaming() { try { return (int) mh_galley_has_input_streaming.invoke(); } catch (Throwable t) { throw new RuntimeException(t); } }

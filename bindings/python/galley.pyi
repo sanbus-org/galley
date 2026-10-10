@@ -731,10 +731,6 @@ def has_procedures() -> bool:
     """Whether procedure hooks are compiled in."""
     ...
 
-def allows_no_ast_tree_procedures() -> bool:
-    """Whether tree helpers are usable in no-AST mode."""
-    ...
-
 def source_retention_enabled() -> bool:
     """Whether sessions retain source text."""
     ...

@@ -12,7 +12,7 @@ const common = @import("common.zig");
 /// left — `position_tracking × input_streaming` crossed with the rest —
 /// lives here.
 ///
-/// Every variant below is 2-wise covering for the seven flags, plus one
+/// Every variant below is 2-wise covering for the six flags, plus one
 /// explicit sliding-window representative. Sliding needs a three-way
 /// interaction (`streaming` without retention: no AST, no procedures, no
 /// verbatim) that pairwise alone does not guarantee, and it exercises
@@ -25,14 +25,12 @@ const OptionFlags = struct {
     error_recovery: bool,
     position_tracking: bool,
     input_streaming: bool,
-    allow_no_ast_tree: bool,
 
     /// Feature-model gate. Every variant must satisfy it; `addOptionMatrix`
     /// asserts this, so an invalid combination fails the build instead of
     /// silently testing something meaningless.
     fn isValid(self: OptionFlags) bool {
-        if (self.terminal_ast and !self.ast) return false;
-        if (self.allow_no_ast_tree and (self.ast or !self.procedures)) return false;
+        if (self.terminal_ast and !self.ast and !self.procedures) return false;
         return true;
     }
 
@@ -43,7 +41,6 @@ const OptionFlags = struct {
         generate_parser.addArg(if (self.error_recovery) "--with-error-recovery" else "--no-error-recovery");
         generate_parser.addArg(if (self.position_tracking) "--with-position-tracking" else "--no-position-tracking");
         generate_parser.addArg(if (self.input_streaming) "--with-input-streaming" else "--no-input-streaming");
-        if (self.allow_no_ast_tree) generate_parser.addArg("--allow-no-ast-tree-procedures");
     }
 };
 
@@ -52,17 +49,18 @@ const OptionVariant = struct {
     flags: OptionFlags,
 };
 
-/// 2-wise covering set for the seven flags (80 valid pairs), verified by
-/// exhaustive pair enumeration, plus the sliding representative.
+/// 2-wise covering set for the six flags, verified by exhaustive pair
+/// enumeration, plus the sliding representative.
 const option_matrix_variants = [_]OptionVariant{
-    .{ .name = "minimal", .flags = .{ .ast = false, .procedures = false, .terminal_ast = false, .error_recovery = false, .position_tracking = false, .input_streaming = false, .allow_no_ast_tree = false } },
-    .{ .name = "everything", .flags = .{ .ast = true, .procedures = true, .terminal_ast = true, .error_recovery = true, .position_tracking = true, .input_streaming = true, .allow_no_ast_tree = false } },
-    .{ .name = "allow-retained-streaming", .flags = .{ .ast = false, .procedures = true, .terminal_ast = false, .error_recovery = false, .position_tracking = true, .input_streaming = true, .allow_no_ast_tree = true } },
-    .{ .name = "allow-recovery", .flags = .{ .ast = false, .procedures = true, .terminal_ast = false, .error_recovery = true, .position_tracking = false, .input_streaming = false, .allow_no_ast_tree = true } },
-    .{ .name = "terminal-only", .flags = .{ .ast = true, .procedures = false, .terminal_ast = true, .error_recovery = false, .position_tracking = false, .input_streaming = false, .allow_no_ast_tree = false } },
-    .{ .name = "ast-recovery-streaming", .flags = .{ .ast = true, .procedures = false, .terminal_ast = false, .error_recovery = true, .position_tracking = false, .input_streaming = true, .allow_no_ast_tree = false } },
-    .{ .name = "minimal-position", .flags = .{ .ast = false, .procedures = false, .terminal_ast = false, .error_recovery = false, .position_tracking = true, .input_streaming = false, .allow_no_ast_tree = false } },
-    .{ .name = "sliding", .flags = .{ .ast = false, .procedures = false, .terminal_ast = false, .error_recovery = false, .position_tracking = true, .input_streaming = true, .allow_no_ast_tree = false } },
+    .{ .name = "minimal", .flags = .{ .ast = false, .procedures = false, .terminal_ast = false, .error_recovery = false, .position_tracking = false, .input_streaming = false } },
+    .{ .name = "everything", .flags = .{ .ast = true, .procedures = true, .terminal_ast = true, .error_recovery = true, .position_tracking = true, .input_streaming = true } },
+    .{ .name = "procedures-retained-streaming", .flags = .{ .ast = false, .procedures = true, .terminal_ast = false, .error_recovery = false, .position_tracking = true, .input_streaming = true } },
+    .{ .name = "procedures-recovery", .flags = .{ .ast = false, .procedures = true, .terminal_ast = false, .error_recovery = true, .position_tracking = false, .input_streaming = false } },
+    .{ .name = "procedures-terminals", .flags = .{ .ast = false, .procedures = true, .terminal_ast = true, .error_recovery = true, .position_tracking = false, .input_streaming = false } },
+    .{ .name = "terminal-only", .flags = .{ .ast = true, .procedures = false, .terminal_ast = true, .error_recovery = false, .position_tracking = false, .input_streaming = false } },
+    .{ .name = "ast-recovery-streaming", .flags = .{ .ast = true, .procedures = false, .terminal_ast = false, .error_recovery = true, .position_tracking = false, .input_streaming = true } },
+    .{ .name = "minimal-position", .flags = .{ .ast = false, .procedures = false, .terminal_ast = false, .error_recovery = false, .position_tracking = true, .input_streaming = false } },
+    .{ .name = "sliding", .flags = .{ .ast = false, .procedures = false, .terminal_ast = false, .error_recovery = false, .position_tracking = true, .input_streaming = true } },
 };
 
 pub fn addOptionMatrix(
@@ -166,7 +164,7 @@ test "every option-matrix variant satisfies the feature model" {
 }
 
 test "option matrix covers every valid flag pair" {
-    const flag_count = 7;
+    const flag_count = 6;
     // Exhaustive pair check over all valid global assignments.
     var value: usize = 0;
     while (value < (@as(usize, 1) << flag_count)) : (value += 1) {
@@ -177,7 +175,6 @@ test "option matrix covers every valid flag pair" {
             .error_recovery = value & 0b0001000 != 0,
             .position_tracking = value & 0b0010000 != 0,
             .input_streaming = value & 0b0100000 != 0,
-            .allow_no_ast_tree = value & 0b1000000 != 0,
         };
         if (!candidate.isValid()) continue;
         const candidate_bits = [_]bool{
@@ -187,7 +184,6 @@ test "option matrix covers every valid flag pair" {
             candidate.error_recovery,
             candidate.position_tracking,
             candidate.input_streaming,
-            candidate.allow_no_ast_tree,
         };
         for (0..flag_count) |i| {
             for (i + 1..flag_count) |j| {
@@ -200,7 +196,6 @@ test "option matrix covers every valid flag pair" {
                         variant.flags.error_recovery,
                         variant.flags.position_tracking,
                         variant.flags.input_streaming,
-                        variant.flags.allow_no_ast_tree,
                     };
                     if (variant_bits[i] == candidate_bits[i] and variant_bits[j] == candidate_bits[j]) {
                         found = true;

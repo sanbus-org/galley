@@ -130,7 +130,7 @@ const Generator = struct {
         if (self.uses_explicit_recovery) {
             try self.emitExplicitRecoverySupport(writer);
         }
-        try emitter_common.emitProcedureSupport(self.allocator, writer, self.rules.items, self.symbols.items, &self.plan.hooks, self.variables.items);
+        try emitter_common.emitProcedureSupport(self.allocator, writer, self.rules.items, self.symbols.items, &self.plan.hooks, self.variables.items, self.options.require_reduction_procedures);
         try emitter_common.emitReservedLeftoverCheck(self.allocator, writer, self.symbols.items);
         try self.measureTerminalInlineCosts();
         try self.emitParserFunctions(writer);

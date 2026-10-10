@@ -19,7 +19,9 @@ pub const Options = struct {
     ast_for_terminals: bool = false,
     with_position_tracking: ?bool = null,
     with_input_streaming: bool = false,
-    allow_no_ast_tree_procedures: bool = false,
+    /// Emit a compile-time check that every visible production declares its
+    /// `reduction_<Var>_<N>` hook. A property of the emitted file, not of
+    /// `config.zig`.
     require_reduction_procedures: bool = false,
     /// Receives every generation failure message, grammar syntax errors
     /// included, before the error is returned.

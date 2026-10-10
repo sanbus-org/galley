@@ -174,7 +174,6 @@ await test("parser metadata flags are consistent", async () => {
   assertIn(parser.parserType(), [ParserType.Ll, ParserType.Lr]);
   assert.equal(parser.hasAst(), true);
   assert.equal(typeof parser.hasProcedures(), "boolean");
-  assert.equal(typeof parser.allowsNoAstTreeProcedures(), "boolean");
   assert.equal(typeof parser.sourceRetentionEnabled(), "boolean");
   assert.equal(typeof parser.hasPositionTracking(), "boolean");
   assert.equal(typeof parser.hasInputStreaming(), "boolean");

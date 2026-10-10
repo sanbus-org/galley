@@ -37,14 +37,12 @@ Each language directory contains a user-owned `config.zig`. Its contract:
 | :--- | :--- | :--- |
 | `ast` | `bool` | Construct an abstract syntax tree and expose tree APIs. `false` skips AST construction entirely for maximum throughput; procedure hooks still run. |
 | `procedures` | `bool` | Execute grammar-annotated procedure hooks (`@Name`). |
-| `allow_no_ast_tree_procedures` | `bool` | In no-AST mode, treat standard tree-manipulation procedures as no-ops instead of failing to compile. |
-| `require_reduction_procedures` | `bool` | Require every visible production to declare `reduction_<Var>_<N>`. Missing hooks warn at generation and fail compilation with variable, index, and shape. |
 | `error_recovery` | `bool` | Enable generated syntax-error recovery. Enabled unannotated grammars use automatic recovery; grammars containing recovery annotations use explicit-only recovery. |
-| `ast_for_terminals` | `bool` | Allocate AST nodes for individual terminals. Disabling keeps AST allocations minimal. |
+| `ast_for_terminals` | `bool` | Allocate AST nodes for individual terminals. Disabling keeps AST allocations minimal. Requires `ast` or `procedures`; otherwise compilation fails. |
 | `position_tracking` | `?bool` | Line/column tracking. `null` (the default) enables it except in `ReleaseFast`; `true`/`false` force it regardless of build mode. |
 | `input_streaming` | `bool` | Stream files incrementally. Only parsers with no AST, no procedures, and no verbatim capture use a bounded input window; AST-, procedure-, or verbatim-enabled parsers retain the complete source. |
 | `indentation_syntax` | `bool` | Track indentation changes at line starts and emit virtual `block_start` (`\x01`) / `block_end` (`\x02`) tokens for indentation-sensitive grammars. |
-| `newline_after_block_end` | `bool` | After each `block_end` sequence, emit `\x03`. Productions that expect `new_line` match it as a newline; every other expected terminal skips it. No-op unless `indentation_syntax` is also enabled. |
+| `newline_after_block_end` | `bool` | After each `block_end` sequence, emit `\x03`. Productions that expect `new_line` match it as a newline; every other expected terminal skips it. Requires `indentation_syntax`; otherwise compilation fails. |
 | `error_messages` | anonymous struct | Template overrides for syntax-error messages — see [below](#syntax-error-message-overrides). |
 
 The file is created with documented defaults when missing (for example by
@@ -80,8 +78,7 @@ parser files; consumers pick up new configuration when they next compile.
 | `--ast-for-terminals` / `--no-ast-for-terminals` | Flag | Writes `ast_for_terminals = true` / `false`. |
 | `--indentation-syntax` / `--no-indentation-syntax` | Flag | Writes `indentation_syntax = true` / `false`. |
 | `--newline-after-block-end` / `--no-newline-after-block-end` | Flag | Writes `newline_after_block_end = true` / `false`. |
-| `--allow-no-ast-tree-procedures` | Flag | Writes `allow_no_ast_tree_procedures = true`. |
-| `--require-reduction-procedures` / `--no-require-reduction-procedures` | Flag | Writes `require_reduction_procedures = true` / `false`. |
+| `--require-reduction-procedures` | Flag | Warns at generation, and fails compilation of the generated parser, for each visible production without `reduction_<Var>_<N>`. Names variable, index, and shape. Does not touch `config.zig`. |
 | `--fill-error-messages` | Flag | Creates or appends default syntax-error message hooks in `ll_error_messages.zig` and/or `lr_error_messages.zig`. Existing hooks are preserved; obsolete public `syntax_error_*` hooks are reported. |
 | `--emit-metadata` | Flag | Write metadata.json and procedures.zig next to the generated parser(s); the bindings workflow consumes both. |
 | `--bootstrap-zig-project` | Flag | Creates a minimal Zig project (`build.zig`, `build.zig.zon`, `src/main.zig`) that parses files with the generated parser via `addParserModule`. Refuses to overwrite existing files. Not a second API: see `examples/zig` for the native runtime showcase. If `GALLEY_CHECKOUT` is set, `build.zig.zon` uses a `.path` to that tree instead of fetching GitHub. |

@@ -581,8 +581,6 @@ pub fn emitParserMetadata(
         \\pub const ErrorRecoveryMode = enum {{ disabled, automatic, explicit }};
         \\pub const is_ast_enabled = config.ast;
         \\pub const are_procedures_enabled = config.procedures;
-        \\pub const allow_no_ast_tree_procedures = config.allow_no_ast_tree_procedures;
-        \\pub const require_reduction_procedures = if (@hasDecl(config, "require_reduction_procedures")) config.require_reduction_procedures else false;
         \\pub const is_error_recovery_enabled = config.error_recovery;
         \\pub const ast_for_terminals = config.ast_for_terminals;
         \\pub const has_recovery_annotations = {};
@@ -682,6 +680,7 @@ pub fn emitProcedureSupport(
     symbols: []const common.Symbol,
     hooks: *const common.HookPlan,
     variables: []const usize,
+    require_reduction_procedures: bool,
 ) !void {
     try writer.writeAll(
         \\const binds_host_hooks = @hasDecl(procedures, "host_dispatch");
@@ -826,7 +825,7 @@ pub fn emitProcedureSupport(
         \\
         \\
     , .{ @max(1000, variables.len * 8), variables.len, common.HookPlan.general_index, common.HookPlan.general_index });
-    try emitStrictReductionCheck(allocator, writer, rules, symbols);
+    if (require_reduction_procedures) try emitStrictReductionCheck(allocator, writer, rules, symbols);
 }
 
 /// Emits `&[_]usize{ ... }`: the hook index of each annotation procedure.
@@ -840,12 +839,12 @@ fn emitAnnotationHookIndexes(writer: *std.Io.Writer, hooks: *const common.HookPl
 }
 
 /// Emits the opt-in strict per-production hook check shared verbatim by the
-/// LL and LR backends. When the consumer sets
-/// `require_reduction_procedures = true` in `config.zig`, any visible
-/// production without `reduction_<Var>_<N>` fails compilation with its
-/// variable, index, and shape. Otherwise the block folds away and missing
-/// hooks stay silent nulls. A parser with procedures disabled binds no hook
-/// and a host shim forwards every hook, so neither has anything to check.
+/// LL and LR backends. Generation with `Options.require_reduction_procedures`
+/// bakes the check into the parser file: any visible production without
+/// `reduction_<Var>_<N>` then fails compilation with its variable, index,
+/// and shape. Without the option nothing is emitted and missing hooks stay
+/// silent nulls. A parser with procedures disabled binds no hook and a host
+/// shim forwards every hook, so neither has anything to check.
 fn emitStrictReductionCheck(
     allocator: std.mem.Allocator,
     writer: *std.Io.Writer,
@@ -853,7 +852,7 @@ fn emitStrictReductionCheck(
     symbols: []const common.Symbol,
 ) !void {
     const required = try common.collectRequiredReductionProcedures(allocator, symbols, rules);
-    try writer.writeAll("\ncomptime {\n    if (require_reduction_procedures and are_procedures_enabled and !binds_host_hooks) {\n");
+    try writer.writeAll("\ncomptime {\n    if (are_procedures_enabled and !binds_host_hooks) {\n");
     for (required) |item| {
         const message = try std.fmt.allocPrint(
             allocator,
@@ -876,8 +875,7 @@ fn emitStrictReductionCheck(
 /// start rewrites or skips a peeked `0x03`, so an explicit `0x03` prong is
 /// unreachable. The block is emitted only when the grammar contains `0x03`,
 /// and fires only when the consumer enables the feature, so flag-off use of
-/// `0x03` as an ordinary byte still compiles. Same pattern as
-/// `emitStrictReductionCheck`: config-independent codegen, gated compile.
+/// `0x03` as an ordinary byte still compiles.
 pub fn emitReservedLeftoverCheck(
     allocator: std.mem.Allocator,
     writer: *std.Io.Writer,

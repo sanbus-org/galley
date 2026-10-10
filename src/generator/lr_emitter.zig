@@ -72,7 +72,7 @@ const Generator = struct {
         // or feature-set is active is selected at comptime per configuration
         // (LL parity), and unused support folds away under lazy analysis.
         try emitter_common.emitRecoveryOffsetFunction(writer, "lrRecoveryOffset");
-        try emitter_common.emitProcedureSupport(self.allocator, writer, self.rules.items, self.symbols.items, &self.plan.hooks, self.variables.items);
+        try emitter_common.emitProcedureSupport(self.allocator, writer, self.rules.items, self.symbols.items, &self.plan.hooks, self.variables.items, self.options.require_reduction_procedures);
         try emitter_common.emitReservedLeftoverCheck(self.allocator, writer, self.symbols.items);
 
         try writer.writeAll(

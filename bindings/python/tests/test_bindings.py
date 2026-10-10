@@ -122,7 +122,6 @@ class ParserSurfaceTests(unittest.TestCase):
         )
         self.assertTrue(grammar.has_ast())
         self.assertIsInstance(grammar.has_procedures(), bool)
-        self.assertIsInstance(grammar.allows_no_ast_tree_procedures(), bool)
         self.assertIsInstance(grammar.source_retention_enabled(), bool)
         self.assertIsInstance(grammar.has_position_tracking(), bool)
         self.assertIsInstance(grammar.has_input_streaming(), bool)

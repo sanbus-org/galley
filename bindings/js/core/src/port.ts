@@ -187,7 +187,6 @@ export interface FfiPort {
   errorRecoveryMode(): number;
   hasAst(): boolean;
   hasProcedures(): boolean;
-  allowsNoAstTreeProcedures(): boolean;
   sourceRetentionEnabled(): boolean;
   hasPositionTracking(): boolean;
   hasInputStreaming(): boolean;

@@ -96,7 +96,6 @@ const options = generator.Options{
     .ast_for_terminals = false,
     .with_position_tracking = null,
     .with_input_streaming = false,
-    .allow_no_ast_tree_procedures = false,
     .require_reduction_procedures = false,
     .error_reporter = null,
 };
@@ -108,7 +107,9 @@ override that build-mode default. `with_input_streaming` selects incremental
 file input at generation time. When disabled, file inputs are loaded completely
 before parsing. Streaming uses a bounded input window only when the parser has
 no AST, no procedures, and no verbatim capture; AST-, procedure-, and
-verbatim-enabled parsers retain the complete source.
+verbatim-enabled parsers retain the complete source. `require_reduction_procedures`
+adds a compile-time check to the emitted parser that every visible production
+declares its `reduction_<Var>_<N>` hook.
 
 When the destination is already represented by a `std.Io.Writer`, use `emitParserFromSource` to avoid allocating the complete generated file:
 

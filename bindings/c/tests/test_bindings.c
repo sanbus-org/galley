@@ -95,8 +95,6 @@ static void test_metadata_flags(void) {
           recovery == galley_recovery_mode_explicit);
     CHECK(galley_has_ast() == 0 || galley_has_ast() == 1);
     CHECK(galley_has_procedures() == 0 || galley_has_procedures() == 1);
-    CHECK(galley_allows_no_ast_tree_procedures() == 0 ||
-          galley_allows_no_ast_tree_procedures() == 1);
     CHECK(galley_source_retention_enabled() == 0 || galley_source_retention_enabled() == 1);
     CHECK(galley_has_position_tracking() == 0 || galley_has_position_tracking() == 1);
     CHECK(galley_has_input_streaming() == 0 || galley_has_input_streaming() == 1);

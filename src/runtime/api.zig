@@ -28,6 +28,17 @@ pub const procedures_enabled = if (@hasDecl(parser, "are_procedures_enabled")) p
 pub const uses_verbatim = if (@hasDecl(parser, "uses_verbatim")) parser.uses_verbatim else false;
 pub const source_retention_enabled = parser.is_ast_enabled or procedures_enabled or uses_verbatim;
 pub const sliding_input_enabled = input_streaming_enabled and !source_retention_enabled;
+
+// Options that only refine another option fail the build when the option they
+// refine is off, so a configuration never carries a setting that does nothing.
+comptime {
+    if (config.ast_for_terminals and !config.ast and !config.procedures) {
+        @compileError("config.zig: ast_for_terminals = true requires ast = true or procedures = true; enable one of them or set ast_for_terminals = false");
+    }
+    if (@hasDecl(config, "newline_after_block_end") and config.newline_after_block_end and !config.indentation_syntax) {
+        @compileError("config.zig: newline_after_block_end = true requires indentation_syntax = true; enable indentation_syntax or set newline_after_block_end = false");
+    }
+}
 pub const string_utilities = @import("string.zig");
 pub const stack_overflow_utilities = @import("stack-overflow.zig");
 pub const data_structures = @import("data-structures/data-structures.zig");

@@ -2967,14 +2967,6 @@ export fn galley_has_procedures() i32 {
     return if (root.procedures_enabled) 1 else 0;
 }
 
-/// Returns nonzero when no-AST parsers allow tree-helper procedures.
-export fn galley_allows_no_ast_tree_procedures() i32 {
-    return if (@hasDecl(parser, "allow_no_ast_tree_procedures"))
-        (if (parser.allow_no_ast_tree_procedures) 1 else 0)
-    else
-        0;
-}
-
 /// Returns nonzero when the session retains source text (required for
 /// `galley_node_text`).
 export fn galley_source_retention_enabled() i32 {
@@ -3075,10 +3067,6 @@ export fn galley_variable_name(session_ptr: ?*GalleySession, index: u64, out_dat
 // refuse during a parse.
 // ---------------------------------------------------------------------------
 
-inline fn allowsNoAstTreeProcedures() bool {
-    return @hasDecl(parser, "allow_no_ast_tree_procedures") and parser.allow_no_ast_tree_procedures;
-}
-
 /// The single gate of every `galley_procedure_*` call: the arguments of the
 /// hook `hook` names on `session_ptr`. Refusals apply in order: `OtherThread`
 /// (reported as `galley_error_session_in_use`) from a thread that is not the
@@ -3091,15 +3079,11 @@ fn hookArguments(session_ptr: ?*GalleySession, hook: u64) (root.data_structures.
 }
 
 /// The tree-helper shape shared by the drop and reduction procedures: the
-/// gate, then the helper (or `galley_error_internal` in a build that has no
-/// tree to edit).
+/// gate, then the helper (a no-op in a build that has no tree to edit).
 fn treeProcedure(session_ptr: ?*GalleySession, hook: u64, comptime helper: anytype) i64 {
     const procedure_arguments = hookArguments(session_ptr, hook) catch |err| return statusForError(err);
-    if (comptime parser.is_ast_enabled or allowsNoAstTreeProcedures()) {
-        helper(procedure_arguments) catch |err| return statusForError(err);
-        return galley_ok;
-    }
-    return galley_error_internal;
+    helper(procedure_arguments) catch |err| return statusForError(err);
+    return galley_ok;
 }
 
 /// Writes the parse-time door of the parse that is calling hook `hook`: the

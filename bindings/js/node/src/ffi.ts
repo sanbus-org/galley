@@ -93,7 +93,6 @@ export interface AddonApi extends AddonDoorNames<""> , AddonDoorNames<"hook_"> {
   galley_error_recovery_mode(): bigint;
   galley_has_ast(): number;
   galley_has_procedures(): number;
-  galley_allows_no_ast_tree_procedures(): number;
   galley_source_retention_enabled(): number;
   galley_has_position_tracking(): number;
   galley_has_input_streaming(): number;
@@ -466,10 +465,6 @@ export class NodePort implements FfiPort {
 
   hasProcedures(): boolean {
     return this.api.galley_has_procedures() !== 0;
-  }
-
-  allowsNoAstTreeProcedures(): boolean {
-    return this.api.galley_allows_no_ast_tree_procedures() !== 0;
   }
 
   sourceRetentionEnabled(): boolean {

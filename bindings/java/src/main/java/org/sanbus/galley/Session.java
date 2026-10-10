@@ -1419,8 +1419,6 @@ public final class Session implements AutoCloseable {
 
     public boolean hasProcedures() { return parser.hasProcedures(); }
 
-    public boolean allowsNoAstTreeProcedures() { return parser.allowsNoAstTreeProcedures(); }
-
     public boolean sourceRetentionEnabled() { return parser.sourceRetentionEnabled(); }
 
     public boolean hasPositionTracking() { return parser.hasPositionTracking(); }

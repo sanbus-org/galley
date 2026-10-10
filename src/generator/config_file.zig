@@ -55,24 +55,6 @@ pub fn write(
         \\/// false - procedure hooks are never invoked.
         \\
     , options.with_procedures);
-    try writeBool(writer, "allow_no_ast_tree_procedures",
-        \\/// Allow standard tree-manipulation helper procedures to be called when
-        \\/// AST construction is disabled.
-        \\///
-        \\/// true  - helpers become no-ops instead of failing to compile.
-        \\/// false - calling them without an AST is a compile-time error.
-        \\/// Only meaningful when ast = false.
-        \\
-    , options.allow_no_ast_tree_procedures);
-    try writeBool(writer, "require_reduction_procedures",
-        \\/// Require every visible variable production to declare its automatic
-        \\/// per-production hook.
-        \\///
-        \\/// true  - a missing `reduction_<Var>_<N>` is a generation-time warning
-        \\///         and a compile-time error naming variable, index, and shape.
-        \\/// false - missing hooks stay silent nulls (the default).
-        \\
-    , options.require_reduction_procedures);
     try writeBool(writer, "error_recovery",
         \\/// Enable syntax-error recovery.
         \\///
@@ -86,6 +68,8 @@ pub fn write(
         \\///
         \\/// true  - terminals appear in the tree alongside variables.
         \\/// false - only variables produce AST nodes.
+        \\///
+        \\/// Requires ast or procedures to be enabled.
         \\
     , options.ast_for_terminals);
     try writer.print(
@@ -120,7 +104,7 @@ pub fn write(
         \\///         closers such as `}}` do not see a leftover newline.
         \\/// false - a dedent yields only `block_end` tokens (the default).
         \\///
-        \\/// Only meaningful when indentation_syntax is enabled.
+        \\/// Requires indentation_syntax to be enabled.
         \\pub const newline_after_block_end = {};
         \\
         \\/// Static syntax-error message overrides baked into the generated

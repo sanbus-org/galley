@@ -1,26 +1,21 @@
+//! Implements the standard tree-manipulation procedures. Grammar
+//! annotations reach these through consumer re-exports under the generated
+//! `hook_` namespace (for example `pub const hook_dropChildren =
+//! standard_procedures.dropChildren;`), so this module's function names are
+//! an implementation detail of the runtime, not a lookup contract.
+//!
+//! Without AST construction there is no tree to edit, so every helper is a
+//! no-op.
+
 const std = @import("std");
 const root = @import("galley");
 const data_structures = root.data_structures;
 const ProcedureArguments = data_structures.ProcedureArguments;
 
-/// Implements the standard tree-manipulation procedures. Grammar
-/// annotations reach these through consumer re-exports under the generated
-/// `hook_` namespace (for example `pub const hook_dropChildren =
-/// standard_procedures.dropChildren;`), so this module's function names are
-/// an implementation detail of the runtime, not a lookup contract.
-fn requireAst() void {
-    if (comptime !root.parser.is_ast_enabled and !root.parser.allow_no_ast_tree_procedures) {
-        @compileError("standard tree-manipulation procedures require AST construction; generate with --allow-no-ast-tree-procedures to treat them as no-ops");
-    }
-}
-
 /// Discards the current node itself by setting `args.node_address = null`.
 /// This is typically attached to symbols that should not contribute a node
 /// to the final AST (e.g. via `@dropSelf` in the grammar).
-/// Without AST construction these helpers are no-ops unless generation opted
-/// in with `--allow-no-ast-tree-procedures`.
 pub fn dropSelf(args: *ProcedureArguments) !void {
-    requireAst();
     if (comptime root.parser.is_ast_enabled) {
         args.node_address = null;
     }
@@ -29,10 +24,7 @@ pub fn dropSelf(args: *ProcedureArguments) !void {
 /// Discards all children of the current node (but keeps the node itself).
 /// Useful for symbols whose only purpose was grouping/syntax but whose
 /// children should be dropped (e.g. whitespace or certain wrappers).
-/// Without AST construction these helpers are no-ops unless generation opted
-/// in with `--allow-no-ast-tree-procedures`.
 pub fn dropChildren(args: *ProcedureArguments) !void {
-    requireAst();
     if (comptime root.parser.is_ast_enabled) {
         if (args.node_address) |node_address| {
             _ = data_structures.Node.cleanChildren(node_address, args.context.node_allocator);
@@ -41,10 +33,7 @@ pub fn dropChildren(args: *ProcedureArguments) !void {
 }
 
 /// Discards the current node when it has no children.
-/// Without AST construction these helpers are no-ops unless generation opted
-/// in with `--allow-no-ast-tree-procedures`.
 pub fn dropIfEmpty(args: *ProcedureArguments) !void {
-    requireAst();
     if (comptime root.parser.is_ast_enabled) {
         if (args.node_address) |node_address| {
             const node = args.context.node_allocator.at(node_address);

@@ -83,8 +83,6 @@ public final class Parser {
 
     public boolean hasProcedures() { return lib.galley_has_procedures() != 0; }
 
-    public boolean allowsNoAstTreeProcedures() { return lib.galley_allows_no_ast_tree_procedures() != 0; }
-
     public boolean sourceRetentionEnabled() { return lib.galley_source_retention_enabled() != 0; }
 
     public boolean hasPositionTracking() { return lib.galley_has_position_tracking() != 0; }

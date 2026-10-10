@@ -81,7 +81,6 @@ interface GalleyWasmExports extends DoorNames<"">, DoorNames<"hook_"> {
   galley_error_recovery_mode(): bigint;
   galley_has_ast(): number;
   galley_has_procedures(): number;
-  galley_allows_no_ast_tree_procedures(): number;
   galley_source_retention_enabled(): number;
   galley_has_position_tracking(): number;
   galley_has_input_streaming(): number;
@@ -681,10 +680,6 @@ export class WasmPort implements FfiPort {
 
   hasProcedures(): boolean {
     return this.wasm.galley_has_procedures() !== 0;
-  }
-
-  allowsNoAstTreeProcedures(): boolean {
-    return this.wasm.galley_allows_no_ast_tree_procedures() !== 0;
   }
 
   sourceRetentionEnabled(): boolean {

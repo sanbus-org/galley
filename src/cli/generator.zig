@@ -18,7 +18,9 @@ const max_source_size = 1024 * 1024 * 1024;
 /// value untouched.
 ///
 /// Generation itself never sees these values — emitted parsers are
-/// configuration-independent and read `config.zig` at comptime.
+/// configuration-independent and read `config.zig` at comptime. The one
+/// flag that is not an edit, `--require-reduction-procedures`, is a
+/// generation option (`CliOptions.require_reduction_procedures`).
 const ConfigEdits = struct {
     ast: ?bool = null,
     procedures: ?bool = null,
@@ -26,8 +28,6 @@ const ConfigEdits = struct {
     ast_for_terminals: ?bool = null,
     position_tracking: ?bool = null,
     input_streaming: ?bool = null,
-    allow_no_ast_tree_procedures: ?bool = null,
-    require_reduction_procedures: ?bool = null,
     indentation_syntax: ?bool = null,
     newline_after_block_end: ?bool = null,
 
@@ -52,8 +52,6 @@ const ConfigEdits = struct {
             .{ "ast_for_terminals", self.ast_for_terminals },
             .{ "position_tracking", self.position_tracking },
             .{ "input_streaming", self.input_streaming },
-            .{ "allow_no_ast_tree_procedures", self.allow_no_ast_tree_procedures },
-            .{ "require_reduction_procedures", self.require_reduction_procedures },
             .{ "indentation_syntax", self.indentation_syntax },
             .{ "newline_after_block_end", self.newline_after_block_end },
         }) |edit| {
@@ -81,6 +79,7 @@ const CliOptions = struct {
     parser_type: ?generator.ParserType = null,
     language_dir: ?[]const u8 = null,
     edits: ConfigEdits = .{},
+    require_reduction_procedures: bool = false,
     fill_error_messages: bool = false,
     bootstrap_zig_project: bool = false,
     watch: bool = false,
@@ -154,12 +153,8 @@ fn parseArgs(init: std.process.Init) !CliOptions {
             result.edits.procedures = true;
         } else if (std.mem.eql(u8, arg, "--no-procedures")) {
             result.edits.procedures = false;
-        } else if (std.mem.eql(u8, arg, "--allow-no-ast-tree-procedures")) {
-            result.edits.allow_no_ast_tree_procedures = true;
         } else if (std.mem.eql(u8, arg, "--require-reduction-procedures")) {
-            result.edits.require_reduction_procedures = true;
-        } else if (std.mem.eql(u8, arg, "--no-require-reduction-procedures")) {
-            result.edits.require_reduction_procedures = false;
+            result.require_reduction_procedures = true;
         } else if (std.mem.eql(u8, arg, "--with-error-recovery")) {
             result.edits.error_recovery = true;
         } else if (std.mem.eql(u8, arg, "--no-error-recovery")) {
@@ -212,6 +207,11 @@ fn printUsage(init: std.process.Init) !void {
         \\Options:
         \\  -h, --help                 Display this help and exit.
         \\      --parser-type ll|lr    Generate only one parser type.
+        \\      --require-reduction-procedures
+        \\                             Warn now and fail compilation of the
+        \\                             generated parser for each visible
+        \\                             production without its
+        \\                             `reduction_<Var>_<N>` hook.
         \\
         \\Option flags edit `config.zig` in this directory in place (the file
         \\is created from documented defaults when missing). An explicit flag
@@ -223,18 +223,6 @@ fn printUsage(init: std.process.Init) !void {
         \\      --no-ast               Writes `ast = false`.
         \\      --with-procedures      Writes `procedures = true`.
         \\      --no-procedures        Writes `procedures = false`.
-        \\      --allow-no-ast-tree-procedures
-        \\                             Writes `allow_no_ast_tree_procedures =
-        \\                             true` (standard tree-manipulation
-        \\                             helpers become no-ops in no-AST mode).
-        \\      --require-reduction-procedures
-        \\                             Writes `require_reduction_procedures =
-        \\                             true` (missing `reduction_<Var>_<N>`
-        \\                             hooks warn at generation and fail
-        \\                             compilation).
-        \\      --no-require-reduction-procedures
-        \\                             Writes `require_reduction_procedures =
-        \\                             false` (missing hooks stay silent).
         \\      --with-error-recovery  Writes `error_recovery = true`.
         \\      --no-error-recovery    Writes `error_recovery = false`.
         \\      --with-position-tracking
@@ -326,14 +314,14 @@ fn generateParserType(
 ) !void {
     switch (parser_type) {
         .ll => {
-            try generateParser(init, language_dir, .ll);
+            try generateParser(init, language_dir, .ll, options.require_reduction_procedures);
             if (options.fill_error_messages) {
                 result.created_ll_error_messages = try fillErrorMessages(init.io, init.gpa, init.arena.allocator(), language_dir, .ll);
             }
             result.generated_ll = true;
         },
         .lr => {
-            try generateParser(init, language_dir, .lr);
+            try generateParser(init, language_dir, .lr, options.require_reduction_procedures);
             if (options.fill_error_messages) {
                 result.created_lr_error_messages = try fillErrorMessages(init.io, init.gpa, init.arena.allocator(), language_dir, .lr);
             }
@@ -628,7 +616,7 @@ fn fetchGalleyHash(io: std.Io, gpa: std.mem.Allocator, language_dir: []const u8)
     return gpa.dupe(u8, std.mem.trim(u8, run_result.stdout, " \n\r")) catch unreachable;
 }
 
-fn generateParser(init: std.process.Init, language_dir: []const u8, parser_type: generator.ParserType) !void {
+fn generateParser(init: std.process.Init, language_dir: []const u8, parser_type: generator.ParserType, require_reduction_procedures: bool) !void {
     const grammar_name = switch (parser_type) {
         .ll => "ll.grm",
         .lr => "lr.grm",
@@ -654,7 +642,7 @@ fn generateParser(init: std.process.Init, language_dir: []const u8, parser_type:
         std.log.warn("grammar recovery annotations are ignored because error recovery is disabled", .{});
     }
 
-    if (isRequireReductionProceduresEnabled(init, language_dir)) {
+    if (require_reduction_procedures) {
         warnMissingReductionProcedures(init, language_dir, source, parser_type);
     }
 
@@ -668,6 +656,7 @@ fn generateParser(init: std.process.Init, language_dir: []const u8, parser_type:
             .source = source,
             .parser_type = parser_type,
             .error_reporter = &logGenerationError,
+            .require_reduction_procedures = require_reduction_procedures,
         },
         ParserEmission.emit,
     );
@@ -679,19 +668,6 @@ fn isErrorRecoveryEnabled(init: std.process.Init, language_dir: []const u8) bool
     const path = std.fs.path.join(arena.allocator(), &.{ language_dir, "config.zig" }) catch return false;
     const content = std.Io.Dir.cwd().readFileAlloc(init.io, path, arena.allocator(), .limited(max_source_size)) catch return false;
     const prefix = "pub const error_recovery = ";
-    const idx = std.mem.indexOf(u8, content, prefix) orelse return false;
-    const rest = content[idx + prefix.len ..];
-    if (std.mem.startsWith(u8, rest, "true")) return true;
-    if (std.mem.startsWith(u8, rest, "false")) return false;
-    return false;
-}
-
-fn isRequireReductionProceduresEnabled(init: std.process.Init, language_dir: []const u8) bool {
-    var arena = std.heap.ArenaAllocator.init(init.gpa);
-    defer arena.deinit();
-    const path = std.fs.path.join(arena.allocator(), &.{ language_dir, "config.zig" }) catch return false;
-    const content = std.Io.Dir.cwd().readFileAlloc(init.io, path, arena.allocator(), .limited(max_source_size)) catch return false;
-    const prefix = "pub const require_reduction_procedures = ";
     const idx = std.mem.indexOf(u8, content, prefix) orelse return false;
     const rest = content[idx + prefix.len ..];
     if (std.mem.startsWith(u8, rest, "true")) return true;
@@ -726,7 +702,7 @@ fn warnMissingReductionProcedures(init: std.process.Init, language_dir: []const 
     defer init.gpa.free(procedures_path);
     const procedures_source = std.Io.Dir.cwd().readFileAlloc(init.io, procedures_path, init.gpa, .limited(max_source_size)) catch |err| switch (err) {
         error.FileNotFound => {
-            std.log.warn("require_reduction_procedures is enabled but procedures.zig was not found", .{});
+            std.log.warn("--require-reduction-procedures is set but procedures.zig was not found", .{});
             return;
         },
         else => return,
@@ -759,9 +735,13 @@ const ParserEmission = struct {
     source: []const u8,
     parser_type: generator.ParserType,
     error_reporter: generator.ErrorReporter,
+    require_reduction_procedures: bool = false,
 
     fn emit(self: ParserEmission, writer: *std.Io.Writer) !void {
-        try generator.emitParserFromSource(self.allocator, self.source, writer, self.parser_type, .{ .error_reporter = self.error_reporter });
+        try generator.emitParserFromSource(self.allocator, self.source, writer, self.parser_type, .{
+            .error_reporter = self.error_reporter,
+            .require_reduction_procedures = self.require_reduction_procedures,
+        });
     }
 };
 
@@ -1219,8 +1199,6 @@ test "every constant written by config_file.write stays editable" {
     inline for (.{
         "ast",
         "procedures",
-        "allow_no_ast_tree_procedures",
-        "require_reduction_procedures",
         "error_recovery",
         "ast_for_terminals",
         "position_tracking",
