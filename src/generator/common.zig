@@ -53,6 +53,10 @@ pub const Annotations = struct {
     verbatim: bool = false,
     verbatim_literal: ?[]const u8 = null,
     verbatim_consume: bool = true,
+    /// `@<`: the variable builds no node; its children join the nearest
+    /// node around it. On a variable's own annotations it applies to every
+    /// use, on an occurrence to that use only.
+    flatten: bool = false,
 };
 
 pub const Symbol = struct {
@@ -256,6 +260,7 @@ pub fn prepareGrammar(
         try result.rules.append(allocator, .{ .header = generative_terminal, .rhs_index = "0" });
     }
 
+    try validateFlattening(allocator, &result, original_start, options.error_reporter);
     std.mem.sort(Rule, result.rules.items, result.symbols.items, ruleLessThan);
     {
         const nullable = try allocator.alloc(bool, result.symbols.items.len);
@@ -266,6 +271,80 @@ pub fn prepareGrammar(
         }
     }
     return result;
+}
+
+/// Whether the occurrence at `position` of `rule` is flattened: the variable
+/// is flattened at every use (`X@<` on its rule header) or at this one
+/// (`X@<` on the symbol).
+pub fn isFlattenedOccurrence(symbols: []const Symbol, rule: Rule, position: usize) bool {
+    const symbol = symbols[rule.rhs.items[position]];
+    return symbol.kind == .variable and (symbol.annotations.flatten or rule.rhs_annotations.items[position].flatten);
+}
+
+/// Rejects `@<` wherever the flattened node would have to exist: a node
+/// that is never built cannot run hooks, own recovery points, capture
+/// verbatim text or be the tree's root.
+fn validateFlattening(allocator: std.mem.Allocator, grammar: *const PreparedGrammar, start: usize, reporter: ErrorReporter) !void {
+    const symbols = grammar.symbols.items;
+    const flattened_somewhere = try allocator.alloc(bool, symbols.len);
+    defer allocator.free(flattened_somewhere);
+    for (symbols, flattened_somewhere) |symbol, *flattened| flattened.* = symbol.annotations.flatten;
+
+    for (grammar.rules.items) |rule| {
+        const header = symbols[rule.header].id;
+        if (rule.annotations.flatten) {
+            return flattenError(allocator, reporter, "@< on a production of \"{s}\": put it on the rule header or on a symbol", .{header});
+        }
+        for (rule.rhs.items, rule.rhs_annotations.items, 0..) |symbol_index, annotations, position| {
+            const symbol = symbols[symbol_index];
+            if (annotations.flatten and symbol.kind != .variable) {
+                return flattenError(allocator, reporter, "@< on terminal \"{s}\" in rule \"{s}\": only a variable builds a node to flatten", .{ symbol.id, header });
+            }
+            if (!isFlattenedOccurrence(symbols, rule, position)) continue;
+            flattened_somewhere[symbol_index] = true;
+            if (annotations.procedures.items.len != 0) {
+                return flattenError(allocator, reporter, "hook @{s} on flattened \"{s}\" in rule \"{s}\": a flattened variable builds no node to run it on", .{ annotations.procedures.items[0], symbol.id, header });
+            }
+            if (annotations.recovery_points.items.len != 0) {
+                return flattenError(allocator, reporter, "recovery point on flattened \"{s}\" in rule \"{s}\": annotate the variable around it instead", .{ symbol.id, header });
+            }
+            if (annotations.verbatim) {
+                return flattenError(allocator, reporter, "verbatim capture on flattened \"{s}\" in rule \"{s}\": a flattened variable builds no node to hold the text", .{ symbol.id, header });
+            }
+        }
+    }
+
+    for (symbols, flattened_somewhere, 0..) |symbol, flattened, symbol_index| {
+        if (!flattened) continue;
+        if (!symbol.ast_enabled) {
+            return flattenError(allocator, reporter, "@< on \"{s}\": a variable starting with _ builds no node to flatten", .{symbol.id});
+        }
+        if (symbol.annotations.flatten and symbol_index == start) {
+            return flattenError(allocator, reporter, "@< on start variable \"{s}\": the tree needs its root node", .{symbol.id});
+        }
+        if (symbol.annotations.recovery_points.items.len != 0) {
+            return flattenError(allocator, reporter, "recovery point on \"{s}\", which is flattened: annotate the variable around it instead", .{symbol.id});
+        }
+        if (symbol.annotations.flatten and symbol.annotations.procedures.items.len != 0) {
+            return flattenError(allocator, reporter, "hook @{s} on flattened \"{s}\": a flattened variable builds no node to run it on", .{ symbol.annotations.procedures.items[0], symbol.id });
+        }
+        for (grammar.rules.items) |rule| {
+            if (rule.header != symbol_index) continue;
+            if (rule.annotations.recovery_points.items.len != 0) {
+                return flattenError(allocator, reporter, "recovery point on a production of \"{s}\", which is flattened: annotate the variable around it instead", .{symbol.id});
+            }
+            if (symbol.annotations.flatten and rule.annotations.procedures.items.len != 0) {
+                return flattenError(allocator, reporter, "hook @{s} on a production of flattened \"{s}\": a flattened variable builds no node to run it on", .{ rule.annotations.procedures.items[0], symbol.id });
+            }
+        }
+    }
+}
+
+fn flattenError(allocator: std.mem.Allocator, reporter: ErrorReporter, comptime format: []const u8, arguments: anytype) error{ InvalidFlatten, OutOfMemory } {
+    const message = std.fmt.allocPrint(allocator, format, arguments) catch return error.OutOfMemory;
+    defer allocator.free(message);
+    reportError(reporter, message);
+    return error.InvalidFlatten;
 }
 
 /// Renders a symbol the way it is written in a grammar: variables bare,
@@ -425,13 +504,13 @@ pub const SymbolHookNames = struct {
 /// Whether `symbol` binds hooks. None of these produce a node a hook could
 /// run for, so neither they nor their productions bind a hook name: end of
 /// input, a variable whose name begins with `_` (helpers, the generator's
-/// own `_AugmentedStart` and `_GenerativeTerminal` included), and a
-/// transparent left-factoring tail, whose alternatives expand inline into
-/// its parent.
+/// own `_AugmentedStart` and `_GenerativeTerminal` included), a variable
+/// flattened at every use (`X@<` on its rule header), and a transparent
+/// left-factoring tail, whose alternatives expand inline into its parent.
 pub fn bindsHooks(symbol: Symbol) bool {
     return switch (symbol.kind) {
         .end => false,
-        .variable => !std.mem.startsWith(u8, symbol.id, "_") and !symbol.synthetic_transparent,
+        .variable => !std.mem.startsWith(u8, symbol.id, "_") and !symbol.synthetic_transparent and !symbol.annotations.flatten,
         .terminal, .generative_terminal => true,
     };
 }
@@ -777,7 +856,7 @@ pub fn firstsAfterItemWithAnalysis(
 
 /// Resolves whether a rule RHS position carries a procedure occurrence.
 /// Grammar fact only: an occurrence exists whenever the grammar declares a
-/// procedure or verbatim at that position. Which occurrences run under a
+/// procedure, verbatim or flattening at that position. Which occurrences run under a
 /// given configuration is decided at comptime inside the generated parser.
 pub fn procedureOccurrenceFor(
     grammar: *const PreparedGrammar,
@@ -787,7 +866,7 @@ pub fn procedureOccurrenceFor(
     const rule = grammar.rules.items[rule_index];
     if (position >= rule.rhs.items.len) return null;
     const annotations = rule.rhs_annotations.items[position];
-    if (annotations.verbatim) return .{ .rule = rule_index, .position = position };
+    if (annotations.verbatim or annotations.flatten) return .{ .rule = rule_index, .position = position };
     if (annotations.procedures.items.len == 0) return null;
     return .{ .rule = rule_index, .position = position };
 }
@@ -905,6 +984,7 @@ pub fn cloneAnnotations(allocator: std.mem.Allocator, source: anytype) !Annotati
             source.verbatim_consume
         else
             true,
+        .flatten = @hasField(@TypeOf(source), "flatten") and source.flatten,
     };
     if (result.verbatim_literal) |literal| {
         result.verbatim_literal = try allocator.dupe(u8, literal);
@@ -924,6 +1004,7 @@ pub fn cloneAnnotations(allocator: std.mem.Allocator, source: anytype) !Annotati
 
 pub fn appendAnnotations(allocator: std.mem.Allocator, target: *Annotations, source: anytype) !void {
     target.verbatim = target.verbatim or (@hasField(@TypeOf(source), "verbatim") and source.verbatim);
+    target.flatten = target.flatten or (@hasField(@TypeOf(source), "flatten") and source.flatten);
     if (@hasField(@TypeOf(source), "verbatim_literal")) {
         if (source.verbatim_literal) |literal| {
             target.verbatim_literal = try allocator.dupe(u8, literal);

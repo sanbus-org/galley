@@ -1,0 +1,45 @@
+# The LR twin of ll.grm: its lists are left-recursive, and the same inputs
+# build the same trees.
+Start
+| Entries
+
+Entries@<
+| Entries ";" Entry
+| Entry
+
+Entry
+| Array
+| "=" Sum
+
+Array@!"]"^
+| "[" Members
+
+Members@<
+| MembersHead "]"
+| "]"
+
+MembersHead@<
+| MembersHead "," Item
+| Item
+
+Item
+| Word
+| Array
+
+Sum@total
+| Sum@< "+" Number
+| Number
+
+Word
+| letter _Letters
+
+_Letters
+| letter _Letters
+|
+
+Number
+| digit _Digits
+
+_Digits
+| digit _Digits
+|

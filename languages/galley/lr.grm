@@ -8,7 +8,7 @@ Start
 Rules
 | Comment OptionalNewLineMany Rule RulesTail
 
-RulesTail
+RulesTail@<
 | RulesTail NewLine
 | RulesTail Rule
 |
@@ -17,14 +17,14 @@ Rule@!^"\n\n"
 | VariableSymbol AnnotationTail NewLine RightHandSides
 
 RightHandSides
-| RightHandSides RightHandSideLine
+| RightHandSides@< RightHandSideLine
 | RightHandSideLine
 
 RightHandSideLine@!"\n"^
 | "|" AnnotationTail RightHandSide NewLine
 
 RightHandSide
-| space Symbol@!^"\n" AnnotationTail RightHandSide
+| space Symbol@!^"\n" AnnotationTail RightHandSide@<
 |
 
 Symbol
@@ -49,20 +49,24 @@ RawIndicator
 GenerativeTerminalSymbol
 | LowercaseId GenerativeTerminalExceptions
 
-GenerativeTerminalExceptions
+GenerativeTerminalExceptions@<
 | GenerativeTerminalExceptions "^" TerminalSymbol
 |
 
 AnnotationTail
-| "@" Annotation AnnotationTail
+| "@" Annotation AnnotationTail@<
 |
 
 Annotation
 | Procedure
 | "!" RecoveryPoint
 | ">" VerbatimMarker
+| Flatten
 
-Procedure
+Flatten
+| "<"
+
+Procedure@<
 | CamelCaseId
 
 RecoveryPoint

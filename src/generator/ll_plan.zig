@@ -65,6 +65,7 @@ pub const LLPlan = struct {
     }
 
     pub fn build(allocator: std.mem.Allocator, grammar: *common.PreparedGrammar, options: common.Options) !LLPlan {
+        try validateFlattenedSelfReferences(allocator, grammar, options.error_reporter);
         while (true) {
             var builder = Builder{
                 .allocator = allocator,
@@ -111,6 +112,22 @@ pub const LLPlan = struct {
         unreachable;
     }
 };
+
+/// A flattened self-reference parses as a loop only from the last position
+/// of its rule. Anywhere else it would recurse once per nesting level, which
+/// the self-repeating parsers exist to avoid, so LL refuses it.
+fn validateFlattenedSelfReferences(allocator: std.mem.Allocator, grammar: *const common.PreparedGrammar, reporter: common.ErrorReporter) !void {
+    for (grammar.rules.items) |rule| {
+        for (rule.rhs.items, 0..) |symbol_index, position| {
+            if (symbol_index != rule.header or isTailLoopPosition(rule, position)) continue;
+            if (!common.isFlattenedOccurrence(grammar.symbols.items, rule, position)) continue;
+            const message = try std.fmt.allocPrint(allocator, "flattened \"{s}\" refers to itself before the end of a production: LL flattens self-references only in last position", .{grammar.symbols.items[symbol_index].id});
+            defer allocator.free(message);
+            common.reportError(reporter, message);
+            return error.InvalidFlatten;
+        }
+    }
+}
 
 const Ambiguity = struct {
     variable: usize,
@@ -328,6 +345,7 @@ fn cloneAnnotations(allocator: std.mem.Allocator, source: common.Annotations) !c
     var result = common.Annotations{
         .verbatim = source.verbatim,
         .verbatim_consume = source.verbatim_consume,
+        .flatten = source.flatten,
     };
     if (source.verbatim_literal) |literal| result.verbatim_literal = try allocator.dupe(u8, literal);
     for (source.procedures.items) |name| try result.procedures.append(allocator, try allocator.dupe(u8, name));
@@ -361,6 +379,7 @@ fn annotationsEqual(a: common.Annotations, b: common.Annotations) bool {
     }
     if (a.verbatim != b.verbatim) return false;
     if (a.verbatim_consume != b.verbatim_consume) return false;
+    if (a.flatten != b.flatten) return false;
     if (a.verbatim_literal == null and b.verbatim_literal == null) return true;
     if (a.verbatim_literal == null or b.verbatim_literal == null) return false;
     return std.mem.eql(u8, a.verbatim_literal.?, b.verbatim_literal.?);
@@ -370,7 +389,8 @@ pub fn annotationsEmpty(annotations: common.Annotations) bool {
     return annotations.procedures.items.len == 0 and
         annotations.recovery_points.items.len == 0 and
         !annotations.verbatim and
-        annotations.verbatim_literal == null;
+        annotations.verbatim_literal == null and
+        !annotations.flatten;
 }
 
 fn allocateTailName(allocator: std.mem.Allocator, grammar: *const common.PreparedGrammar, variable_name: []const u8) ![]const u8 {
@@ -883,6 +903,7 @@ const Builder = struct {
             }
         }
         if (verbatim_differ) try kinds.append(allocator, "verbatim capture");
+        if (a.flatten != b.flatten) try kinds.append(allocator, "flattening");
         if (kinds.items.len == 0) try kinds.append(allocator, "annotations");
         return joinAnnotationKinds(allocator, kinds.items);
     }

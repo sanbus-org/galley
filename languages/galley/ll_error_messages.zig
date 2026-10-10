@@ -84,7 +84,7 @@ fn expectedProcedureName(args: root.SyntaxErrorMessageArgs) ![]const u8 {
     return fmt(
         args,
         "Expected a procedure name after `@`.\n" ++
-            "Procedure names use lower-camel style in grammar annotations, for example `@dropSelf` or `@replaceWithChildren`.",
+            "Procedure names use lower-camel style in grammar annotations, for example `@dropSelf` or `@dropIfEmpty`.",
     );
 }
 

@@ -1,0 +1,47 @@
+# Flattened variables build no node: their children join the nearest node
+# around them. Start takes every Entry, Array every Item however long the
+# list, and a Sum its whole chain of terms. Sum's hook runs on the Sum nodes
+# that exist, never on a flattened continuation.
+Start
+| Entry Entries
+
+Entries@<
+| ";" Entry Entries
+|
+
+Entry
+| Array
+| "=" Sum
+
+Array@!"]"^
+| "[" Members
+
+Members@<
+| Item MembersTail "]"
+| "]"
+
+MembersTail@<
+| "," Item MembersTail
+|
+
+Item
+| Word
+| Array
+
+Sum@total
+| Number "+" Sum@<
+| Number
+
+Word
+| letter _Letters
+
+_Letters
+| letter _Letters
+|
+
+Number
+| digit _Digits
+
+_Digits
+| digit _Digits
+|

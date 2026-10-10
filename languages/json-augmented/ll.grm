@@ -35,7 +35,7 @@ ObjectMember
 Array
 | "[" OptionalBlank ArrayMembers
 
-ArrayMembers@replaceWithChildren
+ArrayMembers@<
 | Value _ArrayMembersTail "]"
 | "]"
 

@@ -84,6 +84,7 @@ fn cloneAnnotations(allocator: std.mem.Allocator, source: Annotations) !Annotati
         .verbatim = source.verbatim,
         .verbatim_literal = verbatim_literal,
         .verbatim_consume = source.verbatim_consume,
+        .flatten = source.flatten,
     };
 }
 
@@ -105,7 +106,7 @@ pub fn grammarWithoutRecoveryAnnotations(allocator: std.mem.Allocator, source: *
                 symbol.* = .{
                     .id = source_symbol.id,
                     .kind = source_symbol.kind,
-                    .annotations = .{ .procedures = source_symbol.annotations.procedures, .verbatim = source_symbol.annotations.verbatim, .verbatim_literal = source_symbol.annotations.verbatim_literal, .verbatim_consume = source_symbol.annotations.verbatim_consume },
+                    .annotations = .{ .procedures = source_symbol.annotations.procedures, .verbatim = source_symbol.annotations.verbatim, .verbatim_literal = source_symbol.annotations.verbatim_literal, .verbatim_consume = source_symbol.annotations.verbatim_consume, .flatten = source_symbol.annotations.flatten },
                 };
             }
             rhs.* = .{
@@ -115,7 +116,7 @@ pub fn grammarWithoutRecoveryAnnotations(allocator: std.mem.Allocator, source: *
         }
         rule.* = .{
             .header = source_rule.header,
-            .annotations = .{ .procedures = source_rule.annotations.procedures },
+            .annotations = .{ .procedures = source_rule.annotations.procedures, .flatten = source_rule.annotations.flatten },
             .right_hand_sides = right_hand_sides,
         };
     }
@@ -1677,7 +1678,7 @@ test "Galley recovery annotations preserve the canonical LR topology" {
     };
 
     try std.testing.expect(try lr_generator.canonicalTopologyEqualForTesting(arena.allocator(), annotated, stripped));
-    try std.testing.expectEqual(@as(usize, 183), try lr_generator.canonicalStateCountForTesting(arena.allocator(), annotated));
+    try std.testing.expectEqual(@as(usize, 197), try lr_generator.canonicalStateCountForTesting(arena.allocator(), annotated));
 
     var annotated_messages: std.Io.Writer.Allocating = .init(arena.allocator());
     var stripped_messages: std.Io.Writer.Allocating = .init(arena.allocator());

@@ -52,6 +52,9 @@ const Generator = struct {
     largest_body_branch_quota: usize = 0,
     /// The tail loop whose rule dispatch is being rendered, if any.
     tail_loop: ?TailLoop = null,
+    /// The variable whose flattened parser body is being rendered, if any:
+    /// its children go to the caller's node, `node_address`.
+    flattened_variable: ?usize = null,
     /// Whether the occurrence being emitted is the last symbol of the tail
     /// loop variable's rule, counting through inlined helpers.
     in_last_position: bool = false,
@@ -265,7 +268,10 @@ const Generator = struct {
             // (see emitChildParseLine), so there is no callee to generate.
             if (symbol.synthetic_transparent) continue;
             if (symbol.kind == .variable) {
-                try self.emitVariableParser(writer, symbol_index, false);
+                // A variable flattened at every use is only ever parsed
+                // into its caller's node.
+                if (!symbol.annotations.flatten) try self.emitVariableParser(writer, symbol_index, false);
+                if (self.hasFlattenedOccurrence(symbol_index)) try self.emitFlattenedParser(writer, symbol_index);
             } else {
                 try self.emitTerminalParser(writer, symbol_index, false);
             }
@@ -418,45 +424,130 @@ const Generator = struct {
             try writer.writeAll(") else false;\n    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();\n");
         }
 
-        const decision = self.plan.parserDecision(variable, skip_ast_construction);
-        if (decision.tree.entries.len == 0) {
-            const spec = self.plan.syntax_error_handlers.items[decision.tree.diagnostic.?];
-            try emitter_common.emitSkipLeftoverBlockEndNewlines(writer, "    ");
-            try writer.writeAll("    switch (context.head(u8, 0)) {\n");
-            try writer.writeAll("        else => {\n");
-            try writer.writeAll("            @branchHint(.unlikely);\n");
-            try self.emitSyntaxErrorCall(writer, spec, "            ");
-            try writer.writeAll("        },\n");
-            try writer.writeAll("    }\n");
-        } else {
-            try self.emitRuleDispatch(writer, variable, decision.tree, "    ", skip_ast_construction, VariableRuleBody{
-                .generator = self,
-                .variable = variable,
-                .skip_ast_construction = skip_ast_construction,
-            }, VariableRuleBody.emit);
-        }
+        try self.emitVariableDispatch(writer, variable, "    ", skip_ast_construction);
         if (returns_node) {
             try writer.writeAll(if (self.options.with_ast) "    return node_address;\n" else "    return node;\n");
         }
     }
 
+    /// Selects and parses one of `variable`'s rules, or reports a syntax
+    /// error when it has none to select.
+    fn emitVariableDispatch(self: *Generator, writer: *std.Io.Writer, variable: usize, indent: []const u8, skip_ast_construction: bool) EmitError!void {
+        const decision = self.plan.parserDecision(variable, skip_ast_construction);
+        if (decision.tree.entries.len == 0) {
+            const spec = self.plan.syntax_error_handlers.items[decision.tree.diagnostic.?];
+            try emitter_common.emitSkipLeftoverBlockEndNewlines(writer, indent);
+            try writer.print("{s}switch (context.head(u8, 0)) {{\n", .{indent});
+            try writer.print("{s}    else => {{\n", .{indent});
+            try writer.print("{s}        @branchHint(.unlikely);\n", .{indent});
+            try self.emitSyntaxErrorCall(writer, spec, try indented(self.allocator, indent, 8));
+            try writer.print("{s}    }},\n", .{indent});
+            try writer.print("{s}}}\n", .{indent});
+        } else {
+            try self.emitRuleDispatch(writer, variable, decision.tree, indent, skip_ast_construction, VariableRuleBody{
+                .generator = self,
+                .variable = variable,
+                .skip_ast_construction = skip_ast_construction,
+            }, VariableRuleBody.emit);
+        }
+    }
+
+    /// The parser of a flattened occurrence of `variable`: it builds no node
+    /// and runs no hook of the variable's, and appends the children to the
+    /// caller's node. Where the variable continues into a flattened
+    /// self-reference it loops, so the levels cost neither nodes nor stack.
+    /// It hands the caller's node back, flagged when recovery cut it short.
+    /// Without AST construction it hands back a carrier instead, whose
+    /// temporary children, kept in the parse arena, the caller takes on.
+    fn emitFlattenedParser(self: *Generator, writer: *std.Io.Writer, variable: usize) !void {
+        const name = try self.parserName(variable);
+        try writer.writeAll("// Flattened Parser for Symbol \"");
+        try std.zig.stringEscape(self.symbols.items[variable].id, writer);
+        try writer.print("\" with index {d}\n", .{variable});
+        try writer.print("fn parse_{s}_flattened(context: *data_structures.Context, node_address: data_structures.Node.Pointer) anyerror!nodeReturnType({d}, false) {{\n", .{ name, variable });
+        try emitter_common.emitModeGatedBody(Generator, self, writer, FlattenedParserBody, .{ .variable = variable }, false, renderFlattenedParserBody);
+        try writer.writeAll("}\n\n");
+    }
+
+    const FlattenedParserBody = struct {
+        variable: usize,
+    };
+
+    fn renderFlattenedParserBody(self: *Generator, writer: *std.Io.Writer, params: FlattenedParserBody) !void {
+        const variable = params.variable;
+        const loops = self.reachesTail(variable, .flattened);
+        self.flattened_variable = variable;
+        defer self.flattened_variable = null;
+        if (loops) self.tail_loop = .{ .variable = variable, .skip_ast_construction = false, .kind = .flattened, .keeps_frames = false };
+        defer self.tail_loop = null;
+        self.occurrence_uses = .{};
+
+        var dispatch = std.Io.Writer.Allocating.init(self.allocator);
+        try self.emitVariableDispatch(&dispatch.writer, variable, if (loops) "        " else "    ", false);
+
+        try writer.writeAll("    _ = &node_address;\n");
+        const carries_children = !self.options.with_ast and self.symbolReturnsNode(variable, false);
+        if (carries_children) try writer.writeAll("    var node = data_structures.Node{ .payload = .{} };\n    _ = &node;\n");
+        // The occurrence is flattened, so it carries no recovery points,
+        // and neither does the variable.
+        if (self.occurrence_uses.recovery) try writer.writeAll("    const occurrence_recovery: ?*const ExplicitRecoveryScope = null;\n");
+        try writer.writeAll("    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable(");
+        try emitStringLiteral(writer, self.symbols.items[variable].id);
+        try writer.writeAll(") else false;\n    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();\n");
+        if (loops) {
+            try writer.writeAll("    descend: while (true) {\n");
+            try writer.writeAll(dispatch.written());
+            try writer.writeAll("        break;\n    }\n");
+        } else {
+            try writer.writeAll(dispatch.written());
+        }
+        if (self.symbolReturnsNode(variable, false)) {
+            try writer.print("    return {s};\n", .{if (self.options.with_ast) "node_address" else "node"});
+        }
+    }
+
+    /// Whether the body being rendered keeps its children on a carrier: a
+    /// flattened parser without AST construction.
+    fn keepsChildren(self: *Generator) bool {
+        return self.flattened_variable != null and !self.options.with_ast;
+    }
+
     const TailReach = enum { never, sometimes, always };
 
+    /// Which tail self-references a parser variant loops on. A variant
+    /// without nodes loops on all of them. A node-building variant loops on
+    /// those that are not flattened and calls the flattened variant for the
+    /// others, which loops on exactly those, appending every level to the
+    /// one node.
+    const LoopKind = enum { suppressed, nodes, flattened };
+
+    fn loopKind(skip_ast_construction: bool) LoopKind {
+        return if (skip_ast_construction) .suppressed else .nodes;
+    }
+
+    fn continuesLoop(self: *Generator, kind: LoopKind, rule: Rule, position: usize) bool {
+        return switch (kind) {
+            .suppressed => true,
+            .nodes => !common.isFlattenedOccurrence(self.symbols.items, rule, position),
+            .flattened => common.isFlattenedOccurrence(self.symbols.items, rule, position),
+        };
+    }
+
     /// Whether `rule`'s last position reaches `variable` again, directly or
-    /// through the last position of inlined helpers: on no path, on some, or
-    /// on every path.
-    fn tailReach(self: *Generator, variable: usize, rule: Rule) TailReach {
+    /// through the last position of inlined helpers, as a self-reference the
+    /// `kind` of loop continues at: on no path, on some, or on every path.
+    fn tailReach(self: *Generator, variable: usize, rule: Rule, kind: LoopKind) TailReach {
         if (rule.rhs.items.len == 0) return .never;
         const last_index = rule.rhs.items.len - 1;
         const last = rule.rhs.items[last_index];
-        if (last == variable) return if (planning.isTailLoopPosition(rule, last_index)) .always else .never;
+        if (last == variable) return if (planning.isTailLoopPosition(rule, last_index) and self.continuesLoop(kind, rule, last_index)) .always else .never;
         const symbol = self.symbols.items[last];
         if (symbol.kind != .variable or !symbol.synthetic_transparent) return .never;
         var any = false;
         var all = true;
         for (self.rules.items) |helper_rule| {
             if (helper_rule.header != last) continue;
-            switch (self.tailReach(variable, helper_rule)) {
+            switch (self.tailReach(variable, helper_rule, kind)) {
                 .never => all = false,
                 .sometimes => {
                     any = true;
@@ -478,9 +569,25 @@ const Generator = struct {
         if (variable == self.plan.augmented_start) return false;
         if (!skip_ast_construction and !self.symbols.items[variable].ast_enabled) return false;
         if (try self.byteRunBytes(variable) != null) return false;
+        return self.reachesTail(variable, loopKind(skip_ast_construction));
+    }
+
+    fn reachesTail(self: *Generator, variable: usize, kind: LoopKind) bool {
         for (self.rules.items) |rule| {
             if (rule.header != variable) continue;
-            if (self.tailReach(variable, rule) != .never) return true;
+            if (self.tailReach(variable, rule, kind) != .never) return true;
+        }
+        return false;
+    }
+
+    /// Whether `variable` needs a flattened parser: some occurrence of it is
+    /// flattened, or every one is.
+    fn hasFlattenedOccurrence(self: *Generator, variable: usize) bool {
+        if (self.symbols.items[variable].annotations.flatten) return true;
+        for (self.rules.items) |rule| {
+            for (rule.rhs.items, 0..) |symbol_index, position| {
+                if (symbol_index == variable and common.isFlattenedOccurrence(self.symbols.items, rule, position)) return true;
+            }
         }
         return false;
     }
@@ -501,6 +608,7 @@ const Generator = struct {
     const TailLoop = struct {
         variable: usize,
         skip_ast_construction: bool,
+        kind: LoopKind,
         /// Each open level keeps a frame, to reduce its node around the inner
         /// one or to retry explicit recovery outward.
         keeps_frames: bool,
@@ -575,7 +683,7 @@ const Generator = struct {
             } else {
                 try writer.print("{s}try tail_frames.append(context.runtime().arena_allocator, .{{ .site = {d} }});\n", .{ indent, site });
             }
-        } else if (self.has_occurrence_procedures) {
+        } else if (self.has_occurrence_procedures and loop.kind != .flattened) {
             try writer.print("{s}tail_depth += 1;\n", .{indent});
         }
         try writer.print("{s}continue :descend;\n", .{indent});
@@ -696,7 +804,7 @@ const Generator = struct {
         // The dispatch first: it names the sites the frames refer to.
         var dispatch = std.Io.Writer.Allocating.init(self.allocator);
         self.occurrence_uses = .{};
-        self.tail_loop = .{ .variable = variable, .skip_ast_construction = skip_ast_construction, .keeps_frames = keeps_frames };
+        self.tail_loop = .{ .variable = variable, .skip_ast_construction = skip_ast_construction, .kind = loopKind(skip_ast_construction), .keeps_frames = keeps_frames };
         const decision = self.plan.parserDecision(variable, skip_ast_construction);
         self.emitRuleDispatch(&dispatch.writer, variable, decision.tree, "        ", skip_ast_construction, VariableRuleBody{
             .generator = self,
@@ -877,8 +985,10 @@ const Generator = struct {
     }
 
     fn ruleHasNodeChildren(self: *Generator, rule: Rule, skip_ast_construction: bool) bool {
-        for (rule.rhs.items) |symbol_index| {
+        for (rule.rhs.items, 0..) |symbol_index, position| {
             const child = self.symbols.items[symbol_index];
+            // A flattened child hands back no node of its own.
+            if (!skip_ast_construction and common.isFlattenedOccurrence(self.symbols.items, rule, position)) continue;
             // Transparent helpers contribute no node of their own; only
             // their spliced suffix children count.
             if (child.kind == .variable and child.synthetic_transparent) {
@@ -1539,11 +1649,15 @@ const Generator = struct {
 
         const in_tail_loop = if (self.tail_loop) |*loop| loop.variable == parent_variable else false;
         if (in_tail_loop) self.tail_loop.?.rule_index = rule_index;
+        // A flattened parser appends to its caller's node, or without AST
+        // construction keeps the children on a carrier it hands back.
+        const flattened = self.flattened_variable == parent_variable;
+        const flattened_target: ?[]const u8 = if (self.options.with_ast) "node_address" else if (parent_returns_node) "node" else null;
         // A loop level builds its node by value in its own frame.
         const value_node = if (in_tail_loop) "level.node" else "node";
         const value_children = if (in_tail_loop) "level.children" else "child_nodes";
         if (rule.rhs.items.len != 0) {
-            if (!self.options.with_ast and parent_returns_node and !in_tail_loop and self.ruleHasNodeChildren(rule, skip_ast_construction)) {
+            if (!self.options.with_ast and parent_returns_node and !in_tail_loop and !flattened and self.ruleHasNodeChildren(rule, skip_ast_construction)) {
                 try writer.print("{s}var child_nodes: [{d}]?data_structures.Node = @splat(null);\n", .{ indent, self.expandedSlotCount(rule) });
             }
             if (captures_root) {
@@ -1558,9 +1672,11 @@ const Generator = struct {
                     parent_variable,
                     rule,
                     child_index,
-                    if (parent_returns_node) if (self.options.with_ast) "node_address" else value_node else null,
+                    if (flattened) flattened_target else if (parent_returns_node) if (self.options.with_ast) "node_address" else value_node else null,
                     if (captures_root and child_index == 0)
                         "root_node"
+                    else if (flattened)
+                        flattened_target
                     else if (parent_returns_node)
                         if (self.options.with_ast) "node_address" else value_children
                     else
@@ -1576,8 +1692,10 @@ const Generator = struct {
             }
         }
 
+        // A flattened parser reduces nothing: the caller's node does.
+        if (flattened) return;
         // A rule that always continues the loop reduces when it unwinds.
-        if (in_tail_loop and self.tailReach(parent_variable, rule) == .always) return;
+        if (in_tail_loop and self.tailReach(parent_variable, rule, self.tail_loop.?.kind) == .always) return;
         try self.emitRuleFinalize(writer, rule_index, parent_variable, indent, skip_ast_construction, value_node);
     }
 
@@ -1645,7 +1763,7 @@ const Generator = struct {
         const child_skips_ast_construction = skip_ast_construction or (child.kind == .variable and !child.ast_enabled);
         const child_returns_node = self.symbolReturnsNode(symbol_index, child_skips_ast_construction);
         if (self.tail_loop) |*loop| {
-            if (symbol_index == loop.variable and self.in_last_position and planning.isTailLoopPosition(rule, child_index)) {
+            if (symbol_index == loop.variable and self.in_last_position and planning.isTailLoopPosition(rule, child_index) and self.continuesLoop(loop.kind, rule, child_index)) {
                 std.debug.assert(child_skips_ast_construction == loop.skip_ast_construction);
                 try loop.sites.append(self.allocator, .{ .rule_index = loop.rule_index, .occurrence_rule = rule, .position = child_index, .slot = slot_index });
                 try self.emitTailDescent(writer, indent, loop.sites.items.len - 1);
@@ -1661,6 +1779,28 @@ const Generator = struct {
         // every combo splices identically.
         if (child.kind == .variable and child.synthetic_transparent) {
             try self.emitTransparentTailInline(writer, symbol_index, rule, child_index, parent, parent_address, indent, skip_ast_construction);
+            return;
+        }
+        // A flattened occurrence builds no node: its parser appends the
+        // children to this one's. Without nodes there is nothing to flatten.
+        if (!child_skips_ast_construction and common.isFlattenedOccurrence(self.symbols.items, rule, child_index)) {
+            const target = if (self.options.with_ast) parent_address orelse "data_structures.Node.invalid_pointer" else "data_structures.Node.invalid_pointer";
+            // Without AST construction the children come back on a carrier.
+            const takes_children = !self.options.with_ast and parent != null and child_returns_node;
+            if (takes_children) {
+                try writer.print("{s}{{\n{s}    const flattened_children = {s}parse_{s}_flattened(context, {s}", .{ indent, indent, if (explicit_recovery) "" else "try ", name, target });
+            } else {
+                try writer.print("{s}_ = {s}parse_{s}_flattened(context, {s}", .{ indent, if (explicit_recovery) "" else "try ", name, target });
+            }
+            if (explicit_recovery) {
+                try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent, inner_level);
+            } else {
+                try writer.writeByte(')');
+            }
+            try writer.print("; // child {d}, flattened\n", .{child_index});
+            if (takes_children) {
+                try writer.print("{s}    if (flattened_children) |*carrier| {s}.appendTemporaryChildren(carrier);\n{s}}}\n", .{ indent, parent.?, indent });
+            }
             return;
         }
         if (child.kind != .variable) self.inline_call_cost += self.terminal_inline_costs[symbol_index];
@@ -1683,6 +1823,16 @@ const Generator = struct {
                     if (verbatim) {
                         try self.emitVerbatimCapture(writer, symbol_index, indent);
                         try writer.print("{s}    if (child_node) |*verbatim_node| verbatim_node.text_length = context.currentTokenSourceOffset() - verbatim_node.text_start;\n", .{indent});
+                    }
+                    if (self.keepsChildren()) {
+                        // The children leave this parser before the node that
+                        // takes them reduces, so they outlive its frame.
+                        try writer.print(
+                            \\{s}    if (child_node) |value| try {s}.appendKeptTemporaryChild(context.runtime().arena_allocator, value);
+                            \\{s}}}
+                            \\
+                        , .{ indent, parent.?, indent });
+                        return;
                     }
                     try writer.print(
                         \\{s}    if (child_node) |value| {{

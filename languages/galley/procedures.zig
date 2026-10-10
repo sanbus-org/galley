@@ -28,6 +28,9 @@ pub const Annotations = struct {
     verbatim: bool = false,
     verbatim_literal: ?[]const u8 = null,
     verbatim_consume: bool = true,
+    /// `@<`: the variable's node is replaced by its children. On a rule
+    /// header it applies to every use, on a symbol to that use only.
+    flatten: bool = false,
 };
 
 pub const SymbolRef = struct {
@@ -63,6 +66,7 @@ const MutableRightHandSide = struct {
 
 const MutableRule = struct {
     header: []const u8,
+    flatten: bool = false,
     procedures: std.ArrayList([]const u8) = .empty,
     recovery_points: std.ArrayList(RecoveryPoint) = .empty,
     right_hand_sides: std.ArrayList(MutableRightHandSide) = .empty,
@@ -98,13 +102,6 @@ fn updateTextLength(context: *data_structures.Context, node_address: Node.Pointe
     }
 }
 
-fn flattenRightRecursiveTail(args: *ProcedureArguments) !void {
-    if (args.node_address) |node_address| {
-        updateTextLength(args.context, node_address);
-        try standard_procedures.rightRecursiveReduction(args);
-    }
-}
-
 fn absorbLastChildNamed(comptime child_name: []const u8) type {
     return struct {
         fn function(args: *ProcedureArguments) !void {
@@ -128,53 +125,6 @@ fn absorbLastChildNamed(comptime child_name: []const u8) type {
     };
 }
 
-fn flattenLeftRecursiveList(args: *ProcedureArguments) !void {
-    if (args.node_address) |node_address| {
-        updateTextLength(args.context, node_address);
-        try standard_procedures.leftRecursiveReduction(args);
-    }
-}
-
-fn normalizeList(comptime tail_name: ?[]const u8) type {
-    return struct {
-        fn function(args: *ProcedureArguments) !void {
-            try flattenLeftRecursiveList(args);
-            if (tail_name) |name| {
-                try absorbLastChildNamed(name).function(args);
-            }
-        }
-    };
-}
-
-fn flattenTail(args: *ProcedureArguments) !void {
-    // One hook serves both engines: the LL tail is right-recursive, the LR
-    // tail left-recursive. A node only ever matches one direction, so the
-    // other check is a no-op.
-    if (args.node_address) |node_address| {
-        updateTextLength(args.context, node_address);
-        try standard_procedures.rightRecursiveReduction(args);
-        try standard_procedures.leftRecursiveReduction(args);
-    }
-}
-
-pub const reduction_RulesTail_0 = flattenTail;
-pub const reduction_RulesTail_1 = flattenTail;
-pub const reduction_RightHandSides_0 = flattenTail;
-pub const reduction_RightHandSide_0 = flattenTail;
-pub const reduction_RulesTailTail_0 = flattenRightRecursiveTail;
-pub const reduction_RightHandSidesTail_0 = flattenRightRecursiveTail;
-pub const reduction_RightHandSideTail_0 = flattenRightRecursiveTail;
-pub const reduction_AnnotationTail_0 = flattenRightRecursiveTail;
-pub const reduction_GenerativeTerminalExceptions_0 = flattenRightRecursiveTail;
-
-pub const reduction_Rules = normalizeList("RulesTail").function;
-pub const reduction_RightHandSides = normalizeList("RightHandSidesTail").function;
-pub const reduction_RightHandSide = normalizeList("RightHandSideTail").function;
-pub const reduction_NonEmptyRightHandSide = normalizeList(null).function;
-pub const reduction_AnnotationTail = normalizeList(null).function;
-pub const reduction_GenerativeTerminalExceptions = normalizeList(null).function;
-
-pub const reduction_Procedure_0 = standard_procedures.replaceWithChildren;
 pub const reduction_Comment = standard_procedures.dropSelf;
 pub const reduction_RecoveryPoint_0 = absorbLastChildNamed("TerminalAndCursor").function;
 pub const reduction_VerbatimMarker_0 = absorbLastChildNamed("TerminalAndCursor").function;
@@ -311,6 +261,7 @@ fn immutableGrammarFromMutableRules(allocator: std.mem.Allocator, mutable_rules:
             .annotations = .{
                 .procedures = try mutable_rule.procedures.toOwnedSlice(allocator),
                 .recovery_points = try mutable_rule.recovery_points.toOwnedSlice(allocator),
+                .flatten = mutable_rule.flatten,
             },
             .right_hand_sides = immutable_right_hand_sides,
         };
@@ -328,7 +279,7 @@ fn mutableRuleFromAst(context: *data_structures.Context, rule_address: Node.Poin
 
     var rule = MutableRule{ .header = try allocator.dupe(u8, nodeText(context, header_address)) };
     if (firstChildNamed(context, rule_address, "AnnotationTail")) |annotations_address| {
-        try appendAnnotationTail(context, annotations_address, &rule.recovery_points, &rule.procedures, null, null, null);
+        try appendAnnotationTail(context, annotations_address, &rule.recovery_points, &rule.procedures, &rule.flatten, null, null, null);
     }
 
     var child_address = context.node_allocator.at(right_hand_sides_address).first_child;
@@ -352,7 +303,7 @@ fn rightHandSideFromAst(context: *data_structures.Context, line_address: Node.Po
         firstChildNamed(context, line_address, "NonEmptyRightHandSide");
 
     var rhs = MutableRightHandSide{};
-    try appendAnnotationTail(context, line_annotations_address, &rhs.recovery_points, &rhs.procedures, null, null, null);
+    try appendAnnotationTail(context, line_annotations_address, &rhs.recovery_points, &rhs.procedures, null, null, null, null);
     const symbols_parent_address = rhs_address orelse return rhs;
 
     var child_address = context.node_allocator.at(symbols_parent_address).first_child;
@@ -389,7 +340,8 @@ fn symbolFromAst(
     var verbatim = false;
     var verbatim_literal: ?[]const u8 = null;
     var verbatim_consume = true;
-    try appendAnnotationTail(context, annotation_tail_address, &recovery_points, &procedures, &verbatim, &verbatim_literal, &verbatim_consume);
+    var flatten = false;
+    try appendAnnotationTail(context, annotation_tail_address, &recovery_points, &procedures, &flatten, &verbatim, &verbatim_literal, &verbatim_consume);
     if (recovery_points.items.len != 0 and kind != .variable) {
         reporterAt(context, symbol_address).report("InvalidRecoveryTarget: recovery points can only annotate variables", .{});
         return error.InvalidRecoveryTarget;
@@ -409,6 +361,7 @@ fn symbolFromAst(
             .verbatim = verbatim,
             .verbatim_literal = verbatim_literal,
             .verbatim_consume = verbatim_consume,
+            .flatten = flatten,
         },
     };
 }
@@ -483,7 +436,7 @@ fn appendEncodedTerminal(allocator: std.mem.Allocator, id: *std.ArrayList(u8), c
     }
 }
 
-fn appendAnnotationTail(context: *data_structures.Context, tail_address: Node.Pointer, recovery_target: *std.ArrayList(RecoveryPoint), procedure_target: *std.ArrayList([]const u8), verbatim_active: ?*bool, verbatim_literal: ?*?[]const u8, verbatim_consume: ?*bool) !void {
+fn appendAnnotationTail(context: *data_structures.Context, tail_address: Node.Pointer, recovery_target: *std.ArrayList(RecoveryPoint), procedure_target: *std.ArrayList([]const u8), flatten_target: ?*bool, verbatim_active: ?*bool, verbatim_literal: ?*?[]const u8, verbatim_consume: ?*bool) !void {
     const allocator = context.runtime().arena_allocator;
     var child_address = context.node_allocator.at(tail_address).first_child;
     while (child_address != Node.invalid_pointer) {
@@ -542,6 +495,12 @@ fn appendAnnotationTail(context: *data_structures.Context, tail_address: Node.Po
                 const terminal_node = context.node_allocator.at(terminal_address);
                 const resume_side: RecoveryResume = if (point_node.text_start < terminal_node.text_start) .before else .after;
                 try recovery_target.append(allocator, .{ .terminal = terminal, .@"resume" = resume_side });
+            } else if (firstDescendantNamed(context, child_address, "Flatten") != null) {
+                const target = flatten_target orelse {
+                    reporterAt(context, child_address).report("InvalidFlattenPlacement: @< belongs on a rule header or a symbol, not a production", .{});
+                    return error.InvalidFlattenPlacement;
+                };
+                target.* = true;
             } else {
                 reporterAt(context, child_address).report("InvalidAnnotation: unrecognized annotation", .{});
                 return error.InvalidAnnotation;

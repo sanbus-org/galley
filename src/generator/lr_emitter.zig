@@ -513,15 +513,21 @@ const Generator = struct {
         try emitter_common.emitRuleSymbolsForDebug(writer, self.symbols.items, rule);
         try writer.writeByte('\n');
 
+        // A flattened reduction builds no node: its children travel on to the
+        // node that takes them, as one chain with AST construction and as a
+        // carrier's temporary children, kept in the parse arena, without it.
+        const flattened = self.symbols.items[rule.header].annotations.flatten or
+            if (occurrence) |value| self.rules.items[value.rule].rhs_annotations.items[value.position].flatten else false;
+        const keeps_children = self.symbols.items[rule.header].ast_enabled;
         if (self.options.with_ast or self.options.with_procedures or self.uses_verbatim) {
             var i = rhs_len;
             while (i > 0) {
                 i -= 1;
                 const sym = rule.rhs.items[i];
                 const is_linked = self.symbolReturnsStackNode(sym);
-                const needed = (is_linked and self.symbols.items[rule.header].ast_enabled) or i == 0;
+                const needed = (is_linked and keeps_children) or i == 0;
                 if (needed) {
-                    try writer.print("{s}{s} child_{d} = stack.pop().?;\n", .{ indent, if (!self.options.with_ast and self.options.with_procedures and is_linked and self.symbols.items[rule.header].ast_enabled) "var" else "const", i + 1 });
+                    try writer.print("{s}{s} child_{d} = stack.pop().?;\n", .{ indent, if (!self.options.with_ast and self.options.with_procedures and is_linked and keeps_children) "var" else "const", i + 1 });
                 } else {
                     try writer.print("{s}_ = stack.pop();\n", .{indent});
                 }
@@ -536,7 +542,31 @@ const Generator = struct {
                 try self.emitVerbatimReduceCapture(writer, occurrence, if (occurrence) |o| self.rules.items[o.rule].rhs_annotations.items[o.position].verbatim_literal else null, if (occurrence) |o| self.rules.items[o.rule].rhs_annotations.items[o.position].verbatim_consume else true, indent);
             }
 
-            if ((self.options.with_ast or self.options.with_procedures) and self.symbols.items[rule.header].ast_enabled) {
+            if ((self.options.with_ast or self.options.with_procedures) and self.symbols.items[rule.header].ast_enabled and flattened) {
+                if (self.options.with_ast) {
+                    var chain: ?[]const u8 = null;
+                    for (rule.rhs.items, 0..) |sym, child_index| {
+                        if (!self.symbolReturnsStackNode(sym)) continue;
+                        const child = try std.fmt.allocPrint(self.allocator, "child_{d}.node", .{child_index + 1});
+                        chain = if (chain) |joined|
+                            try std.fmt.allocPrint(self.allocator, "data_structures.Node.immediateJoinChains({s}, {s}, context.node_allocator)", .{ joined, child })
+                        else
+                            child;
+                    }
+                    try writer.print("{s}try stack.append(.{{ .start_pos = start_pos, .node = {s} }});\n", .{ indent, chain orelse "data_structures.Node.invalid_pointer" });
+                } else {
+                    try writer.print("{s}var carrier = data_structures.Node{{ .payload = .{{}} }};\n{s}_ = &carrier;\n", .{ indent, indent });
+                    for (rule.rhs.items, 0..) |sym, child_index| {
+                        if (!self.symbolReturnsStackNode(sym)) continue;
+                        if (common.isFlattenedOccurrence(self.symbols.items, rule, child_index)) {
+                            try writer.print("{s}if (child_{d}.node) |*kept| carrier.appendTemporaryChildren(kept);\n", .{ indent, child_index + 1 });
+                        } else {
+                            try writer.print("{s}if (child_{d}.node) |*child_node| try carrier.appendKeptTemporaryChild(context.runtime().arena_allocator, child_node.*);\n", .{ indent, child_index + 1 });
+                        }
+                    }
+                    try writer.print("{s}try stack.append(.{{ .start_pos = start_pos, .node = carrier }});\n", .{indent});
+                }
+            } else if ((self.options.with_ast or self.options.with_procedures) and self.symbols.items[rule.header].ast_enabled) {
                 if (self.options.with_ast) {
                     try writer.print("{s}const parent_address = try context.node_allocator.create(start_pos, {d});\n", .{ indent, variable_index });
                     for (rule.rhs.items, 0..) |sym, child_index| {
@@ -559,14 +589,17 @@ const Generator = struct {
                 } else {
                     try writer.print("{s}var parent_node = data_structures.Node{{ .text_start = start_pos, .text_length = {s} - start_pos, .variable = {d}, .payload = .{{}} }};\n", .{ indent, if (self.occurrenceIsVerbatim(occurrence)) "verbatim_end" else "context.currentTokenSourceOffset()", variable_index });
                     for (rule.rhs.items, 0..) |sym, child_index| {
-                        if (self.symbolReturnsStackNode(sym)) {
-                            try writer.print(
-                                \\{s}if (child_{d}.node) |*child_node| {{
-                                \\{s}    parent_node.appendTemporaryChild(child_node);
-                                \\{s}}}
-                                \\
-                            , .{ indent, child_index + 1, indent, indent });
+                        if (!self.symbolReturnsStackNode(sym)) continue;
+                        if (common.isFlattenedOccurrence(self.symbols.items, rule, child_index)) {
+                            try writer.print("{s}if (child_{d}.node) |*kept| parent_node.appendTemporaryChildren(kept);\n", .{ indent, child_index + 1 });
+                            continue;
                         }
+                        try writer.print(
+                            \\{s}if (child_{d}.node) |*child_node| {{
+                            \\{s}    parent_node.appendTemporaryChild(child_node);
+                            \\{s}}}
+                            \\
+                        , .{ indent, child_index + 1, indent, indent });
                     }
                     try self.emitProcedureBlock(writer, rule_index, rule.header, occurrence, "parent_node", indent);
                     try writer.print("{s}parent_node.clearTemporaryChildren();\n", .{indent});

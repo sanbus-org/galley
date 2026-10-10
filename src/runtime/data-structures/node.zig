@@ -455,6 +455,32 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
             self.children_count += 1;
         }
 
+        /// Appends `child` as a temporary child that outlives the caller's frame: a copy in
+        /// `allocator`. A flattened variable keeps its children this way without AST
+        /// construction, because they leave its parser before the node that takes them reduces.
+        pub fn appendKeptTemporaryChild(self: *Self, allocator: std.mem.Allocator, child: Self) !void {
+            const kept = try allocator.create(Self);
+            kept.* = child;
+            self.appendTemporaryChild(kept);
+        }
+
+        /// Appends every temporary child of `carrier` in order, in O(1): the children a
+        /// flattened variable hands to the node that takes them without AST construction.
+        pub fn appendTemporaryChildren(self: *Self, carrier: *const Self) void {
+            if (comptime with_ast) {
+                @compileError("temporary Node links are available only when AST construction is disabled");
+            }
+
+            const first = carrier.first_child orelse return;
+            if (self.last_child) |last_child| {
+                last_child.next = first;
+            } else {
+                self.first_child = first;
+            }
+            self.last_child = carrier.last_child;
+            self.children_count += carrier.children_count;
+        }
+
         pub fn clearTemporaryChildren(self: *Self) void {
             if (comptime with_ast) {
                 @compileError("temporary Node links are available only when AST construction is disabled");
@@ -663,8 +689,9 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
         /// one implementation of linking a chain under a parent (sibling links, parent links through
         /// `attachParent`, counts). Nothing is checked in any build mode and `structure_version` does
         /// not move. Generated parsers call it directly; `appendChildren` is this plus Debug checks.
-        /// The chain must have no parent and no prior, which holds for nodes the parser just created
-        /// and for chains a hook hands back detached (for example from `replaceWithChildren`). A hook
+        /// The chain must have no parent and no prior other than the last node `immediateJoinChains`
+        /// records, which holds for nodes the parser just created, for chains it joined and for
+        /// chains a hook hands back detached (for example from `replaceWithChildren`). A hook
         /// must not hand back a node that is still attached to a parent.
         pub inline fn immediateAppendChildren(
             self: *Self,
@@ -683,6 +710,34 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
             }
             self.last_child = span.last;
             self.children_count += span.count;
+        }
+
+        /// Joins two parentless sibling chains, either of which may be empty (`invalid_pointer`), and
+        /// returns the head of the joined chain. A head keeps its chain's last node in `prior`, which
+        /// a parentless head has no other use for, so joining is O(1) however long the chains grow;
+        /// a head whose `prior` is unset is a single node or a chain a hook handed back, whose end
+        /// is found by walking it. `immediateAppendChildren` resets the head's `prior` when it links
+        /// the chain under a parent. LR parsers collect a flattened variable's children this way.
+        pub fn immediateJoinChains(first_node: Pointer, second_node: Pointer, node_allocator: NodeAllocator) Pointer {
+            if (first_node == invalid_pointer) return second_node;
+            if (second_node == invalid_pointer) return first_node;
+            const first_last = chainLast(node_allocator, first_node);
+            const second_last = chainLast(node_allocator, second_node);
+            node_allocator.at(first_last).next = second_node;
+            node_allocator.at(second_node).prior = first_last;
+            node_allocator.at(first_node).prior = second_last;
+            return first_node;
+        }
+
+        fn chainLast(node_allocator: NodeAllocator, first_node: Pointer) Pointer {
+            const recorded = node_allocator.at(first_node).prior;
+            if (recorded != invalid_pointer) return recorded;
+            var current = first_node;
+            while (true) {
+                const next = node_allocator.at(current).next;
+                if (next == invalid_pointer) return current;
+                current = next;
+            }
         }
 
         /// Detaches the sibling run from `first_address` through `last_address` (`count` nodes) from its

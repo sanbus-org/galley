@@ -28,7 +28,6 @@ const trailers_variable = variableIndex("Trailers");
 const name_variable = variableIndex("Name");
 const keyword_name_variable = variableIndex("KeywordName");
 const expression_variable = variableIndex("Expression");
-const disjunction_variable = variableIndex("Disjunction");
 const expression_statement_variable = variableIndex("ExpressionStatement");
 
 /// Python precedence, loosest first. Conditional and walrus bind looser
@@ -289,9 +288,8 @@ const SequenceResolver = struct {
     }
 };
 
-/// Nests the flat sequence of a top-level `Expression` or `Disjunction`. The
-/// variables have no hook of their own, only their uses outside themselves,
-/// so the levels nest unresolved and the sequence resolves once, here.
+/// Nests the sequence of an `Expression` or `Disjunction`. Its continuations
+/// are flattened into it, so the whole sequence arrives as its children.
 pub fn hook_resolveExpression(args: *ProcedureArguments) !void {
     if (comptime !galley.parser.is_ast_enabled) return;
     const node_address = args.node_address orelse return;
@@ -300,29 +298,23 @@ pub fn hook_resolveExpression(args: *ProcedureArguments) !void {
     if (node_allocator.at(node_address).children_count <= 1) return;
 
     var resolver = SequenceResolver{ .context = context };
-    var level = node_address;
-    while (level != invalid) {
-        var child = node_allocator.at(level).first_child;
-        level = invalid;
-        while (child != invalid) {
-            const next = node_allocator.at(child).next;
-            Node.removeSelf(child, node_allocator);
-            const variable = node_allocator.at(child).variable;
-            if (variable == expression_variable or variable == disjunction_variable) {
-                level = child;
-            } else if (variable == binary_operation_variable) {
-                resolver.addBinary(child);
-            } else if (variable == unary_operation_variable) {
-                resolver.addUnary(child);
-            } else if (variable == trailers_variable) {
-                resolver.addTrailers(child);
-            } else if (variable == conditional_variable or variable == named_expression_variable) {
-                resolver.addSuffix(child);
-            } else {
-                resolver.addOperand(child);
-            }
-            child = next;
+    var child = node_allocator.at(node_address).first_child;
+    while (child != invalid) {
+        const next = node_allocator.at(child).next;
+        Node.removeSelf(child, node_allocator);
+        const variable = node_allocator.at(child).variable;
+        if (variable == binary_operation_variable) {
+            resolver.addBinary(child);
+        } else if (variable == unary_operation_variable) {
+            resolver.addUnary(child);
+        } else if (variable == trailers_variable) {
+            resolver.addTrailers(child);
+        } else if (variable == conditional_variable or variable == named_expression_variable) {
+            resolver.addSuffix(child);
+        } else {
+            resolver.addOperand(child);
         }
+        child = next;
     }
     Node.appendChildren(node_address, node_allocator, resolver.finish());
 }

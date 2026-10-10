@@ -13,11 +13,11 @@ Value
 Object
 | "{" _OptionalBlank ObjectMembers
 
-ObjectMembers@replaceWithChildren
+ObjectMembers@<
 | ObjectMember ObjectMembersTail "}"
 | "}"
 
-ObjectMembersTail@replaceWithChildren
+ObjectMembersTail@<
 | ObjectMembersTail "," _OptionalBlank ObjectMember
 |
 
@@ -27,11 +27,11 @@ ObjectMember
 Array
 | "[" _OptionalBlank ArrayMembers
 
-ArrayMembers@replaceWithChildren
+ArrayMembers@<
 | Value ArrayMembersTail "]"
 | "]"
 
-ArrayMembersTail@replaceWithChildren
+ArrayMembersTail@<
 | ArrayMembersTail "," _OptionalBlank Value
 |
 

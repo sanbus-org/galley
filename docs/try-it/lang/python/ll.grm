@@ -188,20 +188,20 @@ Comment
 | "#"@>^"\n"
 
 If@countIf
-| "if " _OptBlank Expression@resolveExpression ":" Block
-| "if(" _OptBlank Expression@resolveExpression ")" ":" Block
+| "if " _OptBlank Expression ":" Block
+| "if(" _OptBlank Expression ")" ":" Block
 
 Elif@countIf
-| "elif " _OptBlank Expression@resolveExpression ":" Block
-| "elif(" _OptBlank Expression@resolveExpression ")" ":" Block
+| "elif " _OptBlank Expression ":" Block
+| "elif(" _OptBlank Expression ")" ":" Block
 
 Else@countIf
 | "else:" Block
 | "else " _OptBlank ":" Block
 
 While@countLoop
-| "while " _OptBlank Expression@resolveExpression ":" Block
-| "while(" _OptBlank Expression@resolveExpression ")" ":" Block
+| "while " _OptBlank Expression ":" Block
+| "while(" _OptBlank Expression ")" ":" Block
 
 For@flattenLists@countLoop
 | "for " _OptBlank ForTargets
@@ -209,17 +209,17 @@ For@flattenLists@countLoop
 
 ForTargets
 | Name "," _OptBlank ForTargets
-| Name " in" _OptBlank Expression@resolveExpression ":" Block
+| Name " in" _OptBlank Expression ":" Block
 
 With@flattenLists@countWith
 | "with " _OptBlank WithItems
 | "async with " _OptBlank WithItems
 
 WithItems
-| Expression@resolveExpression ":" Block
-| Expression@resolveExpression "," _OptBlank WithItems
-| Expression@resolveExpression AsName ":" Block
-| Expression@resolveExpression AsName "," _OptBlank WithItems
+| Expression ":" Block
+| Expression "," _OptBlank WithItems
+| Expression AsName ":" Block
+| Expression AsName "," _OptBlank WithItems
 
 AsName
 | " as" _OptBlank Name
@@ -231,10 +231,10 @@ Try@countTry
 Except@countTry
 | "except:" Block
 | "except " _OptBlank ":" Block
-| "except " _OptBlank Expression@resolveExpression ":" Block
-| "except " _OptBlank Expression@resolveExpression AsName ":" Block
-| "except*" _OptBlank Expression@resolveExpression ":" Block
-| "except*" _OptBlank Expression@resolveExpression AsName ":" Block
+| "except " _OptBlank Expression ":" Block
+| "except " _OptBlank Expression AsName ":" Block
+| "except*" _OptBlank Expression ":" Block
+| "except*" _OptBlank Expression AsName ":" Block
 
 Finally@countTry
 | "finally:" Block
@@ -243,8 +243,8 @@ Finally@countTry
 Return@flattenLists@identifierStatement
 | "return"
 | "return" space _OptBlank
-| "return" space _OptBlank Expression@resolveExpression
-| "return" space _OptBlank Expression@resolveExpression "," _OptBlank ExpressionList
+| "return" space _OptBlank Expression
+| "return" space _OptBlank Expression "," _OptBlank ExpressionList
 | "return" space _OptBlank Starred
 | "return" space _OptBlank Starred "," _OptBlank ExpressionList
 | "return" Parenthesized
@@ -253,17 +253,17 @@ Return@flattenLists@identifierStatement
 Raise@flattenLists@identifierStatement
 | "raise"
 | "raise" space _OptBlank
-| "raise" space _OptBlank Expression@resolveExpression
-| "raise" space _OptBlank Expression@resolveExpression RaiseFrom
+| "raise" space _OptBlank Expression
+| "raise" space _OptBlank Expression RaiseFrom
 | "raise" Parenthesized
 | "raise" KeywordStatement
 
 RaiseFrom
-| " from" _OptBlank Expression@resolveExpression
+| " from" _OptBlank Expression
 
 Assert
-| "assert " _OptBlank Expression@resolveExpression
-| "assert " _OptBlank Expression@resolveExpression "," _OptBlank Expression@resolveExpression
+| "assert " _OptBlank Expression
+| "assert " _OptBlank Expression "," _OptBlank Expression
 
 Delete@flattenLists
 | "del " _OptBlank ExpressionList
@@ -348,20 +348,20 @@ Parameter
 | "**" _OptBlank Name Annotation
 
 Annotation
-| ":" _OptBlank Expression@resolveExpression
+| ":" _OptBlank Expression
 
 Default
-| "=" _OptBlank Expression@resolveExpression
-| " =" _OptBlank Expression@resolveExpression
+| "=" _OptBlank Expression
+| " =" _OptBlank Expression
 
 ReturnAnnotation
-| "->" _OptBlank Expression@resolveExpression
-| " ->" _OptBlank Expression@resolveExpression
+| "->" _OptBlank Expression
+| " ->" _OptBlank Expression
 
-Decorated@rightRecursiveReduction
-| "@" _OptBlank Expression@resolveExpression _TrailComment new_line Decorated
-| "@" _OptBlank Expression@resolveExpression _TrailComment new_line FunctionDefinition
-| "@" _OptBlank Expression@resolveExpression _TrailComment new_line ClassDefinition
+Decorated
+| "@" _OptBlank Expression _TrailComment new_line Decorated@<
+| "@" _OptBlank Expression _TrailComment new_line FunctionDefinition
+| "@" _OptBlank Expression _TrailComment new_line ClassDefinition
 
 Pass@flattenLists@identifierStatement
 | "pass"
@@ -379,22 +379,22 @@ Continue@flattenLists@identifierStatement
 | "continue" KeywordStatement
 
 Match@countMatch
-| "match " _OptBlank Expression@resolveExpression ":" Block
+| "match " _OptBlank Expression ":" Block
 
 Case@countCase
-| "case " _OptBlank Disjunction@resolveExpression ":" Block
-| "case " _OptBlank Disjunction@resolveExpression AsName ":" Block
-| "case " _OptBlank Disjunction@resolveExpression Guard ":" Block
-| "case " _OptBlank Disjunction@resolveExpression AsName Guard ":" Block
+| "case " _OptBlank Disjunction ":" Block
+| "case " _OptBlank Disjunction AsName ":" Block
+| "case " _OptBlank Disjunction Guard ":" Block
+| "case " _OptBlank Disjunction AsName Guard ":" Block
 
 Guard
-| " if" _OptBlank Expression@resolveExpression
+| " if" _OptBlank Expression
 
 TypeAlias
-| "type " _OptBlank Name _Eq Expression@resolveExpression
-| "type " _OptBlank Name "[" _InsideBlank TypeParameters _Eq Expression@resolveExpression
+| "type " _OptBlank Name _Eq Expression
+| "type " _OptBlank Name "[" _InsideBlank TypeParameters _Eq Expression
 
-TypeParameters@replaceWithChildren
+TypeParameters@<
 | TypeParameter "]"
 | TypeParameter "," _InsideBlank TypeParameters
 
@@ -406,40 +406,40 @@ TypeParameter
 | "**" _OptBlank Name
 
 ExpressionStatement@flattenLists
-| Expression@resolveExpression
-| Expression@resolveExpression Assignments
-| Expression@resolveExpression AugmentedValue
-| Expression@resolveExpression Annotation
-| Expression@resolveExpression Annotation AssignedValue
-| Expression@resolveExpression "," _OptBlank TargetList
+| Expression
+| Expression Assignments
+| Expression AugmentedValue
+| Expression Annotation
+| Expression Annotation AssignedValue
+| Expression "," _OptBlank TargetList
 
 Assignments
 | AssignedValue
 | AssignedValue Assignments
 
 AssignedValue@flattenLists
-| _Eq Expression@resolveExpression
-| _Eq Expression@resolveExpression "," _OptBlank ExpressionList
+| _Eq Expression
+| _Eq Expression "," _OptBlank ExpressionList
 
 AugmentedValue
-| _AugAssign Expression@resolveExpression
+| _AugAssign Expression
 
 TargetList
-| Expression@resolveExpression Assignments
-| Expression@resolveExpression "," _OptBlank TargetList
+| Expression Assignments
+| Expression "," _OptBlank TargetList
 | Starred Assignments
 | Starred "," _OptBlank TargetList
 
 ExpressionList
-| Expression@resolveExpression
-| Expression@resolveExpression "," _OptBlank ExpressionList
+| Expression
+| Expression "," _OptBlank ExpressionList
 | Starred
 | Starred "," _OptBlank ExpressionList
 
 # An identifier that starts with a standalone keyword ("passed",
 # "return_value"); identifierStatement makes the statement an
 # ExpressionStatement whose first child is this Name.
-KeywordStatement@replaceWithChildren
+KeywordStatement@<
 | KeywordName
 | KeywordName Trailers
 | KeywordName Assignments
@@ -853,100 +853,98 @@ _Utf8FourByte
 # trailers, then optionally a binary operator and the rest of the sequence.
 # Every optional continuation is a shared prefix, so the generator factors it
 # into a helper that allocates no node; only real operands, operators and
-# trailers allocate. Expression has no hook of its own, so its levels stay
-# nested and unresolved; every use outside Expression carries
-# @resolveExpression, which nests the whole sequence in one pass at the top
-# level: BinaryOperation and UnaryOperation nodes take their operands as
-# children, trailers take their object as first child, and Conditional and
+# trailers allocate. The rest of the sequence is flattened (`@<`) into the
+# Expression it continues, so one Expression node holds the whole sequence as
+# a flat list and its resolveExpression hook nests it in one pass:
+# BinaryOperation and UnaryOperation nodes take their operands as children,
+# trailers take their object as first child, and Conditional and
 # NamedExpression take everything before them. A node's operator is the
-# source text between its children. Resolving at every level instead would
-# redo the work for the rest of the sequence each time: quadratic in its
-# length.
+# source text between its children.
 #
 # Disjunction is the same sequence without the conditional and walrus
 # continuations, for positions Python restricts to a disjunction:
 # comprehension iterables and conditions, conditional tests, lambda bodies,
-# walrus values, yield operands and case patterns. Its uses carry
-# @resolveExpression the same way.
+# walrus values, yield operands and case patterns. It flattens and resolves
+# the same way.
 
-Expression
+Expression@resolveExpression
 | Name
 | Name Trailers
-| Name BinaryOperation Expression
-| Name Trailers BinaryOperation Expression
+| Name BinaryOperation Expression@<
+| Name Trailers BinaryOperation Expression@<
 | Name Conditional
 | Name Trailers Conditional
 | Number
 | Number Trailers
-| Number BinaryOperation Expression
-| Number Trailers BinaryOperation Expression
+| Number BinaryOperation Expression@<
+| Number Trailers BinaryOperation Expression@<
 | Number Conditional
 | Number Trailers Conditional
 | String
 | String Trailers
-| String BinaryOperation Expression
-| String Trailers BinaryOperation Expression
+| String BinaryOperation Expression@<
+| String Trailers BinaryOperation Expression@<
 | String Conditional
 | String Trailers Conditional
 | Constant
 | Constant Trailers
-| Constant BinaryOperation Expression
-| Constant Trailers BinaryOperation Expression
+| Constant BinaryOperation Expression@<
+| Constant Trailers BinaryOperation Expression@<
 | Constant Conditional
 | Constant Trailers Conditional
 | Parenthesized
 | Parenthesized Trailers
-| Parenthesized BinaryOperation Expression
-| Parenthesized Trailers BinaryOperation Expression
+| Parenthesized BinaryOperation Expression@<
+| Parenthesized Trailers BinaryOperation Expression@<
 | Parenthesized Conditional
 | Parenthesized Trailers Conditional
 | List
 | List Trailers
-| List BinaryOperation Expression
-| List Trailers BinaryOperation Expression
+| List BinaryOperation Expression@<
+| List Trailers BinaryOperation Expression@<
 | List Conditional
 | List Trailers Conditional
 | Brace
 | Brace Trailers
-| Brace BinaryOperation Expression
-| Brace Trailers BinaryOperation Expression
+| Brace BinaryOperation Expression@<
+| Brace Trailers BinaryOperation Expression@<
 | Brace Conditional
 | Brace Trailers Conditional
 | Name NamedExpression
-| UnaryOperation Expression
+| UnaryOperation Expression@<
 | Lambda
 | Yield
 
-Disjunction
+Disjunction@resolveExpression
 | Name
 | Name Trailers
-| Name BinaryOperation Disjunction
-| Name Trailers BinaryOperation Disjunction
+| Name BinaryOperation Disjunction@<
+| Name Trailers BinaryOperation Disjunction@<
 | Number
 | Number Trailers
-| Number BinaryOperation Disjunction
-| Number Trailers BinaryOperation Disjunction
+| Number BinaryOperation Disjunction@<
+| Number Trailers BinaryOperation Disjunction@<
 | String
 | String Trailers
-| String BinaryOperation Disjunction
-| String Trailers BinaryOperation Disjunction
+| String BinaryOperation Disjunction@<
+| String Trailers BinaryOperation Disjunction@<
 | Constant
 | Constant Trailers
-| Constant BinaryOperation Disjunction
-| Constant Trailers BinaryOperation Disjunction
+| Constant BinaryOperation Disjunction@<
+| Constant Trailers BinaryOperation Disjunction@<
 | Parenthesized
 | Parenthesized Trailers
-| Parenthesized BinaryOperation Disjunction
-| Parenthesized Trailers BinaryOperation Disjunction
+| Parenthesized BinaryOperation Disjunction@<
+| Parenthesized Trailers BinaryOperation Disjunction@<
 | List
 | List Trailers
-| List BinaryOperation Disjunction
-| List Trailers BinaryOperation Disjunction
+| List BinaryOperation Disjunction@<
+| List Trailers BinaryOperation Disjunction@<
 | Brace
 | Brace Trailers
-| Brace BinaryOperation Disjunction
-| Brace Trailers BinaryOperation Disjunction
-| UnaryOperation Disjunction
+| Brace BinaryOperation Disjunction@<
+| Brace Trailers BinaryOperation Disjunction@<
+| UnaryOperation Disjunction@<
 
 BinaryOperation
 | " or" _OptBlank
@@ -1003,32 +1001,32 @@ UnaryOperation
 | "~" _OptBlank
 
 Conditional
-| " if" _OptBlank Disjunction@resolveExpression " else" _OptBlank Expression@resolveExpression
+| " if" _OptBlank Disjunction " else" _OptBlank Expression
 
 NamedExpression
-| ":=" _OptBlank Disjunction@resolveExpression
-| " :=" _OptBlank Disjunction@resolveExpression
+| ":=" _OptBlank Disjunction
+| " :=" _OptBlank Disjunction
 
 Lambda@flattenLists
-| "lambda:" _OptBlank Disjunction@resolveExpression
-| "lambda " _OptBlank ":" _OptBlank Disjunction@resolveExpression
+| "lambda:" _OptBlank Disjunction
+| "lambda " _OptBlank ":" _OptBlank Disjunction
 | "lambda " _OptBlank LambdaParameters
 
 LambdaParameters
-| LambdaParameter ":" _OptBlank Disjunction@resolveExpression
+| LambdaParameter ":" _OptBlank Disjunction
 | LambdaParameter "," _OptBlank LambdaParameters
 
 LambdaParameter
 | "**" _OptBlank Name
 | "*" _OptBlank Name
 | Name
-| Name "=" _OptBlank Expression@resolveExpression
-| Name " =" _OptBlank Expression@resolveExpression
+| Name "=" _OptBlank Expression
+| Name " =" _OptBlank Expression
 
 Yield
-| "yield " _OptBlank "from " _OptBlank Disjunction@resolveExpression
-| "yield " _OptBlank "from(" _OptBlank Disjunction@resolveExpression ")"
-| "yield " _OptBlank Disjunction@resolveExpression
+| "yield " _OptBlank "from " _OptBlank Disjunction
+| "yield " _OptBlank "from(" _OptBlank Disjunction ")"
+| "yield " _OptBlank Disjunction
 | "yield" _YieldBare
 
 _YieldBare
@@ -1062,20 +1060,20 @@ _NoneTail
 |
 
 Starred
-| "*" _OptBlank Expression@resolveExpression
+| "*" _OptBlank Expression
 
 DoubleStarred
-| "**" _OptBlank Expression@resolveExpression
+| "**" _OptBlank Expression
 
 Parenthesized@flattenLists
 | "(" _InsideBlank ")"
 | "(" _InsideBlank ParenthesizedItems
 
 ParenthesizedItems
-| Expression@resolveExpression ")"
-| Expression@resolveExpression "," _InsideBlank ")"
-| Expression@resolveExpression "," _InsideBlank ParenthesizedItems
-| Expression@resolveExpression Comprehension ")"
+| Expression ")"
+| Expression "," _InsideBlank ")"
+| Expression "," _InsideBlank ParenthesizedItems
+| Expression Comprehension ")"
 | Starred ")"
 | Starred "," _InsideBlank ")"
 | Starred "," _InsideBlank ParenthesizedItems
@@ -1085,10 +1083,10 @@ List@flattenLists
 | "[" _InsideBlank ListItems
 
 ListItems
-| Expression@resolveExpression "]"
-| Expression@resolveExpression "," _InsideBlank "]"
-| Expression@resolveExpression "," _InsideBlank ListItems
-| Expression@resolveExpression Comprehension "]"
+| Expression "]"
+| Expression "," _InsideBlank "]"
+| Expression "," _InsideBlank ListItems
+| Expression Comprehension "]"
 | Starred "]"
 | Starred "," _InsideBlank "]"
 | Starred "," _InsideBlank ListItems
@@ -1098,20 +1096,20 @@ Brace@flattenLists
 | "{" _InsideBlank BraceItems
 
 BraceItems
-| Expression@resolveExpression "}"
-| Expression@resolveExpression "," _InsideBlank "}"
-| Expression@resolveExpression "," _InsideBlank BraceItems
-| Expression@resolveExpression Comprehension "}"
-| Expression@resolveExpression DictionaryValue "}"
-| Expression@resolveExpression DictionaryValue "," _InsideBlank "}"
-| Expression@resolveExpression DictionaryValue "," _InsideBlank BraceItems
-| Expression@resolveExpression DictionaryValue Comprehension "}"
+| Expression "}"
+| Expression "," _InsideBlank "}"
+| Expression "," _InsideBlank BraceItems
+| Expression Comprehension "}"
+| Expression DictionaryValue "}"
+| Expression DictionaryValue "," _InsideBlank "}"
+| Expression DictionaryValue "," _InsideBlank BraceItems
+| Expression DictionaryValue Comprehension "}"
 | DoubleStarred "}"
 | DoubleStarred "," _InsideBlank "}"
 | DoubleStarred "," _InsideBlank BraceItems
 
 DictionaryValue
-| ":" _InsideBlank Expression@resolveExpression
+| ":" _InsideBlank Expression
 
 Comprehension@flattenLists
 | " for" _OptBlank ComprehensionTargets
@@ -1119,12 +1117,12 @@ Comprehension@flattenLists
 
 ComprehensionTargets
 | Name "," _OptBlank ComprehensionTargets
-| Name " in" _OptBlank Disjunction@resolveExpression
-| Name " in" _OptBlank Disjunction@resolveExpression ComprehensionTail
+| Name " in" _OptBlank Disjunction
+| Name " in" _OptBlank Disjunction ComprehensionTail
 
 ComprehensionTail
-| " if" _OptBlank Disjunction@resolveExpression
-| " if" _OptBlank Disjunction@resolveExpression ComprehensionTail
+| " if" _OptBlank Disjunction
+| " if" _OptBlank Disjunction ComprehensionTail
 | Comprehension
 
 # Trailers nest one wrapper per trailer; resolveExpression and
@@ -1142,13 +1140,13 @@ Call@flattenLists
 | "(" _InsideBlank CallArguments
 
 CallArguments
-| Expression@resolveExpression _InsideBlank ")"
-| Expression@resolveExpression "," _InsideBlank ")"
-| Expression@resolveExpression "," _InsideBlank CallArguments
-| Expression@resolveExpression Comprehension _InsideBlank ")"
-| Expression@resolveExpression KeywordValue _InsideBlank ")"
-| Expression@resolveExpression KeywordValue "," _InsideBlank ")"
-| Expression@resolveExpression KeywordValue "," _InsideBlank CallArguments
+| Expression _InsideBlank ")"
+| Expression "," _InsideBlank ")"
+| Expression "," _InsideBlank CallArguments
+| Expression Comprehension _InsideBlank ")"
+| Expression KeywordValue _InsideBlank ")"
+| Expression KeywordValue "," _InsideBlank ")"
+| Expression KeywordValue "," _InsideBlank CallArguments
 | Starred _InsideBlank ")"
 | Starred "," _InsideBlank ")"
 | Starred "," _InsideBlank CallArguments
@@ -1157,17 +1155,17 @@ CallArguments
 | DoubleStarred "," _InsideBlank CallArguments
 
 KeywordValue
-| "=" _OptBlank Expression@resolveExpression
+| "=" _OptBlank Expression
 
 Subscript@flattenLists
 | "[" _InsideBlank SubscriptItems
 
 SubscriptItems
-| Expression@resolveExpression "]"
-| Expression@resolveExpression "," _InsideBlank "]"
-| Expression@resolveExpression "," _InsideBlank SubscriptItems
-| Expression@resolveExpression Slice "]"
-| Expression@resolveExpression Slice "," _InsideBlank SubscriptItems
+| Expression "]"
+| Expression "," _InsideBlank "]"
+| Expression "," _InsideBlank SubscriptItems
+| Expression Slice "]"
+| Expression Slice "," _InsideBlank SubscriptItems
 | Slice "]"
 | Slice "," _InsideBlank SubscriptItems
 | Starred "]"
@@ -1175,11 +1173,11 @@ SubscriptItems
 
 Slice
 | ":" _InsideBlank
-| ":" _InsideBlank Expression@resolveExpression
+| ":" _InsideBlank Expression
 | ":" _InsideBlank ":" _OptBlank
-| ":" _InsideBlank ":" _OptBlank Expression@resolveExpression
-| ":" _InsideBlank Expression@resolveExpression ":" _OptBlank
-| ":" _InsideBlank Expression@resolveExpression ":" _OptBlank Expression@resolveExpression
+| ":" _InsideBlank ":" _OptBlank Expression
+| ":" _InsideBlank Expression ":" _OptBlank
+| ":" _InsideBlank Expression ":" _OptBlank Expression
 
 Attribute
 | "." _OptBlank Name

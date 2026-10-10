@@ -61,7 +61,7 @@ zig build run-ll-json-recovery -- languages/json-recovery/recovery-demo.json
 A full RFC 8259 JSON grammar with additional non-terminals for a richer AST shape. It parses the same language as `languages/json`, but preserves more intermediate structure and therefore has lower benchmark throughput.
 
 - **Parser Engines:** Both `ll.grm` and `lr.grm` are provided.
-- **Hooks:** Uses LHS `@replaceWithChildren` annotations and automatic reduction hooks to shape the AST and collect payload counts.
+- **Hooks:** Flattens its member wrappers and list tails with `@<`, and collects payload counts with automatic reduction hooks.
 
 ### JSON Augmented (`languages/json-augmented`)
 

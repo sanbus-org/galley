@@ -222,6 +222,8 @@ For each eligible variable reduction, hooks execute from the most specific conte
 
 Each phase receives the node resulting from the preceding phase. An RHS occurrence hook belongs to the child variable's reduction and runs only when that child is reached through the annotated parent position. A child completes this sequence before its parent variable is reduced. The start variable has no parent RHS occurrence, and `reduction` runs once and last for each eligible reduction.
 
+A variable flattened with `@<` builds no node where it is flattened, so none of these phases run for it there; its children join the node around it, which runs its own hooks as usual. See [Flattening](grammar_guidelines.md#9-flattening).
+
 For a terminal match enabled by `--ast-for-terminals`, only the applicable phases run:
 
 1. Hooks attached to that terminal occurrence, in left-to-right chain order.

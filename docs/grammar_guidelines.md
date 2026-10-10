@@ -10,6 +10,7 @@
 - [6. Indentation-Sensitive Grammars](#6-indentation-sensitive-grammars)
 - [7. Operator Precedence & Ambiguity-Free Expression Extraction](#7-operator-precedence--ambiguity-free-expression-extraction)
 - [8. Verbatim Raw Capture (`@>>` / `@>^"..."` / `@>"..."^`)](#8-verbatim-raw-capture)
+- [9. Flattening](#9-flattening)
 
 ---
 
@@ -52,6 +53,7 @@ The parser generator statically configures the Abstract Syntax Tree (AST) node c
 - **PascalCase Validation:** All variable names must be written in PascalCase. The generator validates this at compile-time.
 - **AST-Enabled Variables:** Variables starting with a Capital letter (e.g. `Value`, `ObjectMembers`) allocate an AST node when matched.
 - **AST-Suppressed Helper Variables:** Variables starting with an underscore (e.g. `_StringContent`, `_OptionalBlank`) are helper rules. The generator completely skips allocating AST nodes for them, optimizing runtime parsing performance and memory footprint.
+- **Flattened Variables:** A variable annotated with `@<` keeps its children but builds no node of its own; see [Flattening](#9-flattening).
 
 ---
 
@@ -130,7 +132,7 @@ Galley provides three explicit hook placements, registered by appending a proced
 
 Multiple procedures can be chained on any explicit hook target (for example, `Number@hook1@hook2`). Chaining runs the procedures from left to right; it is not a separate hook kind.
 
-For each variable reduction, hooks run in this order: RHS occurrence hooks, production hooks, `reduction_<SymbolName>_<RhsIndex>`, LHS hooks, `reduction_<Variable>`, then the general `reduction` hook. Each explicit chain runs left to right, and each phase receives the node produced by the preceding phase.
+For each variable reduction, hooks run in this order: RHS occurrence hooks, production hooks, `reduction_<SymbolName>_<RhsIndex>`, LHS hooks, `reduction_<Variable>`, then the general `reduction` hook. Each explicit chain runs left to right, and each phase receives the node produced by the preceding phase. A variable flattened with `@<` runs none of them where it is flattened (see [Flattening](#9-flattening)).
 
 For an AST-enabled terminal, the occurrence chain runs first, followed by the automatic terminal hook and then `reduction`. Terminal hooks receive `args.rule = null`. LR generation reports `error.AmbiguousProcedureHooks` if the parser cannot distinguish occurrences with different chains at the match or reduction point.
 
@@ -393,3 +395,58 @@ Parser notes:
 
 Galley's own grammar demonstrates the syntax; `tests/verbatim/grammar.grm` is a
 maintained example with plain and indentation-mode test fixtures.
+
+---
+
+## 9. Flattening
+
+Annotate a variable with `@<` to keep its children but not its node: they
+join the nearest node around it, in order. List tails, member wrappers and the
+continuation of a flat sequence are the usual candidates, the shapes that
+would otherwise nest one wrapper per element.
+
+```text
+Array
+| "[" ArrayMembers
+
+ArrayMembers@<
+| Value ArrayMembersTail "]"
+| "]"
+
+ArrayMembersTail@<
+| "," Value ArrayMembersTail
+|
+
+Sum@total
+| Number "+" Sum@<
+| Number
+```
+
+- On a rule header (`ArrayMembers@<`) every use is flattened: `[1,2,3]` is an
+  `Array` with three `Value` children. On a symbol (`Sum@<`) only that use is:
+  `1+2+3` is one `Sum` with three `Number` children, and `Sum`'s other uses
+  still build `Sum` nodes.
+- Where a variable is flattened, none of its hooks run, the general
+  `reduction` hook included. The node that takes its children runs its own as
+  usual: `@total` above runs once for `1+2+3`, on the outer `Sum`, which then
+  holds all three numbers.
+- Flattening happens as the parser builds the tree, so it costs nothing per
+  level. LL appends each child straight to the node that keeps it, and a
+  flattened self-reference in last position loops with no node and no stack
+  per level. LR passes the children on as one chain. A list of any length
+  flattens in linear time.
+- Without AST construction the node around it still takes the children: its
+  hooks see them among its temporary children, as they would in the tree.
+- An error inside a flattened variable recovers at the node around it, through
+  that node's recovery points.
+
+Generation rejects `@<` where the flattened node would have to exist: on a
+production (`|@<`), a terminal, a `_` variable (it builds no node already) or
+the start variable; with a hook, recovery point or verbatim capture on the
+flattened occurrence; with hooks on the header or productions of a variable
+flattened at its header; and with recovery points on the header or productions
+of any flattened variable. LL flattens a self-reference only in the last
+position of its production (`| Number "+" Sum@<`); anywhere else generation
+fails.
+
+`tests/flatten` holds an LL and an LR grammar that build the same trees.
