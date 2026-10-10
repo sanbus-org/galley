@@ -245,7 +245,6 @@ interface GalleyWasmExports extends DoorNames<"">, DoorNames<"hook_"> {
   galley_procedure_drop_self(session: number, hook: bigint): bigint;
   galley_procedure_drop_children(session: number, hook: bigint): bigint;
   galley_procedure_drop_if_empty(session: number, hook: bigint): bigint;
-  galley_procedure_replace_with_children(session: number, hook: bigint): bigint;
   galley_procedure_context_line(session: number, hook: bigint): bigint;
   galley_procedure_context_column(session: number, hook: bigint): bigint;
   galley_procedure_report_semantic_error(session: number, hook: bigint, message: number, messageLen: number): bigint;
@@ -1510,9 +1509,6 @@ export class WasmPort implements FfiPort {
     return toNumber(this.wasm.galley_procedure_drop_if_empty(session as number, hook));
   }
 
-  procReplaceWithChildren(session: Handle, hook: HookTicket): number {
-    return toNumber(this.wasm.galley_procedure_replace_with_children(session as number, hook));
-  }
 
   procContextLine(session: Handle, hook: HookTicket): number {
     return toNumber(this.wasm.galley_procedure_context_line(session as number, hook));

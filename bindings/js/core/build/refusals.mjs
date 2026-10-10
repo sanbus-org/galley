@@ -37,7 +37,6 @@ export async function runRefusalScenarios({ test, assert, newParser, GalleyError
       () => args.dropSelf(),
       () => args.dropChildren(),
       () => args.dropIfEmpty(),
-      () => args.replaceWithChildren(),
       () => args.reportSemanticError("late"),
       () => args.setCurrentNode(node),
     ];

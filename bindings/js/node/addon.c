@@ -266,7 +266,6 @@ typedef long long (*fn_galley_procedure_current_node_t)(GalleySession *session, 
 typedef long long (*fn_galley_procedure_drop_children_t)(GalleySession *session, unsigned long long hook);
 typedef long long (*fn_galley_procedure_drop_if_empty_t)(GalleySession *session, unsigned long long hook);
 typedef long long (*fn_galley_procedure_drop_self_t)(GalleySession *session, unsigned long long hook);
-typedef long long (*fn_galley_procedure_replace_with_children_t)(GalleySession *session, unsigned long long hook);
 typedef long long (*fn_galley_procedure_report_semantic_error_t)(GalleySession *session, unsigned long long hook, const char *message, size_t message_len);
 typedef long long (*fn_galley_procedure_set_current_node_t)(GalleySession *session, unsigned long long hook, unsigned long long generation, GalleyNodeAddress node);
 typedef long long (*fn_galley_procedure_door_t)(GalleySession *session, unsigned long long hook, void **out_door);
@@ -426,7 +425,6 @@ SHARED_FN_ALIAS(tree_remove_children_at)
   X(galley_procedure_drop_children) \
   X(galley_procedure_drop_if_empty) \
   X(galley_procedure_drop_self) \
-  X(galley_procedure_replace_with_children) \
   X(galley_procedure_report_semantic_error) \
   X(galley_procedure_set_current_node) \
   X(galley_recorded_context_count) \
@@ -1004,7 +1002,6 @@ SESS_INDEX_I64(galley_recorded_diagnostic_recovery_kind)
 HOOK_NUMBER(galley_procedure_drop_self)
 HOOK_NUMBER(galley_procedure_drop_children)
 HOOK_NUMBER(galley_procedure_drop_if_empty)
-HOOK_NUMBER(galley_procedure_replace_with_children)
 HOOK_NUMBER(galley_procedure_context_line)
 HOOK_NUMBER(galley_procedure_context_column)
 
@@ -2238,7 +2235,6 @@ static napi_value method_load(napi_env env, napi_callback_info info) {
   BIND_OR_THROW(api, lib, galley_procedure_drop_self);
   BIND_OR_THROW(api, lib, galley_procedure_drop_children);
   BIND_OR_THROW(api, lib, galley_procedure_drop_if_empty);
-  BIND_OR_THROW(api, lib, galley_procedure_replace_with_children);
   BIND_OR_THROW(api, lib, galley_procedure_context_line);
   BIND_OR_THROW(api, lib, galley_procedure_context_column);
   BIND_OR_THROW(api, lib, galley_procedure_report_semantic_error);

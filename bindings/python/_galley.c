@@ -3921,7 +3921,6 @@ static PyObject *ProcedureArgs_current_node(ProcedureArgsObject *self, PyObject 
 DEFINE_PROCEDURE_ACTION(ProcedureArgs_drop_self, drop_self)
 DEFINE_PROCEDURE_ACTION(ProcedureArgs_drop_children, drop_children)
 DEFINE_PROCEDURE_ACTION(ProcedureArgs_drop_if_empty, drop_if_empty)
-DEFINE_PROCEDURE_ACTION(ProcedureArgs_replace_with_children, replace_with_children)
 
 static PyObject *ProcedureArgs_current_line(ProcedureArgsObject *self, PyObject *Py_UNUSED(ignored))
 {
@@ -3992,8 +3991,6 @@ static PyMethodDef ProcedureArgs_methods[] = {
      "drop_children()\n\nDrop children of the current node."},
     {"drop_if_empty", (PyCFunction)ProcedureArgs_drop_if_empty, METH_NOARGS,
      "drop_if_empty()\n\nDrop the current node when it has no children."},
-    {"replace_with_children", (PyCFunction)ProcedureArgs_replace_with_children, METH_NOARGS,
-     "replace_with_children()\n\nReplace the current node with its children."},
     {"current_line", (PyCFunction)ProcedureArgs_current_line, METH_NOARGS,
      "current_line()\n\nScanner line during this reduction."},
     {"current_column", (PyCFunction)ProcedureArgs_current_column, METH_NOARGS,

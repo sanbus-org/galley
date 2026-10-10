@@ -93,7 +93,6 @@ fn stale_hook_refusals(session: usize, hook: u64) -> u32 {
                 arguments.drop_self() == stale,
                 arguments.drop_children() == stale,
                 arguments.drop_if_empty() == stale,
-                arguments.replace_with_children() == stale,
                 arguments.report_semantic_error("late").map(drop) == stale,
                 arguments.current_node().map(drop) == stale,
                 arguments.current_line().map(drop) == stale,
@@ -114,7 +113,7 @@ pub extern "C" fn fixture_stale_hook_during() -> u32 {
     STALE_HOOK_DURING.load(Ordering::SeqCst)
 }
 
-/// The same calls, made now, after the parse (9 are made).
+/// The same calls, made now, after the parse (8 are made).
 #[no_mangle]
 pub extern "C" fn fixture_stale_hook_after() -> u32 {
     match FIRST_PAIR.lock().unwrap().last() {

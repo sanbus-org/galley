@@ -388,7 +388,7 @@ test "walk steps see edits made between steps" {
     try std.testing.expect(!(try walkNext(&node_allocator, &cursor)));
 }
 
-test "walk raises WalkPositionDetached when promoting a wrapper's children lowers the cursor's depth" {
+test "walk raises WalkPositionDetached when flattening a wrapper lowers the cursor's depth" {
     var node_allocator = try TestAllocator.initWithCapacity(std.testing.allocator, 8);
     defer node_allocator.deinit(std.testing.allocator);
     // root(0) -> wrapper(1) -> first(2), second(3).
@@ -406,9 +406,12 @@ test "walk raises WalkPositionDetached when promoting a wrapper's children lower
     try std.testing.expectEqual(@as(u32, 2), cursor.depth);
 
     // The children now sit directly under the root, one level higher than
-    // the cursor believes.
-    const head = Node.immediatePromoteChildrenOverWrapper(addresses[1], &node_allocator).?;
-    try std.testing.expectEqual(addresses[2], head);
+    // the cursor believes: the public tier composes the same edit the
+    // `@<` flatten makes (detach the children, splice them in, drop the wrapper).
+    const children = Node.cleanChildren(addresses[1], &node_allocator);
+    Node.insertBefore(addresses[1], &node_allocator, children);
+    Node.removeSelf(addresses[1], &node_allocator);
+    try std.testing.expectEqual(addresses[2], children);
     try std.testing.expectError(error.WalkPositionDetached, walkNext(&node_allocator, &cursor));
     try std.testing.expectEqual(addresses[2], cursor.current);
 }

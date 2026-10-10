@@ -430,10 +430,6 @@ class ProcedureArguments:
         """Drop the current node when it has no children."""
         ...
 
-    def replace_with_children(self) -> None:
-        """Replace the current node with its children."""
-        ...
-
     def current_line(self) -> int:
         """Scanner line during this reduction."""
         ...

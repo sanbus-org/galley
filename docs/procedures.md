@@ -303,9 +303,9 @@ tier is internal to generated parsers (see
 Two rules follow from how generated parsers use the tree:
 
 - A hook that replaces the node (`args.node_address = ...`) must hand back a
-  node or chain that is detached, such as the result of `cleanChildren` or
-  `replaceWithChildren`. Handing back a node that is still attached to a
-  parent, for example the node's own first child, lists it under two parents.
+  node or chain that is detached, such as the result of `cleanChildren`.
+  Handing back a node that is still attached to a parent, for example the
+  node's own first child, lists it under two parents.
 - A hook must not detach an ancestor of the node being reduced. A repetition
   climbs from each wrapper to the one enclosing it, so a detached ancestor
   skips the outer procedures of that repetition.
@@ -330,12 +330,6 @@ Each is a public function of `standard_procedures`; an annotation reaches it thr
   }
   ```
 
-- **`rightRecursiveReduction`** and **`leftRecursiveReduction`**: Flatten one level of a recursive node when its edge child has the same grammar variable:
-
-  ```zig
-  pub const reduction_ItemsTail_0 = standard_procedures.rightRecursiveReduction;
-  ```
-
 - **`dropSelf`**: Discards the current node itself by setting it to `null`:
 
   ```zig
@@ -350,17 +344,7 @@ Each is a public function of `standard_procedures`; an annotation reaches it thr
   pub const hook_dropIfEmpty = standard_procedures.dropIfEmpty;
   ```
 
-- **`replaceWithChildren`**: Detaches the current node and puts all of its children in its place among its siblings. With no children the result is `null` and the node stays; a node without a parent yields its children as a detached chain:
-
-  ```zig
-  pub fn hook_replaceWithChildren(args: *ProcedureArguments) !void {
-      if (args.node_address) |node_address| {
-          args.node_address = data_structures.Node.immediatePromoteChildrenOverWrapper(node_address, args.context.node_allocator);
-      }
-  }
-  ```
-
-  `immediatePromoteChildrenOverWrapper` is internal: it does the splice in one pass and leaves the node fully detached. A host that wants the same result through the public tier calls `cleanChildren`, `insertBefore`, and `removeSelf`, which gives the same tree in several passes.
+To put a node's children in its place, flatten the variable with `@<` instead of a hook: the node is never built, which a hook cannot match. See [Flattening](grammar_guidelines.md#9-flattening).
 
 ### Custom AST Node Payload
 

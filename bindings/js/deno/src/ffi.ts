@@ -141,7 +141,6 @@ interface GalleySymbols extends DoorNames<"">, DoorNames<"hook_"> {
   galley_procedure_drop_self(session: Deno.PointerValue, hook: bigint): bigint;
   galley_procedure_drop_children(session: Deno.PointerValue, hook: bigint): bigint;
   galley_procedure_drop_if_empty(session: Deno.PointerValue, hook: bigint): bigint;
-  galley_procedure_replace_with_children(session: Deno.PointerValue, hook: bigint): bigint;
   galley_procedure_context_line(session: Deno.PointerValue, hook: bigint): bigint;
   galley_procedure_context_column(session: Deno.PointerValue, hook: bigint): bigint;
   galley_procedure_report_semantic_error(session: Deno.PointerValue, hook: bigint, message: FfiOut, messageLen: number): bigint;
@@ -290,7 +289,6 @@ const BASE_SYMBOLS = {
   galley_procedure_drop_self: { parameters: ["pointer", "u64"], result: "i64" },
   galley_procedure_drop_children: { parameters: ["pointer", "u64"], result: "i64" },
   galley_procedure_drop_if_empty: { parameters: ["pointer", "u64"], result: "i64" },
-  galley_procedure_replace_with_children: { parameters: ["pointer", "u64"], result: "i64" },
   galley_procedure_context_line: { parameters: ["pointer", "u64"], result: "i64" },
   galley_procedure_context_column: { parameters: ["pointer", "u64"], result: "i64" },
   galley_procedure_report_semantic_error: { parameters: ["pointer", "u64", "buffer", "usize"], result: "i64" },
@@ -1026,9 +1024,6 @@ export class DenoPort implements FfiPort {
     return Number(this.native.galley_procedure_drop_if_empty(session as Deno.PointerValue, hook));
   }
 
-  procReplaceWithChildren(session: Handle, hook: HookTicket): number {
-    return Number(this.native.galley_procedure_replace_with_children(session as Deno.PointerValue, hook));
-  }
 
   procContextLine(session: Handle, hook: HookTicket): number {
     return Number(this.native.galley_procedure_context_line(session as Deno.PointerValue, hook));

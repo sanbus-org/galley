@@ -107,9 +107,8 @@ every build — a lifetime contract, one integer compare per call.
 through the same gate against the running parse (`galley_error_stale_tree`,
 `galley_error_invalid_node`, `galley_error_null_argument`); a refused call
 leaves the current node as it was, and `GALLEY_INVALID_NODE` clears it with no
-generation check. Drop/replace the current node with
-`galley_procedure_drop_*` / `galley_procedure_replace_with_children`; those
-talk to the parser through the hook's own state and are not the same as
+generation check. Drop the current node with
+`galley_procedure_drop_*`; those talk to the parser through the hook's own state and are not the same as
 `galley_tree_remove_self`.
 
 Semantic payloads remain unavailable through the C API.

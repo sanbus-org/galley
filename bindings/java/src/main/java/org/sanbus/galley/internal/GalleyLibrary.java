@@ -111,7 +111,6 @@ public final class GalleyLibrary {
     private final MethodHandle mh_galley_procedure_drop_self;
     private final MethodHandle mh_galley_procedure_drop_children;
     private final MethodHandle mh_galley_procedure_drop_if_empty;
-    private final MethodHandle mh_galley_procedure_replace_with_children;
     private final MethodHandle mh_galley_procedure_context_line;
     private final MethodHandle mh_galley_procedure_context_column;
     private final MethodHandle mh_galley_procedure_report_semantic_error;
@@ -201,7 +200,6 @@ public final class GalleyLibrary {
         this.mh_galley_procedure_drop_self = downcall("galley_procedure_drop_self", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
         this.mh_galley_procedure_drop_children = downcall("galley_procedure_drop_children", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
         this.mh_galley_procedure_drop_if_empty = downcall("galley_procedure_drop_if_empty", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-        this.mh_galley_procedure_replace_with_children = downcall("galley_procedure_replace_with_children", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
         this.mh_galley_procedure_context_line = downcall("galley_procedure_context_line", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
         this.mh_galley_procedure_context_column = downcall("galley_procedure_context_column", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
         this.mh_galley_procedure_report_semantic_error = downcall("galley_procedure_report_semantic_error", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
@@ -358,7 +356,6 @@ public final class GalleyLibrary {
     public long galley_procedure_drop_self(MemorySegment session, long hook) { try { return (long) mh_galley_procedure_drop_self.invoke(session, hook); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_procedure_drop_children(MemorySegment session, long hook) { try { return (long) mh_galley_procedure_drop_children.invoke(session, hook); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_procedure_drop_if_empty(MemorySegment session, long hook) { try { return (long) mh_galley_procedure_drop_if_empty.invoke(session, hook); } catch (Throwable t) { throw new RuntimeException(t); } }
-    public long galley_procedure_replace_with_children(MemorySegment session, long hook) { try { return (long) mh_galley_procedure_replace_with_children.invoke(session, hook); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_procedure_context_line(MemorySegment session, long hook) { try { return (long) mh_galley_procedure_context_line.invoke(session, hook); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_procedure_context_column(MemorySegment session, long hook) { try { return (long) mh_galley_procedure_context_column.invoke(session, hook); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_procedure_report_semantic_error(MemorySegment session, long hook, MemorySegment message, long messageLen) { try { return (long) mh_galley_procedure_report_semantic_error.invoke(session, hook, message, messageLen); } catch (Throwable t) { throw new RuntimeException(t); } }

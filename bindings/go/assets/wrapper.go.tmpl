@@ -1129,15 +1129,6 @@ func (a ProcedureArgs) DropIfEmpty() error {
 	return procedureStatus(C.galley_procedure_drop_if_empty(session, a.cticket()))
 }
 
-// ReplaceWithChildren replaces the current node with its children.
-func (a ProcedureArgs) ReplaceWithChildren() error {
-	session, err := a.open()
-	if err != nil {
-		return err
-	}
-	return procedureStatus(C.galley_procedure_replace_with_children(session, a.cticket()))
-}
-
 // ReportSemanticError records a semantic error on the current node and
 // returns the running total. Parsing continues; a syntax-clean parse with
 // any semantic error fails with ErrSemantic.

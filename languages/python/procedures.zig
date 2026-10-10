@@ -9,8 +9,6 @@ const invalid = Node.invalid_pointer;
 
 pub const Payload = struct {};
 
-pub const hook_replaceWithChildren = galley.standard_procedures.replaceWithChildren;
-pub const hook_rightRecursiveReduction = galley.standard_procedures.rightRecursiveReduction;
 
 fn variableIndex(comptime variable_name: []const u8) u16 {
     @setEvalBranchQuota(1_000_000);

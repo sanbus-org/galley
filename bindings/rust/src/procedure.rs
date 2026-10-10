@@ -143,9 +143,6 @@ extern "C" {
     fn galley_procedure_drop_self(session: *mut c_void, hook: u64) -> i64;
     fn galley_procedure_drop_children(session: *mut c_void, hook: u64) -> i64;
     fn galley_procedure_drop_if_empty(session: *mut c_void, hook: u64) -> i64;
-    fn galley_procedure_replace_with_children(session: *mut c_void, hook: u64) -> i64;
-    fn galley_procedure_left_recursive_reduction(session: *mut c_void, hook: u64) -> i64;
-    fn galley_procedure_right_recursive_reduction(session: *mut c_void, hook: u64) -> i64;
     fn galley_procedure_rule_right_hand_side(
         session: *mut c_void,
         hook: u64,
@@ -267,7 +264,12 @@ impl ProcedureArguments {
     pub fn set_current_node(&mut self, node: Option<NodeHandle>) -> Result<(), Error> {
         let handle = node.unwrap_or(NodeHandle::INVALID);
         map_status(unsafe {
-            galley_procedure_set_current_node(self.session, self.hook, handle.generation, handle.address)
+            galley_procedure_set_current_node(
+                self.session,
+                self.hook,
+                handle.generation,
+                handle.address,
+            )
         })
     }
 
@@ -281,18 +283,6 @@ impl ProcedureArguments {
 
     pub fn drop_if_empty(&mut self) -> Result<(), Error> {
         map_status(unsafe { galley_procedure_drop_if_empty(self.session, self.hook) })
-    }
-
-    pub fn replace_with_children(&mut self) -> Result<(), Error> {
-        map_status(unsafe { galley_procedure_replace_with_children(self.session, self.hook) })
-    }
-
-    pub fn left_recursive_reduction(&mut self) -> Result<(), Error> {
-        map_status(unsafe { galley_procedure_left_recursive_reduction(self.session, self.hook) })
-    }
-
-    pub fn right_recursive_reduction(&mut self) -> Result<(), Error> {
-        map_status(unsafe { galley_procedure_right_recursive_reduction(self.session, self.hook) })
     }
 
     /// Records a semantic error on the current node and returns the running
@@ -389,7 +379,9 @@ impl HookDoor {
 
     /// Direct child count of `node`.
     pub fn child_count(&self, node: NodeHandle) -> Result<u32, Error> {
-        Ok(value(unsafe { galley_hook_node_child_count(self.as_ptr(), node.generation, node.address) })? as u32)
+        Ok(value(unsafe {
+            galley_hook_node_child_count(self.as_ptr(), node.generation, node.address)
+        })? as u32)
     }
 
     pub fn parent(&self, node: NodeHandle) -> Result<Option<NodeHandle>, Error> {
@@ -432,7 +424,13 @@ impl HookDoor {
         let mut data: *const c_char = std::ptr::null();
         let mut len = 0usize;
         map_status(unsafe {
-            galley_hook_node_text(self.as_ptr(), node.generation, node.address, &mut data, &mut len)
+            galley_hook_node_text(
+                self.as_ptr(),
+                node.generation,
+                node.address,
+                &mut data,
+                &mut len,
+            )
         })?;
         Ok(bytes(data, len))
     }
@@ -441,7 +439,13 @@ impl HookDoor {
         let mut data: *const c_char = std::ptr::null();
         let mut len = 0usize;
         map_status(unsafe {
-            galley_hook_node_symbol_name(self.as_ptr(), node.generation, node.address, &mut data, &mut len)
+            galley_hook_node_symbol_name(
+                self.as_ptr(),
+                node.generation,
+                node.address,
+                &mut data,
+                &mut len,
+            )
         })?;
         Ok(bytes(data, len))
     }
@@ -450,7 +454,13 @@ impl HookDoor {
         let mut start = 0u64;
         let mut len = 0u64;
         map_status(unsafe {
-            galley_hook_node_span(self.as_ptr(), node.generation, node.address, &mut start, &mut len)
+            galley_hook_node_span(
+                self.as_ptr(),
+                node.generation,
+                node.address,
+                &mut start,
+                &mut len,
+            )
         })?;
         Ok((start, len))
     }
@@ -459,7 +469,13 @@ impl HookDoor {
         let mut line = 0u32;
         let mut column = 0u32;
         map_status(unsafe {
-            galley_hook_node_line_column(self.as_ptr(), node.generation, node.address, &mut line, &mut column)
+            galley_hook_node_line_column(
+                self.as_ptr(),
+                node.generation,
+                node.address,
+                &mut line,
+                &mut column,
+            )
         })?;
         Ok((line, column))
     }
@@ -469,6 +485,10 @@ impl HookDoor {
         let index = value(unsafe {
             galley_hook_node_variable_index(self.as_ptr(), node.generation, node.address)
         })?;
-        Ok(if index == NO_VARIABLE as u64 { None } else { u16::try_from(index).ok() })
+        Ok(if index == NO_VARIABLE as u64 {
+            None
+        } else {
+            u16::try_from(index).ok()
+        })
     }
 }

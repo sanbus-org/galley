@@ -9,11 +9,6 @@ pub const Payload = struct {
 pub const hook_dropIfEmpty = standard_procedures.dropIfEmpty;
 pub const hook_dropSelf = standard_procedures.dropSelf;
 pub const hook_dropChildren = standard_procedures.dropChildren;
-pub const hook_rightRecursiveReduction = standard_procedures.rightRecursiveReduction;
-pub const hook_leftRecursiveReduction = standard_procedures.leftRecursiveReduction;
-pub const hook_replaceWithChildren = standard_procedures.replaceWithChildren;
-
-pub const reduction_ItemsTail_0 = hook_rightRecursiveReduction;
 
 pub fn reduction_Item(args: *ProcedureArguments) !void {
     const node = args.currentNode() orelse return;

@@ -16,8 +16,8 @@ fn the_core_refuses_returned_hooks_and_nodes_of_two_parses() {
     unsafe { fixture_forget_first_pair() };
     let mut session = Session::new().expect("session");
     session.parse(b"alpha:12,beta:3").expect("parse");
-    assert_eq!(unsafe { fixture_stale_hook_during() }, 9);
-    assert_eq!(unsafe { fixture_stale_hook_after() }, 9);
+    assert_eq!(unsafe { fixture_stale_hook_during() }, 8);
+    assert_eq!(unsafe { fixture_stale_hook_after() }, 8);
 
     // An edit given nodes of two parses is refused, whichever is the live one.
     let mut session = Session::new().expect("session");

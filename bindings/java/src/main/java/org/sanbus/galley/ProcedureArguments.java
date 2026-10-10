@@ -72,10 +72,6 @@ public final class ProcedureArguments {
         return succeeded(cross(handle -> lib.galley_procedure_drop_if_empty(handle, hook)));
     }
 
-    public long replaceWithChildren() {
-        return succeeded(cross(handle -> lib.galley_procedure_replace_with_children(handle, hook)));
-    }
-
     public int currentLine() { return (int) succeeded(cross(handle -> lib.galley_procedure_context_line(handle, hook))); }
 
     public int currentColumn() { return (int) succeeded(cross(handle -> lib.galley_procedure_context_column(handle, hook))); }

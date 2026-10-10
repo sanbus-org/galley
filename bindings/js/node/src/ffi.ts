@@ -226,7 +226,6 @@ export interface AddonApi extends AddonDoorNames<""> , AddonDoorNames<"hook_"> {
   galley_procedure_drop_self(session: bigint, hook: bigint): number;
   galley_procedure_drop_children(session: bigint, hook: bigint): number;
   galley_procedure_drop_if_empty(session: bigint, hook: bigint): number;
-  galley_procedure_replace_with_children(session: bigint, hook: bigint): number;
   galley_procedure_context_line(session: bigint, hook: bigint): number;
   galley_procedure_context_column(session: bigint, hook: bigint): number;
   galley_procedure_report_semantic_error(session: bigint, hook: bigint, message: string): number;
@@ -810,9 +809,6 @@ export class NodePort implements FfiPort {
     return this.api.galley_procedure_drop_if_empty(session as bigint, hook);
   }
 
-  procReplaceWithChildren(session: Handle, hook: HookTicket): number {
-    return this.api.galley_procedure_replace_with_children(session as bigint, hook);
-  }
 
   procContextLine(session: Handle, hook: HookTicket): number {
     return this.api.galley_procedure_context_line(session as bigint, hook);

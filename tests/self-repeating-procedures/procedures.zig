@@ -46,6 +46,19 @@ pub fn hook_dropInner(args: *ProcedureArguments) !void {
     if (try record(args)) try standard_procedures.dropSelf(args);
 }
 
+/// Puts an inner wrapper's children in its place through the public tree
+/// functions and hands back the first of them, so the loop sees a hook replace
+/// the node it reduced.
 pub fn hook_replaceInner(args: *ProcedureArguments) !void {
-    if (try record(args)) try standard_procedures.replaceWithChildren(args);
+    if (!try record(args)) return;
+    const node_address = args.node_address orelse return;
+    const nodes = args.context.node_allocator;
+    const children = data_structures.Node.cleanChildren(node_address, nodes);
+    if (children == data_structures.Node.invalid_pointer) {
+        args.node_address = null;
+        return;
+    }
+    data_structures.Node.insertBefore(node_address, nodes, children);
+    data_structures.Node.removeSelf(node_address, nodes);
+    args.node_address = children;
 }

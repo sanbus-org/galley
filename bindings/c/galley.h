@@ -839,9 +839,6 @@ long long galley_procedure_context_column(GalleySession *session, unsigned long 
 long long galley_procedure_drop_self(GalleySession *session, unsigned long long hook);
 long long galley_procedure_drop_children(GalleySession *session, unsigned long long hook);
 long long galley_procedure_drop_if_empty(GalleySession *session, unsigned long long hook);
-long long galley_procedure_replace_with_children(GalleySession *session, unsigned long long hook);
-long long galley_procedure_left_recursive_reduction(GalleySession *session, unsigned long long hook);
-long long galley_procedure_right_recursive_reduction(GalleySession *session, unsigned long long hook);
 long long galley_procedure_report_semantic_error(GalleySession *session, unsigned long long hook,
                                                  const char *message, size_t message_len);
 

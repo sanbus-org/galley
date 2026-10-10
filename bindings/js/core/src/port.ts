@@ -325,7 +325,6 @@ export interface FfiPort {
   procDropSelf(session: Handle, hook: HookTicket): number;
   procDropChildren(session: Handle, hook: HookTicket): number;
   procDropIfEmpty(session: Handle, hook: HookTicket): number;
-  procReplaceWithChildren(session: Handle, hook: HookTicket): number;
   procContextLine(session: Handle, hook: HookTicket): number;
   procContextColumn(session: Handle, hook: HookTicket): number;
   /** Running semantic-error total, or a negative status code. */

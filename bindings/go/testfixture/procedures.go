@@ -116,7 +116,7 @@ func probeStaleReads(door galley.HookDoor, node galley.Node) []error {
 // each answered.
 func staleHookCalls(args galley.ProcedureArgs, node galley.Node) []error {
 	var errs []error
-	errs = append(errs, args.DropSelf(), args.DropChildren(), args.DropIfEmpty(), args.ReplaceWithChildren())
+	errs = append(errs, args.DropSelf(), args.DropChildren(), args.DropIfEmpty())
 	_, err := args.ReportSemanticError("late")
 	errs = append(errs, err)
 	_, err = args.Line()

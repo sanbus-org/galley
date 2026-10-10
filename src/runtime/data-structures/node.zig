@@ -691,7 +691,7 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
         /// not move. Generated parsers call it directly; `appendChildren` is this plus Debug checks.
         /// The chain must have no parent and no prior other than the last node `immediateJoinChains`
         /// records, which holds for nodes the parser just created, for chains it joined and for
-        /// chains a hook hands back detached (for example from `replaceWithChildren`). A hook
+        /// chains a hook hands back detached. A hook
         /// must not hand back a node that is still attached to a parent.
         pub inline fn immediateAppendChildren(
             self: *Self,
@@ -767,57 +767,6 @@ fn NodeWithPointer(comptime PayloadType: type, comptime PointerType: type, compt
             last.next = invalid_pointer;
 
             node_allocator.setChainParent(first_address, invalid_pointer);
-        }
-
-        /// Internal, used only by the standard procedure `replaceWithChildren`; not part of the C ABI
-        /// or any binding. Splices all children of `wrapper_address` into the wrapper's place among
-        /// its siblings and detaches the wrapper, returning the head of the promoted chain, or `null`
-        /// when the wrapper has no children (the wrapper is then left untouched). A wrapper without a
-        /// parent leaves its children as a parentless chain.
-        ///
-        /// It is one pass: the sibling and parent links are rewritten once, and each child is
-        /// visited once to set its new parent. Composing the public `cleanChildren`, `insertBefore` and
-        /// `removeSelf` gives the same tree but visits the children several times, which dominated
-        /// list-tail flattening.
-        /// The children's parent links go through `setChainParent` (and the wrapper's through
-        /// `setParent`), because the edit changes depth and walk cursors must re-verify after it;
-        /// the version moves twice however many children are promoted.
-        ///
-        /// The wrapper ends fully detached (parent, prior, next, children cleared) because a
-        /// replaced node stays reachable by user code, which must not see a live parent, sibling or
-        /// child through it.
-        pub fn immediatePromoteChildrenOverWrapper(wrapper_address: Pointer, node_allocator: NodeAllocator) ?Pointer {
-            const wrapper = node_allocator.at(wrapper_address);
-            const first = wrapper.first_child;
-            if (first == invalid_pointer) return null;
-            const last = wrapper.last_child;
-            const count = wrapper.children_count;
-            const prior = wrapper.prior;
-            const next = wrapper.next;
-            const parent = wrapper.parent;
-
-            wrapper.first_child = invalid_pointer;
-            wrapper.last_child = invalid_pointer;
-            wrapper.children_count = 0;
-            wrapper.prior = invalid_pointer;
-            wrapper.next = invalid_pointer;
-            node_allocator.setParent(wrapper_address, invalid_pointer);
-
-            // Re-parent before the last child links to `next`: the chain ends at an invalid `next`.
-            node_allocator.setChainParent(first, parent);
-
-            node_allocator.at(first).prior = prior;
-            node_allocator.at(last).next = next;
-            if (prior != invalid_pointer) node_allocator.at(prior).next = first;
-            if (next != invalid_pointer) node_allocator.at(next).prior = last;
-            if (parent != invalid_pointer) {
-                const parent_node = node_allocator.at(parent);
-                if (prior == invalid_pointer) parent_node.first_child = first;
-                if (next == invalid_pointer) parent_node.last_child = last;
-                parent_node.children_count += count - 1;
-            }
-
-            return first;
         }
 
         /// Remove `count` consecutive siblings starting at `self_address`, detaching them from parent
@@ -1780,27 +1729,6 @@ fn testChainEditsBumpStructureVersionOnce(fixture: *TestFixture) !void {
     for (fixture.free_nodes[1..4]) |detached| {
         try std.testing.expectEqual(TestNode.invalid_pointer, fixture.nodes[detached].parent);
     }
-
-    // Promoting children over a wrapper is one bump for the wrapper and one for the whole chain,
-    // however many children are promoted.
-    const wrapper = fixture.free_nodes[5];
-    TestNode.appendChildren(parent, node_allocator, wrapper);
-    for (fixture.free_nodes[6..10]) |child| TestNode.appendChildren(wrapper, node_allocator, child);
-    const following = fixture.free_nodes[10];
-    TestNode.appendChildren(parent, node_allocator, following);
-    before = node_allocator.structure_version;
-    try std.testing.expectEqual(@as(?TestNode.Pointer, fixture.free_nodes[6]), TestNode.immediatePromoteChildrenOverWrapper(wrapper, node_allocator));
-    try std.testing.expectEqual(before + 2, node_allocator.structure_version);
-    for (fixture.free_nodes[6..10]) |child| {
-        try std.testing.expectEqual(parent, fixture.nodes[child].parent);
-    }
-    try expectDetached(fixture, wrapper);
-    // The promoted chain sits between the survivor and the wrapper's former next sibling.
-    try std.testing.expectEqual(parent, fixture.nodes[following].parent);
-    try std.testing.expectEqual(fixture.free_nodes[9], fixture.nodes[following].prior);
-    try std.testing.expectEqual(following, fixture.nodes[fixture.free_nodes[9]].next);
-    try std.testing.expectEqual(survivor, fixture.nodes[fixture.free_nodes[6]].prior);
-    try std.testing.expectEqual(following, fixture.nodes[parent].last_child);
 }
 
 test "multi-node edits bump the structure version once per operation" {

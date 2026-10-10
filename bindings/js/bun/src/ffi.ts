@@ -143,7 +143,6 @@ interface GalleySymbols extends DoorNames<"">, DoorNames<"hook_"> {
   galley_procedure_drop_self(session: NativeHandle, hook: bigint): bigint;
   galley_procedure_drop_children(session: NativeHandle, hook: bigint): bigint;
   galley_procedure_drop_if_empty(session: NativeHandle, hook: bigint): bigint;
-  galley_procedure_replace_with_children(session: NativeHandle, hook: bigint): bigint;
   galley_procedure_context_line(session: NativeHandle, hook: bigint): bigint;
   galley_procedure_context_column(session: NativeHandle, hook: bigint): bigint;
   galley_procedure_report_semantic_error(session: NativeHandle, hook: bigint, message: number, messageLen: bigint): bigint;
@@ -282,7 +281,6 @@ const BASE_SYMBOLS = {
   galley_procedure_drop_self: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
   galley_procedure_drop_children: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
   galley_procedure_drop_if_empty: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
-  galley_procedure_replace_with_children: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
   galley_procedure_context_line: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
   galley_procedure_context_column: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
   galley_procedure_report_semantic_error: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
@@ -1008,9 +1006,6 @@ export class BunPort implements FfiPort {
     return Number(this.native.galley_procedure_drop_if_empty(session as NativeHandle, hook));
   }
 
-  procReplaceWithChildren(session: Handle, hook: HookTicket): number {
-    return Number(this.native.galley_procedure_replace_with_children(session as NativeHandle, hook));
-  }
 
   procContextLine(session: Handle, hook: HookTicket): number {
     return Number(this.native.galley_procedure_context_line(session as NativeHandle, hook));

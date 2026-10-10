@@ -3234,18 +3234,6 @@ export fn galley_procedure_drop_if_empty(session_ptr: ?*GalleySession, hook: u64
     return treeProcedure(session_ptr, hook, root.standard_procedures.dropIfEmpty);
 }
 
-export fn galley_procedure_replace_with_children(session_ptr: ?*GalleySession, hook: u64) i64 {
-    return treeProcedure(session_ptr, hook, root.standard_procedures.replaceWithChildren);
-}
-
-export fn galley_procedure_left_recursive_reduction(session_ptr: ?*GalleySession, hook: u64) i64 {
-    return treeProcedure(session_ptr, hook, root.standard_procedures.leftRecursiveReduction);
-}
-
-export fn galley_procedure_right_recursive_reduction(session_ptr: ?*GalleySession, hook: u64) i64 {
-    return treeProcedure(session_ptr, hook, root.standard_procedures.rightRecursiveReduction);
-}
-
 /// Reports a semantic error on the current node and returns the total
 /// semantic error count, or a negative status. Parsing continues; a
 /// syntax-clean parse with any semantic error returns `SemanticError`.

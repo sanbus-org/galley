@@ -1212,7 +1212,7 @@ const Generator = struct {
                 \\        if (node_address == data_structures.Node.invalid_pointer) {{
                 \\            node_address = exit_node;
                 \\        }} else {{
-                \\            context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child {d} (chain if replaceWithChildren)
+                \\            context.node_allocator.at(repeating_node_address).immediateAppendChildren(repeating_node_address, exit_node, context.node_allocator); // child {d} (chain if a hook detached it)
                 \\        }}
                 \\    }}
                 \\    while (repeating_node_address != data_structures.Node.invalid_pointer) {{
@@ -1227,8 +1227,8 @@ const Generator = struct {
             if (self.options.with_ast) {
                 try writer.writeAll("        context.node_allocator.at(repeating_node_address).text_length = context.currentTokenSourceOffset() - context.node_allocator.at(repeating_node_address).text_start;\n");
             }
-            // Hooks may detach the wrapper (`replaceWithChildren` does) and
-            // the removal below does, which clears its links. The enclosing
+            // Hooks may detach the wrapper, and the removal below does,
+            // which clears its links. The enclosing
             // wrapper is the loop's next position, so read it before either.
             try writer.writeAll("        const enclosing_node_address = context.node_allocator.at(repeating_node_address).parent;\n");
             if (self.options.with_procedures and self.options.with_ast) {
@@ -1863,7 +1863,7 @@ const Generator = struct {
                 }
                 try writer.print(
                     \\{s}    if (child_node != data_structures.Node.invalid_pointer) {{
-                    \\{s}        context.node_allocator.at({s}).immediateAppendChildren({s}, child_node, context.node_allocator); // child {d} (chain if replaceWithChildren)
+                    \\{s}        context.node_allocator.at({s}).immediateAppendChildren({s}, child_node, context.node_allocator); // child {d} (chain if a hook detached it)
                     \\{s}    }}
                     \\{s}}}
                     \\

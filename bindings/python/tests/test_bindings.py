@@ -356,7 +356,6 @@ class SessionTests(unittest.TestCase):
                 args.drop_self,
                 args.drop_children,
                 args.drop_if_empty,
-                args.replace_with_children,
                 lambda: args.report_semantic_error("late"),
                 lambda: args.set_current_node(node),
             ]

@@ -90,13 +90,6 @@ export class ProcedureArguments {
     this.#throwOnFailure("dropIfEmpty", this.#port.procDropIfEmpty(this.#live(), this.#hook));
   }
 
-  replaceWithChildren(): void {
-    this.#throwOnFailure(
-      "replaceWithChildren",
-      this.#port.procReplaceWithChildren(this.#live(), this.#hook),
-    );
-  }
-
   currentLine(): number {
     const line = this.#port.procContextLine(this.#live(), this.#hook);
     this.#throwOnFailure("currentLine", line);

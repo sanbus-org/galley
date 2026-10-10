@@ -2342,7 +2342,6 @@ public class GalleyTest {
                     args::dropSelf,
                     args::dropChildren,
                     args::dropIfEmpty,
-                    args::replaceWithChildren,
                     () -> args.reportSemanticError("late"),
                     () -> args.setCurrentNode(node));
         }
