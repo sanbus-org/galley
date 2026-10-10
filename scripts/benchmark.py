@@ -14,7 +14,32 @@ BENCHMARK_COOLDOWN_SECONDS = 7
 class BenchmarkVariant:
     ast_mode: str
     term_ast: str
-    variant_name: str
+
+    @property
+    def config_flags(self):
+        # Map this variant to build.zig's -D config.zig overrides,
+        # reproducing the matrix variant args the parser used to receive
+        # through regeneration. Unrecognized variants raise rather than
+        # silently build a different parser than the label claims.
+        if self.ast_mode == "no-ast":
+            flags = ["-Dast=false", "-Dprocedures=false"]
+        elif self.ast_mode == "no-procedures":
+            flags = ["-Dast=true", "-Dprocedures=false"]
+        else:
+            raise ValueError(f"unknown ast_mode: {self.ast_mode!r}")
+        if self.term_ast == "no-ast-for-terminals":
+            flags.append("-Dast-for-terminals=false")
+        elif self.term_ast == "ast-for-terminals":
+            flags.append("-Dast-for-terminals=true")
+        elif self.term_ast == "default-term-ast":
+            # benchmark_variant's sentinel when gen_opts carries no terminal
+            # flag: keep the checked-in value, matching the old matrix default.
+            pass
+        else:
+            raise ValueError(f"unknown term_ast: {self.term_ast!r}")
+        # Every benchmark variant disables error recovery.
+        flags.append("-Derror-recovery=false")
+        return flags
 
 
 @dataclass(frozen=True)
@@ -220,16 +245,16 @@ def metric_mbps(metrics):
         return 0.0
 
 
-def benchmark_build_cmd(target, optimize, parser_type, language):
+def benchmark_build_cmd(optimize, parser_type, language, config_flags):
+    # Build the language's benchmark step straight from build.zig, passing
+    # -D overrides for the config.zig constants instead of compiling a
+    # regenerated variant through the test build.
     return [
         "zig",
         "build",
-        "--build-file",
-        "build-tests.zig",
         f"-Doptimize={optimize}",
-        "-Dtest-filter=suite:matrix-compile",
-        f"-Dtest-filter=case:{parser_type.lower()}-{language}",
-        target,
+        *config_flags,
+        f"{parser_type.lower()}-{language}",
     ]
 
 
@@ -577,7 +602,8 @@ def write_result_to_file(filepath, content):
         f.write(content)
 
 
-# No local code generation needed as we compile matrix targets directly.
+# Variants are built directly from the checked-in parsers by overriding
+# their config.zig constants at build time; no parser regeneration runs here.
 
 
 def benchmark_variant(gen_opts):
@@ -589,20 +615,7 @@ def benchmark_variant(gen_opts):
     elif "--ast-for-terminals" in gen_opts:
         term_ast = "ast-for-terminals"
 
-    is_no_ast = "--no-ast" in gen_opts
-    is_ast_for_terminals = "--ast-for-terminals" in gen_opts
-
-    if is_no_ast:
-        variant_name = "no-ast-no-procedures"
-    else:
-        term_suffix = "terminal-ast" if is_ast_for_terminals else "no-terminal-ast"
-        variant_name = f"ast-no-procedures-{term_suffix}"
-
-    return BenchmarkVariant(
-        ast_mode=ast_mode,
-        term_ast=term_ast,
-        variant_name=variant_name,
-    )
+    return BenchmarkVariant(ast_mode=ast_mode, term_ast=term_ast)
 
 
 def prepare_benchmark_suite(name, gen_opts, args, inputs=None):
@@ -650,12 +663,12 @@ def suite_progress_label(suite):
 
 def run_benchmark_suite(suite, args, progress):
     """
-    Compiles/runs benchmarks for all input files using the matrix build targets.
+    Compiles/runs benchmarks for all input files, building each parser's
+    benchmark step directly with config.zig constants overridden via -D.
     """
     name = suite.name
     ast_mode = suite.variant.ast_mode
     term_ast = suite.variant.term_ast
-    variant_name = suite.variant.variant_name
 
     RESET = "" if args.no_color else "\033[0m"
     BOLD = "" if args.no_color else "\033[1m"
@@ -751,8 +764,10 @@ def run_benchmark_suite(suite, args, progress):
                     row_cards.append(card_lines)
                 continue
 
-            base_target = f"generated-{p_type.lower()}-{name}-{variant_name}"
-            target = base_target
+            # Build the language's benchmark step directly, overriding
+            # config.zig constants instead of regenerating a variant parser.
+            target = f"{p_type.lower()}-{name}"
+            config_flags = suite.variant.config_flags
 
             # Render placeholder as "Building..."
             if is_interactive and not is_too_large:
@@ -775,7 +790,7 @@ def run_benchmark_suite(suite, args, progress):
                 draw_card_in_row(placeholder, col_idx, width=args.width, spacing=2)
 
             # Compile in ReleaseFast mode first
-            build_cmd = benchmark_build_cmd(target, "ReleaseFast", p_type, name)
+            build_cmd = benchmark_build_cmd("ReleaseFast", p_type, name, config_flags)
             try:
                 subprocess.run(
                     build_cmd,
@@ -785,7 +800,7 @@ def run_benchmark_suite(suite, args, progress):
                     check=True,
                 )
             except subprocess.CalledProcessError:
-                debug_cmd = benchmark_build_cmd(target, "Debug", p_type, name)
+                debug_cmd = benchmark_build_cmd("Debug", p_type, name, config_flags)
                 progress.clear()
                 if is_interactive:
                     sys.stdout.write("\033[9B\033[1G")
@@ -921,7 +936,9 @@ def run_benchmark_suite(suite, args, progress):
 
             except subprocess.CalledProcessError as run_err:
                 # If execution fails, compile and run in Debug mode to get detailed stack traces
-                debug_build_cmd = benchmark_build_cmd(target, "Debug", p_type, name)
+                debug_build_cmd = benchmark_build_cmd(
+                    "Debug", p_type, name, config_flags
+                )
                 subprocess.run(
                     debug_build_cmd,
                     stdout=subprocess.PIPE,

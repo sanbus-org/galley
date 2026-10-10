@@ -5,8 +5,8 @@
 # The kit is the consumer build plus every source it reads, copied from this
 # checkout: the consumer build.zig verbatim, and under sources/ a slim
 # dependency root (a stub build.zig re-exporting build/common.zig) holding
-# verbatim copies of build/common.zig, src/runtime/, the CLI
-# procedure/error-message templates, bindings/c/capi.zig and galley.h, the
+# verbatim copies of build/common.zig, build/config_edit.zig, src/runtime/,
+# the CLI procedure/error-message templates, bindings/c/capi.zig and galley.h, the
 # Node NAPI addon.c, and the Python extension source (_galley.c) plus its
 # PEP 484 stub.
 #
@@ -30,6 +30,7 @@ GALLEY_SRC_FINGERPRINT="0x10fec39ee461014"
 for source in \
 	"$ROOT/bindings/c/consumer/build.zig" \
 	"$ROOT/build/common.zig" \
+	"$ROOT/build/config_edit.zig" \
 	"$ROOT/src/runtime/api.zig" \
 	"$ROOT/src/cli/templates/procedures.zig" \
 	"$ROOT/src/cli/templates/ll_error_messages.zig" \
@@ -99,6 +100,7 @@ cat >"$DEST/sources/build.zig.zon" <<EOF
 }
 EOF
 cp "$ROOT/build/common.zig" "$DEST/sources/build/common.zig"
+cp "$ROOT/build/config_edit.zig" "$DEST/sources/build/config_edit.zig"
 cp -r "$ROOT/src/runtime/." "$DEST/sources/src/runtime/"
 for template in procedures.zig ll_error_messages.zig lr_error_messages.zig; do
 	cp "$ROOT/src/cli/templates/$template" "$DEST/sources/src/cli/templates/$template"

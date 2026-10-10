@@ -81,6 +81,10 @@ pub fn build(b: *std.Build) !void {
     // Language discovery observes directory entry names at configure time.
     b.dependOnDirectoryContents(b.path(common.languages_path));
 
+    // Read once for the whole build: b.option panics on a second
+    // declaration of the same -D name.
+    const config_overrides = common.readConfigOverrides(b);
+
     var walker = try dir.walk(b.allocator);
     defer walker.deinit();
     while (try walker.next(b.graph.io)) |entry| {
@@ -98,6 +102,7 @@ pub fn build(b: *std.Build) !void {
                 generator,
                 entry.path,
                 parser_type,
+                config_overrides,
             )) |parser| {
                 try common.addBenchmark(b, target, optimize, parser);
             }

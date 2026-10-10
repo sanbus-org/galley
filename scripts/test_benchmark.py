@@ -50,7 +50,6 @@ class ProgressFormattingTests(unittest.TestCase):
         variant = benchmark.BenchmarkVariant(
             ast_mode="no-ast",
             term_ast="no-ast-for-terminals",
-            variant_name="no-ast-no-procedures",
         )
         suite = benchmark.BenchmarkSuite(
             name="json",

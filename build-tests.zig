@@ -96,6 +96,18 @@ pub fn add(b: *std.Build, options: Options) !void {
         });
         const run_option_matrix_tests = b.addRunArtifact(option_matrix_tests);
         test_step.dependOn(&run_option_matrix_tests.step);
+        const config_override_test_mod = b.createModule(.{
+            .root_source_file = b.path("build/config_override_test.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        const config_override_tests = b.addTest(.{
+            .name = "config-override-tests",
+            .root_module = config_override_test_mod,
+            .filters = selection.names,
+        });
+        const run_config_override_tests = b.addRunArtifact(config_override_tests);
+        test_step.dependOn(&run_config_override_tests.step);
         if (selection.names.len == 0) {
             test_step.dependOn(&run_benchmark_progress_tests.step);
         }

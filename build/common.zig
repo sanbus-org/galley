@@ -1,4 +1,5 @@
 const std = @import("std");
+const config_edit = @import("config_edit.zig");
 
 pub const languages_path = "languages";
 
@@ -499,12 +500,21 @@ pub fn addGeneratorModules(
     });
     generator_emitter_common_mod.addImport("generator_common", generator_common_mod);
     generator_emitter_common_mod.addImport("generator_switch_plan", generator_switch_plan_mod);
+    // The constant-editing rules live in build/ so the build script can
+    // share them via a sibling import (a src/ import would escape the
+    // build-tree module path); the generator consumes them by name.
+    const generator_config_edit_mod = registeredModule(b, registration, "generator_config_edit", .{
+        .root_source_file = b.path("build/config_edit.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
     const generator_config_file_mod = registeredModule(b, registration, "generator_config_file", .{
         .root_source_file = b.path("src/generator/config_file.zig"),
         .target = target,
         .optimize = optimize,
     });
     generator_config_file_mod.addImport("generator_common", generator_common_mod);
+    generator_config_file_mod.addImport("generator_config_edit", generator_config_edit_mod);
     const ll_generator_mod = registeredModule(b, registration, "ll_generator", .{
         .root_source_file = b.path("src/generator/ll.zig"),
         .target = target,
@@ -738,6 +748,114 @@ pub fn parserName(
     return std.mem.concat(allocator, u8, &.{ parser_type, "-", entry_path });
 }
 
+/// Build-time overrides for a language's checked-in `config.zig` constants,
+/// supplied with `-Dast`, `-Dprocedures`, `-Derror-recovery`, and
+/// `-Dast-for-terminals`. A null field keeps the checked-in value. The
+/// checked-in generated parser selects every codegen variant at comptime
+/// from these constants, so an override takes effect on rebuild without
+/// regenerating the parser.
+pub const ConfigOverrides = struct {
+    ast: ?bool = null,
+    procedures: ?bool = null,
+    error_recovery: ?bool = null,
+    ast_for_terminals: ?bool = null,
+
+    pub fn isUnset(overrides: ConfigOverrides) bool {
+        return overrides.ast == null and
+            overrides.procedures == null and
+            overrides.error_recovery == null and
+            overrides.ast_for_terminals == null;
+    }
+};
+
+/// Reads the config overrides once per build; `b.option` panics on a second
+/// declaration of the same name, so every build file that builds language
+/// parsers must share this single read.
+pub fn readConfigOverrides(b: *std.Build) ConfigOverrides {
+    return .{
+        .ast = b.option(
+            bool,
+            "ast",
+            "Override the config.zig ast constant for every language parser (default: keep the checked-in value; delegated test suites regenerate with their own flags)",
+        ),
+        .procedures = b.option(
+            bool,
+            "procedures",
+            "Override the config.zig procedures constant for every language parser (default: keep the checked-in value; delegated test suites regenerate with their own flags)",
+        ),
+        .error_recovery = b.option(
+            bool,
+            "error-recovery",
+            "Override the config.zig error_recovery constant for every language parser (default: keep the checked-in value; delegated test suites regenerate with their own flags)",
+        ),
+        .ast_for_terminals = b.option(
+            bool,
+            "ast-for-terminals",
+            "Override the config.zig ast_for_terminals constant for every language parser (default: keep the checked-in value; delegated test suites regenerate with their own flags)",
+        ),
+    };
+}
+
+/// Applies the supplied overrides to a `config.zig` source, splicing only
+/// the constants that were explicitly set, in the production order.
+/// Shared with the build suite's coverage test (config_override_test.zig)
+/// so the sequence under test is this one. Fails loudly with
+/// error.MissingConstant when the source lacks an overridden constant.
+pub fn applyConfigOverrides(
+    allocator: std.mem.Allocator,
+    base: []const u8,
+    overrides: ConfigOverrides,
+) ![]const u8 {
+    var edited: []const u8 = base;
+    inline for (.{ "ast", "procedures", "error_recovery", "ast_for_terminals" }) |name| {
+        if (@field(overrides, name)) |enabled| {
+            edited = try config_edit.editedConstantSource(
+                allocator,
+                edited,
+                name,
+                if (enabled) "true" else "false",
+            );
+        }
+    }
+    return edited;
+}
+
+/// The config module root for one language parser: a cache copy of the
+/// checked-in `config.zig` with every supplied override spliced in, using
+/// the generator's constant-editing rules so the emitted file is the
+/// checked-in file with only the named values changed. Splicing fails
+/// loudly with error.MissingConstant when a language's config lacks an
+/// overridden constant.
+fn overriddenConfigRoot(
+    b: *std.Build,
+    entry_path: []const u8,
+    config_path: []const u8,
+    overrides: ConfigOverrides,
+) !std.Build.LazyPath {
+    // The overrides are applied to the file's content at configure time,
+    // so watch mode must reconfigure when that content changes; the
+    // directory declaration in addLanguageParser covers appearance only.
+    declareConfigureDependencyIfPresent(b, config_path);
+
+    const directory = std.fs.path.dirname(config_path).?;
+    const file_name = std.fs.path.basename(config_path);
+    var dir = try b.root.openDir(b.graph.io, directory, .{});
+    defer dir.close(b.graph.io);
+    const base = try dir.readFileAlloc(
+        b.graph.io,
+        file_name,
+        b.allocator,
+        .limited(1024 * 1024),
+    );
+
+    // b.allocator is an arena freed when configure ends; intermediate
+    // edited buffers from sequential splices need no individual frees.
+    const edited = try applyConfigOverrides(b.allocator, base, overrides);
+
+    const written = b.addWriteFiles();
+    return written.add(b.fmt("{s}-config.zig", .{entry_path}), edited);
+}
+
 pub fn addLanguageParser(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
@@ -745,6 +863,7 @@ pub fn addLanguageParser(
     generator: GeneratorModules,
     entry_path: []const u8,
     parser_type: []const u8,
+    config_overrides: ConfigOverrides,
 ) !?LanguageParser {
     const parser_file_name = try parserFileName(b.allocator, parser_type);
     defer b.allocator.free(parser_file_name);
@@ -774,6 +893,7 @@ pub fn addLanguageParser(
         entry_path,
         parser_type,
         b.path(parser_path),
+        config_overrides,
     );
 }
 
@@ -785,6 +905,7 @@ pub fn addLanguageParserFromFile(
     entry_path: []const u8,
     parser_type: []const u8,
     parser_file: std.Build.LazyPath,
+    config_overrides: ConfigOverrides,
 ) !LanguageParser {
     const procedures_path = try std.fs.path.join(
         b.allocator,
@@ -814,7 +935,10 @@ pub fn addLanguageParserFromFile(
             .target = target,
         });
     const config_mod = b.createModule(.{
-        .root_source_file = b.path(config_path),
+        .root_source_file = if (config_overrides.isUnset())
+            b.path(config_path)
+        else
+            try overriddenConfigRoot(b, entry_path, config_path, config_overrides),
         .target = target,
     });
     const error_messages_mod = b.createModule(.{
