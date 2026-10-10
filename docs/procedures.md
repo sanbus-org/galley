@@ -246,7 +246,7 @@ An LR parser must know the parent occurrence when a variable reduces or terminal
 
 ## Semantic Errors
 
-A hook reports a semantic error when the input parses but its meaning is invalid (undeclared variable, duplicate key, out-of-range value). Call the single gate:
+A hook reports a semantic error when the input parses but its meaning is invalid (duplicate key, out-of-range value). Call the single gate:
 
 ```zig
 pub fn reduction_Item_1(args: *ProcedureArguments) !void {
@@ -368,4 +368,11 @@ pub fn hook_countVariable(args: *ProcedureArguments) void {
 }
 ```
 
-`Payload` is node-local storage, not per-parse context state. Data shared by an entire parse must be managed separately rather than through `args.context.payload`, which does not exist.
+`Payload` is node-local storage; there is no per-parse state shared between
+hooks, and a `var` in `procedures.zig` is shared by every concurrent parse (see
+[Concurrency](concurrency.md)). Data about the whole parse is folded upward
+instead: each reduction combines its children's payloads, so the start symbol's
+payload holds the result (see [No-AST Reduction Channel](#no-ast-reduction-channel)).
+Checks that need information from elsewhere in the tree, such as resolving names
+against declarations, run after the parse on the published tree, where forward
+references and hoisting are visible.
