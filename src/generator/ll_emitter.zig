@@ -58,6 +58,10 @@ const Generator = struct {
     /// Whether the occurrence being emitted is the last symbol of the tail
     /// loop variable's rule, counting through inlined helpers.
     in_last_position: bool = false,
+    /// The rule just selected by a decision that already matched its first
+    /// terminal (see `decisionProvesFirstTerminal`). Only the first child the
+    /// rule body emits may rely on it, so `emitChildParseLine` clears it.
+    proven_first_terminal_rule: ?usize = null,
     /// Which of the current level's occurrence values the code emitted since
     /// the last reset names, so a tail loop declares exactly those.
     occurrence_uses: OccurrenceUses = .{},
@@ -1747,6 +1751,8 @@ const Generator = struct {
     }
 
     fn emitChildParseLine(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, parent_variable: usize, rule: Rule, child_index: usize, parent: ?[]const u8, parent_address: ?[]const u8, indent: []const u8, skip_ast_construction: bool, slot_index: usize) !void {
+        const proven_first_terminal_rule = self.proven_first_terminal_rule;
+        self.proven_first_terminal_rule = null;
         const name = try self.parserName(symbol_index);
         const child = self.symbols.items[symbol_index];
         const explicit_recovery = self.uses_explicit_recovery;
@@ -1802,6 +1808,15 @@ const Generator = struct {
                 try writer.print("{s}    if (flattened_children) |*carrier| {s}.appendTemporaryChildren(carrier);\n{s}}}\n", .{ indent, parent.?, indent });
             }
             return;
+        }
+        if (proven_first_terminal_rule) |proven| {
+            const proven_rule = self.rules.items[proven];
+            const is_proven_child = child_index == 0 and proven_rule.header == rule.header and std.mem.eql(u8, proven_rule.rhs_index, rule.rhs_index);
+            // The matched byte cannot fail, so explicit recovery has nothing to catch.
+            if (is_proven_child and !child_returns_node and !verbatim) {
+                try writer.print("{s}context.releaseToken(1); // child {d}, matched by the decision\n", .{ indent, child_index });
+                return;
+            }
         }
         if (child.kind != .variable) self.inline_call_cost += self.terminal_inline_costs[symbol_index];
         const call_name = if (symbol_index == parent_variable and !planning.isTailLoopPosition(rule, child_index))
@@ -1995,6 +2010,8 @@ const Generator = struct {
         try writer.print("{s}switch ({s}) {{\n", .{ indent, selected });
         for (rule_indices.items) |rule_index| {
             try writer.print("{s}    {d} => {{\n", .{ indent, rule_index });
+            self.proven_first_terminal_rule = if (self.decisionProvesFirstTerminal(node, rule_index)) rule_index else null;
+            defer self.proven_first_terminal_rule = null;
             try emitBody(context, writer, rule_index, body_indent);
             try writer.print("{s}    }},\n", .{indent});
         }
@@ -2059,6 +2076,43 @@ const Generator = struct {
             try writer.print("{d}", .{byte});
         }
         try writer.writeAll(" => context.releaseToken(1),\n            else => break,\n        }\n    }\n");
+    }
+
+    /// Whether every path of `node` that selects `rule_index` matched a first
+    /// byte the rule's first symbol accepts, and that symbol is a terminal of
+    /// single bytes with no occurrence annotations. The terminal's own check
+    /// would then repeat the decision's, so the rule body only releases the
+    /// byte. A decision that maps a leftover 0x03 to `\n` only selects a rule
+    /// whose terminal accepts `\n`, and that terminal maps it the same way.
+    fn decisionProvesFirstTerminal(self: *Generator, node: *const switch_planning.Node, rule_index: usize) bool {
+        const rule = self.rules.items[rule_index];
+        if (rule.rhs.items.len == 0) return false;
+        if (!planning.annotationsEmpty(rule.rhs_annotations.items[0])) return false;
+        const terminal = self.symbols.items[rule.rhs.items[0]];
+        if (terminal.kind != .terminal and terminal.kind != .generative_terminal) return false;
+        if (terminal.terminals.items.len == 0) return false;
+        var accepted: [256]bool = @splat(false);
+        for (terminal.terminals.items) |member| {
+            if (member.len != 1) return false;
+            accepted[member[0]] = true;
+        }
+        // An `else` that selects the rule matched no byte at all.
+        if (node.fallback == rule_index) return false;
+        for (node.groups.items) |group| {
+            if (!decisionSelects(group.child, rule_index)) continue;
+            for (group.heads.items) |head| {
+                if (!accepted[head[0]]) return false;
+            }
+        }
+        return true;
+    }
+
+    fn decisionSelects(node: *const switch_planning.Node, rule_index: usize) bool {
+        if (node.fallback == rule_index) return true;
+        for (node.groups.items) |group| {
+            if (decisionSelects(group.child, rule_index)) return true;
+        }
+        return false;
     }
 
     fn collectDecisionRules(allocator: std.mem.Allocator, node: *const switch_planning.Node, rule_indices: *std.ArrayList(usize)) EmitError!void {

@@ -356,6 +356,19 @@ test "generateParserAlloc skips block-end newline before multi-byte decisions" {
     try std.testing.expect(std.mem.indexOf(u8, output, "switch (context.head(u16, 0))") != null);
 }
 
+test "generateParserAlloc releases a first terminal its decision already matched" {
+    const proven_marker = "context.releaseToken(1); // child 0, matched by the decision";
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const matched = try generateParserAlloc(arena.allocator(), "Start\n| \"a\" Start\n| \"b\"\n", .ll, .{ .with_procedures = false });
+    _ = try expectContains(matched, proven_marker);
+
+    // A multi-byte terminal checks more than the decision's first byte.
+    const multi_byte = try generateParserAlloc(arena.allocator(), "Start\n| \"ab\"\n| \"cd\"\n", .ll, .{ .with_procedures = false });
+    try expectNotContains(multi_byte, proven_marker);
+}
+
 test "generateParserAlloc skips leftover through skipLeftoverBlockEndNewlines on 1-byte decisions" {
     const source =
         \\Start
