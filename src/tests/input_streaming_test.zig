@@ -460,6 +460,44 @@ fn expectEofSyntaxError(session: *parser.Session, parse_result: anyerror!parser.
     };
 }
 
+fn expectUnexpectedToken(session: *parser.Session, parse_result: anyerror!parser.ParseResult, expected: []const u8) !void {
+    try std.testing.expectError(parser.ParseError.SyntaxError, parse_result);
+    var read_guard = try session.readLatest();
+    defer read_guard.deinit();
+    const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
+    const syntax = switch (diagnostic) {
+        .syntax => |syntax| syntax,
+        .semantic, .indentation, .hook => return error.ExpectedSyntaxDiagnostic,
+    };
+    try std.testing.expectEqualStrings(expected, syntax.unexpected_token);
+}
+
+test "an unexpected token is the character at the cursor, however far a decision looked ahead" {
+    if (test_options.indentation) return error.SkipZigTest;
+
+    // `null` is matched with a multi-byte lookahead that reads past the
+    // mismatch; the diagnostic still names only the character at the cursor.
+    const cases = [_]struct { input: []const u8, expected: []const u8 }{
+        .{ .input = "[nul?]", .expected = "n" },
+        .{ .input = "[\u{1F600}]", .expected = "\u{1F600}" },
+        .{ .input = "[", .expected = "\x00" },
+    };
+    for (cases) |case| {
+        var bytes_session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .max_errors = 1 });
+        defer bytes_session.deinit();
+        try expectUnexpectedToken(&bytes_session, bytes_session.parseBytes(case.input, null), case.expected);
+
+        var tmp = std.testing.tmpDir(.{});
+        defer tmp.cleanup();
+        try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "input", .data = case.input });
+        var file = try tmp.dir.openFile(std.testing.io, "input", .{ .mode = .read_only });
+        defer file.close(std.testing.io);
+        var file_session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .max_errors = 1 });
+        defer file_session.deinit();
+        try expectUnexpectedToken(&file_session, file_session.parseFile(file, "input"), case.expected);
+    }
+}
+
 test "input streaming recovery at EOF reports the same position as a whole-input parse" {
     if (!test_options.recovery_eof) return error.SkipZigTest;
 

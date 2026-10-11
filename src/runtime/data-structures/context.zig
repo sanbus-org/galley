@@ -617,10 +617,22 @@ pub const Context = struct {
         self.runtime().syntax_error_count += 1;
     }
 
-    /// The unexpected text at an error: the buffered bytes, up to the longest
-    /// terminal's length (how much is buffered depends on lexing, not on the
+    /// The unexpected text at an error. Without indentation syntax: the
+    /// character at the cursor, one whole UTF-8 character when the input holds
+    /// one. With indentation syntax: the lexed bytes, up to the longest
+    /// terminal's length (how much is lexed depends on lexing, not on the
     /// error), and at least one whole UTF-8 character.
     fn diagnosticTokenItems(self: *Self) []const u8 {
+        if (comptime !root.config.indentation_syntax) {
+            // Load the character's bytes; the NUL that ends the input stops
+            // the load before any byte past it.
+            const lead = self.head(u8, 0);
+            const sequence_length: usize = if (lead < 0x80) 1 else std.unicode.utf8ByteSequenceLength(lead) catch 1;
+            var loaded: usize = 1;
+            while (loaded < sequence_length and self.head(u8, @intCast(loaded)) != 0) loaded += 1;
+            return self.token.character(self.token.cursor + loaded);
+        }
+
         const buffered = self.token.items();
         const original = buffered[0..@min(buffered.len, @max(root.parser.longest_terminal_length, 1))];
         if (original.len == 0 or original[0] < 0x80) return original;
@@ -908,8 +920,7 @@ pub const Context = struct {
                 advanceVerbatimPositions(&self.line, &self.column, self.chunk_buffer[body_start..body_end]);
             }
         } else {
-            self.token.head = body_end;
-            self.token.len = 0;
+            self.token.cursor = body_end;
             if (comptime root.position_tracking_enabled) {
                 advanceVerbatimPositions(&self.line, &self.column, self.token.buffer[body_start..body_end]);
             }
@@ -1038,8 +1049,7 @@ pub const Context = struct {
             return;
         }
 
-        self.token.head = body_end;
-        self.token.len = 0;
+        self.token.cursor = body_end;
         if (comptime root.position_tracking_enabled) {
             advanceVerbatimPositionsFromScan(&self.line, &self.column, body_end - body_start, capture);
         }
@@ -1315,7 +1325,7 @@ pub const Context = struct {
                 else
                     required);
             }
-            const start: usize = self.token.head - self.token.len;
+            const start = self.token.cursor;
             const available_end = if (comptime root.input_streaming_enabled)
                 @min(self.loaded_end, self.input_end + 1)
             else
@@ -1370,21 +1380,11 @@ pub const Context = struct {
     }
 
     pub fn releaseToken(self: *@This(), length: data_structures.Token.Length) void {
-        if (comptime root.position_tracking_enabled) {
-            if (comptime root.config.indentation_syntax) {
-                self.line += self.line_offsets.sum(0, length);
-                self.column += self.column_offsets.sum(0, length);
-                const newlines = summarizeNewlines(self.token.items()[0..length]);
-                if (newlines.last) |last_newline| {
-                    self.column = self.column_offsets.sum(@intCast(last_newline), length);
-                }
-                self.line_offsets.pop(length);
-                self.column_offsets.pop(length);
-            } else {
-                // Non-indentation grammars append a constant 1 per lexed byte,
-                // so the offset sums equal plain lengths and the per-byte array
-                // buys nothing. Keep the newline scan, drop the array passes.
-                const newlines = summarizeNewlines(self.token.items()[0..length]);
+        if (comptime !root.config.indentation_syntax) {
+            const released = self.token.upcoming(length);
+            if (comptime root.position_tracking_enabled) {
+                // Every input byte is one column, so only newlines need a scan.
+                const newlines = summarizeNewlines(released);
                 self.line += newlines.count;
                 if (newlines.last) |last_newline| {
                     self.column = @intCast(@as(usize, length) - last_newline);
@@ -1392,14 +1392,32 @@ pub const Context = struct {
                     self.column += length;
                 }
             }
+            self.token.advance(length);
+            self.printTokenTrace(released);
+            return;
+        }
+
+        if (comptime root.position_tracking_enabled) {
+            self.line += self.line_offsets.sum(0, length);
+            self.column += self.column_offsets.sum(0, length);
+            const newlines = summarizeNewlines(self.token.items()[0..length]);
+            if (newlines.last) |last_newline| {
+                self.column = self.column_offsets.sum(@intCast(last_newline), length);
+            }
+            self.line_offsets.pop(length);
+            self.column_offsets.pop(length);
         }
         self.token.pop(length);
+        self.printTokenTrace(self.token.items());
+    }
+
+    inline fn printTokenTrace(self: *@This(), text: []const u8) void {
         if (comptime builtin.mode == .debug) {
             if (self.verbosityLevel() > 1) {
                 std.debug.print("\n{d}:{d}:\"{f}\"\n", .{
                     if (comptime root.position_tracking_enabled) self.line else 0,
                     if (comptime root.position_tracking_enabled) self.column else 0,
-                    string_utilities.fmtString(self.token.items()),
+                    string_utilities.fmtString(text),
                 });
             }
         }
@@ -1465,23 +1483,23 @@ pub const Context = struct {
             self.loaded_end = 0;
             self.window_base = 0;
             self.input_eof = false;
-            self.token.resetInput(self.chunk_buffer);
+            self.token.reset(self.chunk_buffer);
         } else if (comptime root.input_streaming_enabled) switch (self.source) {
             .file => {
                 self.loaded_end = 0;
-                self.token.resetInput(self.file_input);
+                self.token.reset(self.file_input);
             },
             .bytes => |bytes| {
                 self.input_end = bytes.input.len - 1;
                 self.loaded_end = bytes.input.len;
-                self.token.resetInput(@constCast(bytes.input));
+                self.token.reset(@constCast(bytes.input));
             },
         } else switch (self.source) {
             .file => {
-                self.token.resetInput(self.chunk_buffer);
+                self.token.reset(self.chunk_buffer);
                 self.read();
             },
-            .bytes => |bytes| self.token.resetInput(@constCast(bytes.input)),
+            .bytes => |bytes| self.token.reset(@constCast(bytes.input)),
         }
     }
 
@@ -1520,82 +1538,78 @@ pub const Context = struct {
     }
 
     pub inline fn advanceLexer(self: *@This()) void {
-        if (comptime root.config.indentation_syntax) {
-            const chunk_buffer = self.chunk_buffer;
-            while (chunk_buffer[self.seek] == '\n') {
-                const line_head = scanLineHead(LexerCursor, .{ .context = self });
-                const boundary_source = line_head.newline_offset;
-                // A blank line has no token byte to carry a `line_offsets`
-                // entry, so it is counted as it is skipped.
-                if (comptime root.position_tracking_enabled) self.line += line_head.blank_lines;
-                const line_spaces = line_head.spaces;
+        comptime std.debug.assert(root.config.indentation_syntax);
 
-                if (self.indent_width == 0) {
-                    self.indent_width = line_spaces;
-                } else if (line_spaces % self.indent_width != 0) {
-                    self.recordIndentationDiagnostic(line_spaces);
-                    while (self.token.len < @max(root.parser.longest_terminal_length, 1)) {
-                        self.appendToken(0, self.read_bytes + self.seek);
-                    }
-                    return;
+        const chunk_buffer = self.chunk_buffer;
+        while (chunk_buffer[self.seek] == '\n') {
+            const line_head = scanLineHead(LexerCursor, .{ .context = self });
+            const boundary_source = line_head.newline_offset;
+            // A blank line has no token byte to carry a `line_offsets`
+            // entry, so it is counted as it is skipped.
+            if (comptime root.position_tracking_enabled) self.line += line_head.blank_lines;
+            const line_spaces = line_head.spaces;
+
+            if (self.indent_width == 0) {
+                self.indent_width = line_spaces;
+            } else if (line_spaces % self.indent_width != 0) {
+                self.recordIndentationDiagnostic(line_spaces);
+                while (self.token.len < @max(root.parser.longest_terminal_length, 1)) {
+                    self.appendToken(0, self.read_bytes + self.seek);
                 }
-                const new_indent = if (self.indent_width == 0) 0 else line_spaces / self.indent_width;
-                if (comptime root.position_tracking_enabled and root.config.indentation_syntax) {
-                    self.line_offsets.append(1);
+                return;
+            }
+            const new_indent = if (self.indent_width == 0) 0 else line_spaces / self.indent_width;
+            if (comptime root.position_tracking_enabled and root.config.indentation_syntax) {
+                self.line_offsets.append(1);
+            }
+            if (new_indent == self.current_indent) {
+                if (comptime root.position_tracking_enabled) {
+                    self.column_offsets.append(@as(u32, line_spaces) + 1);
                 }
-                if (new_indent == self.current_indent) {
-                    if (comptime root.position_tracking_enabled) {
-                        self.column_offsets.append(@as(u32, line_spaces) + 1);
-                    }
-                    self.appendToken('\n', boundary_source);
-                } else {
-                    if (new_indent > self.current_indent) {
-                        for (0..new_indent - self.current_indent) |index| {
-                            if (comptime root.position_tracking_enabled) {
-                                if (comptime root.config.indentation_syntax) {
-                                    if (index != 0) {
-                                        self.line_offsets.append(0);
-                                    }
+                self.appendToken('\n', boundary_source);
+            } else {
+                if (new_indent > self.current_indent) {
+                    for (0..new_indent - self.current_indent) |index| {
+                        if (comptime root.position_tracking_enabled) {
+                            if (comptime root.config.indentation_syntax) {
+                                if (index != 0) {
+                                    self.line_offsets.append(0);
                                 }
-                                self.column_offsets.append(@as(u32, new_indent) * @as(u32, self.indent_width) + 1);
                             }
-                            self.appendToken('\x01', boundary_source);
+                            self.column_offsets.append(@as(u32, new_indent) * @as(u32, self.indent_width) + 1);
                         }
-                    } else if (new_indent < self.current_indent) {
-                        for (0..self.current_indent - new_indent) |index| {
-                            if (comptime root.position_tracking_enabled) {
-                                if (comptime root.config.indentation_syntax) {
-                                    if (index != 0) {
-                                        self.line_offsets.append(0);
-                                    }
-                                }
-                                self.column_offsets.append(@as(u32, new_indent) * @as(u32, self.indent_width) + 1);
-                            }
-                            self.appendToken('\x02', boundary_source);
-                        }
-                        if (comptime newlineAfterBlockEndEnabled()) {
-                            if (comptime root.position_tracking_enabled) {
-                                self.line_offsets.append(0);
-                                self.column_offsets.append(@as(u32, new_indent) * @as(u32, self.indent_width) + 1);
-                            }
-                            self.appendToken(0x03, boundary_source);
-                        }
+                        self.appendToken('\x01', boundary_source);
                     }
-                    self.current_indent = new_indent;
+                } else if (new_indent < self.current_indent) {
+                    for (0..self.current_indent - new_indent) |index| {
+                        if (comptime root.position_tracking_enabled) {
+                            if (comptime root.config.indentation_syntax) {
+                                if (index != 0) {
+                                    self.line_offsets.append(0);
+                                }
+                            }
+                            self.column_offsets.append(@as(u32, new_indent) * @as(u32, self.indent_width) + 1);
+                        }
+                        self.appendToken('\x02', boundary_source);
+                    }
+                    if (comptime newlineAfterBlockEndEnabled()) {
+                        if (comptime root.position_tracking_enabled) {
+                            self.line_offsets.append(0);
+                            self.column_offsets.append(@as(u32, new_indent) * @as(u32, self.indent_width) + 1);
+                        }
+                        self.appendToken(0x03, boundary_source);
+                    }
                 }
+                self.current_indent = new_indent;
             }
         }
 
-        if (comptime root.position_tracking_enabled and root.config.indentation_syntax) {
+        if (comptime root.position_tracking_enabled) {
             self.line_offsets.append(0);
             self.column_offsets.append(1);
         }
-        if (comptime root.config.indentation_syntax) {
-            self.appendToken(self.chunk_buffer[self.seek], self.read_bytes + self.seek);
-            self.advanceInput();
-        } else {
-            self.token.appendNoCopy();
-        }
+        self.appendToken(self.chunk_buffer[self.seek], self.read_bytes + self.seek);
+        self.advanceInput();
 
         if (comptime builtin.mode == .debug) {
             if (self.verbosityLevel() > 1) {
@@ -1628,15 +1642,13 @@ pub const Context = struct {
         comptime std.debug.assert(root.input_streaming_enabled and !root.config.indentation_syntax);
 
         self.loadInputUpTo(needed_len);
-        const token_start: usize = self.token.head - self.token.len;
-        std.debug.assert(token_start + needed_len <= self.loaded_end);
+        std.debug.assert(self.token.cursor + needed_len <= self.loaded_end);
     }
 
     inline fn loadInputUpTo(self: *@This(), needed_len: usize) void {
         comptime std.debug.assert(root.input_streaming_enabled and !root.config.indentation_syntax);
 
-        const token_start: usize = self.token.head - self.token.len;
-        const required_end = token_start + needed_len;
+        const required_end = self.token.cursor + needed_len;
         if (required_end > self.loaded_end) {
             @branchHint(.unlikely);
             self.refillInput(needed_len);
@@ -1666,7 +1678,7 @@ pub const Context = struct {
         comptime std.debug.assert(root.input_streaming_enabled and !root.config.indentation_syntax);
 
         if (comptime root.sliding_input_enabled) {
-            const token_start: usize = self.token.head - self.token.len;
+            const token_start = self.token.cursor;
             if (token_start != 0) {
                 std.debug.assert(token_start <= self.input_end);
                 const remaining = self.input_end - token_start;
@@ -1676,7 +1688,7 @@ pub const Context = struct {
                     self.token.buffer[token_start..self.input_end],
                 );
                 self.window_base += token_start;
-                self.token.head -= @intCast(token_start);
+                self.token.cursor = 0;
                 self.input_end = remaining;
                 self.loaded_end = remaining;
             }
@@ -1697,7 +1709,7 @@ pub const Context = struct {
             return;
         }
 
-        const required_end = @as(usize, self.token.head - self.token.len) + needed_len;
+        const required_end = self.token.cursor + needed_len;
         const reader = switch (self.source) {
             .file => |*reader| reader,
             .bytes => unreachable,
@@ -1730,6 +1742,7 @@ pub const Context = struct {
 
     /// Lexes until the token holds `needed_len` bytes.
     fn fillToken(self: *@This(), needed_len: usize) void {
+        comptime std.debug.assert(root.config.indentation_syntax);
         while (self.token.len < needed_len) {
             self.advanceLexer();
         }
@@ -1772,22 +1785,22 @@ pub const Context = struct {
         self.seek = end;
     }
 
-    /// Peeks `T` bytes at `offset` past the current token start. Every
-    /// generated decision calls this, so it is inline; lexing more input
-    /// happens in `fillToken`.
+    /// Peeks `T` bytes at `offset` past the parser position. Every generated
+    /// decision calls this, so it is inline. Without indentation syntax it
+    /// reads the input directly; with it, lexing more input happens in
+    /// `fillToken`, out of line.
     pub inline fn head(self: *@This(), comptime T: type, offset: data_structures.Token.Length) T {
         const bytes_needed = comptime @divExact(@bitSizeOf(T), 8);
         const needed_len = offset + bytes_needed;
-        if (comptime root.input_streaming_enabled and !root.config.indentation_syntax) {
-            self.ensureInputLoaded(needed_len);
-        }
-        if (self.token.len < needed_len) {
-            // Indentation lexing is heavy, so it stays out of line; otherwise
-            // filling only advances counters and inlines into the caller.
-            @call(if (root.config.indentation_syntax) .never_inline else .always_inline, fillToken, .{ self, needed_len });
-        }
-
-        const base_ptr = self.token.items().ptr + offset;
+        const base_ptr = if (comptime root.config.indentation_syntax) base: {
+            if (self.token.len < needed_len) {
+                @call(.never_inline, fillToken, .{ self, needed_len });
+            }
+            break :base self.token.items().ptr + offset;
+        } else base: {
+            if (comptime root.input_streaming_enabled) self.ensureInputLoaded(needed_len);
+            break :base self.token.buffer.ptr + self.token.cursor + offset;
+        };
 
         if (comptime T == u8) {
             return base_ptr[0];
@@ -1809,9 +1822,9 @@ pub const Context = struct {
             return self.token.firstSourceOffset();
         }
         if (comptime root.sliding_input_enabled) {
-            return self.window_base + self.token.head - self.token.len;
+            return self.window_base + self.token.cursor;
         }
-        return self.token.head - self.token.len;
+        return self.token.cursor;
     }
 
     /// Creates the local node handle a generated rule body assembles for one

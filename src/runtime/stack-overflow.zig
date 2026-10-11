@@ -63,13 +63,16 @@ fn stackOverflowDiagnostic(context: *const root.data_structures.Context) StackOv
     const cursor: usize = if (comptime root.config.indentation_syntax)
         context.seek
     else
-        context.token.head;
+        context.token.cursor;
 
     return .{
         .line = if (comptime root.position_tracking_enabled) context.line else 0,
         .column = if (comptime root.position_tracking_enabled) context.column else 0,
         .excerpt = centeredExcerpt(input, cursor),
-        .token = context.token.items(),
+        .token = if (comptime root.config.indentation_syntax)
+            context.token.items()
+        else
+            context.token.character(@max(cursor, input.len)),
     };
 }
 
@@ -369,10 +372,9 @@ test "stack overflow diagnostic captures parser location and token" {
         context.token.append('y');
         break :token "xy";
     } else token: {
-        context.token.resetInput(&input);
-        context.token.head = 6;
-        context.token.len = 2;
-        break :token "45";
+        context.token.reset(&input);
+        context.token.cursor = 6;
+        break :token "6";
     };
     if (comptime builtin.mode != .fast) {
         context.line = 7;
