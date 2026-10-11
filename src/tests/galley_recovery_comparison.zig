@@ -130,10 +130,12 @@ test "galley recovery comparison records the selected mode and behavior" {
         try std.testing.expectEqualStrings("Symbol", summary.recovery_variable orelse return error.WrongRecoveryTarget);
     } else {
         try std.testing.expectEqual(parser.parser.ErrorRecoveryMode.automatic, parser.parser.error_recovery_mode);
+        // Each `?` is its own error; recovery resumes after it instead of
+        // reporting the damage again further on.
         try std.testing.expectEqual(@as(usize, 2), summary.error_count);
-        try std.testing.expectEqual(@as(u32, 4), summary.line);
+        try std.testing.expectEqual(@as(u32, 3), summary.line);
         try std.testing.expectEqual(@as(u32, 3), summary.column);
-        try std.testing.expectEqualStrings("\"", summary.unexpected_token);
+        try std.testing.expectEqualStrings("?", summary.unexpected_token);
         try std.testing.expect(summary.recovery_resume == null);
     }
 }

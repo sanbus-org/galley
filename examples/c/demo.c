@@ -7,7 +7,7 @@
 
 static const char *valid_sample = "alpha:12,beta:3";
 static const char *broken_sample = "alpha:";
-static const char *multi_error_sample = "alpha:13x,beta:,gamma:q";
+static const char *multi_error_sample = "alpha:x,beta:y,gamma:z";
 
 /* Walks the published tree from `root`, passing its generation to every read:
  * the core refuses one that is not the live tree's. */

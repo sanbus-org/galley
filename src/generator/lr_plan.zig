@@ -323,17 +323,30 @@ const Builder = struct {
     fn planStateDecisionsAndDiagnostics(self: *Builder) !void {
         for (self.plan.states.items, 0..) |state, state_index| {
             var entries = std.ArrayList(switch_planning.Entry).empty;
+            // A state whose reduces all perform one reduction takes it by
+            // default: a lookahead no other action matches is reduced, and
+            // the state that cannot shift it next reports any error.
+            const default_reduce = self.defaultReduce(state);
+            var default_terminals = std.ArrayList([]const u8).empty;
+            var accepts_newline = false;
             for (state.actions.items, 0..) |action, action_index| {
                 if (action.kind == .reduce and self.occurrenceIsVerbatim(action.occurrence)) {
                     try entries.append(self.allocator, .{ .terminal = "", .target = action_index });
                     continue;
                 }
-                for (self.grammar.symbols.items[action.terminal].terminals.items) |terminal| try entries.append(self.allocator, .{
-                    .terminal = terminal,
-                    .target = action_index,
-                });
+                const is_default = if (default_reduce) |index| sameReduction(state.actions.items[index], action) else false;
+                for (self.grammar.symbols.items[action.terminal].terminals.items) |terminal| {
+                    if (terminal.len > 0 and terminal[0] == '\n') accepts_newline = true;
+                    if (is_default) {
+                        try default_terminals.append(self.allocator, terminal);
+                    } else {
+                        try entries.append(self.allocator, .{ .terminal = terminal, .target = action_index });
+                    }
+                }
             }
+            if (default_reduce) |index| try switch_planning.appendDefault(self.allocator, &entries, default_terminals.items, index);
             const tree = try switch_planning.build(self.allocator, entries.items, self.reporter);
+            tree.accepts_newline = accepts_newline;
             if (entries.items.len == 0) {
                 tree.diagnostic = try self.addDiagnostic(state_index, tree.*, .state);
             } else try self.planActionDiagnostics(state_index, tree);
@@ -342,6 +355,25 @@ const Builder = struct {
             if (state.gotos.items.len == 0) decision.goto_diagnostic = try self.addDiagnostic(state_index, treeForNoExpectedTokens(), .goto);
             try self.plan.state_decisions.append(self.allocator, decision);
         }
+    }
+
+    /// The index of a reduce action that `state` can take by default: one
+    /// exists when every reduce in the state performs the same reduction and
+    /// none captures verbatim text (that one is already the default).
+    fn defaultReduce(self: *Builder, state: State) ?usize {
+        var found: ?usize = null;
+        for (state.actions.items, 0..) |action, action_index| {
+            if (action.kind != .reduce) continue;
+            if (self.occurrenceIsVerbatim(action.occurrence)) return null;
+            if (found) |index| {
+                if (!sameReduction(state.actions.items[index], action)) return null;
+            } else found = action_index;
+        }
+        return found;
+    }
+
+    fn sameReduction(lhs: Action, rhs: Action) bool {
+        return lhs.kind == .reduce and rhs.kind == .reduce and lhs.rule == rhs.rule and std.meta.eql(lhs.occurrence, rhs.occurrence);
     }
 
     fn planActionDiagnostics(self: *Builder, state_index: usize, node: *switch_planning.Node) !void {

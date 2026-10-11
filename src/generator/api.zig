@@ -520,19 +520,16 @@ test "LL decision falls back to the shorter terminal when one literal prefixes a
         .with_procedures = false,
     });
 
-    // ".l" is shared by ".length" and identifier tails like ".left": the
-    // "ength" prong folds into the `else` that selects the empty IdTail rule,
-    // which must survive; distinct ".length" routing is checked below.
+    // IdTail takes its empty rule by default and does not look at what may
+    // follow it, so neither "." nor ".length" appears in its decision.
     const id_tail = fnBody(output, "fn parse_IdTail_loop(") orelse return error.TestUnexpectedStructure;
-    const tail_switch = std.mem.indexOf(u8, id_tail, "head(u40, 2)") orelse return error.TestUnexpectedStructure;
-    const tail_else = std.mem.indexOfPos(u8, id_tail, tail_switch, "else =>") orelse return error.TestUnexpectedStructure;
-    try std.testing.expect(std.mem.startsWith(u8, id_tail[tail_else..], "else => break :decision_"));
-    try std.testing.expect(std.mem.indexOf(u8, id_tail, "// 'ength'") == null);
+    try std.testing.expect(std.mem.indexOf(u8, id_tail, "else => break :decision_") != null);
+    try std.testing.expect(std.mem.indexOf(u8, id_tail, "// '.'") == null);
 
     // ".length" still routes to the length rule, not into empty:
-    // OptionalLengthQuery keeps a distinct 'length' arm expanding '.length'.
+    // OptionalLengthQuery keeps a distinct '.length' arm expanding '.length'.
     const length_query = fnBody(output, "fn parse_OptionalLengthQuery(") orelse return error.TestUnexpectedStructure;
-    try std.testing.expect(std.mem.indexOf(u8, length_query, "// 'length'") != null);
+    try std.testing.expect(std.mem.indexOf(u8, length_query, "// '.length'") != null);
     try std.testing.expect(std.mem.indexOf(u8, length_query, "OptionalLengthQuery -> '.length'") != null);
 
     // And the OperandDotTail lookahead still distinguishes the two: ".length"
@@ -1504,8 +1501,10 @@ test "generateErrorMessagesAlloc emits semantic LL syntax error hooks" {
 
     const output = try generateErrorMessagesAlloc(arena.allocator(), semantic_hook_grammar, .ll, .{ .with_procedures = false });
 
-    _ = try expectContains(output, "pub fn syntax_error_ll_ItemsTail__expected_Item_or_end_of_ItemsTail");
+    _ = try expectContains(output, "pub fn syntax_error_ll_Items__expected_Item");
     _ = try expectContains(output, "pub fn syntax_error_ll_Item__expected_terminal_a");
+    // ItemsTail matches empty by default, so the parser after it reports.
+    try expectNotContains(output, "syntax_error_ll_ItemsTail");
 }
 
 test "generateParserAlloc emits LL syntax error hook fallback chain" {
@@ -1518,8 +1517,8 @@ test "generateParserAlloc emits LL syntax error hook fallback chain" {
     // symbol-level hooks, then family and global fallbacks, then the builtin
     // diagnostic. Hook failures fall through inside the shared resolver.
     const site = try expectContains(output, "root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{");
-    const exact = try expectContainsAfter(output, "\"syntax_error_ll_ItemsTail__expected_Item_or_end_of_ItemsTail\"", site);
-    const symbol = try expectContainsAfter(output, "\"syntax_error_ll_ItemsTail\"", exact);
+    const exact = try expectContainsAfter(output, "\"syntax_error_ll_Items__expected_Item\"", site);
+    const symbol = try expectContainsAfter(output, "\"syntax_error_ll_Items\"", exact);
     const family = try expectContainsAfter(output, "\"syntax_error_ll\"", symbol);
     _ = try expectContainsAfter(output, "\"syntax_error\"", family);
     _ = try expectContains(output, "return try root.renderParseDiagnostic(args.allocator, args.diagnostic, args.style);");

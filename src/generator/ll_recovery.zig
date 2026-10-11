@@ -14,7 +14,6 @@ pub fn build(
     allocator: std.mem.Allocator,
     grammar: *const common.PreparedGrammar,
     options: common.Options,
-    nullable_rules: []const ?usize,
     first_sets: anytype,
     follow_sets: anytype,
 ) !Plan {
@@ -32,19 +31,19 @@ pub fn build(
         _ = options;
         for (grammar.symbols.items, 0..) |symbol, symbol_index| {
             var candidates = std.ArrayList([]const u8).empty;
-            var sequence_is_nullable = true;
             if (symbol.kind == .variable) {
                 for (first_sets[symbol_index]) |entry| {
                     for (grammar.symbols.items[entry.terminal].terminals.items) |terminal| {
                         try common.appendUniqueString(&candidates, allocator, terminal);
                     }
                 }
-                if (nullable_rules[symbol_index] == null) sequence_is_nullable = false;
             } else {
                 for (symbol.terminals.items) |terminal| try common.appendUniqueString(&candidates, allocator, terminal);
-                sequence_is_nullable = false;
             }
-            if (sequence_is_nullable and symbol.kind == .variable) {
+            // A failed variable returns a neutral value, so its parent goes on
+            // with what follows it: resuming there lets the parent continue
+            // instead of reporting the same damage again.
+            if (symbol.kind == .variable) {
                 for (follow_sets[symbol_index]) |entry| {
                     for (grammar.symbols.items[entry.terminal].terminals.items) |terminal| {
                         try common.appendUniqueString(&candidates, allocator, terminal);

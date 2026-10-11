@@ -428,7 +428,15 @@ const Generator = struct {
             try writer.writeAll(") else false;\n    defer if (push_syntax_error_variable) context.popSyntaxErrorVariable();\n");
         }
 
-        try self.emitVariableDispatch(writer, variable, "    ", skip_ast_construction);
+        // A dispatch that takes an empty rule by default may report no error,
+        // and then nothing names the occurrence's recovery scope.
+        var dispatch = std.Io.Writer.Allocating.init(self.allocator);
+        const outer_recovery_use = self.occurrence_uses.recovery;
+        self.occurrence_uses.recovery = false;
+        try self.emitVariableDispatch(&dispatch.writer, variable, "    ", skip_ast_construction);
+        if (self.uses_explicit_recovery and !self.occurrence_uses.recovery) try writer.writeAll("    _ = occurrence_recovery;\n");
+        self.occurrence_uses.recovery = outer_recovery_use or self.occurrence_uses.recovery;
+        try writer.writeAll(dispatch.written());
         if (returns_node) {
             try writer.writeAll(if (self.options.with_ast) "    return node_address;\n" else "    return node;\n");
         }

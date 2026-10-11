@@ -25,11 +25,11 @@ static const char *broken_sample = "alpha:";
 /* Garbage before any symbol: recovery skips it all, so the parse publishes,
  * but there is no tree to hold a root. */
 static const char *rootless_sample = "?";
-/* Recovery skips `x,beta:` to resynchronize, then `2`: two recovered nodes. */
+/* Recovery skips `x` and resumes at `,`, so `beta:2` parses: one recovered node. */
 static const char *recovered_sample = "alpha:x,beta:2";
 /* Parses, but a hook reports one semantic error on the Number `2000`. */
 static const char *semantic_sample = "alpha:1,beta:2000";
-static const char *multi_error_sample = "alpha:13x,beta:,gamma:q";
+static const char *multi_error_sample = "alpha:x,beta:y,gamma:z";
 
 static int failures = 0;
 static int ran = 0;
@@ -436,13 +436,13 @@ static void test_recorded_diagnostics(void) {
     GalleySession *session = make_session();
     CHECK(galley_parse_sentinel(session, multi_error_sample) < 0);
     long long recorded = galley_recorded_diagnostic_count(session);
-    /* Matches the demo readout (3 records, first at 1:9 near 'x'),
+    /* Matches the demo readout (3 records, first at 1:7 near 'x'),
      * which the parity job covers byte-for-byte. */
     CHECK(recorded == 3);
     CHECK(galley_recorded_diagnostic_kind(session, 0) == galley_diagnostic_kind_syntax);
     unsigned int line = 0, column = 0;
     CHECK(galley_recorded_diagnostic_position(session, 0, &line, &column) == galley_ok);
-    CHECK(line == 1 && column == 9);
+    CHECK(line == 1 && column == 7);
     const char *unexpected_data = NULL;
     size_t unexpected_len = 0;
     CHECK(galley_recorded_unexpected_token(session, 0, &unexpected_data,
@@ -1621,15 +1621,15 @@ static void test_recovered_failure_publishes(void) {
 
     int full_count = collect_walk(session, 0, full, 256);
     CHECK(count_flagged(full, full_count, GALLEY_WALK_FLAG_SEMANTIC_ERROR) == 0);
-    CHECK(count_flagged(full, full_count, GALLEY_WALK_FLAG_RECOVERED) == 2);
+    CHECK(count_flagged(full, full_count, GALLEY_WALK_FLAG_RECOVERED) == 1);
     const Visit *damaged = first_flagged(full, full_count, GALLEY_WALK_FLAG_RECOVERED);
-    /* The damaged Number covers the input recovery skipped: `x,beta:`. */
+    /* The damaged Number covers the input recovery skipped: `x`. */
     CHECK(damaged != NULL && strcmp(damaged->symbol, "Number") == 0);
-    CHECK(damaged != NULL && damaged->start == 6 && damaged->length == 7);
+    CHECK(damaged != NULL && damaged->start == 6 && damaged->length == 1);
 
     int pruned_count = collect_walk(session, GALLEY_WALK_SKIP_RECOVERED, pruned, 256);
     CHECK(count_flagged(pruned, pruned_count, GALLEY_WALK_FLAG_RECOVERED) == 0);
-    CHECK(pruned_count == full_count - 2);
+    CHECK(pruned_count == full_count - 1);
     for (int i = 0; i < pruned_count; ++i) {
         /* No undamaged node starts inside the damaged region. */
         CHECK(damaged == NULL || pruned[i].start < damaged->start ||
@@ -1646,7 +1646,7 @@ static void test_recovered_failure_publishes(void) {
     for (unsigned long long address = 0; address < count; ++address) {
         if (is_recovered[address] && parent[address] != GALLEY_INVALID_NODE) ++flagged_in_snapshot;
     }
-    CHECK(flagged_in_snapshot == 2);
+    CHECK(flagged_in_snapshot == 1);
 
     const char *input = NULL;
     size_t input_length = 0;

@@ -128,7 +128,30 @@ test "json production recovery closes a damaged object tail" {
     try expectReachedEnd(&parsed, input);
 }
 
-test "json container production recovery discards an unselectable array" {
+test "json recovery between array elements resumes after the array" {
+    // `true` ends at "!", so no element is being parsed: the closing "]" of
+    // ArrayMembers reports it, and that production's scope skips the array.
+    const input: [:0]const u8 = "[true  !, false  ?, null]";
+    var parsed = try parseError(input);
+    defer parsed.session.deinit();
+
+    var read_guard = try parsed.read();
+    defer read_guard.deinit();
+    try std.testing.expectEqual(@as(usize, 1), read_guard.syntaxErrorCount());
+    const diagnostic = syntaxDiagnostic(&read_guard);
+    try std.testing.expectEqualStrings("!", diagnostic.unexpected_token);
+    const recovery = diagnostic.recovery orelse return error.MissingRecovery;
+    try std.testing.expectEqual(parser.SyntaxRecoveryResume.after, recovery.@"resume");
+    try std.testing.expectEqualStrings("]", recovery.terminal);
+    const production = switch (recovery.target) {
+        .production => |production| production,
+        else => return error.WrongRecoveryTarget,
+    };
+    try std.testing.expectEqualStrings("ArrayMembers", production.variable);
+    try expectReachedEnd(&parsed, input);
+}
+
+test "json recovery discards an unselectable array" {
     const input: [:0]const u8 = "[?]";
     var parsed = try parseError(input);
     defer parsed.session.deinit();
@@ -138,11 +161,25 @@ test "json container production recovery discards an unselectable array" {
     const recovery = syntaxDiagnostic(&read_guard).recovery orelse return error.MissingRecovery;
     try std.testing.expectEqual(parser.SyntaxRecoveryResume.after, recovery.@"resume");
     try std.testing.expectEqualStrings("]", recovery.terminal);
-    const production = switch (recovery.target) {
-        .production => |production| production,
-        else => return error.WrongRecoveryTarget,
-    };
-    try std.testing.expectEqualStrings("Value", production.variable);
+    // Nothing of ArrayMembers is consumed at "?". LL has already entered
+    // ArrayMembers, so its own scope recovers; LR has not shifted any of it,
+    // so the committed array production of Value recovers.
+    switch (parser.parser.parser_type) {
+        .ll => {
+            const variable = switch (recovery.target) {
+                .lhs_variable => |variable| variable,
+                else => return error.WrongRecoveryTarget,
+            };
+            try std.testing.expectEqualStrings("ArrayMembers", variable);
+        },
+        .lr => {
+            const production = switch (recovery.target) {
+                .production => |production| production,
+                else => return error.WrongRecoveryTarget,
+            };
+            try std.testing.expectEqualStrings("Value", production.variable);
+        },
+    }
     try expectReachedEnd(&parsed, input);
 }
 

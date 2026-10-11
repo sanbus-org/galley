@@ -4,7 +4,7 @@
 //! from publishes nothing.
 use galley::{Error, Session, SessionOptions, WalkStep};
 
-/// Recovery skips `x,beta:` to resynchronize, then `2`: two recovered nodes.
+/// Recovery skips `x` and resumes at `,`, so `beta:2` parses: one recovered node.
 const RECOVERED: &str = "alpha:x,beta:2";
 /// Parses, but a hook reports one semantic error on the Number `2000`.
 const SEMANTIC: &str = "alpha:1,beta:2000";
@@ -69,15 +69,15 @@ fn a_recovered_syntax_error_publishes_its_tree() {
 
     let full = steps(&session, false, false);
     let recovered: Vec<_> = full.iter().filter(|(_, _, _, step)| step.is_recovered).collect();
-    assert_eq!(recovered.len(), 2);
+    assert_eq!(recovered.len(), 1);
     assert!(full.iter().all(|(_, _, _, step)| !step.is_semantic_error));
-    // The damaged Number covers the input recovery skipped: `x,beta:`.
-    assert_eq!((recovered[0].0.as_str(), recovered[0].1, recovered[0].2), ("Number", 6, 7));
+    // The damaged Number covers the input recovery skipped: `x`.
+    assert_eq!((recovered[0].0.as_str(), recovered[0].1, recovered[0].2), ("Number", 6, 1));
 
-    // Skipping them leaves only undamaged nodes, none inside the damage.
+    // Skipping it leaves only undamaged nodes, none inside the damage.
     let undamaged = steps(&session, false, true);
-    assert_eq!(undamaged.len(), full.len() - 2);
-    assert!(undamaged.iter().all(|(_, start, _, step)| !step.is_recovered && (*start < 6 || *start >= 13)));
+    assert_eq!(undamaged.len(), full.len() - 1);
+    assert!(undamaged.iter().all(|(_, start, _, step)| !step.is_recovered && (*start < 6 || *start >= 7)));
 
     // The snapshot column reads what the walk reports, node for node.
     let snapshot = session.snapshot().expect("snapshot");

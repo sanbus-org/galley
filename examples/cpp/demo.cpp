@@ -9,7 +9,7 @@ namespace {
 
 constexpr const char *kValidSample = "alpha:12,beta:3";
 constexpr const char *kBrokenSample = "alpha:";
-constexpr const char *kMultiErrorSample = "alpha:13x,beta:,gamma:q";
+constexpr const char *kMultiErrorSample = "alpha:x,beta:y,gamma:z";
 
 struct SessionGuard {
     GalleySession *session;

@@ -104,7 +104,7 @@ def main() -> int:
 
         # Multi-error parse: every recorded diagnostic stays addressable.
         try:
-            session.parse("alpha:13x,beta:,gamma:q")
+            session.parse("alpha:x,beta:y,gamma:z")
             print("expected the multi-error sample to fail", file=sys.stderr)
             return 1
         except parser.GalleyError:

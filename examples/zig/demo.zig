@@ -6,7 +6,7 @@ const parser = @import("parser");
 
 const valid_sample: [:0]const u8 = "alpha:12,beta:3";
 const broken_sample: [:0]const u8 = "alpha:";
-const multi_error_sample: [:0]const u8 = "alpha:13x,beta:,gamma:q";
+const multi_error_sample: [:0]const u8 = "alpha:x,beta:y,gamma:z";
 const sample_path = "/tmp/galley-zig-example.json";
 
 fn nodeText(session: *parser.Session, node: *const parser.data_structures.Node) []const u8 {

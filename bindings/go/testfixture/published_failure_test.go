@@ -96,10 +96,11 @@ func TestRecoveredSyntaxErrorPublishesItsTree(t *testing.T) {
 	if err != nil || snap.Count == 0 {
 		t.Fatalf("snapshot = (count %d, %v), want the published tree's", snap.Count, err)
 	}
-	// The damaged Number spans the input recovery skipped: `x,beta:`.
+	// The damaged Number spans the input recovery skipped: `x`. Recovery
+	// resumes at `,`, so `beta:2` parses.
 	damaged := false
 	for address := uint64(0); address < snap.Count; address++ {
-		if snap.SpanStart[address] == 6 && snap.SpanLen[address] == 7 {
+		if snap.SpanStart[address] == 6 && snap.SpanLen[address] == 1 {
 			damaged = true
 		}
 	}
@@ -112,6 +113,28 @@ func TestRecoveredSyntaxErrorPublishesItsTree(t *testing.T) {
 	}
 	if _, err := session.Text(root); err != galley.ErrStaleTree {
 		t.Fatalf("read of the errored tree's node = %v, want ErrStaleTree", err)
+	}
+}
+
+func TestRecoveryReportsEachDamagedValue(t *testing.T) {
+	// Each bad value is its own error: recovery resumes at the `,` after it,
+	// so the next pair parses and reports its own damage.
+	session := publishedSession(t, galley.DefaultOptions())
+	if _, err := session.Parse([]byte("alpha:x,beta:y,gamma:z")); !errors.Is(err, galley.ErrSyntax) {
+		t.Fatalf("expected ErrSyntax, got %v", err)
+	}
+	diagnostics := session.Diagnostics()
+	want := []struct {
+		column     uint32
+		unexpected string
+	}{{7, "x"}, {14, "y"}, {22, "z"}}
+	if len(diagnostics) != len(want) {
+		t.Fatalf("diagnostics = %d, want %d", len(diagnostics), len(want))
+	}
+	for index, diagnostic := range diagnostics {
+		if diagnostic.Kind != galley.DiagnosticKindSyntax || diagnostic.Line != 1 || diagnostic.Column != want[index].column || string(diagnostic.UnexpectedToken) != want[index].unexpected {
+			t.Fatalf("diagnostic %d = %+v, want syntax at 1:%d near %q", index, diagnostic, want[index].column, want[index].unexpected)
+		}
 	}
 }
 

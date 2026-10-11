@@ -10,7 +10,7 @@
  * runtime's own entry so identity checks hold.
  */
 
-// Recovery skips `x,beta:` to resynchronize, then `2`: two recovered nodes.
+// Recovery skips `x` and resumes at `,`, so `beta:2` parses: one recovered node.
 const RECOVERED = "alpha:x,beta:2";
 // Parses, but a hook reports one semantic error on the Number `2000`.
 const SEMANTIC = "alpha:1,beta:2000";
@@ -75,17 +75,17 @@ export async function runPublishedFailureScenarios({ test, assert, newParser, St
 
       const full = steps(s);
       const recovered = full.filter((entry) => entry.step.isRecovered);
-      assert.equal(recovered.length, 2);
+      assert.equal(recovered.length, 1);
       assert.ok(full.every((entry) => !entry.step.isSemanticError));
-      // The damaged Number covers the input recovery skipped: `x,beta:`.
-      assert.deepEqual([recovered[0].symbol, recovered[0].start, recovered[0].length], ["Number", 6, 7]);
+      // The damaged Number covers the input recovery skipped: `x`.
+      assert.deepEqual([recovered[0].symbol, recovered[0].start, recovered[0].length], ["Number", 6, 1]);
 
-      // Skipping them leaves only undamaged nodes, none inside the damage.
+      // Skipping it leaves only undamaged nodes, none inside the damage.
       const undamaged = steps(s, false, true);
-      assert.equal(undamaged.length, full.length - 2);
+      assert.equal(undamaged.length, full.length - 1);
       for (const entry of undamaged) {
         assert.equal(entry.step.isRecovered, false);
-        assert.ok(entry.start < 6 || entry.start >= 13);
+        assert.ok(entry.start < 6 || entry.start >= 7);
       }
 
       // The snapshot column reads what the walk reports, node for node.

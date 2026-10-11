@@ -1086,6 +1086,7 @@ pub fn mergeSwitchBodies(
 }
 
 fn switchHasNewlineHead(node: *const switch_planning.Node) bool {
+    if (node.accepts_newline) |accepts| return accepts;
     for (node.groups.items) |group| {
         for (group.heads.items) |head| {
             if (head.len > 0 and head[0] == '\n') return true;
@@ -1199,7 +1200,9 @@ pub fn emitMergedSwitch(
         allocator.free(merged);
     }
     if (prefix_length == 0) {
-        if (step_length == 1) {
+        // Zero prongs (a decision taken by default) read the byte like one
+        // prong, so a leftover 0x03 is rewritten or skipped the same way.
+        if (step_length <= 1) {
             try emitFirstByteSwitchHead(writer, node, indent);
         } else if (switchHasNewlineHead(node)) {
             const int_bits = step_length * 8;

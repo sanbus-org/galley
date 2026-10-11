@@ -3874,7 +3874,7 @@ class PublishedFailureTests(unittest.TestCase):
     cannot recover from publishes nothing.
     """
 
-    # Recovery skips `x,beta:` to resynchronize, then `2`: two recovered nodes.
+    # Recovery skips `x` and resumes at `,`, so `beta:2` parses: one recovered node.
     RECOVERED = "alpha:x,beta:2"
     # Parses, but a hook reports one semantic error on the Number `2000`.
     SEMANTIC = "alpha:1,beta:2000"
@@ -3936,17 +3936,17 @@ class PublishedFailureTests(unittest.TestCase):
 
         full = self.steps()
         recovered = [entry for entry in full if entry[3].is_recovered]
-        self.assertEqual(len(recovered), 2)
+        self.assertEqual(len(recovered), 1)
         self.assertFalse(any(entry[3].is_semantic_error for entry in full))
-        # The damaged Number covers the input recovery skipped: `x,beta:`.
-        self.assertEqual(recovered[0][:3], ("Number", 6, 7))
+        # The damaged Number covers the input recovery skipped: `x`.
+        self.assertEqual(recovered[0][:3], ("Number", 6, 1))
 
-        # Skipping them leaves only undamaged nodes, none inside the damage.
+        # Skipping it leaves only undamaged nodes, none inside the damage.
         undamaged = self.steps(skip_recovered=True)
-        self.assertEqual(len(undamaged), len(full) - 2)
+        self.assertEqual(len(undamaged), len(full) - 1)
         for _, start, _, step in undamaged:
             self.assertFalse(step.is_recovered)
-            self.assertTrue(start < 6 or start >= 13)
+            self.assertTrue(start < 6 or start >= 7)
 
         # The snapshot column reads what the walk reports, node for node.
         snapshot = self.session.snapshot()

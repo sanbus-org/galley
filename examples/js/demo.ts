@@ -18,7 +18,7 @@ const fileArguments = process.argv.slice(2).filter((argument) => argument !== "-
 
 const VALID_SAMPLE = "alpha:12,beta:3";
 const BROKEN_SAMPLE = "alpha:";
-const MULTI_ERROR_SAMPLE = "alpha:13x,beta:,gamma:q";
+const MULTI_ERROR_SAMPLE = "alpha:x,beta:y,gamma:z";
 const SAMPLE_PATH = "/tmp/galley-js-universal-example.json";
 
 // Shared with procedures.ts: TextDecoder is global on every runtime and

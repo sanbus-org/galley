@@ -516,7 +516,11 @@ fn errorInputs(language: []const u8) ?ErrorInputs {
         return .{
             .valid = "{}",
             .malformed = "{",
-            .multiple_errors = "[true  !, false  ?, null]",
+            // Each error sits inside a nested array whose production is
+            // already selected, so recovery resumes after that array's "]"
+            // and reaches the next error. An error between elements is
+            // reported by the outer closing "]", whose scope skips the rest.
+            .multiple_errors = "[[?], [?], null]",
             .small_window_error_count = 1,
             .diagnostic_line = 1,
             .diagnostic_column = 2,

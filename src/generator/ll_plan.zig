@@ -87,7 +87,6 @@ pub const LLPlan = struct {
                 allocator,
                 grammar,
                 options,
-                builder.plan.nullable_rules,
                 builder.plan.first_sets,
                 builder.plan.follow_sets,
             );
@@ -1035,11 +1034,25 @@ const Builder = struct {
     fn planParser(self: *Builder, symbol_index: usize, skip_ast_construction: bool) !void {
         const symbol = self.grammar.symbols.items[symbol_index];
         var entries = std.ArrayList(switch_planning.Entry).empty;
+        var accepts_newline = false;
         if (symbol.kind == .variable) {
+            // A variable's rule that matches empty is its decision's `else`:
+            // a byte no other rule starts with ends the variable, and the
+            // parser that consumes that byte next reports any error.
+            const empty_rule = self.plan.nullable_rules[symbol_index];
+            var empty_rule_terminals = std.ArrayList([]const u8).empty;
             for (self.plan.parse_table.items) |entry| {
                 if (entry.variable != symbol_index) continue;
-                for (self.grammar.symbols.items[entry.terminal].terminals.items) |terminal| try entries.append(self.allocator, .{ .terminal = terminal, .target = entry.rule });
+                for (self.grammar.symbols.items[entry.terminal].terminals.items) |terminal| {
+                    if (terminal.len > 0 and terminal[0] == '\n') accepts_newline = true;
+                    if (empty_rule == entry.rule) {
+                        try empty_rule_terminals.append(self.allocator, terminal);
+                    } else {
+                        try entries.append(self.allocator, .{ .terminal = terminal, .target = entry.rule });
+                    }
+                }
             }
+            if (empty_rule) |rule_index| try switch_planning.appendDefault(self.allocator, &entries, empty_rule_terminals.items, rule_index);
             for (self.grammar.rules.items, 0..) |rule, rule_index| {
                 if (rule.header != symbol_index) continue;
                 for (rule.rhs.items, 0..) |child, self_index| {
@@ -1065,6 +1078,7 @@ const Builder = struct {
             for (symbol.terminals.items) |terminal| try entries.append(self.allocator, .{ .terminal = terminal, .target = 0 });
         }
         const tree = try switch_planning.build(self.allocator, entries.items, self.options.error_reporter);
+        if (symbol.kind == .variable) tree.accepts_newline = accepts_newline;
         try self.plan.parser_decisions.append(self.allocator, .{
             .symbol_index = symbol_index,
             .skip_ast_construction = skip_ast_construction,

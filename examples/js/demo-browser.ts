@@ -15,7 +15,7 @@ import * as procedures from "./kv/procedures.ts";
 
 const VALID_SAMPLE = "alpha:12,beta:3";
 const BROKEN_SAMPLE = "alpha:";
-const MULTI_ERROR_SAMPLE = "alpha:13x,beta:,gamma:q";
+const MULTI_ERROR_SAMPLE = "alpha:x,beta:y,gamma:z";
 
 const utf8 = new TextDecoder();
 

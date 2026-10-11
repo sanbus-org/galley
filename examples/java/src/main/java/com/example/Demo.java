@@ -19,7 +19,7 @@ public final class Demo {
 
     private static final String VALID_SAMPLE = "alpha:12,beta:3";
     private static final String BROKEN_SAMPLE = "alpha:";
-    private static final String MULTI_ERROR_SAMPLE = "alpha:13x,beta:,gamma:q";
+    private static final String MULTI_ERROR_SAMPLE = "alpha:x,beta:y,gamma:z";
     private static final String SAMPLE_PATH = "/tmp/galley-java-example.json";
 
     private Demo() {}

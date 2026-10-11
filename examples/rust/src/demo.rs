@@ -6,7 +6,7 @@ use galley::{NodeHandle, Session};
 
 const VALID_SAMPLE: &str = "alpha:12,beta:3";
 const BROKEN_SAMPLE: &str = "alpha:";
-const MULTI_ERROR_SAMPLE: &str = "alpha:13x,beta:,gamma:q";
+const MULTI_ERROR_SAMPLE: &str = "alpha:x,beta:y,gamma:z";
 
 fn print_tree(session: &Session, node: NodeHandle, depth: usize) -> Result<(), galley::Error> {
     let name = String::from_utf8_lossy(session.symbol_name(node)?).into_owned();

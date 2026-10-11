@@ -14,7 +14,7 @@ import (
 const (
 	validSample      = "alpha:12,beta:3"
 	brokenSample     = "alpha:"
-	multiErrorSample = "alpha:13x,beta:,gamma:q"
+	multiErrorSample = "alpha:x,beta:y,gamma:z"
 )
 
 //go:generate go run github.com/sanbus-org/galley/bindings/go/cmd/galley gen .

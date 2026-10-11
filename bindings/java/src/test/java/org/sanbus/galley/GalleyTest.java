@@ -1380,7 +1380,7 @@ public class GalleyTest {
      */
     @Nested
     class PublishedFailureTests {
-        /** Recovery skips {@code x,beta:} to resynchronize, then {@code 2}: two recovered nodes. */
+        /** Recovery skips {@code x} and resumes at {@code ,}, so {@code beta:2} parses: one recovered node. */
         static final String RECOVERED = "alpha:x,beta:2";
         /** Parses, but a hook reports one semantic error on the Number {@code 2000}. */
         static final String SEMANTIC = "alpha:1,beta:2000";
@@ -1457,19 +1457,19 @@ public class GalleyTest {
 
             List<Walker.WalkStep> full = steps(false, false);
             List<Walker.WalkStep> recovered = full.stream().filter(step -> step.isRecovered).toList();
-            assertEquals(2, recovered.size());
+            assertEquals(1, recovered.size());
             assertTrue(full.stream().noneMatch(step -> step.isSemanticError));
-            // The damaged Number covers the input recovery skipped: x,beta:
+            // The damaged Number covers the input recovery skipped: x
             assertEquals("Number", symbolOf(recovered.get(0)));
-            assertArrayEquals(new long[]{6, 7}, session.span(recovered.get(0).node));
+            assertArrayEquals(new long[]{6, 1}, session.span(recovered.get(0).node));
 
-            // Skipping them leaves only undamaged nodes, none inside the damage.
+            // Skipping it leaves only undamaged nodes, none inside the damage.
             List<Walker.WalkStep> undamaged = steps(false, true);
-            assertEquals(full.size() - 2, undamaged.size());
+            assertEquals(full.size() - 1, undamaged.size());
             for (Walker.WalkStep step : undamaged) {
                 assertFalse(step.isRecovered);
                 long start = session.span(step.node)[0];
-                assertTrue(start < 6 || start >= 13);
+                assertTrue(start < 6 || start >= 7);
             }
 
             // The snapshot column reads what the walk reports, node for node.

@@ -18,11 +18,33 @@ pub const Node = struct {
     fallback_length: ?usize = null,
     groups: std.ArrayList(Group) = .empty,
     diagnostic: ?usize = null,
+    /// Whether the decision accepts `\n`, including through a default target
+    /// whose terminals are not heads (see `appendDefault`). The leftover 0x03
+    /// of `newline_after_block_end` reads as `\n` exactly where it is
+    /// accepted. Null means the heads tell.
+    accepts_newline: ?bool = null,
 
     pub fn isLeaf(self: Node) bool {
         return self.entries.len == 1 and self.entries[0].terminal.len == 0;
     }
 };
+
+/// Makes `target` the decision's `else`: input that no other entry matches
+/// selects it, and the parser that consumes that input next reports any error.
+/// Of `target_terminals`, only those another entry's terminal is a proper
+/// prefix of stay as entries, so longest match can still choose `target`.
+pub fn appendDefault(allocator: std.mem.Allocator, entries: *std.ArrayList(Entry), target_terminals: []const []const u8, target: usize) !void {
+    const other_count = entries.items.len;
+    for (target_terminals) |terminal| {
+        for (entries.items[0..other_count]) |other| {
+            if (other.terminal.len < terminal.len and std.mem.startsWith(u8, terminal, other.terminal)) {
+                try entries.append(allocator, .{ .terminal = terminal, .target = target });
+                break;
+            }
+        }
+    }
+    try entries.append(allocator, .{ .terminal = "", .target = target });
+}
 
 pub fn build(allocator: std.mem.Allocator, source_entries: []const Entry, reporter: common.ErrorReporter) !*Node {
     try diagnoseEqualBytes(allocator, source_entries, reporter);
