@@ -1221,7 +1221,6 @@ fn testContext(node_allocator: *TestASTAllocator, text: []u8, runtime_context: *
         context.token.resetBuffered();
         @memcpy(context.token.buffer[0..text.len], text);
         context.token.head = @intCast(text.len);
-        context.token.len = @intCast(text.len);
     } else {
         context.token.reset(text);
     }

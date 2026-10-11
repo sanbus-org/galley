@@ -907,7 +907,7 @@ pub const Context = struct {
             // line/column offsets) and resume lexing from the terminator end.
             self.indentation_error = false;
             if (comptime root.position_tracking_enabled) {
-                const discard = @min(self.token.len, self.line_offsets.len);
+                const discard = @min(self.token.len(), self.line_offsets.len);
                 if (discard != 0) {
                     self.line_offsets.pop(@intCast(discard));
                     self.column_offsets.pop(@intCast(discard));
@@ -1029,7 +1029,7 @@ pub const Context = struct {
 
             self.indentation_error = false;
             if (comptime root.position_tracking_enabled) {
-                const discard = @min(self.token.len, self.line_offsets.len);
+                const discard = @min(self.token.len(), self.line_offsets.len);
                 if (discard != 0) {
                     self.line_offsets.pop(@intCast(discard));
                     self.column_offsets.pop(@intCast(discard));
@@ -1553,7 +1553,7 @@ pub const Context = struct {
                 self.indent_width = line_spaces;
             } else if (line_spaces % self.indent_width != 0) {
                 self.recordIndentationDiagnostic(line_spaces);
-                while (self.token.len < @max(root.parser.longest_terminal_length, 1)) {
+                while (self.token.len() < @max(root.parser.longest_terminal_length, 1)) {
                     self.appendToken(0, self.read_bytes + self.seek);
                 }
                 return;
@@ -1743,7 +1743,8 @@ pub const Context = struct {
     /// Lexes until the token holds `needed_len` bytes.
     fn fillToken(self: *@This(), needed_len: usize) void {
         comptime std.debug.assert(root.config.indentation_syntax);
-        while (self.token.len < needed_len) {
+        self.token.compact();
+        while (self.token.len() < needed_len) {
             self.advanceLexer();
         }
         if (comptime root.config.indentation_syntax and !root.input_streaming_enabled) self.lexRestOfLine();
@@ -1763,17 +1764,15 @@ pub const Context = struct {
         const start = self.seek;
         const end_limit = @min(self.chunk_buffer.len - 1, start + room);
         var end = start;
+        const buffer_end = self.token.head;
         while (end < end_limit) : (end += 1) {
             const byte = self.chunk_buffer[end];
             if (byte == '\n' or byte == 0) break;
+            self.token.buffer[buffer_end + end - start] = byte;
+            self.token.sources[buffer_end + end - start] = self.read_bytes + end;
         }
         const count = end - start;
         if (count == 0) return;
-        const buffer_end = self.token.head;
-        @memcpy(self.token.buffer[buffer_end..][0..count], self.chunk_buffer[start..end]);
-        for (self.token.sources[buffer_end..][0..count], 0..) |*source, index| {
-            source.* = self.read_bytes + start + index;
-        }
         if (comptime root.position_tracking_enabled) {
             for (0..count) |_| {
                 self.line_offsets.append(0);
@@ -1781,7 +1780,6 @@ pub const Context = struct {
             }
         }
         self.token.head += count;
-        self.token.len += @intCast(count);
         self.seek = end;
     }
 
@@ -1793,10 +1791,10 @@ pub const Context = struct {
         const bytes_needed = comptime @divExact(@bitSizeOf(T), 8);
         const needed_len = offset + bytes_needed;
         const base_ptr = if (comptime root.config.indentation_syntax) base: {
-            if (self.token.len < needed_len) {
+            if (self.token.start + needed_len > self.token.head) {
                 @call(.never_inline, fillToken, .{ self, needed_len });
             }
-            break :base self.token.items().ptr + offset;
+            break :base self.token.buffer.ptr + self.token.start + offset;
         } else base: {
             if (comptime root.input_streaming_enabled) self.ensureInputLoaded(needed_len);
             break :base self.token.buffer.ptr + self.token.cursor + offset;
@@ -1818,7 +1816,7 @@ pub const Context = struct {
     /// lexer may have read further ahead.
     pub inline fn currentTokenSourceOffset(self: *const Self) usize {
         if (comptime root.config.indentation_syntax) {
-            if (self.token.len == 0) return self.read_bytes + self.seek;
+            if (self.token.len() == 0) return self.read_bytes + self.seek;
             return self.token.firstSourceOffset();
         }
         if (comptime root.sliding_input_enabled) {

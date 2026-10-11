@@ -61,10 +61,8 @@ pub const InputCursor = struct {
 /// was lexed from, buffered ahead of the parser.
 pub const LexedToken = struct {
     pub const Length = TerminalLength;
+    /// The most bytes buffered ahead of the parser at once.
     pub const max_length = 65500;
-    /// The most bytes buffered at once: `max_length`, or fewer when `Length`
-    /// cannot count that high.
-    pub const max_buffered = @min(max_length, std.math.maxInt(Length));
     comptime {
         std.debug.assert(root.parser.longest_terminal_length <= LexedToken.max_length);
     }
@@ -75,10 +73,17 @@ pub const LexedToken = struct {
     /// from. Source offsets are independent of the cleaned/rewritten token
     /// stream, so node text spans can be resolved back to the original input.
     sources: []usize = &.{},
+    /// Index in `buffer` of the first byte the parser has not consumed.
+    start: usize = 0,
+    /// Index in `buffer` past the last lexed byte.
     head: usize = 0,
-    len: Length = 0,
 
     const Self = @This();
+
+    /// How many lexed bytes the parser has not consumed.
+    pub inline fn len(self: *const Self) usize {
+        return self.head - self.start;
+    }
 
     /// The indentation lexer's buffers, allocated once per session and
     /// attached to each parse's token. They are large (twice the longest
@@ -108,55 +113,59 @@ pub const LexedToken = struct {
 
     pub inline fn resetBuffered(self: *Self) void {
         self.head = 0;
-        self.len = 0;
+        self.start = 0;
     }
 
     pub inline fn append(self: *Self, char: u8) void {
-        std.debug.assert(self.len < Self.max_length);
+        std.debug.assert(self.len() < Self.max_length);
         self.buffer[self.head] = char;
         self.head += 1;
-        self.len += 1;
     }
 
     /// Appends a token together with the source offset it was lexed from.
     pub inline fn appendSource(self: *Self, char: u8, source: usize) void {
-        std.debug.assert(self.len < Self.max_length);
+        std.debug.assert(self.len() < Self.max_length);
         self.buffer[self.head] = char;
         self.sources[self.head] = source;
         self.head += 1;
-        self.len += 1;
     }
 
     pub inline fn pop(self: *Self, amount: Length) void {
-        std.debug.assert(self.len >= amount);
+        std.debug.assert(self.len() >= amount);
+        self.start += amount;
+    }
 
-        self.len -= amount;
-        if (self.head - self.len >= Self.max_length) {
-            const remaining = self.len;
-            @memcpy(self.buffer[0..remaining], self.items());
-            @memcpy(self.sources[0..remaining], self.sources[self.head - self.len .. self.head]);
+    /// Moves the buffered bytes to the front once the consumed prefix reaches
+    /// `max_length`. The lexer calls this before it appends, so `pop` is a
+    /// single add and `start` stays below `max_length` while bytes are added.
+    pub inline fn compact(self: *Self) void {
+        if (self.start >= Self.max_length) {
+            const remaining = self.len();
+            std.mem.copyForwards(u8, self.buffer[0..remaining], self.items());
+            std.mem.copyForwards(usize, self.sources[0..remaining], self.sources[self.start..self.head]);
+            self.start = 0;
             self.head = remaining;
         }
     }
 
     /// How many more bytes can be appended.
     pub inline fn room(self: *const Self) usize {
-        return max_buffered - self.len;
+        return max_length - self.len();
     }
 
     pub inline fn items(self: *const Self) []const u8 {
-        return self.buffer[self.head - self.len .. self.head];
+        return self.buffer[self.start..self.head];
     }
 
     /// Source offset of the first un-released token, i.e. the offset the next
     /// released token begins at.
     pub inline fn firstSourceOffset(self: *const Self) usize {
-        return self.sources[self.head - self.len];
+        return self.sources[self.start];
     }
 
     pub inline fn at(self: *const Self, offset: Length) u8 {
-        std.debug.assert(offset < self.len);
-        return self.buffer[self.head + offset - self.len];
+        std.debug.assert(offset < self.len());
+        return self.buffer[self.start + offset];
     }
 };
 
