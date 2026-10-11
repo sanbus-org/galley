@@ -1,7 +1,7 @@
 # Examples
 
-Each directory is a consumer of the same key/value demo and JSON throughput
-benchmark.
+Each directory is a consumer of the same key/value demo and parse
+throughput benchmark.
 
 - **Zig** (`examples/zig`) uses Galley's native runtime. The API manual is
   [`docs/using-galley.md`](../docs/using-galley.md). `--bootstrap-zig-project`
@@ -11,9 +11,15 @@ benchmark.
 
 Zig is not a binding. The other examples are.
 
-CI (`example-benchmarks`) builds every example's JSON throughput binary
-ReleaseFast, runs interleaved rounds on one machine, and fails if a C-ABI
-example lags native Zig by a wide margin.
+CI (`benchmark`) runs a matrix over parser configurations: seven JSON rows
+covering AST, procedures, and error recovery, plus two Python rows with
+indentation syntax. Each row reconfigures the grammar
+(`scripts/configure-benchmarks.sh`): the python, js, and java
+benchmarks compile `languages/<grammar>` directly, while the compiled
+examples keep their own benchmark grammar directories pointed at the same
+grammar. Every row builds the binaries ReleaseFast, runs interleaved
+rounds on one machine, and fails if a C-ABI example lags native Zig by a
+wide margin.
 
 ## Building a binding example
 
@@ -34,7 +40,9 @@ Regenerate after changing the grammar; commit nothing the build generates.
 ## Running demos and benchmarks
 
 Every demo parses an optional grammar-source file passed as its argument
-instead of running the built-in demo. Every benchmark prints JSON parse
-throughput with no AST, no procedures, and no error recovery, and takes
-optional `[path] [iterations]` arguments. Fetch large samples first (from
-the repo root): `bash scripts/fetch-large-samples.sh json`.
+instead of running the built-in demo. Every benchmark takes the sample
+file as a required argument plus optional `[iterations]`; the python, js,
+and java benchmarks additionally take the built parser package directory
+first (any directory the matching binding build produced, e.g. `./json`
+or `languages/json`). Fetch large samples first (from the repo root):
+`bash scripts/fetch-large-samples.sh json`.

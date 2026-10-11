@@ -1,29 +1,10 @@
-//! JSON throughput through Galley's native Zig runtime: no AST, no procedures,
-//! no error recovery. Reports bytes/s.
+//! Parse throughput through Galley's native Zig runtime: parses the given
+//! sample on one session and reports bytes/s.
 
 const std = @import("std");
 const parser = @import("parser");
 
-const logical_input = "languages/json/samples/code-02.json";
 const default_iterations: usize = 10;
-
-fn resolveInput(
-    io: std.Io,
-    gpa: std.mem.Allocator,
-    explicit: ?[]const u8,
-) ![]u8 {
-    if (explicit) |path| return gpa.dupe(u8, path);
-
-    const from_example = try std.fs.path.join(gpa, &.{ "..", "..", logical_input });
-    if (fileExists(io, from_example)) return from_example;
-    gpa.free(from_example);
-    return error.MissingInput;
-}
-
-fn fileExists(io: std.Io, path: []const u8) bool {
-    std.Io.Dir.cwd().access(io, path, .{}) catch return false;
-    return true;
-}
 
 fn printLabeled(stdout: *std.Io.Writer, label: []const u8, value: u64) !void {
     var buffer: [32]u8 = undefined;
@@ -39,7 +20,10 @@ pub fn main(init: std.process.Init) !void {
     var args = try std.process.Args.Iterator.initAllocator(init.minimal.args, init.gpa);
     defer args.deinit();
     _ = args.skip();
-    const explicit = args.next();
+    const path = args.next() orelse {
+        std.debug.print("usage: benchmark <sample-file> [iterations]\n", .{});
+        std.process.exit(1);
+    };
     var iterations: usize = default_iterations;
     if (args.next()) |text| {
         iterations = std.fmt.parseInt(usize, text, 10) catch 0;
@@ -49,14 +33,8 @@ pub fn main(init: std.process.Init) !void {
         }
     }
 
-    const path = resolveInput(init.io, init.gpa, explicit) catch {
-        std.debug.print("failed to read {s}\n", .{logical_input});
-        std.process.exit(1);
-    };
-    defer init.gpa.free(path);
-
     const input = std.Io.Dir.cwd().readFileAlloc(init.io, path, init.gpa, .limited(std.math.maxInt(usize))) catch {
-        std.debug.print("failed to read {s}\n", .{logical_input});
+        std.debug.print("failed to read {s}\n", .{path});
         std.process.exit(1);
     };
     defer init.gpa.free(input);
@@ -71,13 +49,16 @@ pub fn main(init: std.process.Init) !void {
     };
     defer session.deinit();
 
-    const warmup = session.parseSentinelBytes(sentinel, null) catch |err| {
-        std.debug.print("warmup parse failed: {s}\n", .{@errorName(err)});
-        std.process.exit(1);
-    };
-    if (warmup.parsed_bytes != input.len) {
-        std.debug.print("warmup parse failed: parsed {d} of {d} bytes\n", .{ warmup.parsed_bytes, input.len });
-        std.process.exit(1);
+    // The first two parses are cold: the session arena grows during the first and is reallocated for the second.
+    for (0..2) |_| {
+        const warmup = session.parseSentinelBytes(sentinel, null) catch |err| {
+            std.debug.print("warmup parse failed: {s}\n", .{@errorName(err)});
+            std.process.exit(1);
+        };
+        if (warmup.parsed_bytes != input.len) {
+            std.debug.print("warmup parse failed: parsed {d} of {d} bytes\n", .{ warmup.parsed_bytes, input.len });
+            std.process.exit(1);
+        }
     }
 
     const start = std.Io.Clock.awake.now(init.io);
@@ -99,7 +80,7 @@ pub fn main(init: std.process.Init) !void {
     const total: u64 = input.len * iterations;
     const bps: u64 = if (elapsed_ns == 0) 0 else total * 1_000_000_000 / elapsed_ns;
 
-    try stdout.print("input: {s}\n", .{logical_input});
+    try stdout.print("input: {s}\n", .{path});
     try printLabeled(stdout, "bytes", input.len);
     try printLabeled(stdout, "iterations", iterations);
     try printLabeled(stdout, "parsed_bytes", total);

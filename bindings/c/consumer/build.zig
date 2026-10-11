@@ -34,7 +34,10 @@
 //! author-defined grammar hook as `hook_<name>` — which the input
 //! implements directly; the linker resolves them when the shared library
 //! is built. Passing both inputs fails: one implementation owns the entry
-//! points.
+//! points. A generated `host_procedures.zig` next to the parser instead
+//! selects the session's host dispatch (every hook forwards to the
+//! session's own callback, disabled by default), so no extern entry points
+//! need definitions; when present it is chosen over `procedures.zig`.
 //!
 //! Installs the library either as a bare file under `--prefix` (with
 //! `-Doutput=<filename>`, where `--prefix` is the grammar directory) or,
@@ -110,7 +113,7 @@ pub fn build(b: *std.Build) !void {
     const procedures_c_source = b.option([]const u8, "procedures-c-source", "C source file implementing procedure hooks (default: procedures.c or procedures.cpp next to parser when present)");
     const procedures_object = b.option([]const u8, "procedures-object", "Prebuilt object file or static archive implementing procedure hooks");
     const wasm = b.option(bool, "wasm", "Emit a WASI reactor .wasm module instead of a native shared library (requires a wasm target)") orelse false;
-    const procedures_zig_source = b.option([]const u8, "procedures-zig-source", "Custom procedures.zig (default: procedures.zig next to parser when present, otherwise template)");
+    const procedures_zig_source = b.option([]const u8, "procedures-zig-source", "Custom procedures.zig (default: host_procedures.zig next to parser when present, else procedures.zig, otherwise template)");
     const config_zig_source = b.option([]const u8, "config-zig-source", "Path to config.zig (default: config.zig next to parser)");
     const error_messages_zig_source = b.option([]const u8, "error-messages-zig-source", "Custom error-messages.zig (default: {ll,lr}_error_messages.zig next to parser when present, otherwise template)");
     const output = b.option([]const u8, "output", "Bare filename to install the library as directly under --prefix (e.g. libgalley-python.dylib); --prefix is then the grammar dir");
@@ -149,6 +152,12 @@ pub fn build(b: *std.Build) !void {
     const procedures_file: std.Build.LazyPath = if (procedures_zig_source) |src|
         .{ .cwd_relative = src }
     else blk: {
+        // A host shim (`--emit-host-procedures`) selects session dispatch
+        // over extern entry points; it wins over `procedures.zig` so a
+        // procedures-enabled parser with no hook implementation beside it
+        // never binds undefined symbols.
+        const host_candidate = b.pathJoin(&.{ parser_dir, "host_procedures.zig" });
+        if (exists(b.graph.io, host_candidate)) break :blk .{ .cwd_relative = host_candidate };
         const candidate = b.pathJoin(&.{ parser_dir, "procedures.zig" });
         if (exists(b.graph.io, candidate)) break :blk .{ .cwd_relative = candidate };
         break :blk galley_dep.path("src/cli/templates/procedures.zig");

@@ -752,15 +752,55 @@ jobs:
           compare /tmp/err-c.txt /tmp/err-java.txt
           echo "example output ($(wc -l < /tmp/out-c.txt) stdout lines, $(wc -l < /tmp/err-c.txt) stderr lines) is identical across all bindings"
 
-  example-benchmarks:
-    name: example-benchmarks
+  benchmark:
+    name: benchmark (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: json-base
+            grammar: json
+            flags: --no-ast --no-procedures --no-error-recovery --no-indentation-syntax --no-newline-after-block-end
+          - name: json-ast
+            grammar: json
+            flags: --with-ast --no-procedures --no-error-recovery --no-indentation-syntax --no-newline-after-block-end
+          - name: json-procedures
+            grammar: json
+            flags: --no-ast --with-procedures --no-error-recovery --no-indentation-syntax --no-newline-after-block-end
+          - name: json-recovery
+            grammar: json
+            flags: --no-ast --no-procedures --with-error-recovery --no-indentation-syntax --no-newline-after-block-end
+          - name: json-ast-recovery
+            grammar: json
+            flags: --with-ast --no-procedures --with-error-recovery --no-indentation-syntax --no-newline-after-block-end
+          - name: json-procedures-recovery
+            grammar: json
+            flags: --no-ast --with-procedures --with-error-recovery --no-indentation-syntax --no-newline-after-block-end
+          - name: json-ast-procedures
+            grammar: json
+            flags: --with-ast --with-procedures --no-error-recovery --no-indentation-syntax --no-newline-after-block-end
+          - name: python-indentation
+            grammar: python
+            flags: --no-ast --no-procedures --no-error-recovery --indentation-syntax --newline-after-block-end
+          - name: python-ast-indentation
+            grammar: python
+            flags: --with-ast --no-procedures --no-error-recovery --indentation-syntax --newline-after-block-end
     runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-medium' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
       - name: Fetch large JSON sample
+        if: ${{ matrix.grammar == 'json' }}
         run: bash scripts/fetch-large-samples.sh json
+
+      - name: Build Python benchmark sample
+        if: ${{ matrix.grammar == 'python' }}
+        run: |
+          sample=/tmp/python-benchmark-sample.py
+          : > "$sample"
+          for _ in $(seq 1 20000); do cat languages/python/samples/code-02.py >> "$sample"; done
+          wc -c "$sample"
 
       - name: Install Zig
         uses: mlugg/setup-zig@v2
@@ -799,12 +839,15 @@ jobs:
         with:
           bun-version: 1.3.9
 
-      - name: Build example benchmarks
+      - name: Configure benchmark grammars
+        run: bash scripts/configure-benchmarks.sh "${{ matrix.grammar }}" ${{ matrix.flags }}
+
+      - name: Build benchmarks
         env:
           GALLEY_CHECKOUT: ${{ github.workspace }}
         run: |
           javac --release 22 -d bindings/java/out $(find bindings/java/src/main/java -name "*.java")
-          java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild examples/java/json
+          java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild "languages/${{ matrix.grammar }}" --parser-type ll
           javac --release 22 -cp bindings/java/out -d examples/java/out $(find examples/java/src/main/java -name "*.java")
           cmake -S examples/c -B /tmp/build-c -DCMAKE_BUILD_TYPE=Release -DGALLEY_CHECKOUT="$PWD"
           cmake --build /tmp/build-c --target benchmark
@@ -816,28 +859,38 @@ jobs:
           go build -o /tmp/galley-go-benchmark ./benchmark
           cd ../python
           pip install -e .
-          python -m galley json
+          python -m galley "../../languages/${{ matrix.grammar }}" --parser-type ll
           cd ../js
           npm install
           npm --prefix ../../bindings/js install
           npm --prefix ../../bindings/js/universal install
-          npx galley-js-node json
-          deno run --allow-read --allow-write --allow-run --allow-env ../../bindings/js/deno/build.ts json
+          # The binding builds compile languages/<grammar> directly, and
+          # the generated entry lives outside any node_modules scope:
+          # link the example's installs so its bare imports (@sanbus/galley)
+          # resolve from there under tsx, Node, and Bun. Deno resolves them
+          # through the deno.json import map instead.
+          ln -sfn "$PWD/node_modules" ../../languages/node_modules
+          npx galley-js-node "../../languages/${{ matrix.grammar }}" --parser-type ll
+          deno run --allow-read --allow-write --allow-run --allow-env ../../bindings/js/deno/build.ts "../../languages/${{ matrix.grammar }}" --parser-type ll
           bun install
           (cd ../../bindings/js && rm -f package-lock.json bun.lock && bun install)
-          bunx galley-js-bun json
+          bunx galley-js-bun "../../languages/${{ matrix.grammar }}" --parser-type ll
           npm install
           npm --prefix ../../bindings/js install
           npm --prefix ../../bindings/js/universal install
-          npx galley-js-wasm json
+          npx galley-js-wasm "../../languages/${{ matrix.grammar }}" --parser-type ll
           cd ../zig
           zig build -Doptimize=ReleaseFast
           cd ../..
 
       - name: Compare interleaved throughput to examples/zig
-        env:
-          GALLEY_CHECKOUT: ${{ github.workspace }}
-        run: python3 scripts/compare_example_benchmarks.py
+        run: |
+          if [ "${{ matrix.grammar }}" = python ]; then
+            sample=/tmp/python-benchmark-sample.py
+          else
+            sample=languages/json/samples/code-02.json
+          fi
+          python3 scripts/compare_example_benchmarks.py --sample "$sample" --parser-dir "languages/${{ matrix.grammar }}" --label "${{ matrix.name }}"
 
   javascript:
     name: javascript
@@ -983,9 +1036,6 @@ jobs:
           cd examples/js
           npm install --install-links --no-audit --no-fund
           npx galley build kv
-          # benchmark.ts imports the generated json entry, which tsc
-          # typechecks below with the rest of the example.
-          npx galley build json
           npx tsx demo.ts >/tmp/out-universal-node.txt 2>/tmp/err-universal-node.txt
           bun demo.ts >/tmp/out-universal-bun.txt 2>/tmp/err-universal-bun.txt
           deno run --allow-ffi --allow-read --allow-write --allow-env demo.ts >/tmp/out-universal-deno.txt 2>/tmp/err-universal-deno.txt
@@ -1641,7 +1691,7 @@ jobs:
       - parser-cases
       - bindings
       - bindings-consistency
-      - example-benchmarks
+      - benchmark
       - javascript
       - compiler-cli
     runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-medium' }}
@@ -1652,7 +1702,7 @@ jobs:
           PARSER_CASES_RESULT: ${{ needs.parser-cases.result }}
           BINDINGS_RESULT: ${{ needs.bindings.result }}
           BINDINGS_CONSISTENCY_RESULT: ${{ needs.bindings-consistency.result }}
-          EXAMPLE_BENCHMARKS_RESULT: ${{ needs.example-benchmarks.result }}
+          BENCHMARK_RESULT: ${{ needs.benchmark.result }}
           JAVASCRIPT_RESULT: ${{ needs.javascript.result }}
           COMPILER_CLI_RESULT: ${{ needs.compiler-cli.result }}
         run: |
@@ -1660,13 +1710,13 @@ jobs:
           echo "parser-cases: $PARSER_CASES_RESULT"
           echo "bindings: $BINDINGS_RESULT"
           echo "bindings-consistency: $BINDINGS_CONSISTENCY_RESULT"
-          echo "example-benchmarks: $EXAMPLE_BENCHMARKS_RESULT"
+          echo "benchmark: $BENCHMARK_RESULT"
           echo "javascript: $JAVASCRIPT_RESULT"
           echo "compiler-cli: $COMPILER_CLI_RESULT"
           test "$CORE_RESULT" = success
           test "$PARSER_CASES_RESULT" = success
           test "$BINDINGS_RESULT" = success
           test "$BINDINGS_CONSISTENCY_RESULT" = success
-          test "$EXAMPLE_BENCHMARKS_RESULT" = success
+          test "$BENCHMARK_RESULT" = success
           test "$JAVASCRIPT_RESULT" = success
           test "$COMPILER_CLI_RESULT" = success

@@ -1,6 +1,5 @@
-/* JSON throughput through the Galley C API: no AST, no procedures, no
- * error recovery. Parses languages/json/samples/code-02.json 10 times
- * on one session and reports bytes/s. */
+/* Parse throughput through the Galley C API: parses the given sample on
+ * one session and reports bytes/s. */
 #define _POSIX_C_SOURCE 200809L
 
 #include <galley.h>
@@ -9,11 +8,6 @@
 #include <stdlib.h>
 #include <time.h>
 
-#ifndef GALLEY_SOURCE_DIR
-#define GALLEY_SOURCE_DIR "../.."
-#endif
-
-static const char kInput[] = "languages/json/samples/code-02.json";
 static const int kDefaultIterations = 10;
 
 static char *read_file(const char *path, size_t *out_len) {
@@ -67,32 +61,12 @@ static unsigned long long now_ns(void) {
            (unsigned long long)ts.tv_nsec;
 }
 
-static int join_under(char *buffer, size_t size, const char *root, const char *relative) {
-    const int n = snprintf(buffer, size, "%s/%s", root, relative);
-    return n > 0 && (size_t)n < size;
-}
-
-static int file_exists(const char *path) {
-    FILE *file = fopen(path, "rb");
-    if (file == NULL) return 0;
-    fclose(file);
-    return 1;
-}
-
-static const char *resolve_input(const char *requested, char *buffer, size_t size) {
-    if (requested != NULL) return requested;
-
-    const char *checkout = getenv("GALLEY_CHECKOUT");
-    if (checkout != NULL && checkout[0] != '\0') {
-        if (join_under(buffer, size, checkout, kInput) && file_exists(buffer)) return buffer;
-    }
-    if (!join_under(buffer, size, GALLEY_SOURCE_DIR, kInput)) return NULL;
-    return buffer;
-}
-
 int main(int argc, char **argv) {
-    char default_path[4096];
-    const char *path = resolve_input(argc > 1 ? argv[1] : NULL, default_path, sizeof default_path);
+    if (argc < 2) {
+        fprintf(stderr, "usage: benchmark <sample-file> [iterations]\n");
+        return 1;
+    }
+    const char *path = argv[1];
     int iterations = kDefaultIterations;
     if (argc > 2) {
         iterations = atoi(argv[2]);
@@ -103,9 +77,9 @@ int main(int argc, char **argv) {
     }
 
     size_t length = 0;
-    char *input = path == NULL ? NULL : read_file(path, &length);
+    char *input = read_file(path, &length);
     if (input == NULL) {
-        fprintf(stderr, "failed to read %s\n", kInput);
+        fprintf(stderr, "failed to read %s\n", path);
         return 1;
     }
 
@@ -116,13 +90,17 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    long long parsed = galley_parse(session, input, length);
-    if (parsed < 0 || (size_t)parsed != length) {
-        fprintf(stderr, "warmup parse failed: %s (%lld)\n",
-                galley_status_string(parsed), parsed);
-        galley_session_destroy(session);
-        free(input);
-        return 1;
+    /* The first two parses are cold: the session arena grows during the first and is reallocated for the second. */
+    long long parsed = 0;
+    for (int warmup = 0; warmup < 2; ++warmup) {
+        parsed = galley_parse(session, input, length);
+        if (parsed < 0 || (size_t)parsed != length) {
+            fprintf(stderr, "warmup parse failed: %s (%lld)\n",
+                    galley_status_string(parsed), parsed);
+            galley_session_destroy(session);
+            free(input);
+            return 1;
+        }
     }
 
     unsigned long long start = now_ns();
@@ -140,7 +118,7 @@ int main(int argc, char **argv) {
     unsigned long long total = (unsigned long long)length * (unsigned long long)iterations;
     unsigned long long bps = elapsed == 0 ? 0 : total * 1000000000ULL / elapsed;
 
-    printf("input: %s\n", kInput);
+    printf("input: %s\n", path);
     print_u64("bytes", length);
     print_u64("iterations", (unsigned long long)iterations);
     print_u64("parsed_bytes", total);

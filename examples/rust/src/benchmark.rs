@@ -1,39 +1,20 @@
-//! JSON throughput through the Galley Rust bindings: no AST, no procedures,
-//! no error recovery. Parses languages/json/samples/code-02.json 10 times
-//! on one session and reports bytes/s.
+//! Parse throughput through the Galley Rust bindings: parses the given
+//! sample on one session and reports bytes/s.
 
 use galley::Session;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Instant;
 
-const LOGICAL_INPUT: &str = "languages/json/samples/code-02.json";
 const DEFAULT_ITERATIONS: usize = 10;
-
-fn resolve_input(explicit: Option<&str>) -> PathBuf {
-    if let Some(path) = explicit {
-        return PathBuf::from(path);
-    }
-    if let Ok(checkout) = std::env::var("GALLEY_CHECKOUT") {
-        if !checkout.is_empty() {
-            let candidate = Path::new(&checkout).join(LOGICAL_INPUT);
-            if candidate.is_file() {
-                return candidate;
-            }
-        }
-    }
-    let from_manifest = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../..")
-        .join(LOGICAL_INPUT);
-    if from_manifest.is_file() {
-        return from_manifest;
-    }
-    Path::new("../..").join(LOGICAL_INPUT)
-}
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.is_empty() {
+        eprintln!("usage: benchmark <sample-file> [iterations]");
+        std::process::exit(1);
+    }
+    let path = PathBuf::from(&args[0]);
     let mut iterations = DEFAULT_ITERATIONS;
-    let explicit = args.first().map(String::as_str);
     if let Some(value) = args.get(1) {
         match value.parse::<usize>() {
             Ok(count) if count >= 1 => iterations = count,
@@ -44,11 +25,10 @@ fn main() {
         }
     }
 
-    let path = resolve_input(explicit);
     let data = match std::fs::read_to_string(&path) {
         Ok(data) => data,
         Err(_) => {
-            eprintln!("failed to read {LOGICAL_INPUT}");
+            eprintln!("failed to read {}", path.display());
             std::process::exit(1);
         }
     };
@@ -61,18 +41,21 @@ fn main() {
         }
     };
 
-    match session.parse_sentinel(&data) {
-        Ok(parsed) if parsed == data.len() => {}
-        Ok(parsed) => {
-            eprintln!(
-                "warmup parse failed: parsed {parsed} of {} bytes",
-                data.len()
-            );
-            std::process::exit(1);
-        }
-        Err(error) => {
-            eprintln!("warmup parse failed: {error}");
-            std::process::exit(1);
+    // The first two parses are cold: the session arena grows during the first and is reallocated for the second.
+    for _ in 0..2 {
+        match session.parse_sentinel(&data) {
+            Ok(parsed) if parsed == data.len() => {}
+            Ok(parsed) => {
+                eprintln!(
+                    "warmup parse failed: parsed {parsed} of {} bytes",
+                    data.len()
+                );
+                std::process::exit(1);
+            }
+            Err(error) => {
+                eprintln!("warmup parse failed: {error}");
+                std::process::exit(1);
+            }
         }
     }
 
@@ -101,7 +84,7 @@ fn main() {
         total * 1_000_000_000 / elapsed
     };
 
-    println!("input: {LOGICAL_INPUT}");
+    println!("input: {}", path.display());
     println!("bytes: {}", with_thousands(data.len() as u128));
     println!("iterations: {}", with_thousands(iterations as u128));
     println!("parsed_bytes: {}", with_thousands(total));

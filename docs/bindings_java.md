@@ -64,7 +64,7 @@ java --enable-native-access=ALL-UNNAMED -cp bindings/java/out:examples/java/out 
 java --enable-native-access=ALL-UNNAMED -cp bindings/java/out:examples/java/out com.example.Demo path/to/file
 # Benchmark (no AST/procedures/recovery)
 java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild examples/java/json
-java --enable-native-access=ALL-UNNAMED -cp bindings/java/out:examples/java/out com.example.Benchmark
+java --enable-native-access=ALL-UNNAMED -cp bindings/java/out:examples/java/out com.example.Benchmark examples/java/json path/to/sample
 ```
 
 Pass the built file to `Galley.load` as an explicit path. Nothing is

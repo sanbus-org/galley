@@ -15,7 +15,7 @@ the `galley` loader (manual hooks only).
 A complete, runnable consumer lives in
 [`examples/python`](https://github.com/sanbus-org/galley/tree/main/examples/python):
 the `kv` keyvalue package behind `demo.py` and the `json` JSON
-package behind `benchmark.py`.
+package that `benchmark.py` benchmarks when given its path.
 It is built and executed by CI on every push.
 
 ## Getting Started

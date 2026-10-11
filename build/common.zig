@@ -183,7 +183,12 @@ pub fn addParserModule(
     const type_name = @tagName(options.parser_type);
     const parser_file = options.parser_source orelse
         options.language_dir.path(b, b.fmt("_{s}-parser.zig", .{type_name}));
-    const procedures_file = options.procedures orelse
+    const procedures_file = options.procedures orelse if (lazyPathChildExists(b, options.language_dir, "host_procedures.zig"))
+        // A host shim (`--emit-host-procedures`) selects session dispatch
+        // over extern entry points; it wins over `procedures.zig` so every
+        // consumer of a procedures-enabled parser binds the same hooks.
+        options.language_dir.path(b, "host_procedures.zig")
+    else
         options.language_dir.path(b, "procedures.zig");
     const config_file = options.config orelse
         options.language_dir.path(b, "config.zig");

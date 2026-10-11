@@ -1,16 +1,23 @@
 #!/usr/bin/env python3
-"""Same-machine interleaved example-benchmark comparison vs examples/zig.
+"""Same-machine interleaved benchmark comparison vs examples/zig.
 
-Build the example benchmark binaries first (see .github/workflows/ci.yml).
-This script runs them round-robin, scores the best of the non-warmup rounds,
-and fails if a C-ABI example is below --min-ratio of Zig's second-best scored
-round. The report shows each language's best and median against Zig's best and
-median; those display ratios never decide pass or fail.
+Build the benchmark binaries first (see .github/workflows/ci.yml), and
+pass --parser-dir at the built parser package for the hosts that load one
+(python, js, java). This script runs them interleaved, shuffling the
+language order randomly within each round (--seed pins the order; the
+seed in use is printed at start), scores the best of
+the non-warmup rounds, and fails if a C-ABI example is below --min-ratio
+of Zig's second-best scored round. The report shows each language's best
+and median against Zig's best and median; those display ratios never
+decide pass or fail.
 Per-language bars (--min-ratio-override) replace the global bar for the
 named languages; currently only the WebAssembly example uses one, since it
 runs the same parser compiled to wasm, which trails native codegen.
 Per-language round counts (--rounds-override) replace --rounds for the
 named languages.
+The step-summary table carries a status column: a warning mark for rows
+below their bar (bindings that have not caught up with zig), an info
+mark for misses inside the informational band, and a check otherwise.
 """
 
 from __future__ import annotations
@@ -19,6 +26,7 @@ import argparse
 import contextlib
 import io
 import os
+import random
 import re
 import statistics
 import subprocess
@@ -34,7 +42,9 @@ DEFAULT_ITERATIONS = 10
 DEFAULT_MIN_RATIO = 0.94
 # Per-language bars replacing the global --min-ratio for the named
 # languages. Only wasm uses one today.
-DEFAULT_MIN_RATIO_OVERRIDES: dict[str, float] = {"wasm": 0.7}
+DEFAULT_MIN_RATIO_OVERRIDES: dict[str, float] = {
+    "wasm": 0.7,
+}
 # Per-language round counts replacing --rounds for the named languages.
 # zig is the reference every other language is divided by, so its
 # second-best scored round has to be stable; extra runs pin the baseline
@@ -145,7 +155,7 @@ def evaluate(
     )
 
 
-def default_runners(root: Path) -> list[Runner]:
+def default_runners(root: Path, parser_dir: Path) -> list[Runner]:
     rust_bench = root / "examples" / "rust" / "target" / "release" / "benchmark"
     return [
         Runner(
@@ -157,12 +167,12 @@ def default_runners(root: Path) -> list[Runner]:
         Runner("go", [os.environ.get("BENCH_GO", "/tmp/galley-go-benchmark")]),
         Runner(
             "python",
-            [sys.executable, "benchmark.py"],
+            [sys.executable, "benchmark.py", str(parser_dir)],
             cwd=root / "examples" / "python",
         ),
         Runner(
             "typescript",
-            ["npx", "tsx", "benchmark.ts"],
+            ["npx", "tsx", "benchmark.ts", str(parser_dir)],
             cwd=root / "examples" / "js",
         ),
         Runner(
@@ -174,17 +184,18 @@ def default_runners(root: Path) -> list[Runner]:
                 "--allow-read",
                 "--allow-env",
                 "benchmark.ts",
+                str(parser_dir),
             ],
             cwd=root / "examples" / "js",
         ),
         Runner(
             "bun",
-            ["bun", "benchmark.ts"],
+            ["bun", "benchmark.ts", str(parser_dir)],
             cwd=root / "examples" / "js",
         ),
         Runner(
             "wasm",
-            ["npx", "tsx", "benchmark.ts", "--wasm"],
+            ["npx", "tsx", "benchmark.ts", "--wasm", str(parser_dir)],
             cwd=root / "examples" / "js",
         ),
         Runner(
@@ -195,6 +206,7 @@ def default_runners(root: Path) -> list[Runner]:
                 "-cp",
                 "bindings/java/out:examples/java/out",
                 "com.example.Benchmark",
+                str(parser_dir),
             ],
             cwd=root,
         ),
@@ -245,6 +257,7 @@ def print_report(
     rounds: int,
     round_counts: dict[str, int],
     warmup: int,
+    label: str | None = None,
 ) -> None:
     names = [name for name in LANGUAGE_ORDER if name in report.rounds]
     print("round  language       bytes_per_second")
@@ -285,28 +298,35 @@ def print_report(
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a", encoding="utf-8") as handle:
-            handle.write("### Example benchmark throughput vs examples/zig\n\n")
+            handle.write("### Example benchmark throughput vs examples/zig")
+            if label:
+                handle.write(f" ({label})")
+            handle.write("\n\n")
             handle.write(
                 "| language | best bytes/s | median bytes/s "
-                "| vs zig best | vs zig median |\n"
+                "| vs zig best | vs zig median | status |\n"
             )
-            handle.write("| --- | ---: | ---: | ---: | ---: |\n")
+            handle.write("| --- | ---: | ---: | ---: | ---: | --- |\n")
             for name in names:
                 score = report.scores[name]
                 median_bytes = report.medians[name]
+                best_ratio = score / report.scores["zig"]
+                median_ratio = score / report.medians["zig"]
                 if name == "zig":
-                    handle.write(
-                        f"| {name} | {format_int(score)} "
-                        f"| {format_int(median_bytes)} "
-                        f"| reference | reference |\n"
-                    )
+                    status = "—"
+                elif name in report.failures:
+                    status = "⚠️ **below bar**"
+                elif name in report.info_band_misses:
+                    status = "ℹ️ outside band"
                 else:
-                    handle.write(
-                        f"| {name} | {format_int(score)} "
-                        f"| {format_int(median_bytes)} "
-                        f"| {score / report.scores['zig']:.1%} "
-                        f"| {score / report.medians['zig']:.1%} |\n"
-                    )
+                    status = "✅"
+                handle.write(
+                    f"| {name} | {format_int(score)} "
+                    f"| {format_int(median_bytes)} "
+                    f"| {best_ratio:.1%} "
+                    f"| {median_ratio:.1%} "
+                    f"| {status} |\n"
+                )
             if warmup == 0:
                 warmup_text = "no warmup"
             elif warmup == 1:
@@ -348,6 +368,7 @@ def self_test_report_table(report: Report) -> None:
                     rounds=3,
                     round_counts={"zig": 5, "c": 3, "rust": 3, "python": 3},
                     warmup=1,
+                    label="self-test",
                 )
         finally:
             if previous is None:
@@ -357,13 +378,15 @@ def self_test_report_table(report: Report) -> None:
         table = summary.read_text(encoding="utf-8")
         output = console.getvalue()
     assert (
-        "| language | best bytes/s | median bytes/s | vs zig best | vs zig median |"
-        in table
+        "| language | best bytes/s | median bytes/s | vs zig best "
+        "| vs zig median | status |" in table
     )
-    assert "| zig | 200 | 190 | reference | reference |" in table
-    assert "| c | 190 | 188 | 95.0% | 100.0% |" in table
-    assert "| rust | 174 | 172 | 87.0% | 91.6% |" in table
+    assert "| zig | 200 | 190 | 100.0% | 105.3% | — |" in table
+    assert "| c | 190 | 188 | 95.0% | 100.0% | ✅ |" in table
+    assert "| rust | 174 | 172 | 87.0% | 91.6% | ℹ️ outside band |" in table
+    assert "| python | 30 | 25 | 15.0% | 15.8% | ⚠️ **below bar** |" in table
     assert "zig's second-best scored round (180 bytes/s)" in table
+    assert "### Example benchmark throughput vs examples/zig (self-test)" in table
     assert "vs zig best" in output
     assert "vs zig median" in output
     assert "FAIL" in output
@@ -453,9 +476,28 @@ def main() -> int:
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--root", type=Path, default=None)
     parser.add_argument("--sample", type=Path, default=None)
+    parser.add_argument(
+        "--parser-dir",
+        type=Path,
+        default=None,
+        help=(
+            "built parser package the python, js, and java benchmarks load "
+            "(default: languages/json)"
+        ),
+    )
+    parser.add_argument("--label", type=str, default=None)
     parser.add_argument("--rounds", type=int, default=DEFAULT_ROUNDS)
     parser.add_argument("--warmup", type=int, default=DEFAULT_WARMUP)
     parser.add_argument("--iterations", type=int, default=DEFAULT_ITERATIONS)
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help=(
+            "seed for the randomly shuffled run order within each round "
+            "(default: random; the seed in use is printed at start)"
+        ),
+    )
     parser.add_argument("--min-ratio", type=float, default=DEFAULT_MIN_RATIO)
     parser.add_argument(
         "--rounds-override",
@@ -516,8 +558,9 @@ def main() -> int:
             "fetch it with: bash scripts/fetch-large-samples.sh json", file=sys.stderr
         )
         return 1
+    parser_dir = (root / (args.parser_dir or Path("languages/json"))).resolve()
 
-    runners = {runner.name: runner for runner in default_runners(root)}
+    runners = {runner.name: runner for runner in default_runners(root, parser_dir)}
     try:
         cli_overrides = dict(parse_override(text) for text in args.min_ratio_override)
     except ValueError as error:
@@ -531,26 +574,22 @@ def main() -> int:
             script = (runner.cwd or root) / "benchmark.py"
             if not script.is_file():
                 missing.append(f"{name}: {script}")
+            elif not (parser_dir / "__init__.py").is_file():
+                missing.append(f"{name}: {parser_dir}/__init__.py")
             continue
-        if name == "typescript":
+        if name in ("typescript", "deno", "bun"):
             script = (runner.cwd or root) / "benchmark.ts"
             if not script.is_file():
                 missing.append(f"{name}: {script}")
-            continue
-        if name == "deno":
-            script = (runner.cwd or root) / "benchmark.ts"
-            if not script.is_file():
-                missing.append(f"{name}: {script}")
-            continue
-        if name == "bun":
-            script = (runner.cwd or root) / "benchmark.ts"
-            if not script.is_file():
-                missing.append(f"{name}: {script}")
+            elif not (parser_dir / "index.mjs").is_file():
+                missing.append(f"{name}: {parser_dir}/index.mjs")
             continue
         if name == "wasm":
             script = (runner.cwd or root) / "benchmark.ts"
             if not script.is_file():
                 missing.append(f"{name}: {script}")
+            elif not (parser_dir / "libgalley-js-wasm.wasm").is_file():
+                missing.append(f"{name}: {parser_dir}/libgalley-js-wasm.wasm")
             continue
         if name == "java":
             if not (
@@ -576,14 +615,10 @@ def main() -> int:
             ).is_file():
                 missing.append(f"{name}: examples/java/out")
             elif (
-                not (
-                    root / "examples" / "java" / "json" / "libgalley-java.so"
-                ).is_file()
-                and not (
-                    root / "examples" / "java" / "json" / "libgalley-java.dylib"
-                ).is_file()
+                not (parser_dir / "libgalley-java.so").is_file()
+                and not (parser_dir / "libgalley-java.dylib").is_file()
             ):
-                missing.append(f"{name}: examples/java/json/libgalley-java.*")
+                missing.append(f"{name}: {parser_dir}/libgalley-java.*")
             continue
         program = Path(runner.argv[0])
         if not program.is_file():
@@ -593,6 +628,8 @@ def main() -> int:
         return 1
 
     start = f"interleaved {args.rounds} rounds"
+    if args.label:
+        start += f" [{args.label}]"
     extra_rounds = {
         name: count for name, count in round_counts.items() if count != args.rounds
     }
@@ -601,11 +638,16 @@ def main() -> int:
     print(
         f"{start} (warmup {args.warmup}), {args.iterations} iterations, sample {sample}"
     )
+    seed = args.seed if args.seed is not None else random.randrange(1 << 32)
+    print(f"order seed: {seed} (replay with --seed {seed})")
+    rng = random.Random(seed)
     rounds: dict[str, list[int]] = {name: [] for name in LANGUAGE_ORDER}
     for round_index in range(max(round_counts.values())):
-        for name in LANGUAGE_ORDER:
-            if round_index >= round_counts[name]:
-                continue
+        # Fresh shuffled order every round, so no language keeps the same
+        # position (heat, cache, and neighbor effects) across rounds.
+        order = [name for name in LANGUAGE_ORDER if round_index < round_counts[name]]
+        rng.shuffle(order)
+        for name in order:
             bps = run_one(runners[name], sample, args.iterations)
             rounds[name].append(bps)
             print(
@@ -628,6 +670,7 @@ def main() -> int:
         rounds=args.rounds,
         round_counts=round_counts,
         warmup=args.warmup,
+        label=args.label,
     )
     if report.info_band_misses:
         print(
@@ -641,7 +684,7 @@ def main() -> int:
             bar = overrides.get(name, args.min_ratio)
             parts.append(f"{name} below {bar:.0%}")
         message = (
-            f"example-benchmarks: {', '.join(parts)} of zig second-best "
+            f"benchmark: {', '.join(parts)} of zig second-best "
             f"({format_int(report.zig_second_best)} bytes/s)"
         )
         print(f"::error::{message}")
@@ -658,6 +701,6 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except Exception as error:
-        print(f"::error::example-benchmarks: {error}")
+        print(f"::error::benchmark: {error}")
         print(error, file=sys.stderr)
         sys.exit(1)

@@ -11,6 +11,6 @@
   "tasks": {
     "build": "deno run --allow-read --allow-write --allow-run --allow-env @sanbus/galley-deno/build kv",
     "demo": "deno run --allow-ffi --allow-read --allow-write --allow-env demo.ts",
-    "benchmark": "deno run --allow-ffi --allow-read --allow-env benchmark.ts ../../languages/json/samples/code-02.json"
+    "benchmark": "deno run --allow-ffi --allow-read --allow-env benchmark.ts ./json ../../languages/json/samples/code-02.json"
   }
 }

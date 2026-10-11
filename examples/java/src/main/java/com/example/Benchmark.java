@@ -16,32 +16,14 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 
 /**
- * JSON throughput through the Galley Java bindings: no AST, no procedures,
- * no error recovery. Parses languages/json/samples/code-02.json 10 times
- * on one session and reports bytes/s.
+ * Parse throughput through the Galley Java bindings: parses the given
+ * sample on one session and reports bytes/s.
  */
 public final class Benchmark {
 
-    private static final String LOGICAL_INPUT = "languages/json/samples/code-02.json";
     private static final int DEFAULT_ITERATIONS = 10;
 
     private Benchmark() {}
-
-    private static String resolveInput(String explicit) {
-        if (explicit != null && !explicit.isEmpty()) return explicit;
-        String checkout = System.getenv("GALLEY_CHECKOUT");
-        if (checkout != null && !checkout.isEmpty()) {
-            Path candidate = Paths.get(checkout, LOGICAL_INPUT);
-            if (Files.isRegularFile(candidate)) return candidate.toString();
-        }
-        return Paths.get(System.getProperty("user.dir", "."), LOGICAL_INPUT).toString();
-    }
-
-    // The one parser file this benchmark runs: exact name, no searching.
-    private static String benchmarkLibraryPath() {
-        return Paths.get(System.getProperty("user.dir", "."),
-                "examples", "java", "json", GalleyLibraryLoader.libFileName()).toString();
-    }
 
     private static String withThousands(long n) {
         String digits = Long.toString(n);
@@ -54,12 +36,17 @@ public final class Benchmark {
     }
 
     public static void main(String[] args) throws IOException {
-        String explicit = null;
+        if (args.length < 2) {
+            System.err.println("usage: com.example.Benchmark <parser-dir> <sample-file> [iterations]");
+            System.exit(1);
+            return;
+        }
+        String parserDir = args[0];
+        String inputPath = args[1];
         int iterations = DEFAULT_ITERATIONS;
-        if (args.length > 0) explicit = args[0];
-        if (args.length > 1) {
+        if (args.length > 2) {
             try {
-                iterations = Integer.parseInt(args[1]);
+                iterations = Integer.parseInt(args[2]);
                 if (iterations < 1) {
                     System.err.println("iterations must be >= 1");
                     System.exit(1);
@@ -70,7 +57,6 @@ public final class Benchmark {
             }
         }
 
-        String inputPath = resolveInput(explicit);
         Path path = Paths.get(inputPath);
         ByteBuffer data;
         int expected;
@@ -88,18 +74,20 @@ public final class Benchmark {
                 if (n < 0) break;
             }
             if (data.position() != expected) {
-                System.err.println("failed to read " + LOGICAL_INPUT + ": short read");
+                System.err.println("failed to read " + inputPath + ": short read");
                 System.exit(1);
                 return;
             }
             data.flip();
         } catch (IOException e) {
-            System.err.println("failed to read " + LOGICAL_INPUT);
+            System.err.println("failed to read " + inputPath);
             System.exit(1);
             return;
         }
 
-        String libPath = benchmarkLibraryPath();
+        // The one parser library this benchmark runs: exact name inside the
+        // given directory, no searching.
+        String libPath = Paths.get(parserDir, GalleyLibraryLoader.libFileName()).toString();
         if (!Files.isRegularFile(Paths.get(libPath))) {
             System.err.println("missing " + libPath);
             System.exit(1);
@@ -117,19 +105,22 @@ public final class Benchmark {
         }
 
         try {
-            int parsed;
-            try {
-                data.rewind();
-                parsed = session.parse(data);
-            } catch (GalleyException e) {
-                System.err.println("warmup parse failed: " + e.getMessage() + " (" + e.getCode() + ")");
-                System.exit(1);
-                return;
-            }
-            if (parsed != expected) {
-                System.err.println("warmup parse failed: parsed " + parsed + " of " + expected + " bytes");
-                System.exit(1);
-                return;
+            int parsed = 0;
+            // The first two parses are cold: the session arena grows during the first and is reallocated for the second.
+            for (int warmup = 0; warmup < 2; warmup++) {
+                try {
+                    data.rewind();
+                    parsed = session.parse(data);
+                } catch (GalleyException e) {
+                    System.err.println("warmup parse failed: " + e.getMessage() + " (" + e.getCode() + ")");
+                    System.exit(1);
+                    return;
+                }
+                if (parsed != expected) {
+                    System.err.println("warmup parse failed: parsed " + parsed + " of " + expected + " bytes");
+                    System.exit(1);
+                    return;
+                }
             }
 
             long start = System.nanoTime();
@@ -153,7 +144,7 @@ public final class Benchmark {
             long total = (long) expected * iterations;
             long bps = elapsed == 0 ? 0 : total * 1_000_000_000L / elapsed;
 
-            System.out.println("input: " + LOGICAL_INPUT);
+            System.out.println("input: " + inputPath);
             System.out.println("bytes: " + withThousands(expected));
             System.out.println("iterations: " + withThousands(iterations));
             System.out.println("parsed_bytes: " + withThousands(total));

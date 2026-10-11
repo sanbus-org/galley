@@ -4,12 +4,15 @@
  * on Bun.
  *
  * Usage:
- *   npx galley-js-bun <language-dir>
+ *   npx galley-js-bun <language-dir> [<generator-flag>...]
  *
  * Thin wrapper over the shared gate (`@sanbus/galley-core/build/builder.mjs`),
  * which documents the accepted grammar files and owns the build. For both
  * legs at once, use the single entry instead: `galley build <language-dir>`
  * from `@sanbus/galley`.
+ *
+ * Flags it does not own (config edits, `--parser-type`) forward to the
+ * generator CLI.
  */
 
 import * as fs from "node:fs";
@@ -25,11 +28,14 @@ function fatal(message) {
 }
 
 async function main() {
-  if (process.argv.length !== 3) fatal("usage: npx galley-js-bun <language-dir>");
+  const [argument, ...generatorFlags] = process.argv.slice(2);
+  if (!argument)
+    fatal("usage: npx galley-js-bun <language-dir> [<generator-flag>...]");
   const bindingsDirectory = path.dirname(fileURLToPath(import.meta.url));
-  const languageDirectory = path.resolve(process.argv[2]);
+  const languageDirectory = path.resolve(argument);
   await buildParserArtifact({
     languageDirectory,
+    generatorFlags,
     libraryName: LIBRARY_NAME,
     bindingsDirectory,
     dependencyName: "@sanbus/galley-core",

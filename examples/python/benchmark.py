@@ -1,55 +1,50 @@
 #!/usr/bin/env python3
-"""JSON throughput through the Galley Python bindings: no AST, no procedures,
-no error recovery. Parses languages/json/samples/code-02.json 10 times
-on one session and reports bytes/s."""
+"""Parse throughput through the Galley Python bindings: parses the given
+sample on one session and reports bytes/s."""
 
 from __future__ import annotations
 
-import os
+import importlib
 import sys
 import time
 from pathlib import Path
 
-LOGICAL_INPUT = "languages/json/samples/code-02.json"
 DEFAULT_ITERATIONS = 10
 
 
-def resolve_input(explicit: str | None) -> Path:
-    if explicit:
-        return Path(explicit)
-    checkout = os.environ.get("GALLEY_CHECKOUT")
-    if checkout:
-        candidate = Path(checkout) / LOGICAL_INPUT
-        if candidate.is_file():
-            return candidate
-    candidate = Path(__file__).resolve().parent.parent.parent / LOGICAL_INPUT
-    if candidate.is_file():
-        return candidate
-    raise SystemExit(f"missing {LOGICAL_INPUT}")
-
-
 def main() -> int:
-    arguments = sys.argv[1:]
+    if len(sys.argv) < 3:
+        print(
+            "usage: benchmark.py <parser-package-dir> <sample-file> [iterations]",
+            file=sys.stderr,
+        )
+        return 1
+    package_dir = Path(sys.argv[1]).resolve()
+    if not (package_dir / "__init__.py").is_file():
+        print(
+            f"{package_dir} is not a built parser package (no __init__.py); "
+            "run the binding build first",
+            file=sys.stderr,
+        )
+        return 1
+    sample = Path(sys.argv[2])
     iterations = DEFAULT_ITERATIONS
-    explicit: str | None = None
-    if len(arguments) > 0:
-        explicit = arguments[0]
-    if len(arguments) > 1:
-        iterations = int(arguments[1])
+    if len(sys.argv) > 3:
+        iterations = int(sys.argv[3])
         if iterations < 1:
             print("iterations must be >= 1", file=sys.stderr)
             return 1
 
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    sys.path.insert(0, str(package_dir.parent))
+    # The package takes its import name from its directory; a package
+    # named json deliberately shadows the stdlib one (this script never
+    # uses stdlib json).
+    parser = importlib.import_module(package_dir.name)
 
-    # Deliberate stdlib shadowing: this script never uses stdlib json.
-    import json as parser
-
-    path = resolve_input(explicit)
     try:
-        data = path.read_bytes()
+        data = sample.read_bytes()
     except OSError:
-        print(f"failed to read {LOGICAL_INPUT}", file=sys.stderr)
+        print(f"failed to read {sample}", file=sys.stderr)
         return 1
 
     try:
@@ -59,17 +54,19 @@ def main() -> int:
         return 1
 
     with session:
-        try:
-            parsed = session.parse(data)
-        except parser.GalleyError as error:
-            print(f"warmup parse failed: {error} ({error.code})", file=sys.stderr)
-            return 1
-        if parsed != len(data):
-            print(
-                f"warmup parse failed: parsed {parsed} of {len(data)} bytes",
-                file=sys.stderr,
-            )
-            return 1
+        # The first two parses are cold: the session arena grows during the first and is reallocated for the second.
+        for _ in range(2):
+            try:
+                parsed = session.parse(data)
+            except parser.GalleyError as error:
+                print(f"warmup parse failed: {error} ({error.code})", file=sys.stderr)
+                return 1
+            if parsed != len(data):
+                print(
+                    f"warmup parse failed: parsed {parsed} of {len(data)} bytes",
+                    file=sys.stderr,
+                )
+                return 1
 
         start = time.perf_counter_ns()
         for index in range(iterations):
@@ -91,7 +88,7 @@ def main() -> int:
 
     total = len(data) * iterations
     bps = 0 if elapsed == 0 else total * 1_000_000_000 // elapsed
-    print(f"input: {LOGICAL_INPUT}")
+    print(f"input: {sample}")
     print(f"bytes: {len(data):,}")
     print(f"iterations: {iterations:,}")
     print(f"parsed_bytes: {total:,}")

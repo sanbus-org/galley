@@ -9,10 +9,10 @@ GALLEY_CHECKOUT=/path/to/galley java --enable-native-access=ALL-UNNAMED -cp bind
 javac --release 22 -cp bindings/java/out -d examples/java/out $(find examples/java/src/main/java -name "*.java")
 java --enable-native-access=ALL-UNNAMED -cp bindings/java/out:examples/java/out com.example.Demo
 GALLEY_CHECKOUT=/path/to/galley java --enable-native-access=ALL-UNNAMED -cp bindings/java/out org.sanbus.galley.build.GalleyBuild examples/java/json
-java --enable-native-access=ALL-UNNAMED -cp bindings/java/out:examples/java/out com.example.Benchmark
+java --enable-native-access=ALL-UNNAMED -cp bindings/java/out:examples/java/out com.example.Benchmark examples/java/json languages/json/samples/code-02.json
 ```
 
 One grammar per package directory: `kv/` holds the key/value demo
 grammar, `json/` the benchmark grammar.
 
-Build, run, and benchmark conventions: see [examples/README.md](../README.md). Pass a grammar-source file as an argument to `com.example.Demo` instead of running the built-in demo. `com.example.Benchmark` prints JSON parse throughput (no AST, no procedures, no error recovery). Optional arguments are `[path] [iterations]`. Fetch large samples first: `bash scripts/fetch-large-samples.sh json`.
+Build, run, and benchmark conventions: see [examples/README.md](../README.md). Pass a grammar-source file as an argument to `com.example.Demo` instead of running the built-in demo. `com.example.Benchmark` prints parse throughput through the built parser library. Arguments are `<parser-dir> <sample-file> [iterations]`. Fetch large samples first: `bash scripts/fetch-large-samples.sh json`.

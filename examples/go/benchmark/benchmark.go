@@ -1,53 +1,27 @@
-// Command benchmark reports JSON throughput through the Galley Go bindings:
-// no AST, no procedures, no error recovery. Parses
-// languages/json/samples/code-02.json 10 times on one session and reports
-// bytes/s.
+// Command benchmark reports parse throughput through the Galley Go
+// bindings: parses the given sample on one session and reports bytes/s.
 package main
 
 import (
 	"fmt"
 	"os"
-	"path/filepath"
-	"runtime"
 	"strconv"
 	"time"
 
 	galley "github.com/sanbus-org/galley/examples/go/benchmark/galley"
 )
 
-const (
-	logicalInput      = "languages/json/samples/code-02.json"
-	defaultIterations = 10
-)
+const defaultIterations = 10
 
 //go:generate go run github.com/sanbus-org/galley/bindings/go/cmd/galley gen .
 
-func resolveInput(explicit string) string {
-	if explicit != "" {
-		return explicit
-	}
-	if checkout := os.Getenv("GALLEY_CHECKOUT"); checkout != "" {
-		candidate := filepath.Join(checkout, logicalInput)
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate
-		}
-	}
-	_, file, _, ok := runtime.Caller(0)
-	if ok {
-		candidate := filepath.Join(filepath.Dir(file), "..", "..", "..", logicalInput)
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate
-		}
-	}
-	return filepath.Join("..", "..", logicalInput)
-}
-
 func main() {
-	iterations := defaultIterations
-	explicit := ""
-	if len(os.Args) > 1 {
-		explicit = os.Args[1]
+	if len(os.Args) < 2 {
+		fmt.Fprintln(os.Stderr, "usage: benchmark <sample-file> [iterations]")
+		os.Exit(1)
 	}
+	path := os.Args[1]
+	iterations := defaultIterations
 	if len(os.Args) > 2 {
 		count, err := strconv.Atoi(os.Args[2])
 		if err != nil || count < 1 {
@@ -57,10 +31,9 @@ func main() {
 		iterations = count
 	}
 
-	path := resolveInput(explicit)
 	data, err := os.ReadFile(path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to read %s\n", logicalInput)
+		fmt.Fprintf(os.Stderr, "failed to read %s\n", path)
 		os.Exit(1)
 	}
 	expected := len(data)
@@ -76,14 +49,18 @@ func main() {
 		}
 	}()
 
-	parsed, err := session.Parse(data)
-	if err != nil || parsed != expected {
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "warmup parse failed: %v\n", err)
-		} else {
-			fmt.Fprintf(os.Stderr, "warmup parse failed: parsed %d of %d bytes\n", parsed, expected)
+	// The first two parses are cold: the session arena grows during the first and is reallocated for the second.
+	var parsed int
+	for warmup := 0; warmup < 2; warmup++ {
+		parsed, err = session.Parse(data)
+		if err != nil || parsed != expected {
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "warmup parse failed: %v\n", err)
+			} else {
+				fmt.Fprintf(os.Stderr, "warmup parse failed: parsed %d of %d bytes\n", parsed, expected)
+			}
+			os.Exit(1)
 		}
-		os.Exit(1)
 	}
 
 	start := time.Now()
@@ -109,7 +86,7 @@ func main() {
 		bps = total * 1000000000 / uint64(elapsed)
 	}
 
-	fmt.Printf("input: %s\n", logicalInput)
+	fmt.Printf("input: %s\n", path)
 	fmt.Printf("bytes: %s\n", withThousands(uint64(expected)))
 	fmt.Printf("iterations: %s\n", withThousands(uint64(iterations)))
 	fmt.Printf("parsed_bytes: %s\n", withThousands(total))

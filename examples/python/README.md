@@ -7,7 +7,7 @@ pip install -e .
 GALLEY_CHECKOUT=/path/to/galley python -m galley kv
 python demo.py
 GALLEY_CHECKOUT=/path/to/galley python -m galley json
-python benchmark.py
+python benchmark.py ./json ../../languages/json/samples/code-02.json
 ```
 
 Build, run, and benchmark conventions: see [examples/README.md](../README.md).

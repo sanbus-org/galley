@@ -1,6 +1,5 @@
-// JSON throughput through the Galley C API: no AST, no procedures, no
-// error recovery. Parses languages/json/samples/code-02.json 10 times
-// on one session and reports bytes/s.
+// Parse throughput through the Galley C API: parses the given sample on
+// one session and reports bytes/s.
 #include <galley.h>
 
 #include <chrono>
@@ -8,13 +7,8 @@
 #include <cstdio>
 #include <cstdlib>
 
-#ifndef GALLEY_SOURCE_DIR
-#define GALLEY_SOURCE_DIR "../.."
-#endif
-
 namespace {
 
-constexpr const char kInput[] = "languages/json/samples/code-02.json";
 constexpr int kDefaultIterations = 10;
 
 char *readFile(const char *path, std::size_t *out_len) {
@@ -61,34 +55,14 @@ void printU64(const char *label, unsigned long long n) {
     std::putchar('\n');
 }
 
-bool joinUnder(char *buffer, std::size_t size, const char *root, const char *relative) {
-    const int n = std::snprintf(buffer, size, "%s/%s", root, relative);
-    return n > 0 && static_cast<std::size_t>(n) < size;
-}
-
-bool fileExists(const char *path) {
-    FILE *file = std::fopen(path, "rb");
-    if (file == nullptr) return false;
-    std::fclose(file);
-    return true;
-}
-
-const char *resolveInput(const char *requested, char *buffer, std::size_t size) {
-    if (requested != nullptr) return requested;
-
-    const char *checkout = std::getenv("GALLEY_CHECKOUT");
-    if (checkout != nullptr && checkout[0] != '\0') {
-        if (joinUnder(buffer, size, checkout, kInput) && fileExists(buffer)) return buffer;
-    }
-    if (!joinUnder(buffer, size, GALLEY_SOURCE_DIR, kInput)) return nullptr;
-    return buffer;
-}
-
 }  // namespace
 
 int main(int argc, char *argv[]) {
-    char default_path[4096];
-    const char *path = resolveInput(argc > 1 ? argv[1] : nullptr, default_path, sizeof default_path);
+    if (argc < 2) {
+        std::fprintf(stderr, "usage: benchmark <sample-file> [iterations]\n");
+        return 1;
+    }
+    const char *path = argv[1];
     int iterations = kDefaultIterations;
     if (argc > 2) {
         iterations = std::atoi(argv[2]);
@@ -99,9 +73,9 @@ int main(int argc, char *argv[]) {
     }
 
     std::size_t length = 0;
-    char *input = path == nullptr ? nullptr : readFile(path, &length);
+    char *input = readFile(path, &length);
     if (input == nullptr) {
-        std::fprintf(stderr, "failed to read %s\n", kInput);
+        std::fprintf(stderr, "failed to read %s\n", path);
         return 1;
     }
 
@@ -112,13 +86,17 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    long long parsed = galley_parse(session, input, length);
-    if (parsed < 0 || static_cast<std::size_t>(parsed) != length) {
-        std::fprintf(stderr, "warmup parse failed: %s (%lld)\n",
-                     galley_status_string(parsed), parsed);
-        galley_session_destroy(session);
-        std::free(input);
-        return 1;
+    // The first two parses are cold: the session arena grows during the first and is reallocated for the second.
+    long long parsed = 0;
+    for (int warmup = 0; warmup < 2; ++warmup) {
+        parsed = galley_parse(session, input, length);
+        if (parsed < 0 || static_cast<std::size_t>(parsed) != length) {
+            std::fprintf(stderr, "warmup parse failed: %s (%lld)\n",
+                         galley_status_string(parsed), parsed);
+            galley_session_destroy(session);
+            std::free(input);
+            return 1;
+        }
     }
 
     const auto start = std::chrono::steady_clock::now();
@@ -140,7 +118,7 @@ int main(int argc, char *argv[]) {
     const unsigned long long ns = elapsed < 0 ? 0 : static_cast<unsigned long long>(elapsed);
     const unsigned long long bps = ns == 0 ? 0 : total * 1000000000ULL / ns;
 
-    std::printf("input: %s\n", kInput);
+    std::printf("input: %s\n", path);
     printU64("bytes", length);
     printU64("iterations", static_cast<unsigned long long>(iterations));
     printU64("parsed_bytes", total);
