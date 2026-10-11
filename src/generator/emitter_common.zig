@@ -1094,6 +1094,44 @@ fn switchHasNewlineHead(node: *const switch_planning.Node) bool {
     return false;
 }
 
+/// Emits `switch (<byte at the cursor>) {` for a decision over one byte,
+/// handling a leftover `\x03` the way `node`'s heads need: rewritten to `\n`
+/// when `\n` is a head, so no extra switch prong is baked in, and otherwise
+/// skipped through `skipLeftoverBlockEndNewlines` so the skip loop lives in
+/// one place. With the feature off the comptime gate folds to a plain peek.
+pub fn emitFirstByteSwitchHead(writer: *std.Io.Writer, node: *const switch_planning.Node, indent: []const u8) !void {
+    if (switchHasNewlineHead(node)) {
+        try writer.print(
+            \\{s}switch (blk: {{
+            \\{s}    var byte = context.head(u8, 0);
+            \\{s}    if (comptime data_structures.newlineAfterBlockEndEnabled()) {{
+            \\{s}        if (byte == 3) {{
+            \\{s}            @branchHint(.unlikely);
+            \\{s}            byte = 10;
+            \\{s}        }}
+            \\{s}    }}
+            \\{s}    break :blk byte;
+            \\{s}}}) {{
+            \\
+        , .{ indent, indent, indent, indent, indent, indent, indent, indent, indent, indent });
+        return;
+    }
+    try writer.print(
+        \\{s}switch (blk: {{
+        \\{s}    var byte = context.head(u8, 0);
+        \\{s}    if (comptime data_structures.newlineAfterBlockEndEnabled()) {{
+        \\{s}        if (byte == 3) {{
+        \\{s}            @branchHint(.unlikely);
+        \\{s}            context.skipLeftoverBlockEndNewlines();
+        \\{s}            byte = context.head(u8, 0);
+        \\{s}        }}
+        \\{s}    }}
+        \\{s}    break :blk byte;
+        \\{s}}}) {{
+        \\
+    , .{ indent, indent, indent, indent, indent, indent, indent, indent, indent, indent, indent });
+}
+
 /// Emits one merged switch-prong header: `{indent}    <ints> => { // <comments>`.
 /// Shared by every backend so combined headers format identically.
 pub fn emitSwitchProngHeader(
@@ -1161,59 +1199,24 @@ pub fn emitMergedSwitch(
         allocator.free(merged);
     }
     if (prefix_length == 0) {
-        if (switchHasNewlineHead(node)) {
-            if (step_length == 1) {
-                // Leftover `\x03` rewrites to `\n` under comptime, so no
-                // extra switch prong is baked in. With the feature off this
-                // folds to a plain peek.
-                try writer.print(
-                    \\{s}switch (blk: {{
-                    \\{s}    var byte = context.head(u8, 0);
-                    \\{s}    if (comptime data_structures.newlineAfterBlockEndEnabled()) {{
-                    \\{s}        if (byte == 3) {{
-                    \\{s}            @branchHint(.unlikely);
-                    \\{s}            byte = 10;
-                    \\{s}        }}
-                    \\{s}    }}
-                    \\{s}    break :blk byte;
-                    \\{s}}}) {{
-                    \\
-                , .{ indent, indent, indent, indent, indent, indent, indent, indent, indent, indent });
-            } else {
-                const int_bits = step_length * 8;
-                const shift: usize = (step_length - 1) * 8;
-                try writer.print(
-                    \\{s}switch (blk: {{
-                    \\{s}    var peeked = context.head(u{d}, 0);
-                    \\{s}    if (comptime data_structures.newlineAfterBlockEndEnabled()) {{
-                    \\{s}        if (@as(u8, @truncate(peeked >> {d})) == 3) {{
-                    \\{s}            @branchHint(.unlikely);
-                    \\{s}            peeked = (peeked & (((@as(u{d}, 1) << {d}) - 1))) | (@as(u{d}, 10) << {d});
-                    \\{s}        }}
-                    \\{s}    }}
-                    \\{s}    break :blk peeked;
-                    \\{s}}}) {{
-                    \\
-                , .{ indent, indent, int_bits, indent, indent, shift, indent, indent, int_bits, shift, int_bits, shift, indent, indent, indent, indent });
-            }
-        } else if (step_length == 1) {
-            // Peek once, then delegate leftover `\x03` to
-            // `skipLeftoverBlockEndNewlines` so the skip loop lives in one place.
-            // The outer comptime gate folds away when the feature is off.
+        if (step_length == 1) {
+            try emitFirstByteSwitchHead(writer, node, indent);
+        } else if (switchHasNewlineHead(node)) {
+            const int_bits = step_length * 8;
+            const shift: usize = (step_length - 1) * 8;
             try writer.print(
                 \\{s}switch (blk: {{
-                \\{s}    var byte = context.head(u8, 0);
+                \\{s}    var peeked = context.head(u{d}, 0);
                 \\{s}    if (comptime data_structures.newlineAfterBlockEndEnabled()) {{
-                \\{s}        if (byte == 3) {{
+                \\{s}        if (@as(u8, @truncate(peeked >> {d})) == 3) {{
                 \\{s}            @branchHint(.unlikely);
-                \\{s}            context.skipLeftoverBlockEndNewlines();
-                \\{s}            byte = context.head(u8, 0);
+                \\{s}            peeked = (peeked & (((@as(u{d}, 1) << {d}) - 1))) | (@as(u{d}, 10) << {d});
                 \\{s}        }}
                 \\{s}    }}
-                \\{s}    break :blk byte;
+                \\{s}    break :blk peeked;
                 \\{s}}}) {{
                 \\
-            , .{ indent, indent, indent, indent, indent, indent, indent, indent, indent, indent, indent });
+            , .{ indent, indent, int_bits, indent, indent, shift, indent, indent, int_bits, shift, int_bits, shift, indent, indent, indent, indent });
         } else {
             try emitSkipLeftoverBlockEndNewlines(writer, indent);
             try writer.print("{s}switch (context.head(u{d}, {d})) {{\n", .{ indent, step_length * 8, prefix_length });

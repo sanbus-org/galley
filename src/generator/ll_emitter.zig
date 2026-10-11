@@ -407,7 +407,7 @@ const Generator = struct {
         const skip_ast_construction = params.skip_ast_construction;
         const returns_node = self.symbolReturnsNode(variable, skip_ast_construction);
         if (variable != self.plan.augmented_start and !returns_node) {
-            if (try self.byteRunBytes(variable)) |bytes| return self.emitByteRunLoop(writer, bytes);
+            if (try self.byteRunBytes(variable)) |bytes| return self.emitByteRunLoop(writer, variable, skip_ast_construction, bytes);
         }
         if (variable == self.plan.augmented_start) {
             try writer.writeAll("    root_reduction.* = .{};\n");
@@ -2020,9 +2020,8 @@ const Generator = struct {
 
     /// The bytes a byte-run rule repeats, or null when `variable` is not one.
     /// A byte run is a hidden rule `X | c1 X | c2 X | ... |` without
-    /// annotations, where every `ci` matches single ordinary bytes only: not
-    /// the lexer's synthetic tokens (0x00 to 0x03) nor a newline, whose
-    /// meaning depends on indentation. Its language is a run of those bytes.
+    /// annotations, where every `ci` matches single bytes other than the
+    /// end-of-input 0x00. Its language is a run of those bytes.
     fn byteRunBytes(self: *Generator, variable: usize) EmitError!?[]const u8 {
         const symbol = self.symbols.items[variable];
         if (symbol.kind != .variable or symbol.ast_enabled or symbol.synthetic_transparent) return null;
@@ -2045,10 +2044,8 @@ const Generator = struct {
                     if (terminal.terminals.items.len == 0) return null;
                     for (terminal.terminals.items) |member| {
                         if (member.len != 1) return null;
-                        switch (member[0]) {
-                            0...3, '\n' => return null,
-                            else => repeated[member[0]] = true,
-                        }
+                        if (member[0] == 0) return null;
+                        repeated[member[0]] = true;
                     }
                     has_repetition = true;
                 },
@@ -2063,19 +2060,29 @@ const Generator = struct {
         return try bytes.toOwnedSlice(self.allocator);
     }
 
-    /// Consumes a byte run in one loop: one peek per byte, no decision and
-    /// no recursion. Any other byte ends the run, and the caller reports it if
-    /// it cannot follow. The loop needs no handling for the 0x03 the
-    /// indentation lexer may leave after a dedent: it is only ever emitted
-    /// right after block_end (0x02), which already ended the run.
-    fn emitByteRunLoop(self: *Generator, writer: *std.Io.Writer, bytes: []const u8) EmitError!void {
-        if (self.uses_explicit_recovery) try writer.writeAll("    _ = occurrence_recovery;\n");
-        try writer.writeAll("    while (true) {\n        switch (context.head(u8, 0)) {\n            ");
+    /// Consumes a byte run in one loop: one peek per byte, no recursion. Each
+    /// byte is read the way the rule's own decision reads it, so a 0x03 the
+    /// indentation lexer leaves after a dedent is rewritten or skipped exactly
+    /// as the recursive rule would. The byte that ends the run then goes
+    /// through that decision once, so a byte the rule cannot end on reports
+    /// the same syntax error, at the same place, as the recursive rule.
+    fn emitByteRunLoop(self: *Generator, writer: *std.Io.Writer, variable: usize, skip_ast_construction: bool, bytes: []const u8) EmitError!void {
+        const decision = self.plan.parserDecision(variable, skip_ast_construction).tree;
+        try writer.writeAll("    while (true) {\n");
+        try emitter_common.emitFirstByteSwitchHead(writer, decision, "        ");
+        try writer.writeAll("            ");
         for (bytes, 0..) |byte, index| {
             if (index != 0) try writer.writeAll(", ");
             try writer.print("{d}", .{byte});
         }
         try writer.writeAll(" => context.releaseToken(1),\n            else => break,\n        }\n    }\n");
+
+        const outer_recovery_use = self.occurrence_uses.recovery;
+        self.occurrence_uses.recovery = false;
+        defer self.occurrence_uses.recovery = outer_recovery_use or self.occurrence_uses.recovery;
+        const selected = try self.emitDecision(writer, .rule, variable, decision, "    ", skip_ast_construction);
+        try writer.print("    _ = {s};\n", .{selected});
+        if (self.uses_explicit_recovery and !self.occurrence_uses.recovery) try writer.writeAll("    _ = occurrence_recovery;\n");
     }
 
     /// Whether every path of `node` that selects `rule_index` matched a first
