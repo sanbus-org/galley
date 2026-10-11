@@ -14,11 +14,21 @@ pub fn main(init: std.process.Init) !void {
     const source = try std.Io.Dir.cwd().readFileAlloc(init.io, input_path, init.gpa, .limited(1024 * 1024 * 1024));
     defer init.gpa.free(source);
 
-    var parsed = galley.parseBytes(init.io, init.gpa, source, input_path, .{}) catch |err| switch (err) {
-        error.SyntaxError, error.SemanticError => std.process.exit(1),
-        else => return err,
-    };
-    defer parsed.deinit();
+    var session = try galley.Session.init(init.io, init.gpa, .{});
+    defer session.deinit();
 
-    std.debug.print("parsed {s}: {d} bytes\n", .{ input_path, parsed.result.parsed_bytes });
+    const result = session.parseBytes(source, input_path) catch |err| {
+        var guard = session.readLatest() catch return err;
+        defer guard.deinit();
+        var stderr_buffer: [4096]u8 = undefined;
+        var stderr_writer = std.Io.File.stderr().writer(init.io, &stderr_buffer);
+        galley.writeDiagnostics(&stderr_writer.interface, guard.recordedDiagnostics()) catch {};
+        stderr_writer.interface.flush() catch {};
+        switch (err) {
+            error.SyntaxError, error.SemanticError => std.process.exit(1),
+            else => return err,
+        }
+    };
+
+    std.debug.print("parsed {s}: {d} bytes\n", .{ input_path, result.parsed_bytes });
 }

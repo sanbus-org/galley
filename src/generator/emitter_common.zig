@@ -78,20 +78,19 @@ pub fn emitProductionRecoveryScope(writer: *std.Io.Writer, scopes: *const common
     try writer.writeAll(" }");
 }
 
-/// Emits the shared report boilerplate for an already-rendered
-/// `diagnostic_message`: records it as the last rendered message and routes
-/// it to the configured reporter (or stderr).
-pub fn emitDiagnosticReport(writer: *std.Io.Writer, indent: []const u8) !void {
-    try writer.print("{s}context.runtime().last_rendered_message = diagnostic_message;\n", .{indent});
-    try writer.print("{s}if (context.runtimeConst().syntax_error_reporter) |reporter| reporter(diagnostic_message) else std.debug.print(\"{{s}}\", .{{diagnostic_message}});\n", .{indent});
+/// Emits the shared boilerplate that stores an already-rendered
+/// `diagnostic_message` with the syntax diagnostic it describes. The parser
+/// only records; callers print through `root.writeDiagnostics`.
+pub fn emitRenderedMessageRecord(writer: *std.Io.Writer, indent: []const u8) !void {
+    try writer.print("{s}context.recordRenderedMessage(diagnostic_message);\n", .{indent});
 }
 
-/// Emits an automatic-recovery message print through a per-site `*_message`
-/// renderer, plus the shared report.
-pub fn emitSiteMessagePrint(writer: *std.Io.Writer, message_function: []const u8, indent: []const u8) !void {
+/// Emits an automatic-recovery message render through a per-site `*_message`
+/// renderer, plus the shared record.
+pub fn emitSiteMessageRecord(writer: *std.Io.Writer, message_function: []const u8, indent: []const u8) !void {
     try writer.print("{s}const diagnostic = context.runtime().lastDiagnostic().?;\n", .{indent});
     try writer.print("{s}const diagnostic_message = {s}_message(.{{ .allocator = context.runtime().arena_allocator, .context = context, .diagnostic = diagnostic, .style = .plain }}) catch \"\";\n", .{ indent, message_function });
-    try emitDiagnosticReport(writer, indent);
+    try emitRenderedMessageRecord(writer, indent);
 }
 
 /// Emits the fail-fast syntax error support block shared verbatim by the LL
@@ -116,7 +115,7 @@ pub fn emitFailFastSyntaxErrorSupport(writer: *std.Io.Writer, function_prefix: [
         \\    }}) catch "";
     , .{ renderer_decl, function_prefix, renderer_decl });
     try writer.writeByte('\n');
-    try emitDiagnosticReport(writer, "    ");
+    try emitRenderedMessageRecord(writer, "    ");
     try writer.writeAll(
         \\    return root.ParseError.SyntaxError;
         \\}
@@ -1263,7 +1262,7 @@ pub fn emitExplicitDiagnosticFlusher(
         \\    const diagnostic_message = {s}_flushed_syntax_messages[site](.{{ .allocator = context.runtime().arena_allocator, .context = context, .diagnostic = diagnostic, .style = .plain }}) catch "";
     , .{ prefix, prefix });
     try writer.writeByte('\n');
-    try emitDiagnosticReport(writer, "    ");
+    try emitRenderedMessageRecord(writer, "    ");
     try writer.writeAll(
         \\}
         \\

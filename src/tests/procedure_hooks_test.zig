@@ -442,8 +442,6 @@ test "procedure-hooks stale results are nameable and distinct from parse failure
     try std.testing.expectEqual(@as(usize, 1), second.parsed_bytes);
 }
 
-fn ignoreDiagnostic(_: []const u8) void {}
-
 test "procedure-hooks current gates address the last successful parse" {
     var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
     defer session.deinit();
@@ -471,7 +469,7 @@ test "procedure-hooks current gates address the last successful parse" {
 }
 
 test "procedure-hooks a failed parse leaves the published result stale" {
-    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .syntax_error_reporter = &ignoreDiagnostic });
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
     defer session.deinit();
 
     _ = try session.parseBytes("k", "first");
@@ -485,7 +483,7 @@ test "procedure-hooks a failed parse leaves the published result stale" {
 }
 
 test "procedure-hooks a first failed parse publishes nothing" {
-    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .syntax_error_reporter = &ignoreDiagnostic });
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
     defer session.deinit();
 
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes("z", "only"));

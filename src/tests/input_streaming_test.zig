@@ -2,8 +2,6 @@ const std = @import("std");
 const parser = @import("parser-under-test");
 const test_options = @import("test_options");
 
-fn ignoreDiagnostic(_: []const u8) void {}
-
 const window_crossing_padding = 1024;
 
 fn allocSentinel(input: []const u8) ![:0]u8 {
@@ -469,7 +467,7 @@ test "input streaming recovery at EOF reports the same position as a whole-input
     defer std.testing.allocator.free(input);
     try std.testing.expect(input.len > parser.input_window_size);
 
-    var bytes_session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .syntax_error_reporter = &ignoreDiagnostic });
+    var bytes_session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
     defer bytes_session.deinit();
     const whole_input = try expectEofSyntaxError(&bytes_session, bytes_session.parseBytes(input, "eof"));
 
@@ -478,7 +476,7 @@ test "input streaming recovery at EOF reports the same position as a whole-input
     try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "eof", .data = input });
     var file = try tmp.dir.openFile(std.testing.io, "eof", .{ .mode = .read_only });
     defer file.close(std.testing.io);
-    var file_session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .syntax_error_reporter = &ignoreDiagnostic });
+    var file_session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
     defer file_session.deinit();
     const streamed = try expectEofSyntaxError(&file_session, file_session.parseFile(file, "eof"));
 

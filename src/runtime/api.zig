@@ -129,6 +129,10 @@ pub const SyntaxDiagnostic = struct {
     expected_tokens: []const []const u8,
     context: SyntaxDiagnosticContext = .none,
     recovery: ?SyntaxRecovery = null,
+    /// The text the grammar's error-message hooks (or their built-in
+    /// fallback) rendered for this error, plain style. Null until the parser
+    /// renders it. Arena-backed: valid until the next parse begins.
+    rendered_message: ?[]const u8 = null,
 };
 
 pub const IndentationDiagnostic = struct {
@@ -169,8 +173,6 @@ pub const DiagnosticStyle = enum {
     ansi,
 };
 
-pub const SyntaxErrorMessageReporter = *const fn (message: []const u8) void;
-
 /// One message override: when a syntax error's innermost in-progress
 /// variable equals `name`, or when `name` is `"*"` and no variable entry
 /// matched, the recorded message replaces hooks and the built-in renderer
@@ -206,10 +208,6 @@ pub const ParseOptions = struct {
     /// release builds the stack stays off unless the build was compiled with
     /// `-Dsyntax-error-stack-depth` above 1.
     syntax_error_stack_depth: usize = 0,
-    /// Receives every rendered syntax-error message instead of the default
-    /// stderr printer. A bare function pointer with no context: the function
-    /// it names must stay loaded for as long as the session lives.
-    syntax_error_reporter: ?SyntaxErrorMessageReporter = null,
     /// Message overrides copied into the session at creation. Entries are
     /// matched against syntax-error site names in the same fallback order
     /// the sites use (exact hook name, then family, then general), and take
@@ -272,7 +270,10 @@ fn guardLastDiagnostic(session: *const Session) ?ParseDiagnostic {
 }
 
 fn guardLastRenderedMessage(session: *const Session) ?[]const u8 {
-    return session.runtime_context.last_rendered_message;
+    return switch (session.runtime_context.lastDiagnostic() orelse return null) {
+        .syntax => |syntax| syntax.rendered_message,
+        .semantic, .indentation, .hook => null,
+    };
 }
 
 fn guardRecordedDiagnostics(session: *const Session) []const ParseDiagnostic {
@@ -462,10 +463,12 @@ fn writeRecoveryTarget(writer: *std.Io.Writer, target: SyntaxRecoveryTarget) !vo
     }
 }
 
+/// Appends the recovery line to a syntax message that has no trailing
+/// newline: a line break, then the line itself, with no trailing newline.
 pub fn formatSyntaxRecovery(writer: *std.Io.Writer, recovery: SyntaxRecovery) !void {
-    try writer.writeAll("Recovery: ");
+    try writer.writeAll("\nRecovery: ");
     try writeRecoveryTarget(writer, recovery.target);
-    try writer.print(" resumed {s} \"{f}\".\n", .{
+    try writer.print(" resumed {s} \"{f}\".", .{
         @tagName(recovery.@"resume"),
         string_utilities.fmtToken(recovery.terminal),
     });
@@ -496,7 +499,7 @@ pub fn formatParseDiagnostic(writer: *std.Io.Writer, diagnostic: ParseDiagnostic
                     }
                     try writer.writeAll(".\nExpected tokens: '");
                     try writeExpectedTokens(writer, syntax.expected_tokens);
-                    try writer.writeAll("'\n");
+                    try writer.writeAll("'");
                     if (syntax.recovery) |recovery| try formatSyntaxRecovery(writer, recovery);
                 },
                 .ansi => {
@@ -525,7 +528,7 @@ pub fn formatParseDiagnostic(writer: *std.Io.Writer, diagnostic: ParseDiagnostic
                     }
                     try writer.writeAll("\nExpected tokens: \x1b[32m'");
                     try writeExpectedTokens(writer, syntax.expected_tokens);
-                    try writer.writeAll("'\x1b[0m\n");
+                    try writer.writeAll("'\x1b[0m");
                     if (syntax.recovery) |recovery| try formatSyntaxRecovery(writer, recovery);
                 },
             }
@@ -534,7 +537,6 @@ pub fn formatParseDiagnostic(writer: *std.Io.Writer, diagnostic: ParseDiagnostic
             .plain => try writer.print(
                 \\IndentationError at {d}:{d}:
                 \\Invalid indentation: {d} spaces are not divisible by the detected indentation width of {d}.
-                \\
             , .{
                 indentation.line,
                 indentation.column,
@@ -544,7 +546,7 @@ pub fn formatParseDiagnostic(writer: *std.Io.Writer, diagnostic: ParseDiagnostic
             .ansi => try writer.print(
                 "\x1b[35mIndentationError at {d}:{d}:\n" ++
                     "\x1b[37mInvalid indentation: \x1b[31m{d}\x1b[37m spaces are not divisible by " ++
-                    "the detected indentation width of \x1b[31m{d}\x1b[37m.\x1b[0m\n",
+                    "the detected indentation width of \x1b[31m{d}\x1b[37m.\x1b[0m",
                 .{
                     indentation.line,
                     indentation.column,
@@ -557,7 +559,6 @@ pub fn formatParseDiagnostic(writer: *std.Io.Writer, diagnostic: ParseDiagnostic
             .plain => try writer.print(
                 \\HookError at {d}:{d}:
                 \\Hook {s} failed while parsing {f}.
-                \\
             , .{
                 hook.line,
                 hook.column,
@@ -566,7 +567,7 @@ pub fn formatParseDiagnostic(writer: *std.Io.Writer, diagnostic: ParseDiagnostic
             }),
             .ansi => try writer.print(
                 "\x1b[35mHookError at {d}:{d}:\n" ++
-                    "\x1b[37mHook \x1b[34m{s}\x1b[37m failed while parsing \x1b[34m{f}\x1b[0m.\n",
+                    "\x1b[37mHook \x1b[34m{s}\x1b[37m failed while parsing \x1b[34m{f}\x1b[0m.",
                 .{
                     hook.line,
                     hook.column,
@@ -579,7 +580,6 @@ pub fn formatParseDiagnostic(writer: *std.Io.Writer, diagnostic: ParseDiagnostic
             .plain => try writer.print(
                 \\SemanticError at {d}:{d}:
                 \\{s} while parsing {f}.
-                \\
             , .{
                 semantic.line,
                 semantic.column,
@@ -588,7 +588,7 @@ pub fn formatParseDiagnostic(writer: *std.Io.Writer, diagnostic: ParseDiagnostic
             }),
             .ansi => try writer.print(
                 "\x1b[35mSemanticError at {d}:{d}:\n" ++
-                    "\x1b[37m{s}\x1b[37m while parsing \x1b[34m{f}\x1b[0m.\n",
+                    "\x1b[37m{s}\x1b[37m while parsing \x1b[34m{f}\x1b[0m.",
                 .{
                     semantic.line,
                     semantic.column,
@@ -600,11 +600,44 @@ pub fn formatParseDiagnostic(writer: *std.Io.Writer, diagnostic: ParseDiagnostic
     }
 }
 
+/// Renders one diagnostic in the built-in format, with no trailing newline.
 pub fn renderParseDiagnostic(allocator: std.mem.Allocator, diagnostic: ParseDiagnostic, style: DiagnosticStyle) ![]u8 {
     var output: std.Io.Writer.Allocating = .init(allocator);
     errdefer output.deinit();
     try formatParseDiagnostic(&output.writer, diagnostic, style);
     return output.toOwnedSlice();
+}
+
+/// Writes one recorded diagnostic as users read it, without a trailing
+/// newline: a syntax error as the grammar's error-message hooks rendered it
+/// (the built-in rendering when none did), every other kind in the built-in
+/// plain rendering. The text is written exactly as stored; hook and override
+/// messages are the author's responsibility, including any newlines.
+pub fn formatRecordedDiagnostic(writer: *std.Io.Writer, diagnostic: ParseDiagnostic) !void {
+    const rendered = switch (diagnostic) {
+        .syntax => |syntax| syntax.rendered_message,
+        .semantic, .indentation, .hook => null,
+    };
+    if (rendered) |message| {
+        try writer.writeAll(message);
+    } else {
+        try formatParseDiagnostic(writer, diagnostic, .plain);
+    }
+}
+
+/// Writes one recorded diagnostic (`formatRecordedDiagnostic`) followed by
+/// exactly one newline.
+pub fn writeDiagnostic(writer: *std.Io.Writer, diagnostic: ParseDiagnostic) !void {
+    try formatRecordedDiagnostic(writer, diagnostic);
+    try writer.writeByte('\n');
+}
+
+/// Writes every diagnostic a parse recorded, in recording order. This is the
+/// one printer of recorded diagnostics: parsers record and never print, so a
+/// program passes `recordedDiagnostics()` from a session guard and the writer
+/// it chooses.
+pub fn writeDiagnostics(writer: *std.Io.Writer, diagnostics: []const ParseDiagnostic) !void {
+    for (diagnostics) |diagnostic| try writeDiagnostic(writer, diagnostic);
 }
 
 /// The errors a parse reports after publishing its tree: the parse ran to its
@@ -740,7 +773,6 @@ pub const Session = struct {
                     options.syntax_error_stack_depth
                 else
                     parser.syntax_error_stack_depth,
-                .syntax_error_reporter = options.syntax_error_reporter,
             },
             .reader_buffer = reader_buffer,
             .chunk_buffer = chunk_buffer,
@@ -1191,7 +1223,6 @@ pub const Session = struct {
         _ = self.arena.reset(.retain_capacity);
         self.runtime_context.message_overrides = &self.message_overrides;
         self.runtime_context.recorded_diagnostics = .empty;
-        self.runtime_context.last_rendered_message = null;
         self.runtime_context.syntax_error_count = 0;
         self.runtime_context.semantic_error_count = 0;
         self.runtime_context.syntax_recovery_position = null;
@@ -1384,7 +1415,7 @@ test "message overrides replace rendered syntax errors and beat hooks" {
                 ParseError.SyntaxError => {},
                 else => return err,
             }
-            const rendered = session.runtime_context.last_rendered_message orelse return error.MissingRenderedMessage;
+            const rendered = guardLastRenderedMessage(&session) orelse return error.MissingRenderedMessage;
             const copy = try allocator.dupe(u8, rendered);
             session.deinit();
             return copy;
@@ -1475,11 +1506,7 @@ test "duplicate rule headers record a semantic diagnostic" {
         \\
     ;
 
-    var session = try Session.init(std.Io.failing, std.testing.allocator, .{
-        .syntax_error_reporter = &struct {
-            fn ignore(_: []const u8) void {}
-        }.ignore,
-    });
+    var session = try Session.init(std.Io.failing, std.testing.allocator, .{});
     defer session.deinit();
     try std.testing.expectError(error.DuplicateRuleHeader, session.parseBytes(duplicated, null));
 
@@ -1492,8 +1519,63 @@ test "duplicate rule headers record a semantic diagnostic" {
         .semantic => |value| value,
         else => return error.ExpectedSemanticDiagnostic,
     };
-    try std.testing.expectEqualStrings("Start", semantic.variable);
+    try std.testing.expectEqualStrings("Rule", semantic.variable);
+    try std.testing.expectEqual(@as(u32, 4), semantic.line);
+    try std.testing.expectEqual(@as(u32, 1), semantic.column);
     try std.testing.expect(std.mem.indexOf(u8, semantic.message, "DuplicateRuleHeader") != null);
+    try std.testing.expect(std.mem.indexOf(u8, semantic.message, "first at line 1, column 1") != null);
+
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try writeDiagnostics(&output.writer, read_guard.recordedDiagnostics());
+    try std.testing.expect(std.mem.startsWith(u8, output.written(), "SemanticError at 4:1:\nDuplicateRuleHeader"));
+}
+
+test "writeDiagnostics writes each recorded diagnostic as users read it" {
+    if (builtin.mode != .debug) return error.SkipZigTest;
+
+    const malformed =
+        \\Start
+        \\| ?
+        \\
+    ;
+
+    var session = try Session.init(std.Io.failing, std.testing.allocator, .{
+        .message_overrides = &.{.{ .name = "*", .message = "custom text at line {line}" }},
+    });
+    defer session.deinit();
+    try std.testing.expectError(ParseError.SyntaxError, session.parseBytes(malformed, null));
+
+    var guard = try session.readLatest();
+    defer guard.deinit();
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try writeDiagnostics(&output.writer, guard.recordedDiagnostics());
+    try std.testing.expectEqualStrings("custom text at line 2\n", output.written());
+
+    // Without a rendered message the built-in plain rendering applies, with
+    // its line and column.
+    output.clearRetainingCapacity();
+    try writeDiagnostic(&output.writer, .{ .syntax = .{
+        .line = 3,
+        .column = 7,
+        .unexpected_token = "?",
+        .expected_tokens = &.{"x"},
+    } });
+    try std.testing.expect(std.mem.startsWith(u8, output.written(), "SyntaxError at 3:7:\n"));
+}
+
+test "writeDiagnostic keeps the author's newlines and adds exactly one" {
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try writeDiagnostic(&output.writer, .{ .syntax = .{
+        .line = 1,
+        .column = 1,
+        .unexpected_token = "?",
+        .expected_tokens = &.{"x"},
+        .rendered_message = "two newlines\n\n",
+    } });
+    try std.testing.expectEqualStrings("two newlines\n\n\n", output.written());
 }
 
 test "message override placeholders expand against the diagnostic" {
@@ -1519,7 +1601,7 @@ test "message override placeholders expand against the diagnostic" {
         ParseError.SyntaxError => {},
         else => return err,
     }
-    const message = session.runtime_context.last_rendered_message orelse return error.MissingRenderedMessage;
+    const message = guardLastRenderedMessage(&session) orelse return error.MissingRenderedMessage;
     try std.testing.expect(std.mem.startsWith(u8, message, "line 2 col 3 saw '?' want '"));
     try std.testing.expect(std.mem.indexOf(u8, message, " <~ ") != null);
     try std.testing.expect(std.mem.indexOf(u8, message, "keep {unknown}") != null);

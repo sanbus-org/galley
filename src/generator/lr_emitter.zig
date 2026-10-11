@@ -1576,7 +1576,7 @@ const Generator = struct {
         try writer.print("        try context.recordSyntaxDiagnostic(.{{ .state = {d} }}, &[_][]const u8{{", .{spec.state_index});
         try self.emitStringSliceItems(writer, spec.expected_tokens);
         try writer.writeAll("});\n");
-        try emitter_common.emitSiteMessagePrint(writer, spec.name, "        ");
+        try emitter_common.emitSiteMessageRecord(writer, spec.name, "        ");
         try writer.writeAll("    }\n");
         try writer.writeAll("    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;\n");
         if (spec.recoverable) {

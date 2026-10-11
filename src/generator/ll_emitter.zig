@@ -1607,7 +1607,7 @@ const Generator = struct {
         try writer.writeAll("} }, ");
         try self.emitRecoveryCandidates(writer, spec.expected_tokens);
         try writer.writeAll(");\n");
-        try emitter_common.emitSiteMessagePrint(writer, spec.name, "        ");
+        try emitter_common.emitSiteMessageRecord(writer, spec.name, "        ");
         try writer.writeAll("    }\n");
         try writer.writeAll("    if (report_syntax_error and context.syntaxErrorLimitReached()) return root.ParseError.SyntaxError;\n");
         try writer.writeAll("    if (try llRecoveryOffset(context, ");

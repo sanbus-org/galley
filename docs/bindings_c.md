@@ -155,6 +155,8 @@ picks it up automatically, otherwise pass it explicitly:
 `galley_diagnostic_message` then returns the text your hooks render;
 without the flag (or for un-customized grammars) it returns the built-in
 generic renderer output. The `_ansi` accessor always renders generically.
+Messages carry no trailing newline; hook text is returned exactly as your hook
+produced it, so end it without one.
 LR grammars use the same flow with `lr_error_messages.zig` and
 `syntax_error_lr_*` hook names.
 

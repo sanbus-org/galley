@@ -144,7 +144,7 @@ To learn how to register explicit/implicit hooks, how to write custom procedures
 
 ## Syntax Error Messages
 
-Generated parsers record structured syntax diagnostics and print Galley's default message unless a matching public hook exists in `ll_error_messages.zig` or `lr_error_messages.zig`.
+Generated parsers record structured syntax diagnostics and render Galley's default message unless a matching public hook exists in `ll_error_messages.zig` or `lr_error_messages.zig`.
 
 Generate default hook bodies for every current syntax-error site with:
 

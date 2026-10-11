@@ -10,8 +10,6 @@ const depth = 100_000;
 const has_procedures = parser.parser.are_procedures_enabled;
 const is_explicit = parser.parser.is_error_recovery_enabled and parser.parser.error_recovery_mode == .explicit;
 
-fn ignoreDiagnostic(_: []const u8) void {}
-
 /// `a;1;a;1;...`: `items` words and numbers alternating, then `last`.
 fn alternatingList(items: usize, last: []const u8) ![]u8 {
     var list: std.ArrayList(u8) = .empty;
@@ -91,7 +89,7 @@ test "each level reduces with the next level as a child" {
 }
 
 test "an error after a nested list reports the variables still being parsed" {
-    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .max_errors = 1, .syntax_error_reporter = &ignoreDiagnostic });
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .max_errors = 1 });
     defer session.deinit();
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes("(a;1;b);%", null));
     var read_guard = try session.readLatest();
@@ -116,7 +114,7 @@ test "a failure deep in a list leaves the session ready for the next parse" {
     defer std.testing.allocator.free(broken);
     const valid = try alternatingList(depth - 1, "b");
     defer std.testing.allocator.free(valid);
-    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .syntax_error_reporter = &ignoreDiagnostic });
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
     defer session.deinit();
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes(broken, null));
     resetProcedures();
@@ -137,7 +135,7 @@ const Target = union(enum) {
 const Expected = struct { terminal: []const u8, target: Target = .{ .occurrence = .{} } };
 
 fn expectExplicitRecovery(input: []const u8, expected: Expected) !void {
-    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .syntax_error_reporter = &ignoreDiagnostic });
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
     defer session.deinit();
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes(input, null));
     var read_guard = try session.readLatest();
@@ -257,7 +255,7 @@ test "explicit recovery deep in a hidden loop uses the failing level's occurrenc
 }
 
 test "a variable whose every rule repeats it ends only on an error" {
-    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .syntax_error_reporter = &ignoreDiagnostic });
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
     defer session.deinit();
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes("?xyx", null));
 }

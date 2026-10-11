@@ -49,9 +49,6 @@ fn printTree(
     }
 }
 
-/// Bindings record diagnostics; they do not print them during parse.
-fn ignoreDiagnostic(_: []const u8) void {}
-
 fn diagnosticMessage(reader: parser.SessionDiagnosticsGuard, gpa: std.mem.Allocator, diagnostic: parser.ParseDiagnostic) !struct { []const u8, bool } {
     if (reader.lastRenderedMessage()) |message| return .{ message, false };
     return .{ try parser.renderParseDiagnostic(gpa, diagnostic, .plain), true };
@@ -69,7 +66,6 @@ pub fn main(init: std.process.Init) !void {
         .max_errors = 10,
         // C ABI demos compile the parser ReleaseFast (stack depth 1).
         .syntax_error_stack_depth = 1,
-        .syntax_error_reporter = &ignoreDiagnostic,
         .message_overrides = &.{
             .{
                 .name = "Number",

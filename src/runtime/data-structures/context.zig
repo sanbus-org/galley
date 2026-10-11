@@ -95,11 +95,6 @@ pub const RuntimeContext = struct {
     /// through `Context.semanticErrorCount`.
     /// Arena-backed: valid until the next parse begins.
     recorded_diagnostics: std.ArrayList(root.ParseDiagnostic) = .empty,
-    /// Message rendered for the most recent diagnostic by the grammar's
-    /// error-message hooks (or their generic fallback). Arena-backed: valid
-    /// until the next parse begins. Bindings surface this through
-    /// `galley_diagnostic_message`.
-    last_rendered_message: ?[]const u8 = null,
     max_errors: usize = 10,
     recovery_window: usize = 500,
     syntax_error_stack_depth: usize = 0,
@@ -116,7 +111,6 @@ pub const RuntimeContext = struct {
     /// node has adopted yet, ordered by source position. Arena-backed:
     /// reset at parse start.
     recovered_pending: std.ArrayList(usize) = .empty,
-    syntax_error_reporter: ?root.SyntaxErrorMessageReporter = null,
     /// Session-owned message override table, wired at parse start. Lookup
     /// happens only inside cold syntax-error paths.
     message_overrides: ?*const std.StringHashMapUnmanaged([]const u8) = null,
@@ -579,6 +573,16 @@ pub const Context = struct {
         try runtime_context.recorded_diagnostics.append(runtime_context.arena_allocator, diagnostic);
     }
 
+    /// The one place a semantic error is recorded: retains `diagnostic`
+    /// (whose strings the caller allocated in the parse arena) and returns
+    /// the total semantic error count so hooks can limit themselves.
+    pub fn recordSemanticDiagnostic(self: *Self, diagnostic: root.SemanticDiagnostic) !usize {
+        try self.retainDiagnostic(.{ .semantic = diagnostic });
+        const runtime_context = self.runtime();
+        runtime_context.semantic_error_count += 1;
+        return runtime_context.semantic_error_count;
+    }
+
     pub fn recordSyntaxDiagnostic(
         self: *@This(),
         diagnostic_context: root.SyntaxDiagnosticContext,
@@ -722,6 +726,19 @@ pub const Context = struct {
         switch (diagnostic.*) {
             .syntax => |*syntax| syntax.recovery = recovery,
             .semantic, .indentation, .hook => return error.MissingSyntaxDiagnostic,
+        }
+    }
+
+    /// Stores the text rendered for the syntax error recorded last, so the
+    /// message stays with its own diagnostic. An empty message (a renderer
+    /// that failed) is dropped and the built-in rendering applies on read.
+    pub fn recordRenderedMessage(self: *Self, message: []const u8) void {
+        if (message.len == 0) return;
+        const records = &self.runtime().recorded_diagnostics;
+        if (records.items.len == 0) return;
+        switch (records.items[records.items.len - 1]) {
+            .syntax => |*syntax| syntax.rendered_message = message,
+            .semantic, .indentation, .hook => {},
         }
     }
 

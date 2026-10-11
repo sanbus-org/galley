@@ -141,8 +141,7 @@ defer session.deinit();
 `max_errors` and `recovery_window` configure generated error recovery.
 `stack_overflow_recovery` enables the optional native recovery boundary and is
 disabled by default. `message_overrides` registers dynamic per-session syntax
-message overrides (layer 1 above); `syntax_error_reporter` receives each
-rendered message instead of the default stderr printer.
+message overrides (layer 1 above).
 
 ReleaseFast builds compile out debugging instrumentation and position tracking
 where configured to maximize throughput.

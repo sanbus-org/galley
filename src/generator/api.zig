@@ -21,12 +21,36 @@ pub const atomic_file = common.atomic_file;
 
 fn ignoreDiagnostic(_: []const u8) void {}
 
+/// Parses grammar source with the Galley grammar's own parser. A failed parse
+/// forwards every diagnostic it recorded to `options.error_reporter` (the
+/// generator's one channel for failure text) before returning its error,
+/// because the session that holds them dies with the failure.
+fn parseGrammarSource(allocator: std.mem.Allocator, source: []const u8, options: Options) !galley_grammar.ParsedInput {
+    var session = try galley_grammar.Session.init(std.Io.failing, allocator, .{});
+    errdefer session.deinit();
+    const result = session.parseBytes(source, null) catch |err| {
+        reportParseDiagnostics(allocator, &session, options.error_reporter);
+        return err;
+    };
+    return .{ .session = session, .result = result };
+}
+
+fn reportParseDiagnostics(allocator: std.mem.Allocator, session: *galley_grammar.Session, reporter: ErrorReporter) void {
+    var guard = session.readLatest() catch return;
+    defer guard.deinit();
+    var text: std.Io.Writer.Allocating = .init(allocator);
+    defer text.deinit();
+    galley_grammar.writeDiagnostics(&text.writer, guard.recordedDiagnostics()) catch return;
+    const message = std.mem.trimEnd(u8, text.written(), "\n");
+    if (message.len != 0) common.reportError(reporter, message);
+}
+
 pub fn parseGrammar(allocator: std.mem.Allocator, source: []const u8) !*Grammar {
     return parseGrammarWithOptions(allocator, source, .{});
 }
 
 pub fn parseGrammarWithOptions(allocator: std.mem.Allocator, source: []const u8, options: Options) !*Grammar {
-    var parsed = try galley_grammar.parseBytes(std.Io.failing, allocator, source, null, .{ .syntax_error_reporter = options.error_reporter });
+    var parsed = try parseGrammarSource(allocator, source, options);
     defer parsed.deinit();
 
     var read_guard = try parsed.session.read(parsed.result);
@@ -158,7 +182,7 @@ pub fn emitParserFromSource(
     parser_type: ParserType,
     options: Options,
 ) !void {
-    var parsed = try galley_grammar.parseBytes(std.Io.failing, allocator, source, null, .{ .syntax_error_reporter = options.error_reporter });
+    var parsed = try parseGrammarSource(allocator, source, options);
     defer parsed.deinit();
 
     var read_guard = try parsed.session.read(parsed.result);
@@ -176,7 +200,7 @@ pub fn emitErrorMessagesFromSource(
     parser_type: ParserType,
     options: Options,
 ) !void {
-    var parsed = try galley_grammar.parseBytes(std.Io.failing, allocator, source, null, .{ .syntax_error_reporter = options.error_reporter });
+    var parsed = try parseGrammarSource(allocator, source, options);
     defer parsed.deinit();
 
     var read_guard = try parsed.session.read(parsed.result);

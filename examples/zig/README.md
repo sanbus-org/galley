@@ -9,9 +9,9 @@ Requires `zig` 0.17+. This directory is meant to be run from a Galley checkout
 (the `build.zig.zon` path dependency points at `../..`). Copied out of the
 repository, change that dependency to a `url` and `hash`.
 
-`demo.zig` pins `syntax_error_stack_depth = 1` and a no-op
-`syntax_error_reporter` so stdout/stderr match the C-ABI examples. That is
-not required native usage; defaults are in the API manual above.
+`demo.zig` pins `syntax_error_stack_depth = 1` so its output matches the C-ABI
+examples. That is not required native usage; defaults are in the API manual
+above.
 
 ```sh
 zig build run

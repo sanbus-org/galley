@@ -16,11 +16,8 @@ const is_automatic = test_options.automatic;
 const is_ll = parser.parser.parser_type == .ll;
 const has_ast = parser.parser.is_ast_enabled;
 
-fn ignoreDiagnostic(_: []const u8) void {}
-
 fn newSession(max_errors: usize) !parser.Session {
     return parser.Session.init(std.testing.io, std.testing.allocator, .{
-        .syntax_error_reporter = &ignoreDiagnostic,
         .max_errors = max_errors,
     });
 }

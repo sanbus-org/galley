@@ -75,18 +75,14 @@ pub const ProcedureArguments = struct {
         }
         const variable_name = self.variableName();
 
-        try runtime_context.recorded_diagnostics.append(arena, .{
-            .semantic = .{
-                .line = if (comptime root.position_tracking_enabled) self.context.line else 0,
-                .column = if (comptime root.position_tracking_enabled) self.context.column else 0,
-                .variable = variable_name,
-                .message = owned_message,
-                .text_start = text_start,
-                .text_length = text_length,
-            },
+        return self.context.recordSemanticDiagnostic(.{
+            .line = if (comptime root.position_tracking_enabled) self.context.line else 0,
+            .column = if (comptime root.position_tracking_enabled) self.context.column else 0,
+            .variable = variable_name,
+            .message = owned_message,
+            .text_start = text_start,
+            .text_length = text_length,
         });
-        runtime_context.semantic_error_count += 1;
-        return runtime_context.semantic_error_count;
     }
 };
 

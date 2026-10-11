@@ -717,7 +717,9 @@ fn warnMissingReductionProcedures(init: std.process.Init, language_dir: []const 
 
 fn sourceHasRecoveryAnnotations(allocator: std.mem.Allocator, source: []const u8) bool {
     // Use the real grammar parser so the check is not a fragile substring search.
-    const grammar = generator.parseGrammar(allocator, source) catch return false;
+    // The emission pass parses the same source and reports its failure, so
+    // this pass stays silent.
+    const grammar = generator.parseGrammarWithOptions(allocator, source, .{ .error_reporter = &ignoreDiagnostic }) catch return false;
     for (grammar.rules) |rule| {
         if (rule.annotations.recovery_points.len != 0) return true;
         for (rule.right_hand_sides) |rhs| {

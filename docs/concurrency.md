@@ -46,7 +46,7 @@ language in its own binary.
 ## Host obligations
 
 * The allocator and `std.Io` passed to `Session.init` must be thread-safe and outlive every session. Sharing a non-thread-safe allocator across workers is a host bug.
-* The input path belongs to the parse call that passes it: it is read only during that parse, through `Context`, and no session retains it. `ParseOptions.syntax_error_reporter` is a bare function pointer, so nothing is copied — its code must stay loaded while the session lives. Only `message_overrides` are copied, because they are the only borrowed data a session keeps.
+* The input path belongs to the parse call that passes it: it is read only during that parse, through `Context`, and no session retains it. Only `message_overrides` are copied, because they are the only borrowed data a session keeps.
 * Do not copy a live `Session` by value. A copy forks the lock while sharing storage; it is a host bug Zig cannot forbid.
 * Closing a session refuses while a parse holds it, from another thread or
   from a hook: `galley_session_destroy` calls `tryDeinit` first and returns

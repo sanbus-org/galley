@@ -150,12 +150,11 @@ fn grammarFromAst(args: *ProcedureArguments, start_address: Node.Pointer) !*Gram
 
     if (mutable_rules.items.len == 0) {
         reporterAt(context, start_address).report("EmptyGrammar: grammar contains no rules", .{});
-        _ = try args.reportSemanticError("EmptyGrammar: grammar contains no rules");
         return error.EmptyGrammar;
     }
     if (generator_common.findDuplicateRuleHeader(mutable_rules.items)) |duplicate| {
-        try reportDuplicateRuleHeader(
-            args,
+        reportDuplicateRuleHeader(
+            context,
             rule_addresses.items[duplicate.first],
             rule_addresses.items[duplicate.second],
             mutable_rules.items[duplicate.second].header,
@@ -178,34 +177,28 @@ fn sourcePositionOf(input: []const u8, offset: usize) struct { line: usize, colu
     return .{ .line = line, .column = bounded - line_start + 1 };
 }
 
-fn emitGrammarMessage(context: *data_structures.Context, message: []const u8) void {
-    if (context.runtimeConst().syntax_error_reporter) |reporter| {
-        reporter(message);
-    } else {
-        std.debug.print("{s}\n", .{message});
-    }
-}
-
-/// Routes grammar-model error messages to the parser's syntax error reporter,
-/// falling back to stderr, and appends the offending node's source position.
-/// Validation choke points that decode or check grammar text pass a reporter so
-/// every caller reports where the invalid text lives without auditing call
-/// sites individually.
+/// Records grammar-model errors as semantic diagnostics at the offending
+/// node's source position, so they stay readable from the session like every
+/// other parse error. Validation choke points that decode or check grammar
+/// text pass a reporter so every caller reports where the invalid text lives
+/// without auditing call sites individually. An allocation failure drops the
+/// diagnostic only; callers still return their error.
 const GrammarModelReporter = struct {
     context: *data_structures.Context,
     node_address: Node.Pointer,
 
     fn report(self: GrammarModelReporter, comptime format: []const u8, args: anytype) void {
-        const position = sourcePositionOf(
-            self.context.diagnosticInput(),
-            self.context.node_allocator.at(self.node_address).text_start,
-        );
-        const message = std.fmt.allocPrint(
-            self.context.runtime().arena_allocator,
-            format ++ " at line {d}, column {d}.",
-            args ++ .{ position.line, position.column },
-        ) catch return;
-        emitGrammarMessage(self.context, message);
+        const node = self.context.node_allocator.at(self.node_address);
+        const position = sourcePositionOf(self.context.diagnosticInput(), node.text_start);
+        const message = std.fmt.allocPrint(self.context.runtime().arena_allocator, format, args) catch return;
+        _ = self.context.recordSemanticDiagnostic(.{
+            .line = @intCast(position.line),
+            .column = @intCast(position.column),
+            .variable = if (node.variable < root.parser.variables.len) root.parser.variables[node.variable] else "*",
+            .message = message,
+            .text_start = node.text_start,
+            .text_length = node.text_length,
+        }) catch {};
     }
 };
 
@@ -214,32 +207,16 @@ fn reporterAt(context: *data_structures.Context, node_address: Node.Pointer) Gra
 }
 
 fn reportDuplicateRuleHeader(
-    args: *ProcedureArguments,
+    context: *data_structures.Context,
     first_address: Node.Pointer,
     second_address: Node.Pointer,
     header: []const u8,
-) !void {
-    const context = args.context;
-    const allocator = context.runtime().arena_allocator;
-    const input = context.diagnosticInput();
-    const first_position = sourcePositionOf(input, context.node_allocator.at(first_address).text_start);
-    const second_position = sourcePositionOf(input, context.node_allocator.at(second_address).text_start);
-    const message = std.fmt.allocPrint(
-        allocator,
-        "DuplicateRuleHeader: rule header \"{s}\" is defined more than once (first at line {d}, column {d}; duplicate at line {d}, column {d}).",
-        .{
-            header,
-            first_position.line,
-            first_position.column,
-            second_position.line,
-            second_position.column,
-        },
-    ) catch return error.OutOfMemory;
-    emitGrammarMessage(context, message);
-    // The parse still fails with error.DuplicateRuleHeader below (the
-    // generator needs a valid model to proceed), but the structured
-    // diagnostic stays readable through the session.
-    _ = try args.reportSemanticError(message);
+) void {
+    const first_position = sourcePositionOf(context.diagnosticInput(), context.node_allocator.at(first_address).text_start);
+    reporterAt(context, second_address).report(
+        "DuplicateRuleHeader: rule header \"{s}\" is defined more than once (first at line {d}, column {d})",
+        .{ header, first_position.line, first_position.column },
+    );
 }
 
 fn immutableGrammarFromMutableRules(allocator: std.mem.Allocator, mutable_rules: []MutableRule) !*Grammar {

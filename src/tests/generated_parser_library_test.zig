@@ -8,8 +8,6 @@ const config_label = test_options.config_label;
 const sample_paths = test_options.sample_paths;
 const sample_inputs = test_options.sample_inputs;
 
-fn ignoreDiagnostic(_: []const u8) void {}
-
 fn sampleSupportsSessionSafetyTests(sample_len: usize) bool {
     return sample_len <= 1024 * 1024;
 }
@@ -98,7 +96,7 @@ test "JSON parser rejects malformed UTF-8 and non-scalars" {
     for (invalid_inputs) |input| {
         try std.testing.expectError(
             parser.ParseError.SyntaxError,
-            parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{ .syntax_error_reporter = &ignoreDiagnostic }),
+            parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{}),
         );
     }
 }
@@ -316,7 +314,7 @@ test "generated_parser_api LR empty input is rejected" {
     for ([_][]const u8{ "", "\x00" }) |input| {
         try std.testing.expectError(
             parser.ParseError.SyntaxError,
-            parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{ .syntax_error_reporter = &ignoreDiagnostic }),
+            parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{}),
         );
     }
 }

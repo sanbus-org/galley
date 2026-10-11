@@ -197,7 +197,7 @@ const Embedded = struct {
             return galley_ok;
         }
         const rendered = (switch (kind) {
-            .plain => diagnosticMessageCore(&door, diagnostic, std.heap.c_allocator),
+            .plain => diagnosticMessageCore(diagnostic, std.heap.c_allocator),
             .ansi => diagnosticMessageAnsiCore(diagnostic, std.heap.c_allocator),
         }) catch return galley_error_out_of_memory;
         slot.* = rendered;
@@ -903,26 +903,13 @@ fn recordedDiagnosticCountCore(door: *const Door) i64 {
 }
 
 fn diagnosticMessageCore(
-    door: *const Door,
     diagnostic: root.ParseDiagnostic,
     allocator: std.mem.Allocator,
 ) error{OutOfMemory}![:0]u8 {
-    var transient: ?[]const u8 = null;
-    defer if (transient) |rendered| allocator.free(rendered);
-    // A syntax diagnostic prefers the message the grammar's error-message
-    // hooks rendered during the parse; every other kind, and a syntax
-    // diagnostic without one, uses the built-in renderer, so a message always
-    // belongs to its own diagnostic.
-    const hook_rendered = switch (diagnostic) {
-        .syntax => door.runtime_context.last_rendered_message,
-        .semantic, .indentation, .hook => null,
-    };
-    const source = hook_rendered orelse blk: {
-        const rendered = root.renderParseDiagnostic(allocator, diagnostic, .plain) catch return error.OutOfMemory;
-        transient = rendered;
-        break :blk rendered;
-    };
-    return allocator.dupeSentinel(u8, source, 0);
+    var output: std.Io.Writer.Allocating = .init(allocator);
+    errdefer output.deinit();
+    root.formatRecordedDiagnostic(&output.writer, diagnostic) catch return error.OutOfMemory;
+    return output.toOwnedSliceSentinel(0);
 }
 
 fn diagnosticMessageAnsiCore(
@@ -963,9 +950,7 @@ export fn galley_session_create() ?*GalleySession {
 /// equivalent to `galley_session_create`. Zero/negative option fields select
 /// the runtime defaults.
 export fn galley_session_create_ex(options: ?*const GalleyCOptions) ?*GalleySession {
-    var parse_options: root.ParseOptions = .{
-        .syntax_error_reporter = &ignoreDiagnosticMessage,
-    };
+    var parse_options: root.ParseOptions = .{};
     if (options) |o| {
         if (o.max_errors > 0) parse_options.max_errors = @intCast(o.max_errors);
         if (o.recovery_window > 0) parse_options.recovery_window = @intCast(o.recovery_window);
@@ -1169,8 +1154,6 @@ fn finishParse(embedded: *Embedded, lease: *const root.ParseLease) i64 {
     if (lease.failure) |failure| return statusForError(failure);
     return @intCast(result.parsed_bytes);
 }
-
-fn ignoreDiagnosticMessage(_: []const u8) void {}
 
 /// Parses one NUL-terminated input string. Returns the number of bytes
 /// parsed on success, or a negative status code.
@@ -1505,7 +1488,7 @@ export fn galley_hook_has_diagnostic(hook_door: ?*anyopaque) i32 {
     return hasDiagnosticCore(&door);
 }
 
-/// Writes the rendered diagnostic message (plain text, newline-terminated)
+/// Writes the rendered diagnostic message (plain text, no trailing newline)
 /// into `out`. The string is NUL-terminated and remains valid until the next
 /// parse or session destruction. Fails with `galley_error_no_diagnostic`
 /// when the previous parse succeeded. A cached message is served under the
@@ -1527,12 +1510,12 @@ export fn galley_hook_diagnostic_message(hook_door: ?*anyopaque, out: ?*[*:0]con
     const door = hookDoor(hook_door) orelse return galley_error_null_argument;
     if (out == null) return galley_error_null_argument;
     const diagnostic = door.runtime_context.lastDiagnostic() orelse return galley_error_no_diagnostic;
-    const z = diagnosticMessageCore(&door, diagnostic, door.runtime_context.arena_allocator) catch return galley_error_out_of_memory;
+    const z = diagnosticMessageCore(diagnostic, door.runtime_context.arena_allocator) catch return galley_error_out_of_memory;
     out.?.* = z.ptr;
     return galley_ok;
 }
 
-/// Writes a rendered message (plain text, newline-terminated) for the
+/// Writes a rendered message (plain text, no trailing newline) for the
 /// diagnostic recorded at `diag_index` into `out`. Unlike
 /// `galley_diagnostic_message`, which prefers the text the grammar's
 /// error-message hooks rendered during the parse, recorded messages always

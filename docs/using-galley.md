@@ -276,10 +276,9 @@ The same helper is what [`examples/zig`](https://github.com/sanbus-org/galley/tr
 [`tests/package-consumer/build.zig`](https://github.com/sanbus-org/galley/blob/main/tests/package-consumer/build.zig)
 call. Do not copy the module graph by hand.
 
-`examples/zig/demo.zig` pins `syntax_error_stack_depth` to 1 and a no-op
-`syntax_error_reporter` so its stdout/stderr match the C-ABI examples (those
-libraries are built ReleaseFast and do not print diagnostics during parse).
-Those are identity knobs, not required native usage.
+`examples/zig/demo.zig` pins `syntax_error_stack_depth` to 1 so its output
+matches the C-ABI examples (those libraries are built ReleaseFast). That is not
+required native usage.
 
 The generated parser type is selected by this build wiring, so parsing does not
 take a `.ll` or `.lr` argument:
@@ -409,9 +408,12 @@ if (session.parseBytes(input, "input")) |_| {
 }
 ```
 
-Fail-fast parsers populate `SessionDiagnosticsGuard.lastDiagnostic()` and report a
+A parse never prints. Fail-fast parsers populate `SessionDiagnosticsGuard.lastDiagnostic()` and report a
 syntax-error count of one. `lastRenderedMessage()` is the already-rendered text
-of that diagnostic (what the C ABI returns). A recovery-enabled parse that
+of that diagnostic (`SyntaxDiagnostic.rendered_message`, what the C ABI returns). Messages carry no trailing newline,
+and hook text is stored exactly as your hook returns it. To show every recorded error
+as users read it, call `parser.writeDiagnostics(writer, guard.recordedDiagnostics())`
+with a writer you choose; it ends each diagnostic with exactly one newline. A recovery-enabled parse that
 encounters errors still returns `ParseError.SyntaxError`; acquire
 `session.readLatest()` before allowing another reuse, then use
 `syntaxErrorCount()`, `lastDiagnostic()`, and `recordedDiagnostics()` on that

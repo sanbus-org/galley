@@ -8,11 +8,8 @@ const parser = @import("parser-under-test");
 
 const procedures = parser.procedures;
 
-fn ignoreDiagnostic(_: []const u8) void {}
-
 fn newSession() !parser.Session {
     return parser.Session.init(std.testing.io, std.testing.allocator, .{
-        .syntax_error_reporter = &ignoreDiagnostic,
         .max_errors = 10,
     });
 }

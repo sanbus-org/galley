@@ -16,7 +16,7 @@ fn fmt(args: root.SyntaxErrorMessageArgs, comptime body: []const u8) ![]const u8
     errdefer output.deinit();
     switch (args.style) {
         .plain => try output.writer.print(
-            "SyntaxError at {d}:{d}:\n" ++ body ++ "\nUnexpected token: \"{f}\"\n",
+            "SyntaxError at {d}:{d}:\n" ++ body ++ "\nUnexpected token: \"{f}\"",
             .{
                 diagnostic.line,
                 diagnostic.column,
@@ -24,7 +24,7 @@ fn fmt(args: root.SyntaxErrorMessageArgs, comptime body: []const u8) ![]const u8
             },
         ),
         .ansi => try output.writer.print(
-            "\x1b[35mSyntaxError at {d}:{d}:\x1b[0m\n" ++ body ++ "\n\x1b[37mUnexpected token: \x1b[31m\"{f}\"\x1b[0m\n",
+            "\x1b[35mSyntaxError at {d}:{d}:\x1b[0m\n" ++ body ++ "\n\x1b[37mUnexpected token: \x1b[31m\"{f}\"\x1b[0m",
             .{
                 diagnostic.line,
                 diagnostic.column,

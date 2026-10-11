@@ -1,8 +1,6 @@
 const std = @import("std");
 const parser = @import("parser-under-test");
 
-fn ignoreDiagnostic(_: []const u8) void {}
-
 const ExpectedTarget = union(enum) {
     lhs: []const u8,
     production: struct { variable: []const u8, rhs_index: usize },
@@ -23,7 +21,7 @@ fn expectRecovery(
 ) !void {
     parser.procedures.reset();
     parser.error_messages.reset();
-    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .syntax_error_reporter = &ignoreDiagnostic });
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
     defer session.deinit();
 
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes(input, null));
@@ -137,7 +135,7 @@ test "explicit recovery falls back to an enclosing committed occurrence" {
 }
 
 test "explicit mode has no automatic fallback outside active scopes" {
-    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .syntax_error_reporter = &ignoreDiagnostic });
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
     defer session.deinit();
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes("faq;", null));
     var read_guard = try session.readLatest();
@@ -151,7 +149,7 @@ test "explicit mode has no automatic fallback outside active scopes" {
 }
 
 test "explicit recovery does not invent a synchronization terminal at EOF" {
-    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .syntax_error_reporter = &ignoreDiagnostic });
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
     defer session.deinit();
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes("oaq", null));
     var read_guard = try session.readLatest();
@@ -167,7 +165,7 @@ test "explicit recovery does not invent a synchronization terminal at EOF" {
 test "explicit recovery keeps the damaged AST value as a flagged node and completes its parent" {
     parser.procedures.reset();
     const input: [:0]const u8 = "oaq;z";
-    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .syntax_error_reporter = &ignoreDiagnostic });
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
     defer session.deinit();
     var context = session._makeContext(.{ .bytes = .{ .input = input[0 .. input.len + 1] } }, null);
     try std.testing.expectError(parser.ParseError.SyntaxError, session._parseContext(&context));
@@ -192,7 +190,7 @@ test "explicit recovery keeps the damaged AST value as a flagged node and comple
 
 test "explicit LR recovery does not activate speculative shared-prefix production scopes" {
     if (parser.parser.parser_type != .lr) return;
-    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .syntax_error_reporter = &ignoreDiagnostic });
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
     defer session.deinit();
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes("saq;", null));
     var read_guard = try session.readLatest();

@@ -2,8 +2,6 @@ const std = @import("std");
 const parser = @import("parser-under-test");
 const comparison_options = @import("comparison-options");
 
-fn ignoreDiagnostic(_: []const u8) void {}
-
 const malformed_grammar: [:0]const u8 =
     \\Start
     \\| ?
@@ -37,7 +35,7 @@ const Summary = struct {
 };
 
 fn run(io: std.Io, allocator: std.mem.Allocator) !Summary {
-    var session = try parser.Session.init(io, allocator, .{ .syntax_error_reporter = &ignoreDiagnostic });
+    var session = try parser.Session.init(io, allocator, .{});
     defer session.deinit();
 
     var context = session._makeContext(.{

@@ -12,11 +12,7 @@ const unexpected_token_prefix = test_options.unexpected_token_prefix;
 const expected_token = test_options.expected_token;
 const error_recovery_enabled = test_options.error_recovery_enabled;
 
-fn ignoreDiagnostic(_: []const u8) void {}
-
-const expected_error_options: parser.ParseOptions = .{
-    .syntax_error_reporter = &ignoreDiagnostic,
-};
+const expected_error_options: parser.ParseOptions = .{};
 
 fn allocSentinel(input: []const u8) ![:0]u8 {
     const sentinel = try std.testing.allocator.allocSentinel(u8, input.len, 0);
@@ -101,7 +97,7 @@ test "generated_parser_error parse sentinel bytes" {
 }
 
 test "generated_parser_error preserves a complete Unicode unexpected token" {
-    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .max_errors = 1, .syntax_error_reporter = &ignoreDiagnostic });
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .max_errors = 1 });
     defer session.deinit();
 
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes("😀", null));
@@ -120,7 +116,7 @@ test "generated_parser_error preserves a complete Unicode unexpected token" {
 }
 
 test "generated_parser_error reusable byte session recovers" {
-    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .max_errors = 1, .syntax_error_reporter = &ignoreDiagnostic });
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .max_errors = 1 });
     defer session.deinit();
 
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes(malformed_input, null));
@@ -130,7 +126,7 @@ test "generated_parser_error reusable byte session recovers" {
 }
 
 test "generated_parser_error failed reuse invalidates prior results" {
-    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .max_errors = 1, .syntax_error_reporter = &ignoreDiagnostic });
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .max_errors = 1 });
     defer session.deinit();
 
     const successful = try session.parseBytes(valid_input, null);
@@ -148,7 +144,7 @@ test "generated_parser_error reusable sentinel session recovers" {
     const valid = try allocSentinel(valid_input);
     defer std.testing.allocator.free(valid);
 
-    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .max_errors = 1, .syntax_error_reporter = &ignoreDiagnostic });
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .max_errors = 1 });
     defer session.deinit();
 
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseSentinelBytes(malformed, null));
@@ -169,7 +165,7 @@ test "generated_parser_error reusable file session recovers" {
     var valid_file = try tmp.dir.openFile(std.testing.io, "valid", .{ .mode = .read_only });
     defer valid_file.close(std.testing.io);
 
-    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .max_errors = 1, .syntax_error_reporter = &ignoreDiagnostic });
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .max_errors = 1 });
     defer session.deinit();
 
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseFile(malformed_file, "malformed"));
@@ -179,7 +175,7 @@ test "generated_parser_error reusable file session recovers" {
 }
 
 test "generated_parser_error reports multiple syntax errors" {
-    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .syntax_error_reporter = &ignoreDiagnostic });
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
     defer session.deinit();
 
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes(multiple_errors_input, null));
@@ -191,7 +187,7 @@ test "generated_parser_error reports multiple syntax errors" {
 }
 
 test "generated_parser_error max errors restores fail fast" {
-    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .max_errors = 1, .syntax_error_reporter = &ignoreDiagnostic });
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .max_errors = 1 });
     defer session.deinit();
 
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes(multiple_errors_input, null));
@@ -201,7 +197,7 @@ test "generated_parser_error max errors restores fail fast" {
 test "generated_parser_error recovery window limits resynchronization" {
     if (!error_recovery_enabled) return error.SkipZigTest;
 
-    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .recovery_window = 1, .syntax_error_reporter = &ignoreDiagnostic });
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .recovery_window = 1 });
     defer session.deinit();
 
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes(multiple_errors_input, null));

@@ -34,21 +34,21 @@ pub fn main(init: std.process.Init) !void {
     defer session.deinit();
 
     if (comptime galley.ast_memory_benchmark_enabled) {
-        const result = try session.parseSentinelBytes(sentinel_input, input_path);
+        const result = try parseOrExit(init.io, &session, sentinel_input, input_path);
         var read_guard = try session.read(result);
         defer read_guard.deinit();
         const stats = try read_guard.astAllocator().memoryBenchmarkStats(init.gpa, result.ast_root);
         try printMemoryStats(result.parsed_bytes, stats);
     } else {
         for (0..options.warmup_iterations) |_| {
-            _ = try session.parseSentinelBytes(sentinel_input, input_path);
+            _ = try parseOrExit(init.io, &session, sentinel_input, input_path);
         }
 
         var total_parsed_bytes: usize = 0;
         const start = std.Io.Clock.awake.now(init.io);
         var last_result: ?galley.ParseResult = null;
         for (0..options.iterations) |_| {
-            const result = try session.parseSentinelBytes(sentinel_input, input_path);
+            const result = try parseOrExit(init.io, &session, sentinel_input, input_path);
             total_parsed_bytes += result.parsed_bytes;
             last_result = result;
         }
@@ -67,6 +67,23 @@ pub fn main(init: std.process.Init) !void {
         const nodes_allocated = if (comptime galley.parser.is_ast_enabled) read_guard.astAllocator().counter else 0;
         std.debug.print("Nodes allocated:    {s}\n", .{try string_utilities.formatWithThousands(nodes_allocated, &buffer)});
     }
+}
+
+/// Parses once. A failed parse prints the diagnostics it recorded to stderr
+/// and exits non-zero when the input itself was rejected.
+fn parseOrExit(io: std.Io, session: *galley.Session, input: [:0]const u8, input_path: []const u8) !galley.ParseResult {
+    return session.parseSentinelBytes(input, input_path) catch |err| {
+        var guard = session.readLatest() catch return err;
+        defer guard.deinit();
+        var stderr_buffer: [4096]u8 = undefined;
+        var stderr_writer = std.Io.File.stderr().writer(io, &stderr_buffer);
+        galley.writeDiagnostics(&stderr_writer.interface, guard.recordedDiagnostics()) catch {};
+        stderr_writer.interface.flush() catch {};
+        switch (err) {
+            error.SyntaxError, error.SemanticError => std.process.exit(1),
+            else => return err,
+        }
+    };
 }
 
 fn printMemoryStats(parsed_bytes: usize, stats: galley.data_structures.ASTMemoryBenchmarkStats) !void {

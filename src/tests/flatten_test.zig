@@ -14,8 +14,6 @@ const is_explicit = parser.parser.is_error_recovery_enabled and parser.parser.er
 
 const depth = 100_000;
 
-fn ignoreDiagnostic(_: []const u8) void {}
-
 fn resetProcedures() void {
     if (comptime has_procedures) parser.procedures.reset();
 }
@@ -110,7 +108,7 @@ test "a variable's hooks run only on its nodes that exist" {
 test "an error inside a flattened list recovers at the node around it" {
     if (comptime !is_explicit) return error.SkipZigTest;
     const input = "[a,,b];=1";
-    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .syntax_error_reporter = &ignoreDiagnostic });
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
     defer session.deinit();
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes(input, null));
     {

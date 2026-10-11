@@ -6,8 +6,6 @@ const parser = @import("parser-under-test");
 // The grammar also serves as a small indentation grammar for the lexer's
 // read-ahead of the rest of a line.
 
-fn ignoreDiagnostic(_: []const u8) void {}
-
 fn parseAll(input: []const u8) !void {
     var parsed = try parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{});
     defer parsed.deinit();
@@ -44,11 +42,11 @@ test "an indent jump that fills the position buffers leaves no room to read ahea
     // 128-entry line-offset buffer before the rest of the line is read.
     const spaces: [128]u8 = @splat(' ');
     const input = "a:\n b:\n" ++ spaces ++ "cd";
-    try std.testing.expectError(error.SyntaxError, parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{ .syntax_error_reporter = &ignoreDiagnostic }));
+    try std.testing.expectError(error.SyntaxError, parser.parseBytes(std.testing.io, std.testing.allocator, input, null, .{}));
 }
 
 fn expectUnexpectedToken(input: []const u8, expected: []const u8) !void {
-    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .max_errors = 1, .syntax_error_reporter = &ignoreDiagnostic });
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .max_errors = 1 });
     defer session.deinit();
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes(input, null));
     var read_guard = try session.readLatest();
@@ -74,7 +72,7 @@ test "a recovered parse does not count bytes the lexer only read ahead" {
     // The lexer reads `%abc` at once; LL stops at the `%` having consumed
     // nothing, while LR recovers to the end of the input.
     const input = "%abc\nde";
-    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .max_errors = 10, .syntax_error_reporter = &ignoreDiagnostic });
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{ .max_errors = 10 });
     defer session.deinit();
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes(input, null));
     var guard = try session.readCurrent();
