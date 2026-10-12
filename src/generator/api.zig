@@ -637,6 +637,36 @@ test "generator supports procedures without AST construction" {
     try std.testing.expect(std.mem.indexOf(u8, output, "var node = data_structures.Node") != null);
 }
 
+test "LL tail levels reserve child slots only for symbols that can yield a node" {
+    // `_Mark` yields no node, so a level holds the comma, `Item` and the
+    // recursive tail: three slots, not one per symbol of the rule.
+    const source =
+        \\Start
+        \\| ItemsTail
+        \\
+        \\ItemsTail
+        \\| "," _Mark Item ItemsTail
+        \\|
+        \\
+        \\Item
+        \\| digit
+        \\
+        \\_Mark
+        \\| "x"
+        \\
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const output = try generateParserAlloc(arena.allocator(), source, .ll, .{
+        .with_ast = false,
+        .with_procedures = true,
+    });
+    try std.testing.expect(std.mem.indexOf(u8, output, "children: [3]?data_structures.Node }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "children: [4]?data_structures.Node }") == null);
+}
+
 test "generated parser checks reduction hooks only when generation requires them" {
     const source =
         \\Start

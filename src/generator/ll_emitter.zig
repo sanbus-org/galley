@@ -1026,11 +1026,13 @@ const Generator = struct {
     }
 
     /// Number of child slots `rule` occupies in a caller's fixed array once
-    /// transparent helpers expand inline. Plain symbols occupy one slot; a
-    /// transparent helper occupies its widest alternative (each prong fills
-    /// a static prefix of those slots, so siblings after it start past the
-    /// maximum). Only matters without AST construction, where children live
-    /// in caller-owned stack arrays.
+    /// transparent helpers expand inline. A plain symbol occupies one slot
+    /// when it can yield a node and none otherwise (a `_` variable, a
+    /// terminal without `ast_for_terminals` is never stored); a transparent
+    /// helper occupies its widest alternative (each prong fills a static
+    /// prefix of those slots, so siblings after it start past the maximum).
+    /// Only matters without AST construction, where children live in
+    /// caller-owned arrays.
     fn expandedSlotCount(self: *Generator, rule: Rule) usize {
         var total: usize = 0;
         for (rule.rhs.items) |symbol_index| total += self.expandedSymbolSlots(symbol_index);
@@ -1047,7 +1049,7 @@ const Generator = struct {
             }
             return widest;
         }
-        return 1;
+        return if (self.symbolReturnsNode(symbol_index, false)) 1 else 0;
     }
 
     fn expandedChildSlot(self: *Generator, rule: Rule, position: usize) usize {
@@ -1151,8 +1153,9 @@ const Generator = struct {
                 try writer.writeByte(')');
             }
             try writer.writeAll(";\n    var frame_index = frames.items.len;\n    while (frame_index > 0) {\n        frame_index -= 1;\n        const frame = frames.items[frame_index];\n        if (reduced_node) |value| {\n");
-            try writer.print("            frame.children[{d}] = value;\n", .{self_index});
-            try writer.print("            frame.node.appendTemporaryChild(&frame.children[{d}].?);\n", .{self_index});
+            const self_slot = self.expandedChildSlot(rule, self_index);
+            try writer.print("            frame.children[{d}] = value;\n", .{self_slot});
+            try writer.print("            frame.node.appendTemporaryChild(&frame.children[{d}].?);\n", .{self_slot});
             try writer.writeAll("        }\n");
             // Structural: whether children are called via their suppressed
             // variants follows the enclosing variant's suppression and the
@@ -1160,7 +1163,7 @@ const Generator = struct {
             // (combo-driven node building is decided inside each child line).
             const skip_ast_for_children = skip_ast_construction or !self.symbols.items[variable].ast_enabled;
             for (rule.rhs.items[self_index + 1 ..], self_index + 1..) |symbol_index, child_index| {
-                try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, "frame.node", "frame.children", "        ", skip_ast_for_children, child_index);
+                try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, "frame.node", "frame.children", "        ", skip_ast_for_children, self.expandedChildSlot(rule, child_index));
             }
             try writer.writeAll("        frame.node.text_length = context.currentTokenSourceOffset() - frame.node.text_start;\n");
             try emitter_common.emitDebugReduction(writer, self.symbols.items, rule, "        ");
@@ -1232,7 +1235,7 @@ const Generator = struct {
             try writer.writeByte('\n');
             const skip_ast_for_children = skip_ast_construction or !self.symbols.items[variable].ast_enabled;
             for (rule.rhs.items[self_index + 1 ..], self_index + 1..) |symbol_index, child_index| {
-                try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, "node", "repeating_node_address", "        ", skip_ast_for_children, child_index);
+                try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, "node", "repeating_node_address", "        ", skip_ast_for_children, self.expandedChildSlot(rule, child_index));
             }
             try writer.writeByte('\n');
             try emitter_common.emitDebugReduction(writer, self.symbols.items, rule, "        ");
@@ -1295,7 +1298,7 @@ const Generator = struct {
                 try writer.writeAll("    for (0..counter) |_| {\n");
                 const skip_ast_for_children = skip_ast_construction or !self.symbols.items[variable].ast_enabled;
                 for (rule.rhs.items[self_index + 1 ..], self_index + 1..) |symbol_index, child_index| {
-                    try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, null, null, "        ", skip_ast_for_children, child_index);
+                    try self.emitChildParseLine(writer, symbol_index, variable, rule, child_index, null, null, "        ", skip_ast_for_children, self.expandedChildSlot(rule, child_index));
                 }
                 try writer.writeAll("    }\n");
             }
@@ -1335,7 +1338,7 @@ const Generator = struct {
             , .{ indent, indent, indent, self.variableIndex(params.variable), indent, indent, indent });
             const skip_ast_for_children = params.skip_ast_construction or !self.symbols.items[params.variable].ast_enabled;
             for (params.rule.rhs.items[0..params.self_index], 0..) |symbol_index, child_index| {
-                try self.emitChildParseLine(writer, symbol_index, params.variable, params.rule, child_index, "frame.node", "frame.children", indent, skip_ast_for_children, child_index);
+                try self.emitChildParseLine(writer, symbol_index, params.variable, params.rule, child_index, "frame.node", "frame.children", indent, skip_ast_for_children, self.expandedChildSlot(params.rule, child_index));
             }
         } else {
             if (params.returns_node) {
@@ -1352,7 +1355,7 @@ const Generator = struct {
             }
             const skip_ast_for_children = params.skip_ast_construction or !self.symbols.items[params.variable].ast_enabled;
             for (params.rule.rhs.items[0..params.self_index], 0..) |symbol_index, child_index| {
-                try self.emitChildParseLine(writer, symbol_index, params.variable, params.rule, child_index, if (params.returns_node) "node" else null, if (params.returns_node) "repeating_node_address" else null, indent, skip_ast_for_children, child_index);
+                try self.emitChildParseLine(writer, symbol_index, params.variable, params.rule, child_index, if (params.returns_node) "node" else null, if (params.returns_node) "repeating_node_address" else null, indent, skip_ast_for_children, self.expandedChildSlot(params.rule, child_index));
             }
             if (!params.returns_node and params.rule.rhs.items.len > params.self_index + 1) {
                 try writer.print("{s}counter += 1;\n", .{indent});
@@ -1695,7 +1698,7 @@ const Generator = struct {
                         null,
                     indent,
                     skip_ast_construction,
-                    child_index,
+                    self.expandedChildSlot(rule, child_index),
                 );
                 // The root is taken as soon as its parse returns, ahead of
                 // the symbols after it (the end of the input): a recovered
