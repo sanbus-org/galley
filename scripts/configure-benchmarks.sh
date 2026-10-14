@@ -8,15 +8,15 @@
 # <grammar> is a directory under languages/ (json or python). The script
 # rewrites languages/<grammar>/config.zig in place by running the Galley
 # CLI with the given flags (building the CLI first when it is missing),
-# then repoints every compiled example benchmark's ll.grm symlink at
-# languages/<grammar>/ll.grm and rewrites that benchmark's config.zig the
-# same way. Each example benchmark grammar also gets a host_procedures.zig
-# so its parser binds hooks to the session's host dispatch (disabled by
-# default) instead of extern entry points nobody implements — the same
-# shim the python, js, and java builds pass for languages/<grammar>. The
-# python, js, and java benchmark builds compile languages/<grammar>
-# directly; the compiled examples keep their own benchmark grammar
-# directories.
+# then repoints the compiled example benchmarks' ll.grm symlinks at
+# languages/<grammar>/ll.grm and rewrites each of those benchmarks' configs
+# the same way. Each example benchmark grammar also gets a
+# host_procedures.zig so its parser binds hooks to the session's host
+# dispatch (disabled by default) instead of extern entry points nobody
+# implements — the same shim the python, js, and java builds pass for
+# languages/<grammar>. The python, js, java, and zig benchmark builds
+# compile languages/<grammar> directly; c, cpp, rust, and go keep their
+# own benchmark grammar directories.
 #
 # Every generation against languages/<grammar> pins --parser-type ll:
 # one library embeds one parser, and languages/json also ships lr.grm.
@@ -32,16 +32,15 @@ if [[ ! -f "${repo_root}/languages/${grammar}/ll.grm" ]]; then
 	exit 1
 fi
 
-# Compiled examples keep their own benchmark grammar directories; the
-# binding examples compile languages/<grammar> directly. Every benchmark
-# grammar directory lives exactly two levels below the repo root, so one
-# relative target fits all of them.
+# The compiled examples below keep their own benchmark grammar
+# directories; python, js, java, and zig compile languages/<grammar>
+# directly. Every benchmark grammar directory lives exactly two levels
+# below the repo root, so one relative target fits all of them.
 dirs=(
 	examples/c/benchmark
 	examples/cpp/benchmark
 	examples/rust/benchmark
 	examples/go/benchmark
-	examples/zig/benchmark
 )
 
 cli="${repo_root}/zig-out/bin/galley"

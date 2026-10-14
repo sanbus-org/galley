@@ -4,6 +4,9 @@ const common = @import("build/common.zig");
 pub const ParserType = common.ParserType;
 pub const AddParserModuleOptions = common.AddParserModuleOptions;
 pub const addParserModule = common.addParserModule;
+pub const ConfigOverrides = common.ConfigOverrides;
+pub const readConfigOverrides = common.readConfigOverrides;
+pub const overriddenConfigRoot = common.overriddenConfigRoot;
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});

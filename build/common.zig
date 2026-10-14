@@ -831,7 +831,7 @@ pub fn applyConfigOverrides(
 /// checked-in file with only the named values changed. Splicing fails
 /// loudly with error.MissingConstant when a language's config lacks an
 /// overridden constant.
-fn overriddenConfigRoot(
+pub fn overriddenConfigRoot(
     b: *std.Build,
     entry_path: []const u8,
     config_path: []const u8,

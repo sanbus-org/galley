@@ -502,9 +502,12 @@ jobs:
           }
           same ll.grm examples/{c,cpp,rust,zig}/ll.grm examples/{python,js,java}/kv/ll.grm examples/go/demo/ll.grm
           same config.zig examples/{c,cpp,rust,zig}/config.zig examples/{python,js,java}/kv/config.zig examples/go/demo/config.zig
-          same json/ll.grm examples/{c,cpp,rust,zig}/benchmark/ll.grm examples/{python,js,java}/json/ll.grm
-          same json/config.zig examples/{c,cpp,rust,zig}/benchmark/config.zig examples/{python,js,java}/json/config.zig
-          for f in examples/{c,cpp,rust,zig}/benchmark/ll.grm examples/{python,js,java}/json/ll.grm; do
+          # zig dropped out here with examples/zig/benchmark/: since
+          # 6345d3ff it compiles languages/<grammar> directly, so it has
+          # no fixture copy to compare — a stronger guarantee.
+          same json/ll.grm examples/{c,cpp,rust}/benchmark/ll.grm examples/{python,js,java}/json/ll.grm
+          same json/config.zig examples/{c,cpp,rust}/benchmark/config.zig examples/{python,js,java}/json/config.zig
+          for f in examples/{c,cpp,rust}/benchmark/ll.grm examples/{python,js,java}/json/ll.grm; do
             test -L "$f" || {
               echo "::error::$f must be a symlink to languages/json/ll.grm"
               exit 1
@@ -779,12 +782,9 @@ jobs:
           - name: json-ast-procedures
             grammar: json
             flags: --with-ast --with-procedures --no-error-recovery --no-indentation-syntax --no-newline-after-block-end
-          - name: python-indentation
-            grammar: python
-            flags: --no-ast --no-procedures --no-error-recovery --indentation-syntax --newline-after-block-end
-          - name: python-ast-indentation
-            grammar: python
-            flags: --with-ast --no-procedures --no-error-recovery --indentation-syntax --newline-after-block-end
+          - name: indentation
+            grammar: indentation
+            flags: --no-ast --no-procedures --no-error-recovery --indentation-syntax --no-newline-after-block-end
     runs-on: ${{ contains(github.server_url, 'github') && 'ubuntu-latest' || 'codeberg-medium' }}
     steps:
       - name: Checkout repository
@@ -794,12 +794,14 @@ jobs:
         if: ${{ matrix.grammar == 'json' }}
         run: bash scripts/fetch-large-samples.sh json
 
-      - name: Build Python benchmark sample
-        if: ${{ matrix.grammar == 'python' }}
+      - name: Build indentation benchmark sample
+        if: ${{ matrix.grammar == 'indentation' }}
         run: |
-          sample=/tmp/python-benchmark-sample.py
+          # 100 KB of grammar source is too small to time reliably; repeat
+          # it to the json sample's scale (~50 MB).
+          sample=/tmp/indentation-benchmark-sample
           : > "$sample"
-          for _ in $(seq 1 20000); do cat languages/python/samples/code-02.py >> "$sample"; done
+          for _ in $(seq 1 500); do cat languages/indentation/samples/code-02 >> "$sample"; done
           wc -c "$sample"
 
       - name: Install Zig
@@ -880,17 +882,21 @@ jobs:
           npm --prefix ../../bindings/js/universal install
           npx galley-js-wasm "../../languages/${{ matrix.grammar }}" --parser-type ll
           cd ../zig
-          zig build -Doptimize=ReleaseFast
+          zig build -Doptimize=ReleaseFast -Dgrammar="${{ matrix.grammar }}"
           cd ../..
 
       - name: Compare interleaved throughput to examples/zig
         run: |
-          if [ "${{ matrix.grammar }}" = python ]; then
-            sample=/tmp/python-benchmark-sample.py
+          if [ "${{ matrix.grammar }}" = indentation ]; then
+            sample=/tmp/indentation-benchmark-sample
           else
             sample=languages/json/samples/code-02.json
           fi
-          python3 scripts/compare_example_benchmarks.py --sample "$sample" --parser-dir "languages/${{ matrix.grammar }}" --label "${{ matrix.name }}"
+          args=()
+          if [ -n "${{ matrix.iterations }}" ]; then
+            args+=(--iterations "${{ matrix.iterations }}")
+          fi
+          python3 scripts/compare_example_benchmarks.py --sample "$sample" --parser-dir "languages/${{ matrix.grammar }}" --label "${{ matrix.name }}" "${args[@]}"
 
   javascript:
     name: javascript

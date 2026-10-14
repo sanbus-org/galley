@@ -16,6 +16,5 @@
         "procedures.zig",
         "config.zig",
         "ll.grm",
-        "benchmark",
     },
 }
