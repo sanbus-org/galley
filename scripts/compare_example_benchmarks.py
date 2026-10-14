@@ -19,8 +19,8 @@ mirror it for pairing; every other runner counts as a binding and runs
 fewer total rounds, since bindings need only the best-of bar, not the
 paired tests' depth.
 The step-summary table's status column marks rows below their bar
-(bindings that have not caught up with zig) and misses inside the
-informational band.
+(bindings that have not caught up with zig) red, misses inside the
+informational band yellow.
 When --zig-parent-binary or --zig-ref-binary names an examples/zig
 build from the parent commit or from the performance-reference tag, that
 binary runs interleaved in every round, pairing each scored round's zig
@@ -570,7 +570,7 @@ def print_report(
                 elif name in report.references:
                     status = format_reference_status(report.references[name])
                 elif name in report.failures:
-                    status = "🟡 **below bar**"
+                    status = "🔴 **below bar**"
                 elif name in report.info_band_misses:
                     status = "🟡 outside band"
                 else:
@@ -658,7 +658,7 @@ def self_test_report_table(report: Report) -> None:
     assert "| zig-ref | 195 | 190 | 97.5% | 102.6% | 🟢 p=0.75/0.75 |" in table
     assert "| c | 190 | 188 | 95.0% | 100.0% | 🟢 |" in table
     assert "| rust | 174 | 172 | 87.0% | 91.6% | 🟡 outside band |" in table
-    assert "| python | 30 | 25 | 15.0% | 15.8% | 🟡 **below bar** |" in table
+    assert "| python | 30 | 25 | 15.0% | 15.8% | 🔴 **below bar** |" in table
     assert "zig's second-best scored round (180 bytes/s)" in table
     assert "### 🔴 Example benchmark throughput vs examples/zig (self-test)" in table
     assert "zig-parent (this build's HEAD^ (the PR base on pull_request))" in table

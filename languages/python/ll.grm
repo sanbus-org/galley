@@ -1,6 +1,13 @@
 # Python 3.14 LL grammar: files, statements, suites, expressions.
 # Requires indentation_syntax=true, newline_after_block_end=true.
 #
+# WHEN YOU CHANGE THIS GRAMMAR, CHANGE samples/code-01.py AND
+# samples/code-02.py IN THE SAME COMMIT. A construct, fix or removed
+# limitation that no sample shows is untested and invisible to the next
+# reader; the samples are also what the benchmarks parse. See
+# languages/README.md. docs/try-it/lang/python/ll.grm mirrors this file
+# apart from its @count hooks, so update it too.
+#
 # Covers: imports (dotted, as-lists, from-lists, relative dots),
 # type aliases with type params, match/case with as-patterns and guards,
 # def (annotated/default/star params, returns), async def, decorators,
@@ -11,16 +18,23 @@
 # assert/raise/del with tails, global/nonlocal, tuple/star/annotated/
 # chained/augmented/attribute/subscript assignment, kwargs/stars in calls.
 #
-# Accepted limitations (Black-style input assumed):
+# Spacing: every symbol that can end an operand takes the spaces after it,
+# so no terminal starts with a space and any number of spaces may separate
+# tokens. Inside brackets, line breaks may follow an opener or a comma and
+# precede a closer.
+#
+# Keywords: a word that is not followed by a delimiter of its own (`or`,
+# `in`, `if`, `else`, `for`, `as`, `import`, ...) is annotated with
+# @-letter@-digit@-"_", so it does not match the start of a longer name:
+# `a orb` is an error and `order` is a name. Give every use of such a word
+# the same annotation.
+#
+# Accepted limitations:
 # - Blank lines anywhere (including unindented blanks inside blocks)
 #   are skipped by the indentation lexer; this needs a galley runtime
 #   with blank-line skipping (present in the current working tree).
 #   Blank lines between top-level statements were always fine.
-# - Spaces only for indentation and single spaces around infix and word
-#   operators (`x  +  y` with doubled spaces fails; `x+1` works).
-# - No trailing space before closers; no space before `,`/`:`.
-# - Full-line `#` comments work (top level and indented); trailing
-#   `x = 1 # comment` does not. No explicit `\` line continuation;
+# - No explicit `\` line continuation;
 #   no `;` statement separators; no one-line suites
 #   (`if x: pass` needs a block).
 # - Soft keywords match/case/type act as hard keywords except for
@@ -47,9 +61,8 @@
 #   lists take parens but no trailing commas; relative imports allow
 #   up to `...`; `with (a as b):` needs the parens dropped.
 # - Adjacent string literal concatenation (`"a" "b"`, including across
-#   lines) is not folded: any blank-separated optional continuation
-#   collides with downstream blanks in the LL(1) table. Write one
-#   string per expression or use explicit `+`.
+#   lines) is not supported. Write one string per expression or use
+#   explicit `+`.
 # - After* fallthroughs: a keyword-prefixed name continues as a full
 #   expression statement (`input(x)`, `notx == 1`).
 # Tab is "\u{9}".
@@ -177,23 +190,21 @@ _BlankLines
 
 _TrailComment
 | "#"@>^"\n"
-| " #"@>^"\n"
-| "  #"@>^"\n"
 |
 
 Block@flattenLists
-| _TrailComment block_start Statements block_end
+| _OptBlank _TrailComment block_start Statements block_end
 
 Comment
 | "#"@>^"\n"
 
 If
 | "if " _OptBlank Expression ":" Block
-| "if(" _OptBlank Expression ")" ":" Block
+| "if(" _OptBlank Expression ")" _OptBlank ":" Block
 
 Elif
 | "elif " _OptBlank Expression ":" Block
-| "elif(" _OptBlank Expression ")" ":" Block
+| "elif(" _OptBlank Expression ")" _OptBlank ":" Block
 
 Else
 | "else:" Block
@@ -201,15 +212,15 @@ Else
 
 While
 | "while " _OptBlank Expression ":" Block
-| "while(" _OptBlank Expression ")" ":" Block
+| "while(" _OptBlank Expression ")" _OptBlank ":" Block
 
 For@flattenLists
 | "for " _OptBlank ForTargets
 | "async for " _OptBlank ForTargets
 
 ForTargets
-| Name "," _OptBlank ForTargets
-| Name " in" _OptBlank Expression ":" Block
+| Name _OptBlank "," _OptBlank ForTargets
+| Name _OptBlank "in"@-letter@-digit@-"_" _OptBlank Expression ":" Block
 
 With@flattenLists
 | "with " _OptBlank WithItems
@@ -222,7 +233,7 @@ WithItems
 | Expression AsName "," _OptBlank WithItems
 
 AsName
-| " as" _OptBlank Name
+| "as"@-letter@-digit@-"_" _OptBlank Name _OptBlank
 
 Try
 | "try:" Block
@@ -247,7 +258,7 @@ Return@flattenLists@identifierStatement
 | "return" space _OptBlank Expression "," _OptBlank ExpressionList
 | "return" space _OptBlank Starred
 | "return" space _OptBlank Starred "," _OptBlank ExpressionList
-| "return" Parenthesized
+| "return" Parenthesized _OptBlank
 | "return" KeywordStatement
 
 Raise@flattenLists@identifierStatement
@@ -255,11 +266,11 @@ Raise@flattenLists@identifierStatement
 | "raise" space _OptBlank
 | "raise" space _OptBlank Expression
 | "raise" space _OptBlank Expression RaiseFrom
-| "raise" Parenthesized
+| "raise" Parenthesized _OptBlank
 | "raise" KeywordStatement
 
 RaiseFrom
-| " from" _OptBlank Expression
+| "from"@-letter@-digit@-"_" _OptBlank Expression
 
 Assert
 | "assert " _OptBlank Expression
@@ -269,10 +280,10 @@ Delete@flattenLists
 | "del " _OptBlank ExpressionList
 
 Global
-| "global " _OptBlank Name
+| "global " _OptBlank Name _OptBlank
 
 Nonlocal
-| "nonlocal " _OptBlank Name
+| "nonlocal " _OptBlank Name _OptBlank
 
 Import@flattenLists
 | "import " _OptBlank ImportNames
@@ -284,79 +295,77 @@ ImportNames
 | DottedName AsName "," _OptBlank ImportNames
 
 DottedName
-| _IdStart _IdTail _DottedRest
+| _IdStart _IdTail _OptBlank _DottedRest
 
 _DottedRest
-| "." _IdStart _IdTail _DottedRest
+| "." _OptBlank _IdStart _IdTail _OptBlank _DottedRest
 |
 
 ImportFrom@flattenLists
-| "from " _OptBlank ModuleName " import" _OptBlank "*"
-| "from " _OptBlank ModuleName " import" _OptBlank FromNames
-| "from " _OptBlank ModuleName " import" _OptBlank "(" _InsideBlank ParenthesizedFromNames
+| "from " _OptBlank ModuleName "import"@-letter@-digit@-"_" _OptBlank "*" _OptBlank
+| "from " _OptBlank ModuleName "import"@-letter@-digit@-"_" _OptBlank FromNames
+| "from " _OptBlank ModuleName "import"@-letter@-digit@-"_" _OptBlank "(" _InsideBlank ParenthesizedFromNames
 
 ModuleName
-| _IdStart _IdTail _DottedRest
-| "." _RelativeModule
+| _IdStart _IdTail _OptBlank _DottedRest
+| "." _OptBlank _RelativeModule
 
 _RelativeModule
-| "." _RelativeModule
-| _IdStart _IdTail _DottedRest
+| "." _OptBlank _RelativeModule
+| _IdStart _IdTail _OptBlank _DottedRest
 |
 
 FromNames
-| Name
-| Name "," _OptBlank FromNames
-| Name AsName
-| Name AsName "," _OptBlank FromNames
+| Name _OptBlank
+| Name _OptBlank "," _OptBlank FromNames
+| Name _OptBlank AsName
+| Name _OptBlank AsName "," _OptBlank FromNames
 
 ParenthesizedFromNames
-| Name _InsideBlank ")"
-| Name "," _InsideBlank ")"
-| Name "," _InsideBlank ParenthesizedFromNames
-| Name AsName _InsideBlank ")"
-| Name AsName "," _InsideBlank ")"
-| Name AsName "," _InsideBlank ParenthesizedFromNames
+| Name _InsideBlank ")" _OptBlank
+| Name _InsideBlank "," _InsideBlank ")" _OptBlank
+| Name _InsideBlank "," _InsideBlank ParenthesizedFromNames
+| Name _InsideBlank AsName _InsideBreak ")" _OptBlank
+| Name _InsideBlank AsName _InsideBreak "," _InsideBlank ")" _OptBlank
+| Name _InsideBlank AsName _InsideBreak "," _InsideBlank ParenthesizedFromNames
 
 ClassDefinition
-| "class " _OptBlank Name ":" Block
-| "class " _OptBlank Name Call ":" Block
+| "class " _OptBlank Name _OptBlank ":" Block
+| "class " _OptBlank Name _OptBlank Call _OptBlank ":" Block
 
 FunctionDefinition@flattenLists
-| "def " _OptBlank Name "(" _InsideBlank ")" ":" Block
-| "def " _OptBlank Name "(" _InsideBlank ")" ReturnAnnotation ":" Block
-| "def " _OptBlank Name "(" _InsideBlank Parameters
-| "async def " _OptBlank Name "(" _InsideBlank ")" ":" Block
-| "async def " _OptBlank Name "(" _InsideBlank ")" ReturnAnnotation ":" Block
-| "async def " _OptBlank Name "(" _InsideBlank Parameters
+| "def " _OptBlank Name _OptBlank "(" _InsideBlank ")" _OptBlank ":" Block
+| "def " _OptBlank Name _OptBlank "(" _InsideBlank ")" _OptBlank ReturnAnnotation ":" Block
+| "def " _OptBlank Name _OptBlank "(" _InsideBlank Parameters
+| "async def " _OptBlank Name _OptBlank "(" _InsideBlank ")" _OptBlank ":" Block
+| "async def " _OptBlank Name _OptBlank "(" _InsideBlank ")" _OptBlank ReturnAnnotation ":" Block
+| "async def " _OptBlank Name _OptBlank "(" _InsideBlank Parameters
 
 Parameters
-| Parameter ")" ":" Block
-| Parameter ")" ReturnAnnotation ":" Block
-| Parameter "," _InsideBlank ")" ":" Block
-| Parameter "," _InsideBlank ")" ReturnAnnotation ":" Block
+| Parameter ")" _OptBlank ":" Block
+| Parameter ")" _OptBlank ReturnAnnotation ":" Block
+| Parameter "," _InsideBlank ")" _OptBlank ":" Block
+| Parameter "," _InsideBlank ")" _OptBlank ReturnAnnotation ":" Block
 | Parameter "," _InsideBlank Parameters
 
 Parameter
-| Name
-| Name Annotation
-| Name Annotation Default
-| Name Default
-| "*" _OptBlank Name
-| "*" _OptBlank Name Annotation
-| "**" _OptBlank Name
-| "**" _OptBlank Name Annotation
+| Name _OptBlank
+| Name _OptBlank Annotation
+| Name _OptBlank Annotation Default
+| Name _OptBlank Default
+| "*" _OptBlank Name _OptBlank
+| "*" _OptBlank Name _OptBlank Annotation
+| "**" _OptBlank Name _OptBlank
+| "**" _OptBlank Name _OptBlank Annotation
 
 Annotation
 | ":" _OptBlank Expression
 
 Default
 | "=" _OptBlank Expression
-| " =" _OptBlank Expression
 
 ReturnAnnotation
 | "->" _OptBlank Expression
-| " ->" _OptBlank Expression
 
 Decorated
 | "@" _OptBlank Expression _TrailComment new_line Decorated@<
@@ -388,22 +397,22 @@ Case
 | "case " _OptBlank Disjunction AsName Guard ":" Block
 
 Guard
-| " if" _OptBlank Expression
+| "if"@-letter@-digit@-"_" _OptBlank Expression
 
 TypeAlias
-| "type " _OptBlank Name _Eq Expression
-| "type " _OptBlank Name "[" _InsideBlank TypeParameters _Eq Expression
+| "type " _OptBlank Name _OptBlank _Eq Expression
+| "type " _OptBlank Name _OptBlank "[" _InsideBlank TypeParameters _OptBlank _Eq Expression
 
 TypeParameters@<
 | TypeParameter "]"
 | TypeParameter "," _InsideBlank TypeParameters
 
 TypeParameter
-| Name
-| Name Annotation
-| Name Default
-| "*" _OptBlank Name
-| "**" _OptBlank Name
+| Name _OptBlank
+| Name _OptBlank Annotation
+| Name _OptBlank Default
+| "*" _OptBlank Name _OptBlank
+| "**" _OptBlank Name _OptBlank
 
 ExpressionStatement@flattenLists
 | Expression
@@ -440,15 +449,15 @@ ExpressionList
 # "return_value"); identifierStatement makes the statement an
 # ExpressionStatement whose first child is this Name.
 KeywordStatement@<
-| KeywordName
-| KeywordName Trailers
-| KeywordName Assignments
-| KeywordName Trailers Assignments
-| KeywordName AugmentedValue
-| KeywordName Trailers AugmentedValue
-| KeywordName Annotation
-| KeywordName Annotation AssignedValue
-| KeywordName "," _OptBlank TargetList
+| KeywordName _OptBlank
+| KeywordName _OptBlank Trailers
+| KeywordName _OptBlank Assignments
+| KeywordName _OptBlank Trailers Assignments
+| KeywordName _OptBlank AugmentedValue
+| KeywordName _OptBlank Trailers AugmentedValue
+| KeywordName _OptBlank Annotation
+| KeywordName _OptBlank Annotation AssignedValue
+| KeywordName _OptBlank "," _OptBlank TargetList
 
 KeywordName@extendIdentifierStart
 | letter _IdTail
@@ -457,7 +466,6 @@ KeywordName@extendIdentifierStart
 
 _Eq
 | "=" _OptBlank
-| " =" _OptBlank
 
 _AugAssign
 | "//=" _OptBlank
@@ -473,19 +481,6 @@ _AugAssign
 | "&=" _OptBlank
 | "|=" _OptBlank
 | "^=" _OptBlank
-| " //=" _OptBlank
-| " **=" _OptBlank
-| " <<=" _OptBlank
-| " >>=" _OptBlank
-| " +=" _OptBlank
-| " -=" _OptBlank
-| " *=" _OptBlank
-| " /=" _OptBlank
-| " %=" _OptBlank
-| " @=" _OptBlank
-| " &=" _OptBlank
-| " |=" _OptBlank
-| " ^=" _OptBlank
 
 Name
 | _IdStart _IdTail
@@ -868,130 +863,109 @@ _Utf8FourByte
 # the same way.
 
 Expression@resolveExpression
-| Name
-| Name Trailers
-| Name BinaryOperation Expression@<
-| Name Trailers BinaryOperation Expression@<
-| Name Conditional
-| Name Trailers Conditional
-| Number
-| Number Trailers
-| Number BinaryOperation Expression@<
-| Number Trailers BinaryOperation Expression@<
-| Number Conditional
-| Number Trailers Conditional
-| String
-| String Trailers
-| String BinaryOperation Expression@<
-| String Trailers BinaryOperation Expression@<
-| String Conditional
-| String Trailers Conditional
-| Constant
-| Constant Trailers
-| Constant BinaryOperation Expression@<
-| Constant Trailers BinaryOperation Expression@<
-| Constant Conditional
-| Constant Trailers Conditional
-| Parenthesized
-| Parenthesized Trailers
-| Parenthesized BinaryOperation Expression@<
-| Parenthesized Trailers BinaryOperation Expression@<
-| Parenthesized Conditional
-| Parenthesized Trailers Conditional
-| List
-| List Trailers
-| List BinaryOperation Expression@<
-| List Trailers BinaryOperation Expression@<
-| List Conditional
-| List Trailers Conditional
-| Brace
-| Brace Trailers
-| Brace BinaryOperation Expression@<
-| Brace Trailers BinaryOperation Expression@<
-| Brace Conditional
-| Brace Trailers Conditional
-| Name NamedExpression
+| Name _OptBlank
+| Name _OptBlank Trailers
+| Name _OptBlank BinaryOperation Expression@<
+| Name _OptBlank Trailers BinaryOperation Expression@<
+| Name _OptBlank Conditional
+| Name _OptBlank Trailers Conditional
+| Number _OptBlank
+| Number _OptBlank Trailers
+| Number _OptBlank BinaryOperation Expression@<
+| Number _OptBlank Trailers BinaryOperation Expression@<
+| Number _OptBlank Conditional
+| Number _OptBlank Trailers Conditional
+| String _OptBlank
+| String _OptBlank Trailers
+| String _OptBlank BinaryOperation Expression@<
+| String _OptBlank Trailers BinaryOperation Expression@<
+| String _OptBlank Conditional
+| String _OptBlank Trailers Conditional
+| Constant _OptBlank
+| Constant _OptBlank Trailers
+| Constant _OptBlank BinaryOperation Expression@<
+| Constant _OptBlank Trailers BinaryOperation Expression@<
+| Constant _OptBlank Conditional
+| Constant _OptBlank Trailers Conditional
+| Parenthesized _OptBlank
+| Parenthesized _OptBlank Trailers
+| Parenthesized _OptBlank BinaryOperation Expression@<
+| Parenthesized _OptBlank Trailers BinaryOperation Expression@<
+| Parenthesized _OptBlank Conditional
+| Parenthesized _OptBlank Trailers Conditional
+| List _OptBlank
+| List _OptBlank Trailers
+| List _OptBlank BinaryOperation Expression@<
+| List _OptBlank Trailers BinaryOperation Expression@<
+| List _OptBlank Conditional
+| List _OptBlank Trailers Conditional
+| Brace _OptBlank
+| Brace _OptBlank Trailers
+| Brace _OptBlank BinaryOperation Expression@<
+| Brace _OptBlank Trailers BinaryOperation Expression@<
+| Brace _OptBlank Conditional
+| Brace _OptBlank Trailers Conditional
+| Name _OptBlank NamedExpression
 | UnaryOperation Expression@<
 | Lambda
 | Yield
 
 Disjunction@resolveExpression
-| Name
-| Name Trailers
-| Name BinaryOperation Disjunction@<
-| Name Trailers BinaryOperation Disjunction@<
-| Number
-| Number Trailers
-| Number BinaryOperation Disjunction@<
-| Number Trailers BinaryOperation Disjunction@<
-| String
-| String Trailers
-| String BinaryOperation Disjunction@<
-| String Trailers BinaryOperation Disjunction@<
-| Constant
-| Constant Trailers
-| Constant BinaryOperation Disjunction@<
-| Constant Trailers BinaryOperation Disjunction@<
-| Parenthesized
-| Parenthesized Trailers
-| Parenthesized BinaryOperation Disjunction@<
-| Parenthesized Trailers BinaryOperation Disjunction@<
-| List
-| List Trailers
-| List BinaryOperation Disjunction@<
-| List Trailers BinaryOperation Disjunction@<
-| Brace
-| Brace Trailers
-| Brace BinaryOperation Disjunction@<
-| Brace Trailers BinaryOperation Disjunction@<
+| Name _OptBlank
+| Name _OptBlank Trailers
+| Name _OptBlank BinaryOperation Disjunction@<
+| Name _OptBlank Trailers BinaryOperation Disjunction@<
+| Number _OptBlank
+| Number _OptBlank Trailers
+| Number _OptBlank BinaryOperation Disjunction@<
+| Number _OptBlank Trailers BinaryOperation Disjunction@<
+| String _OptBlank
+| String _OptBlank Trailers
+| String _OptBlank BinaryOperation Disjunction@<
+| String _OptBlank Trailers BinaryOperation Disjunction@<
+| Constant _OptBlank
+| Constant _OptBlank Trailers
+| Constant _OptBlank BinaryOperation Disjunction@<
+| Constant _OptBlank Trailers BinaryOperation Disjunction@<
+| Parenthesized _OptBlank
+| Parenthesized _OptBlank Trailers
+| Parenthesized _OptBlank BinaryOperation Disjunction@<
+| Parenthesized _OptBlank Trailers BinaryOperation Disjunction@<
+| List _OptBlank
+| List _OptBlank Trailers
+| List _OptBlank BinaryOperation Disjunction@<
+| List _OptBlank Trailers BinaryOperation Disjunction@<
+| Brace _OptBlank
+| Brace _OptBlank Trailers
+| Brace _OptBlank BinaryOperation Disjunction@<
+| Brace _OptBlank Trailers BinaryOperation Disjunction@<
 | UnaryOperation Disjunction@<
 
 BinaryOperation
-| " or" _OptBlank
-| " and" _OptBlank
-| " not" space _OptBlank "in" _OptBlank
-| " in" _OptBlank
-| " is" _OptBlank
+| "or"@-letter@-digit@-"_" _OptBlank
+| "and"@-letter@-digit@-"_" _OptBlank
+| "not" space _OptBlank "in"@-letter@-digit@-"_" _OptBlank
+| "in"@-letter@-digit@-"_" _OptBlank
+| "is"@-letter@-digit@-"_" _OptBlank
 | "==" _OptBlank
 | "!=" _OptBlank
-| "<" _OptBlank _OptEqual
-| ">" _OptBlank _OptEqual
-| " ==" _OptBlank
-| " !=" _OptBlank
-| " <" _OptBlank _OptEqual
-| " >" _OptBlank _OptEqual
+| "<" _OptBlank
+| "<=" _OptBlank
+| ">" _OptBlank
+| ">=" _OptBlank
 | "|" _OptBlank
-| " |" _OptBlank
 | "^" _OptBlank
-| " ^" _OptBlank
 | "&" _OptBlank
-| " &" _OptBlank
 | "<<" _OptBlank
 | ">>" _OptBlank
-| " <<" _OptBlank
-| " >>" _OptBlank
 | "+" _OptBlank
 | "-" _OptBlank
-| " +" _OptBlank
-| " -" _OptBlank
 | "*" _OptBlank
-| "/" _OptBlank _OptSlash
+| "/" _OptBlank
+| "//" _OptBlank
 | "%" _OptBlank
 | "@" _OptBlank
-| " *" _OptBlank
-| " /" _OptBlank _OptSlash
-| " %" _OptBlank
-| " @" _OptBlank
 | "**" _OptBlank
-| " **" _OptBlank
-
-_OptEqual
-| "=" _OptBlank
-|
-
-_OptSlash
-| "/" _OptBlank
-|
 
 UnaryOperation
 | "not " _OptBlank
@@ -1001,11 +975,10 @@ UnaryOperation
 | "~" _OptBlank
 
 Conditional
-| " if" _OptBlank Disjunction " else" _OptBlank Expression
+| "if"@-letter@-digit@-"_" _OptBlank Disjunction "else"@-letter@-digit@-"_" _OptBlank Expression
 
 NamedExpression
 | ":=" _OptBlank Disjunction
-| " :=" _OptBlank Disjunction
 
 Lambda@flattenLists
 | "lambda:" _OptBlank Disjunction
@@ -1017,17 +990,16 @@ LambdaParameters
 | LambdaParameter "," _OptBlank LambdaParameters
 
 LambdaParameter
-| "**" _OptBlank Name
-| "*" _OptBlank Name
-| Name
-| Name "=" _OptBlank Expression
-| Name " =" _OptBlank Expression
+| "**" _OptBlank Name _OptBlank
+| "*" _OptBlank Name _OptBlank
+| Name _OptBlank
+| Name _OptBlank "=" _OptBlank Expression
 
 Yield
 | "yield " _OptBlank "from " _OptBlank Disjunction
 | "yield " _OptBlank "from(" _OptBlank Disjunction ")"
 | "yield " _OptBlank Disjunction
-| "yield" _YieldBare
+| "yield" _YieldBare _OptBlank
 
 _YieldBare
 | letter _IdTail
@@ -1070,11 +1042,11 @@ Parenthesized@flattenLists
 | "(" _InsideBlank ParenthesizedItems
 
 ParenthesizedItems
-| Expression ")"
+| Expression _InsideBreak ")"
 | Expression "," _InsideBlank ")"
 | Expression "," _InsideBlank ParenthesizedItems
-| Expression Comprehension ")"
-| Starred ")"
+| Expression Comprehension _InsideBreak ")"
+| Starred _InsideBreak ")"
 | Starred "," _InsideBlank ")"
 | Starred "," _InsideBlank ParenthesizedItems
 
@@ -1083,11 +1055,11 @@ List@flattenLists
 | "[" _InsideBlank ListItems
 
 ListItems
-| Expression "]"
+| Expression _InsideBreak "]"
 | Expression "," _InsideBlank "]"
 | Expression "," _InsideBlank ListItems
-| Expression Comprehension "]"
-| Starred "]"
+| Expression Comprehension _InsideBreak "]"
+| Starred _InsideBreak "]"
 | Starred "," _InsideBlank "]"
 | Starred "," _InsideBlank ListItems
 
@@ -1096,15 +1068,15 @@ Brace@flattenLists
 | "{" _InsideBlank BraceItems
 
 BraceItems
-| Expression "}"
+| Expression _InsideBreak "}"
 | Expression "," _InsideBlank "}"
 | Expression "," _InsideBlank BraceItems
-| Expression Comprehension "}"
-| Expression DictionaryValue "}"
+| Expression Comprehension _InsideBreak "}"
+| Expression DictionaryValue _InsideBreak "}"
 | Expression DictionaryValue "," _InsideBlank "}"
 | Expression DictionaryValue "," _InsideBlank BraceItems
-| Expression DictionaryValue Comprehension "}"
-| DoubleStarred "}"
+| Expression DictionaryValue Comprehension _InsideBreak "}"
+| DoubleStarred _InsideBreak "}"
 | DoubleStarred "," _InsideBlank "}"
 | DoubleStarred "," _InsideBlank BraceItems
 
@@ -1112,45 +1084,45 @@ DictionaryValue
 | ":" _InsideBlank Expression
 
 Comprehension@flattenLists
-| " for" _OptBlank ComprehensionTargets
-| " async" _OptBlank "for" _OptBlank ComprehensionTargets
+| "for"@-letter@-digit@-"_" _OptBlank ComprehensionTargets
+| "async"@-letter@-digit@-"_" _OptBlank "for"@-letter@-digit@-"_" _OptBlank ComprehensionTargets
 
 ComprehensionTargets
-| Name "," _OptBlank ComprehensionTargets
-| Name " in" _OptBlank Disjunction
-| Name " in" _OptBlank Disjunction ComprehensionTail
+| Name _OptBlank "," _OptBlank ComprehensionTargets
+| Name _OptBlank "in"@-letter@-digit@-"_" _OptBlank Disjunction
+| Name _OptBlank "in"@-letter@-digit@-"_" _OptBlank Disjunction ComprehensionTail
 
 ComprehensionTail
-| " if" _OptBlank Disjunction
-| " if" _OptBlank Disjunction ComprehensionTail
+| "if"@-letter@-digit@-"_" _OptBlank Disjunction
+| "if"@-letter@-digit@-"_" _OptBlank Disjunction ComprehensionTail
 | Comprehension
 
 # Trailers nest one wrapper per trailer; resolveExpression and
 # identifierStatement chain them onto their object in one pass.
 Trailers
-| Call
-| Call Trailers
-| Subscript
-| Subscript Trailers
-| Attribute
-| Attribute Trailers
+| Call _OptBlank
+| Call _OptBlank Trailers
+| Subscript _OptBlank
+| Subscript _OptBlank Trailers
+| Attribute _OptBlank
+| Attribute _OptBlank Trailers
 
 Call@flattenLists
 | "(" _InsideBlank ")"
 | "(" _InsideBlank CallArguments
 
 CallArguments
-| Expression _InsideBlank ")"
+| Expression _InsideBreak ")"
 | Expression "," _InsideBlank ")"
 | Expression "," _InsideBlank CallArguments
-| Expression Comprehension _InsideBlank ")"
-| Expression KeywordValue _InsideBlank ")"
+| Expression Comprehension _InsideBreak ")"
+| Expression KeywordValue _InsideBreak ")"
 | Expression KeywordValue "," _InsideBlank ")"
 | Expression KeywordValue "," _InsideBlank CallArguments
-| Starred _InsideBlank ")"
+| Starred _InsideBreak ")"
 | Starred "," _InsideBlank ")"
 | Starred "," _InsideBlank CallArguments
-| DoubleStarred _InsideBlank ")"
+| DoubleStarred _InsideBreak ")"
 | DoubleStarred "," _InsideBlank ")"
 | DoubleStarred "," _InsideBlank CallArguments
 
@@ -1161,14 +1133,14 @@ Subscript@flattenLists
 | "[" _InsideBlank SubscriptItems
 
 SubscriptItems
-| Expression "]"
+| Expression _InsideBreak "]"
 | Expression "," _InsideBlank "]"
 | Expression "," _InsideBlank SubscriptItems
 | Expression Slice "]"
 | Expression Slice "," _InsideBlank SubscriptItems
 | Slice "]"
 | Slice "," _InsideBlank SubscriptItems
-| Starred "]"
+| Starred _InsideBreak "]"
 | Starred "," _InsideBlank SubscriptItems
 
 Slice
@@ -1181,6 +1153,15 @@ Slice
 
 Attribute
 | "." _OptBlank Name
+
+# A line break inside brackets, after a symbol that already took the
+# spaces before it.
+_InsideBreak
+| new_line _InsideBlank
+| block_start _InsideBlank
+| block_end _InsideBlank
+| "#"@>"\n"^ _InsideBlank
+|
 
 _InsideBlank
 | space _InsideBlank

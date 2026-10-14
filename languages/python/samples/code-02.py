@@ -160,3 +160,59 @@ print(())
 print([])
 print({})
 print("adjacent strings")
+
+
+# Any number of spaces may separate tokens in the newer constructs too.
+type  Spaced  =  tuple  [  float  ,  float  ]
+type  SpacedAlias  [  T  ]  =  list  [  T  ]
+type  SpacedBounded  [  T  :  str  ]  =  list  [  T  ]
+
+match  spaced_value  :
+    case  [  first  ,  *  rest  ]  :
+        spaced_area  =  first
+    case  {  "kind"  :  "circle"  ,  "radius"  :  radius  }  :
+        spaced_area  =  radius
+    case  ( 1  |  2 )  as  number  :
+        spaced_area  =  number
+    case  str ( )  |  int ( )  if  flag  :
+        spaced_area  =  0
+    case  _  :
+        spaced_area  =  -1
+
+spaced_walrus  =  (  share  :=  100  )
+if  (  share  :=  len  (  items  )  )  :
+    print  (  share  )
+
+while  chunk  :=  handle  .  read  (  3  )  :
+    print  (  chunk  )
+
+# Names that start with a keyword are names, next to keywords that follow them.
+match order:
+    case orbit if android:
+        isolated = orbit
+    case inner | iffy if elsewhere:
+        isolated = inner
+    case _:
+        isolated = importance
+
+
+def forward(orbit: int = 1, *iffy: int, **elsewhere: str) -> int:
+    return orbit if iffy else notify
+
+
+print(order or orbit, android and index, isolated is not inner)
+
+# Two-character operators are single tokens, and a line may break before a
+# closing bracket without a trailing comma.
+print(a // b <= c // d >= e)
+print(
+    [
+        1,
+        2
+    ]
+)
+print(
+    {
+        "a": 1
+    }
+)

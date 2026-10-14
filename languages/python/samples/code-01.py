@@ -149,3 +149,83 @@ async def collect(agen):
 
 
 global_name = "g"
+
+
+# Operators written with two characters are single tokens: `<=`, `>=`, `//`.
+lower_or_equal = x <= y
+greater_or_equal = x >= y
+floor_divided = x // y
+floor_divided //= 2
+within_bounds = 0 <= x < 10 <= y >= 5
+
+# Any number of spaces may separate tokens, before and after every operator,
+# comma, colon, dot and bracket.
+spaced  =  x  +  y   *  z
+spaced_call  =  print  (  x  ,  y  )
+spaced_subscript  =  items  [  0  ]  [  1  :  2  ]
+spaced_attribute  =  system  .  argv  .  count
+spaced_conditional  =  x  if  flag  else  y
+spaced_boolean  =  x  and  y  or  not  z
+spaced_membership  =  x  not  in  items  and  y  is  not  None
+spaced_lambda  =  lambda  a  ,  b  =  1  :  a  +  b
+spaced_comprehension  =  [  v  for  v  in  items  if  v  ]
+spaced_annotation  :  int  =  1
+spaced_augmented  +=  1
+spaced_bracket_mapping  =  {  "a"  :  1  ,  "b"  :  2  }
+spaced_comment  =  1     # a comment after any number of spaces
+tight_comment = 1 # or after one
+x=1
+y=x+1
+
+
+def spaced_signature  (  first  :  int  =  1  ,  *  args  ,  **  kwargs  )  ->  int  :
+    return  first
+
+
+for  spaced_index  ,  spaced_value  in  enumerate  (  items  )  :
+    pass
+
+with  open  (  "f.txt"  )  as  spaced_handle  :
+    pass
+
+import  os  .  path  as  spaced_path
+from  collections  .  abc  import  Callable  as  SpacedCallable  ,  Iterable
+
+# A line may break before a closing bracket, with no trailing comma.
+wrapped_call = print(
+    x,
+    y
+)
+wrapped_list = [
+    1,
+    2
+]
+wrapped_mapping = {
+    "a": 1,
+    "b": 2
+}
+wrapped_tuple = (
+    1,
+    2
+)
+wrapped_subscript = items[
+    0
+]
+from collections.abc import (
+    Callable,
+    Iterable as Iter
+)
+
+# A name that starts with a keyword is a name, next to keyword operators.
+order = 1
+orbit = order or 2
+android = orbit and order
+index = android if order else orbit
+isolated = index is not order
+inner = index in items or order not in items
+forward = [fortune for fortune in items if fortune]
+iffy = lambda lambda_: lambda_
+elsewhere = iffy
+importance = 3
+notify = not importance
+async_loop = None

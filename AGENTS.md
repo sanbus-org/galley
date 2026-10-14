@@ -15,6 +15,7 @@
 - "Ready to push" means the commit is complete and coherent. It does not mean the full test matrix ran locally: CI owns running the full suites, so run only the narrowest relevant checks locally (see Testing).
 - History rewrites are routine: while pre-alpha, amend and force-push `main` freely, including after a CI failure. Once alpha begins, `main` stays linear and changes go through branches; rewriting non-main branches stays routine.
 - Still ask before committing, amending, or pushing, as the global guidelines require; this section only says that rewriting is acceptable, not that it is pre-approved.
+- A change to a language under `languages/` includes its `samples/`: show the construct, fix or removed limitation in each sample file in the same commit. See `languages/README.md`.
 
 ## Compatibility
 

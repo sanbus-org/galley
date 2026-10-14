@@ -185,6 +185,19 @@ fn expectValue(comptime source: []const u8, expected: []const u8) !void {
     try expectRendered(&tree, try tree.expression("AssignedValue"), expected);
 }
 
+/// Parses `x = <source>` and expects a syntax error, raised or recovered.
+fn expectRejected(comptime source: []const u8) !void {
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer session.deinit();
+    _ = session.parseBytes("x = " ++ source ++ "\n", null) catch |err| switch (err) {
+        error.SyntaxError => return,
+        else => return err,
+    };
+    var read_guard = try session.readLatest();
+    defer read_guard.deinit();
+    try std.testing.expect(read_guard.syntaxErrorCount() > 0);
+}
+
 test "python binary operators follow precedence and associativity" {
     if (comptime !builds_trees) return error.SkipZigTest;
     try expectValue("a + b * c - d / e % f // g @ h", "((a + (b * c)) - ((((d / e) % f) // g) @ h))");
@@ -203,6 +216,12 @@ test "python comparison chains stay one node" {
     try expectValue("a not in b in c", "(a not in b in c)");
     try expectValue("a in b < c", "(a in b < c)");
     try expectValue("a == b == c", "(a == b == c)");
+}
+
+test "python two-character operators take no blanks inside" {
+    try expectRejected("a < = b");
+    try expectRejected("a > = b");
+    try expectRejected("a / / b");
 }
 
 test "python prefix operators bind by their own precedence" {
@@ -230,6 +249,51 @@ test "python conditionals and walrus take the whole sequence before them" {
     try expectValue("a or b if c else d and e", "((a or b) if c else (d and e))");
     try expectValue("not a if b else c", "((not a) if b else c)");
     try expectValue("f(z := a or b)", "(Call f (z := (a or b)))");
+}
+
+test "python spaces between tokens do not change the tree" {
+    if (comptime !builds_trees) return error.SkipZigTest;
+    try expectValue("a  +   b  *  c", "(a + (b * c))");
+    try expectValue("a  is  not  b  not  in  c", "(a is not b not in c)");
+    try expectValue("a  if  b  else  c", "(a if b else c)");
+    try expectValue("f (a) . b [c]", "(Subscript (Attribute (Call f a) b) c)");
+    try expectValue("( a )", "(Parenthesized a)");
+}
+
+test "python keywords end where a name would continue them" {
+    try expectRejected("a orb");
+    try expectRejected("a andy");
+    try expectRejected("a inb");
+    try expectRejected("a isolated");
+    try expectRejected("a if b elsewhere c");
+    try expectRejected("[i forx in y]");
+    try expectRejected("[i for i iny]");
+}
+
+test "python names that start with a keyword are names" {
+    if (comptime !builds_trees) return error.SkipZigTest;
+    try expectValue("order or orbit and android", "(order or (orbit and android))");
+    try expectValue("index if order else isolated", "(index if order else isolated)");
+    try expectValue("a or(b)", "(a or (Parenthesized b))");
+    try expectValue("a is not inner", "(a is not inner)");
+}
+
+test "python statements take any number of spaces between tokens" {
+    var tree = try Tree.parse(
+        \\import  a ,  b  as  c
+        \\from  .m  import  ( d ,
+        \\    e  as  f
+        \\)
+        \\x  =  [ i  for  i  in  y  if  i ]   # comment
+        \\def  g ( p ,  q : int  =  1 )  ->  int :
+        \\    return  lambda  r ,  s :  r
+        \\for  k ,  v  in  z :
+        \\    w [ k ]  +=  {
+        \\        k :  v
+        \\    }
+        \\
+    );
+    tree.deinit();
 }
 
 /// Checks the first `Disjunction` of `source`.
