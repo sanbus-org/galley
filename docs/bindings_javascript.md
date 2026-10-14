@@ -166,6 +166,13 @@ The FFI boundary is the only overhead over the C API:
   `string` is encoded to UTF-8 once per call. The session still copies
   into its own storage so node text stays valid after return.
   `parseFile` accepts a path string, a `file:` URL, or path bytes.
+  Under WebAssembly the bytes are first copied into the guest's memory on
+  every call; `session.stage(input)` does that copy once and returns a
+  `StagedInput` that `session.parse` accepts any number of times, which
+  keeps the transfer out of a throughput measurement. A staged input holds
+  its own copy of the bytes and is freed by `close()` or `using`. Native
+  backends read the caller's memory in place, so staging only pins a private
+  copy and parses are unchanged.
   Message texts accept strings or raw bytes, never silently re-encoded.
 - All calls are synchronous and hold no additional threads; sessions are not
   thread-safe. Use one session per thread or guard externally.

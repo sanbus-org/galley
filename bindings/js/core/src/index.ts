@@ -5,14 +5,14 @@
  * binds these classes to its {@link FfiPort} and re-exports them.
  */
 
-import { Session, Walker } from "./session.ts";
+import { Session, StagedInput, Walker } from "./session.ts";
 import type { SessionOptions, TreeSnapshot, WalkStep } from "./session.ts";
 import { Parser } from "./parser.ts";
 import { Node } from "./node.ts";
 import { GalleyError, MissingArtifactError, SessionClosedError, StaleTreeError } from "./errors.ts";
 import type { ArtifactHost } from "./artifact.ts";
 import type { Diagnostic } from "./diagnostic.ts";
-import type { FfiPort, NodeFamily, Handle, HookTicket, SessionCOptions, SnapshotColumns, DispatchHandler } from "./port.ts";
+import type { FfiPort, NodeFamily, Handle, StagedHandle, HookTicket, SessionCOptions, SnapshotColumns, DispatchHandler } from "./port.ts";
 import { NATIVE_LITTLE_ENDIAN } from "./port.ts";
 import { ProcedureArguments } from "./procedures.ts";
 import type { ProcedureRegistry } from "./procedures.ts";
@@ -20,6 +20,7 @@ import type { HookFn, ProceduresOption } from "./procedures.ts";
 
 export {
   Session,
+  StagedInput,
   Walker,
   Node,
   Parser,
@@ -30,5 +31,5 @@ export {
   ProcedureArguments,
   NATIVE_LITTLE_ENDIAN,
 };
-export type { Diagnostic, WalkStep, TreeSnapshot, SessionOptions, FfiPort, NodeFamily, Handle, HookTicket, SessionCOptions, SnapshotColumns, DispatchHandler, HookFn, ProceduresOption, ArtifactHost, ProcedureRegistry };
+export type { Diagnostic, WalkStep, TreeSnapshot, SessionOptions, FfiPort, NodeFamily, Handle, StagedHandle, HookTicket, SessionCOptions, SnapshotColumns, DispatchHandler, HookFn, ProceduresOption, ArtifactHost, ProcedureRegistry };
 export * from "./constants.ts";

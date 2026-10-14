@@ -11,7 +11,7 @@ import { INVALID_NODE, NO_VARIABLE, Status } from "./constants.ts";
 import type { Kind, RecoveryTarget, Resume } from "./constants.ts";
 import type { Diagnostic } from "./diagnostic.ts";
 import { GalleyError, SessionClosedError, StaleTreeError } from "./errors.ts";
-import type { FfiPort, Handle, HookTicket, NodeFamily, SessionCOptions, SnapshotColumns } from "./port.ts";
+import type { FfiPort, Handle, HookTicket, NodeFamily, SessionCOptions, SnapshotColumns, StagedHandle } from "./port.ts";
 import { decodeUtf8 } from "./text.ts";
 import { checkArtifactPath, checkMessageBytes, checkParseInput } from "./sources.ts";
 import { rejectSessionOptions } from "./internal.ts";
@@ -221,6 +221,55 @@ class Door implements NodeDoor {
  * comes from the walk-start path `Session` installs for `Node.walk`.
  */
 const WALKER_CONSTRUCTION_TOKEN: symbol = Symbol("galley.Walker.construction");
+
+let stagedHandleFor: (staged: StagedInput, port: FfiPort, what: string) => StagedHandle;
+const STAGED_CONSTRUCTION_TOKEN = Symbol("StagedInput");
+
+/**
+ * Input copied once into the form the engine reads, parsed any number of
+ * times with `session.parse(staged)` without paying the transfer again
+ * (for WebAssembly, the copy into the guest's memory). It holds its own
+ * copy of the bytes, parses in any session of the engine that staged it,
+ * and is freed by `close()` or `using`.
+ */
+export class StagedInput {
+  static {
+    // The one way to reach the staged handle: `Session.parse` asks for it
+    // by port, so an input never reaches an engine that did not stage it.
+    stagedHandleFor = (staged, port, what) => {
+      if (staged.#port !== port) {
+        throw new TypeError(`${what} received input staged by another parser`);
+      }
+      if (staged.#handle === null) throw new SessionClosedError("staged input is closed");
+      return staged.#handle;
+    };
+  }
+
+  #port: FfiPort;
+  #handle: StagedHandle | null;
+  readonly byteLength: number;
+
+  /** @internal Made by `Session.stage`. */
+  constructor(token: symbol, port: FfiPort, bytes: Uint8Array) {
+    if (token !== STAGED_CONSTRUCTION_TOKEN) {
+      throw new TypeError("StagedInput is made by session.stage()");
+    }
+    this.#port = port;
+    this.#handle = port.stageInput(bytes);
+    this.byteLength = bytes.length;
+  }
+
+  close(): void {
+    if (this.#handle === null) return;
+    const handle = this.#handle;
+    this.#handle = null;
+    this.#port.releaseInput(handle);
+  }
+
+  [Symbol.dispose](): void {
+    this.close();
+  }
+}
 
 /**
  * One parsing session. Owns its hooks: a registry copied from the
@@ -671,11 +720,27 @@ export class Session implements HookOwner {
 
   // -- parsing ---------------------------------------------------------
 
-  parse(input: string | ArrayBufferView | ArrayBuffer | SharedArrayBuffer): number {
+  parse(input: string | ArrayBufferView | ArrayBuffer | SharedArrayBuffer | StagedInput): number {
     const handle = this.#requireHandle();
     const port = this.#requirePort();
+    if (input instanceof StagedInput) {
+      const staged = stagedHandleFor(input, port, "galley: session.parse");
+      return this.#finishParse(() => port.parseStaged(handle, staged));
+    }
     const buf = checkParseInput(input, "galley: session.parse");
     return this.#finishParse(() => port.parse(handle, buf));
+  }
+
+  /**
+   * Copies `input` once for repeated `parse` calls, so each of them skips
+   * the transfer into the engine. Later changes to `input` do not reach the
+   * copy. The caller closes it.
+   */
+  stage(input: string | ArrayBufferView | ArrayBuffer | SharedArrayBuffer): StagedInput {
+    this.#requireHandle();
+    const port = this.#requirePort();
+    const buf = checkParseInput(input, "galley: session.stage");
+    return new StagedInput(STAGED_CONSTRUCTION_TOKEN, port, buf);
   }
 
   parseFile(filePath: string | URL): number {

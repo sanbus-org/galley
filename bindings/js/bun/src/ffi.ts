@@ -12,7 +12,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import process from "node:process";
 import { dlopen, FFIType, ptr, toArrayBuffer, CString } from "bun:ffi";
-import type { FfiPort, NodeFamily, Handle, HookTicket, DispatchHandler, SessionCOptions, SnapshotColumns } from "@sanbus/galley-core";
+import type { FfiPort, NodeFamily, Handle, StagedHandle, HookTicket, DispatchHandler, SessionCOptions, SnapshotColumns } from "@sanbus/galley-core";
 import { GalleyError, INVALID_NODE, NATIVE_LITTLE_ENDIAN, NO_VARIABLE, Status } from "@sanbus/galley-core";
 import { resolveArtifactFile, resolveAdapterArtifact, artifactFileName, canonicalResolvePath, SHARED_NATIVE_LIBRARY_BASE } from "@sanbus/galley-core/internal";
 import { installDispatch } from "./dispatch.ts";
@@ -606,6 +606,18 @@ export class BunPort implements FfiPort {
   parse(handle: Handle, data: Uint8Array): number {
     return Number(this.native.galley_parse(handle as NativeHandle, ptr(data), BigInt(data.length)));
   }
+
+  // Native engines read the caller's memory in place: staging only pins
+  // a private copy, so changes to the source never reach it.
+  stageInput(data: Uint8Array): StagedHandle {
+    return data.slice();
+  }
+
+  parseStaged(handle: Handle, staged: StagedHandle): number {
+    return this.parse(handle, staged as Uint8Array);
+  }
+
+  releaseInput(_staged: StagedHandle): void {}
 
   parseFile(handle: Handle, filePath: string): number {
     const bytes = Buffer.from(filePath, "utf-8");

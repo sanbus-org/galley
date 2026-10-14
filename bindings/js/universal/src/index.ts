@@ -53,4 +53,4 @@ export type { Session };
 export { detectRuntime, seedEngineLegs } from "./loader.ts";
 export type { Runtime, Backend, SessionSource, EngineLegs } from "./loader.ts";
 export type { UniversalDirectoryOptions, UniversalFileOptions, UniversalWasmOptions } from "./session.ts";
-export type { SessionOptions, WalkStep, Diagnostic, TreeSnapshot } from "@sanbus/galley-core";
+export type { SessionOptions, StagedInput, WalkStep, Diagnostic, TreeSnapshot } from "@sanbus/galley-core";

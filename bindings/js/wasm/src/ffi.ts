@@ -23,6 +23,7 @@ import type {
   FfiPort,
   NodeFamily,
   Handle,
+  StagedHandle,
   HookTicket,
   DispatchHandler,
   SessionCOptions,
@@ -771,12 +772,26 @@ export class WasmPort implements FfiPort {
   // -- parsing --------------------------------------------------------------
 
   parse(handle: Handle, data: Uint8Array): number {
-    const slot = this.writeBytes(data);
+    const staged = this.stageInput(data);
     try {
-      return toNumber(this.wasm.galley_parse(handle as number, slot.ptr, slot.len));
+      return this.parseStaged(handle, staged);
     } finally {
-      this.free(slot.ptr, Math.max(slot.len, 1));
+      this.releaseInput(staged);
     }
+  }
+
+  stageInput(data: Uint8Array): StagedHandle {
+    return this.writeBytes(data);
+  }
+
+  parseStaged(handle: Handle, staged: StagedHandle): number {
+    const slot = staged as { ptr: number; len: number };
+    return toNumber(this.wasm.galley_parse(handle as number, slot.ptr, slot.len));
+  }
+
+  releaseInput(staged: StagedHandle): void {
+    const slot = staged as { ptr: number; len: number };
+    this.free(slot.ptr, Math.max(slot.len, 1));
   }
 
   parseFile(handle: Handle, filePath: string): number {

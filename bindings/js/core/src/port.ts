@@ -16,6 +16,12 @@
 export type Handle = unknown;
 
 /**
+ * Input a port holds in the form its engine reads, made by `stageInput`
+ * and consumed by `parseStaged`. Opaque to the core, like `Handle`.
+ */
+export type StagedHandle = unknown;
+
+/**
  * The ticket the core issues for one hook call. It is all a binding knows of
  * a hook: every `galley_procedure_*` call takes the session and the ticket,
  * and the core refuses the ticket of a hook that has returned
@@ -210,6 +216,16 @@ export interface FfiPort {
   // -- parsing ----------------------------------------------------------
   /** Bytes parsed, or a negative status code. */
   parse(handle: Handle, data: Uint8Array): number;
+  /**
+   * Copies `data` once into the form the engine reads (for WebAssembly, the
+   * guest's memory), so repeated parses of it pay no per-parse transfer.
+   * Later changes to `data` do not reach the staged copy.
+   */
+  stageInput(data: Uint8Array): StagedHandle;
+  /** Bytes parsed, or a negative status code. The staged input stays valid. */
+  parseStaged(handle: Handle, staged: StagedHandle): number;
+  /** Frees a staged input; it must not be parsed afterwards. */
+  releaseInput(staged: StagedHandle): void;
   /** Bytes parsed, or a negative status code. */
   parseFile(handle: Handle, path: string): number;
   /**

@@ -25,4 +25,4 @@ export {
   Resume,
 } from "@sanbus/galley-core";
 export { getNodePort, getNodePortFromFile, libFileName } from "./ffi.ts";
-export type { Session, SessionOptions, WalkStep, Diagnostic, TreeSnapshot } from "@sanbus/galley-core";
+export type { Session, StagedInput, SessionOptions, WalkStep, Diagnostic, TreeSnapshot } from "@sanbus/galley-core";

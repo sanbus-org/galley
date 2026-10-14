@@ -16,6 +16,7 @@ import process from "node:process";
 import type {
   FfiPort,
   Handle,
+  StagedHandle,
   NodeFamily,
   HookTicket,
   DispatchHandler,
@@ -539,6 +540,18 @@ export class NodePort implements FfiPort {
   parse(handle: Handle, data: Uint8Array): number {
     return toNumber(this.api.galley_parse(handle as bigint, data, data.length));
   }
+
+  // Native engines read the caller's memory in place: staging only pins
+  // a private copy, so changes to the source never reach it.
+  stageInput(data: Uint8Array): StagedHandle {
+    return data.slice();
+  }
+
+  parseStaged(handle: Handle, staged: StagedHandle): number {
+    return this.parse(handle, staged as Uint8Array);
+  }
+
+  releaseInput(_staged: StagedHandle): void {}
 
   parseFile(handle: Handle, filePath: string): number {
     return toNumber(this.api.galley_parse_file(handle as bigint, filePath));

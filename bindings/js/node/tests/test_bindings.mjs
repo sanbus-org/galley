@@ -103,6 +103,25 @@ await test("openLanguageDirectory resolves a usable parser", async () => {
   }
 });
 
+await test("staged input parses repeatedly, keeps its own bytes, and refuses use after close", async () => {
+  const parser = await newParser();
+  const s = await parser.openSession();
+  try {
+    const source = new TextEncoder().encode("alpha:12,beta:3");
+    const staged = s.stage(source);
+    assert.equal(staged.byteLength, 15);
+    source.fill(0);
+    assert.equal(s.parse(staged), 15);
+    assert.equal(s.parse(staged), 15);
+    staged.close();
+    staged.close();
+    assert.throws(() => s.parse(staged), SessionClosedError);
+    assert.throws(() => s.stage(42), /string or binary/);
+  } finally {
+    s.close();
+  }
+});
+
 await test("a session built without a parser is refused before any native session opens", async () => {
   const parser = await newParser();
   const openedSession = parser.openSession();

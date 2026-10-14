@@ -38,5 +38,5 @@ export {
 } from "@sanbus/galley-core";
 export { getWasmPort, instantiateWasm, __resetModuleCache, __resetWasmAcquisition, wasmFileName } from "./ffi.ts";
 export type { WasmPortSource } from "./ffi.ts";
-export type { Session, SessionOptions } from "@sanbus/galley-core";
+export type { Session, StagedInput, SessionOptions } from "@sanbus/galley-core";
 export type { WalkStep, Diagnostic, TreeSnapshot } from "@sanbus/galley-core";

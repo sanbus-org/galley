@@ -614,6 +614,7 @@ async function runBenchmark(checker, runs, request) {
   if (checker.benchmarkRequest !== request) return;
   const { input } = currentInput(checker);
   const session = sessionFor(checker);
+  const staged = stagedFor(session, input);
   let done = 0;
   let totalMs = 0;
   try {
@@ -625,7 +626,7 @@ async function runBenchmark(checker, runs, request) {
       // the work.
       const chunkStart = performance.now();
       while (performance.now() - chunkStart < BENCHMARK_CHUNK_MS && done < runs) {
-        runWorkload(checker, session, input);
+        runWorkload(checker, session, input, staged);
         done += 1;
       }
       totalMs += performance.now() - chunkStart;
@@ -674,6 +675,20 @@ function timeWindowed(op) {
   return { value, ms: (performance.now() - start) / calls };
 }
 
+// The input staged in a session's engine, so a timed parse pays no
+// JS-to-wasm copy. Staging happens before the timer starts and is redone
+// only when the bytes change; each session's engine holds its own copy.
+const stagedInputs = new WeakMap();
+
+function stagedFor(session, input) {
+  const held = stagedInputs.get(session);
+  if (held?.input === input) return held.staged;
+  held?.staged.close();
+  const staged = session.stage(input);
+  stagedInputs.set(session, { input, staged });
+  return staged;
+}
+
 // One definition of what one run of the workload costs — the call the
 // table times and the batch loops: a bare parse for raw and hooks
 // (the hooks fire inside session.parse), plus snapshot materialization
@@ -681,11 +696,11 @@ function timeWindowed(op) {
 // snapshot by grammar; every other tab counts its nodes. Hooks reset
 // first so their stats describe this run; the input is shared bytes,
 // never re-encoded here.
-function runWorkload(checker, session, input) {
+function runWorkload(checker, session, input, staged) {
   const hooks = hooksFor[checker.id];
   const hooksMode = checker.mode === "hooks";
   if (hooksMode) hooks.resetStats();
-  const bytes = session.parse(input);
+  const bytes = session.parse(staged);
   let stats = null;
   if (checker.mode === "ast") session.snapshot();
   else if (checker.mode === "ast-visit")
@@ -699,9 +714,10 @@ function runWorkload(checker, session, input) {
 
 function timeParse(checker, input) {
   const session = sessionFor(checker);
+  const staged = stagedFor(session, input);
   // One window over that same workload: a lone run and a batch time
   // identical work, so what the row shows and what a batch ran agree.
-  const { value, ms } = timeWindowed(() => runWorkload(checker, session, input));
+  const { value, ms } = timeWindowed(() => runWorkload(checker, session, input, staged));
   return { bytes: value.bytes, runMs: ms, stats: value.stats };
 }
 
