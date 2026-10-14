@@ -237,12 +237,41 @@ def parse_zig_output(stdout_str):
     return metrics
 
 
-def metric_mbps(metrics):
-    throughput = metrics.get("Throughput", "0")
-    try:
-        return float(throughput.split()[0].replace(",", ""))
-    except (ValueError, IndexError):
+# Size units formatFileSize emits (1024-based), as factors for MB.
+SIZE_UNIT_FACTORS = {
+    "b": 1.0 / (1024 * 1024),
+    "kb": 1.0 / 1024,
+    "mb": 1.0,
+    "gb": 1024.0,
+    "tb": 1024.0 * 1024,
+    "pb": 1024.0 * 1024 * 1024,
+}
+
+
+def parse_size_mb(text):
+    """Parse a human-formatted size or rate ("1.38 GB/s") into MB.
+
+    formatFileSize scales values past 1024 (e.g. fast throughput prints
+    as GB/s), so the unit must be applied or such values read 1024x too
+    small. A value with no unit is read as MB (the harness default).
+    """
+    tokens = text.replace(",", "").split()
+    if not tokens:
         return 0.0
+    try:
+        value = float(tokens[0])
+    except ValueError:
+        return 0.0
+    if len(tokens) < 2:
+        return value
+    unit = tokens[1]
+    if unit.endswith("/s"):
+        unit = unit[:-2]
+    return value * SIZE_UNIT_FACTORS.get(unit.lower(), 1.0)
+
+
+def metric_mbps(metrics):
+    return parse_size_mb(metrics.get("Throughput", "0"))
 
 
 def benchmark_build_cmd(optimize, parser_type, language, config_flags):

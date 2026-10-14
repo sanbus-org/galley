@@ -14,7 +14,7 @@ ObjectMembers
 | "\u{22}" _StringContent "\u{22}" _OptionalBlank ":" _OptionalBlank Value ObjectMembersTail "}"
 | "}"
 
-ObjectMembersTail
+ObjectMembersTail@<
 | "," _OptionalBlank "\u{22}" _StringContent "\u{22}" _OptionalBlank ":" _OptionalBlank Value ObjectMembersTail
 |
 
@@ -22,7 +22,7 @@ ArrayMembers
 | Value ArrayMembersTail "]"
 | "]"
 
-ArrayMembersTail
+ArrayMembersTail@<
 | "," _OptionalBlank Value ArrayMembersTail
 |
 

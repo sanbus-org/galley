@@ -59,8 +59,35 @@ def _int_from_str(s: str) -> int:
     return int(s.replace(",", "").replace(" ", ""))
 
 
-def _float_from_str(s: str) -> float:
-    return float(s.replace(",", "").split()[0])
+# Size units the benchmark harness emits via string_utilities.formatFileSize
+# (1024-based), as factors for normalizing any of them to MB.
+_SIZE_UNIT_FACTORS = {
+    "b": 1.0 / (1024 * 1024),
+    "kb": 1.0 / 1024,
+    "mb": 1.0,
+    "gb": 1024.0,
+    "tb": 1024.0 * 1024,
+    "pb": 1024.0 * 1024 * 1024,
+}
+
+
+def _size_to_mb(raw: str) -> float:
+    """Parse a human-formatted size ("1.36 GB", "1.38 GB/s") into MB.
+
+    The harness scales values with formatFileSize and appends "/s" for
+    rates, so the unit must be applied or fast results read 1024x too
+    small. A value with no unit is read as MB (the harness default).
+    """
+    tokens = raw.replace(",", "").split()
+    if not tokens:
+        return 0.0
+    value = float(tokens[0])
+    if len(tokens) < 2:
+        return value
+    unit = tokens[1]
+    if unit.endswith("/s"):
+        unit = unit[:-2]
+    return value * _SIZE_UNIT_FACTORS.get(unit.lower(), 1.0)
 
 
 def parse_result_block(header: str, body: str, source: str) -> ParserResult:
@@ -96,13 +123,12 @@ def parse_result_block(header: str, body: str, source: str) -> ParserResult:
     for line in body.splitlines():
         line = line.strip()
         if line.startswith("Throughput:"):
-            throughput = _float_from_str(line.split(":", 1)[1].strip().split()[0])
+            throughput = _size_to_mb(line.split(":", 1)[1].strip())
         elif line.startswith("Duration:"):
             raw = line.split(":", 1)[1].strip().replace(" ns", "")
             duration_ns = _int_from_str(raw)
         elif line.startswith("Parsed bytes:"):
-            raw = line.split(":", 1)[1].strip().split()[0]
-            parsed_mb = _float_from_str(raw)
+            parsed_mb = _size_to_mb(line.split(":", 1)[1].strip())
         elif line.startswith("Nodes allocated:"):
             raw = line.split(":", 1)[1].strip()
             nodes = _int_from_str(raw) if raw != "0" else 0
@@ -685,11 +711,16 @@ def section_galley_language(files: List[BenchmarkFile], grammar: str) -> str:
             label = f"{ast_sym(ast_mode)}ast"
             if show_term:
                 label += f" {term_sym(terminal_ast)}term"
-            bar_entries.append((f"LL  {label}", ll))
+            # A config only exists because some parser had throughput > 0;
+            # a parser with no result file renders "—" in the table and
+            # must not render an empty zero bar in the chart.
+            if ll > 0:
+                bar_entries.append((f"LL  {label}", ll))
             if show_lr:
                 ratio = f"{ll / lr:.2f}×" if lr > 0 else "—"
                 row.extend([fmt_throughput(lr), ratio])
-                bar_entries.append((f"LR  {label}", lr))
+                if lr > 0:
+                    bar_entries.append((f"LR  {label}", lr))
             rows.append(row)
 
         lines.append(md_table(headers, rows))
