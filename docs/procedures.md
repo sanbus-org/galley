@@ -39,7 +39,8 @@ the other `examples/` directories implement the same hooks through the C ABI.
 1. **Source Generation:** The grammar generator parses your grammar file
    (`ll.grm` or `lr.grm`) and emits Zig parser source such as
    `_ll-parser.zig`.
-2. **Binding:** For every hook reference (explicit or implicit), the generator checks if a public declaration with that name is exported by `languages/<name>/procedures.zig`. An annotation `@print` binds the declaration `hook_print`; automatic hooks bind their `reduction` names.
+2. **Binding:** For every hook reference (explicit or implicit), the generator checks if a public declaration with that name is exported by the `procedures.zig` in the grammar directory. An annotation `@print` binds the declaration `hook_print`; automatic hooks bind their `reduction` names.
+   A `host_procedures.zig` beside the parser (written by `--emit-host-procedures`) replaces `procedures.zig`: every hook the parser names then binds to the host shim instead.
 3. **Execution:** During runtime, when the parser shifts or reduces the marked symbols, it calls the corresponding hook function, passing a mutable context.
 
 ---
@@ -205,6 +206,8 @@ Python, Java and JavaScript install hooks by name at runtime, and a built librar
 - `hook_<name>` for every annotation `@name`.
 
 Installing a name outside the list raises the host's argument error, suggesting `hook_<name>` or `reduction_<name>` when the artifact defines it. With `procedures = false` the list is empty and every install raises.
+
+Under the shim, each hook point calls the shim's forwarder even when the session installed nothing; the forwarder returns at once, but the call is not free. A parser built with its own `procedures.zig` that declares no hooks binds nothing and pays nothing.
 
 C, C++, Rust and Go hooks are compiled into the library instead. `--emit-metadata` writes `procedures.zig` declaring only `reduction`, `reduction_<Variable>` and `hook_<name>`, and the consumer must define every one of them, so terminal and per-production hooks are not reachable from those languages yet. The planned fix declares hooks in `procedures.h`, translated with `addTranslateC`, so a consumer defines only the hooks it implements and every name in the list becomes reachable. `metadata.json` lists the same declared subset under `procedures`.
 

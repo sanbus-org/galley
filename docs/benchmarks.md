@@ -160,6 +160,7 @@ Practical rules:
 2. Use inputs large enough to drown timer noise.
 3. Avoid background CPU noise during comparisons.
 4. Compare equivalent parser configurations and input paths.
+5. Compare builds that bind the same hooks. A `host_procedures.zig` beside the parser replaces `procedures.zig`, so a Zig build and a binding build of one language directory can run different hook wiring.
 
 ---
 
