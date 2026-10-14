@@ -47,15 +47,11 @@ _ArrayMembersTail
 OptionalBlank@dropChildren
 | space _OptionalBlankTail
 | new_line _OptionalBlankTail
-| block_start _OptionalBlankTail
-| block_end _OptionalBlankTail
 |
 
 _OptionalBlankTail
 | space _OptionalBlankTail
 | new_line _OptionalBlankTail
-| block_start _OptionalBlankTail
-| block_end _OptionalBlankTail
 |
 
 String

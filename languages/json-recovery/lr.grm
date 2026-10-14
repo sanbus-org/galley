@@ -29,8 +29,6 @@ _ValueSlot
 _OptionalBlank
 | _OptionalBlank space
 | _OptionalBlank new_line
-| _OptionalBlank block_start
-| _OptionalBlank block_end
 |
 
 _StringContent

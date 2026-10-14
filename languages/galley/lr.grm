@@ -140,12 +140,6 @@ OptionalNewLineMany
 NewLine
 | new_line Comment
 
-BlockStart
-| block_start Comment
-
-BlockEnd
-| block_end Comment
-
 CommentLine
 | "#"@>^"\n" new_line
 
