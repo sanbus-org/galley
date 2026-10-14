@@ -16,7 +16,7 @@ A binding has two interfaces, and each has its contract. **With the user**: what
 
 ### Sessions
 
-- A session opens with options for the parser's tunables, including whether it retains the input of the parse it publishes (it does by default), and owns its hooks: a copy of its parser's defaults taken when it opens. A default installed later reaches only sessions opened later. Message overrides replace the text of diagnostic messages and, like hooks, are fixed while a parse runs.
+- A session opens with options for the parser's tunables, and owns its hooks: a copy of its parser's defaults taken when it opens. A default installed later reaches only sessions opened later. Message overrides replace the text of diagnostic messages and, like hooks, are fixed while a parse runs.
 - Parsing copies the input, so the caller may reuse or release its buffer afterwards. Interior NUL bytes are data. Message inputs accept text or raw bytes without silent re-encoding. A file path with an interior NUL is rejected, never truncated.
 - A call with an input form the host does not accept is rejected at the earliest point the host allows (compile time where the type system catches it, otherwise at call entry), with no silent coercion.
 - Sessions close explicitly or through the host's scoped-resource form, and closing is idempotent. Use after close fails with an error that names the closed object and is distinct from the stale-tree error.
@@ -52,7 +52,7 @@ A binding has two interfaces, and each has its contract. **With the user**: what
 - A walker belongs to the parse of the tree it was created over: stepping it after a re-parse raises the stale-tree error. Parsing with an abandoned walker succeeds; the walker fails at its next step.
 - The recovered flag marks a node that syntax-error recovery kept in place of damaged input, spanning the input recovery skipped. Under LL parsing it is the damaged variable's own node, with the children parsed before the damage. Under LR parsing, which builds no node before a rule completes, it is a placeholder with no children, and no variable under automatic recovery. Either way it sits where the damage was, as a child of the node covering it, so a walk that skips recovered subtrees yields only undamaged nodes. The damaged variable's hooks never ran, and the hooks of the nodes around it see it flagged.
 - A snapshot reads the published tree in one call: parent and sibling links, child counts, variables, spans, and the semantic-error and recovered flags, all of one parse. A parse that runs in between raises the stale-tree error rather than returning columns of two trees. `snapshot.node(i)` converts a stored address back to a node: the empty value for "no node", the host's index error for an out-of-range `i`, and otherwise a node of the snapshot's parse, stale after a re-parse.
-- Unless its option says otherwise, a session retains the input of its published parse, and node text and `last_input` read it. Without retention they raise `input not retained`; spans, snapshots and `last_position` need no input and still answer. `last_input` and `last_position` follow the published tree like every node read. When several refusals apply, `session in use` comes first, then `stale tree`, then `input not retained`.
+- `last_input` and `last_position` follow the published tree like every node read. When both apply, `session in use` comes before `stale tree`.
 
 ### Failures, refusals and absence
 
@@ -61,7 +61,6 @@ A binding has two interfaces, and each has its contract. **With the user**: what
   - `session in use` (see Sessions). It takes precedence while a parse runs: a finished-parse query made inside a hook raises it even when nothing is published yet.
   - `stale tree`: the node's parse is no longer live, or a query that needs a published tree finds none (`node_count`, `snapshot`, `last_input` and `last_position`, before the first parse included). The stale-tree error is a subtype of the failure type carrying the stale-tree status code, and every way a tree can be gone raises it; use after close is neither.
   - `invalid node`: a node whose position was removed or moved out of the walk's root, or a tree edit with an out-of-range index, in every build.
-  - `input not retained`: the session's option dropped the input, so `last_input` and node text have nothing to read.
 - No handle has a validity probe: a real read is the answer.
 - Absence is not a refusal. `root_node` answers the host's empty value when nothing is published or the published tree has no root, and is the one "is there a tree here" probe; a link query with no node there and `snapshot.node(i)` of the invalid-node constant answer the empty value too. A node without a variable answers `-1` in every host, from the variable query and the snapshot's variable column, and snapshot link columns hold the invalid-node constant. An empty value means really empty.
 - Argument errors (a node of another session, a raw address where a node is expected, a missing argument, an unsupported input form, a path with an interior NUL) use the host's own argument error and are never answered with an empty value.

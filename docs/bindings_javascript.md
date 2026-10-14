@@ -263,7 +263,7 @@ A hook that throws aborts the parse. `parse` throws a `GalleyError` with code
 diagnostic of where the parse stopped; the parse publishes nothing, so `rootNode()`
 returns `null` and the nodes of that parse throw `StaleTreeError`. The session
 parses again afterwards. A hook that wants the parse to go on reports a semantic
-error instead. The same holds on node, bun, deno and wasm.
+error instead. The same holds with the native and the WebAssembly backends.
 
 Every parser owns its hooks: the generated package entry (and the
 internal `openLanguageDirectory` behind it) statically imports the
