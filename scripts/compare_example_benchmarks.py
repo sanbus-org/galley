@@ -13,11 +13,25 @@ decide pass or fail.
 Per-language bars (--min-ratio-override) replace the global bar for the
 named languages; currently only the WebAssembly example uses one, since it
 runs the same parser compiled to wasm, which trails native codegen.
-Per-language round counts (--rounds-override) replace --rounds for the
-named languages.
-The step-summary table carries a status column: a warning mark for rows
-below their bar (bindings that have not caught up with zig), an info
-mark for misses inside the informational band, and a check otherwise.
+Per-language round counts (--rounds-override) replace the default count
+for the named languages. --rounds sets zig's count and the references
+mirror it for pairing; every other runner counts as a binding and runs
+fewer total rounds, since bindings need only the best-of bar, not the
+paired tests' depth.
+The step-summary table's status column marks rows below their bar
+(bindings that have not caught up with zig) and misses inside the
+informational band.
+When --zig-parent-binary or --zig-ref-binary names an examples/zig
+build from the parent commit or from the performance-reference tag, that
+binary runs interleaved in every round, pairing each scored round's zig
+reading against the reference's. On pull_request the checkout is the
+merge commit, so zig-parent compares against the PR base rather than the
+commit's own parent. The zig-parent and zig-ref rows are exempt from the
+bar: each fails only when exact one-sided paired permutation and
+Wilcoxon signed-rank tests on the paired differences both judge zig
+significantly slower than that reference (p < 0.01). Significant
+speedups show an up arrow and never fail; the rows' ratios still divide
+by zig's best and median like every other row's.
 """
 
 from __future__ import annotations
@@ -36,8 +50,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 BPS_RE = re.compile(r"^bytes_per_second:\s*([0-9,]+)\s*$")
-DEFAULT_ROUNDS = 10
-DEFAULT_WARMUP = 3
+# zig's round count, shared by the references that pair against it: 18
+# interleaved rounds minus 1 warmup leave 17 scored pairs for the
+# reference tests below — the exact tests' power grows with the scored
+# count, and their false-alarm rate does not shrink with it (see
+# REFERENCE_ALPHA). The warmup only has to put the sample in page cache
+# and the CPU at frequency — system state the interleaved runs neither
+# create nor destroy — so one round covers it.
+DEFAULT_ROUNDS = 18
+# Bindings never feed the paired tests, only the best-of bar, so they
+# need no statistical depth: 7 total rounds leave 6 scored ones. Zig
+# (and its references) run DEFAULT_ROUNDS; bindings run this many.
+BINDING_ROUNDS = 7
+DEFAULT_WARMUP = 1
 DEFAULT_ITERATIONS = 10
 DEFAULT_MIN_RATIO = 0.94
 # Per-language bars replacing the global --min-ratio for the named
@@ -52,8 +77,31 @@ DEFAULT_MIN_RATIO_OVERRIDES: dict[str, float] = {
 # runs too.
 DEFAULT_ROUNDS_OVERRIDES: dict[str, int] = {}
 INFO_RATIO = 0.97
+# Zig reference builds paired against zig round by round: rows exempt
+# from the bar, checked with the exact paired tests below instead.
+PARENT_NAME = "zig-parent"
+REF_NAME = "zig-ref"
+REFERENCE_NAMES = (PARENT_NAME, REF_NAME)
+# What each reference row builds, for the step-summary footnote.
+REFERENCE_SOURCES = {
+    PARENT_NAME: "this build's HEAD^ (the PR base on pull_request)",
+    REF_NAME: "the performance-reference tag",
+}
+# One-sided significance level for the paired zig-reference tests. Both
+# tests must reject at this level for a row to fail. An exact test at
+# level alpha rejects about alpha of perf-neutral rows, and that share
+# barely moves with the round count, so the level sets the flake rate:
+# simulated over these exact tests, 0.05 gives ~4%/row (~30% per push
+# across 9 rows) and 0.01 ~1%/row (~8% per push).
+REFERENCE_ALPHA = 0.01
+# Bound on scored rounds per reference row: the exact tests enumerate
+# 2^n sign assignments, so beyond this count they get exponentially
+# slower without adding decision resolution the alpha level can use.
+MAX_SCORED_ROUNDS = 20
 LANGUAGE_ORDER = (
     "zig",
+    "zig-parent",
+    "zig-ref",
     "c",
     "cpp",
     "rust",
@@ -74,6 +122,33 @@ class Runner:
     cwd: Path | None = None
 
 
+@dataclass(frozen=True)
+class ReferenceStats:
+    """Paired zig-vs-reference results over the scored rounds."""
+
+    pairs: int
+    # Non-zero pairs: the count the Wilcoxon signed-rank test works over,
+    # since it drops exact ties (the sign-flip test keeps them).
+    wilcoxon_pairs: int
+    permutation_p: float  # one-sided: zig slower than this reference
+    wilcoxon_p: float
+    speedup_permutation_p: float
+    speedup_wilcoxon_p: float
+
+    @property
+    def regression(self) -> bool:
+        return (
+            self.permutation_p < REFERENCE_ALPHA and self.wilcoxon_p < REFERENCE_ALPHA
+        )
+
+    @property
+    def speedup(self) -> bool:
+        return (
+            self.speedup_permutation_p < REFERENCE_ALPHA
+            and self.speedup_wilcoxon_p < REFERENCE_ALPHA
+        )
+
+
 @dataclass
 class Report:
     rounds: dict[str, list[int]]
@@ -83,6 +158,8 @@ class Report:
     zig_second_best: int
     failures: list[str] = field(default_factory=list)
     info_band_misses: list[str] = field(default_factory=list)
+    # Paired-test results per reference row present in the run.
+    references: dict[str, ReferenceStats] = field(default_factory=dict)
 
 
 def parse_bps(stdout: str) -> int:
@@ -105,6 +182,72 @@ def second_best(values: list[int]) -> int:
         raise ValueError("second-best of empty sample")
     ordered = sorted(values, reverse=True)
     return ordered[1] if len(ordered) > 1 else ordered[0]
+
+
+def paired_sign_flip_pvalues(differences: list[float]) -> tuple[float, float]:
+    """Exact paired permutation (sign-flip) test on the mean difference.
+
+    Returns the (regression, speedup) one-sided p-values: the shares of
+    the 2^n sign assignments whose mean is at most / at least the
+    observed one, so a small first value means "zig slower than parent"
+    and a small second value the opposite.
+    """
+    count = len(differences)
+    if count == 0:
+        return 1.0, 1.0
+    observed = sum(differences) / count
+    below = 0
+    above = 0
+    total = 1 << count
+    for mask in range(total):
+        permuted = (
+            sum(
+                value if mask & (1 << index) else -value
+                for index, value in enumerate(differences)
+            )
+            / count
+        )
+        if permuted <= observed:
+            below += 1
+        if permuted >= observed:
+            above += 1
+    return below / total, above / total
+
+
+def wilcoxon_signed_rank_pvalues(differences: list[float]) -> tuple[float, float]:
+    """Exact Wilcoxon signed-rank test; same (regression, speedup) pair.
+
+    Zero differences drop out, equal magnitudes share average ranks, and
+    the exact null enumerates all 2^n sign assignments of the ranks.
+    """
+    nonzero = [value for value in differences if value != 0]
+    count = len(nonzero)
+    if count == 0:
+        return 1.0, 1.0
+    order = sorted(range(count), key=lambda index: abs(nonzero[index]))
+    ranks = [0.0] * count
+    position = 0
+    while position < count:
+        end = position
+        while end + 1 < count and abs(nonzero[order[end + 1]]) == abs(
+            nonzero[order[position]]
+        ):
+            end += 1
+        average = (position + 1 + end + 1) / 2.0
+        for offset in range(position, end + 1):
+            ranks[order[offset]] = average
+        position = end + 1
+    observed = sum(rank for rank, value in zip(ranks, nonzero) if value > 0)
+    below = 0
+    above = 0
+    total = 1 << count
+    for mask in range(total):
+        w_plus = sum(rank for index, rank in enumerate(ranks) if mask & (1 << index))
+        if w_plus <= observed:
+            below += 1
+        if w_plus >= observed:
+            above += 1
+    return below / total, above / total
 
 
 def evaluate(
@@ -133,10 +276,34 @@ def evaluate(
     zig_second_best = second_best(scored[reference])
     if zig_second_best <= 0:
         raise ValueError(f"{reference} second-best throughput is {zig_second_best}")
+    references: dict[str, ReferenceStats] = {}
+    for name in REFERENCE_NAMES:
+        if name not in scored:
+            continue
+        if len(scored[name]) != len(scored[reference]):
+            raise ValueError(f"{name}: scored round count must mirror {reference!r}")
+        if len(scored[name]) > MAX_SCORED_ROUNDS:
+            raise ValueError(
+                f"{name}: {len(scored[name])} scored rounds exceed the exact "
+                f"tests' bound of {MAX_SCORED_ROUNDS} (lower --rounds)"
+            )
+        differences = [
+            current - other for current, other in zip(scored[reference], scored[name])
+        ]
+        permutation_p, speedup_permutation_p = paired_sign_flip_pvalues(differences)
+        wilcoxon_p, speedup_wilcoxon_p = wilcoxon_signed_rank_pvalues(differences)
+        references[name] = ReferenceStats(
+            pairs=len(differences),
+            wilcoxon_pairs=sum(1 for value in differences if value != 0),
+            permutation_p=permutation_p,
+            wilcoxon_p=wilcoxon_p,
+            speedup_permutation_p=speedup_permutation_p,
+            speedup_wilcoxon_p=speedup_wilcoxon_p,
+        )
     failures: list[str] = []
     info_band_misses: list[str] = []
     for name, score in scores.items():
-        if name == reference:
+        if name == reference or name in REFERENCE_NAMES:
             continue
         bar = overrides.get(name, min_ratio)
         ratio = score / zig_second_best
@@ -152,6 +319,7 @@ def evaluate(
         zig_second_best=zig_second_best,
         failures=failures,
         info_band_misses=info_band_misses,
+        references=references,
     )
 
 
@@ -248,6 +416,57 @@ def format_rounds_overrides(overrides: dict[str, int]) -> str:
     return ", ".join(f"{name}={count}" for name, count in sorted(overrides.items()))
 
 
+def rounds_note(round_counts: dict[str, int], zig_rounds: int) -> str:
+    """Describe round counts that differ from the nominal ones, for run lines.
+
+    Yields nothing when every count matches. Bindings run BINDING_ROUNDS
+    by default rather than zig's count, so a uniform binding count reads
+    as one clause instead of a per-name listing; mixed counts (from
+    per-language overrides) are listed per name, and a zig override is
+    named separately.
+    """
+    note = ""
+    zig_count = round_counts.get("zig")
+    if zig_count is not None and zig_count != zig_rounds:
+        note += f"; zig runs {zig_count} rounds"
+    bindings = {
+        name: count
+        for name, count in round_counts.items()
+        if name != "zig" and name not in REFERENCE_NAMES
+    }
+    if not bindings:
+        return note
+    counts = set(bindings.values())
+    if len(counts) == 1:
+        count = next(iter(counts))
+        if count != zig_count:
+            note += f"; bindings run {count} rounds"
+    else:
+        note += "; round counts: " + format_rounds_overrides(bindings)
+    return note
+
+
+def format_pvalue(p: float) -> str:
+    return f"{p:.2f}" if p >= 0.01 else "<0.01"
+
+
+def format_reference_status(stats: ReferenceStats) -> str:
+    if stats.regression:
+        return (
+            f"🔴 p={format_pvalue(stats.permutation_p)}"
+            f"/{format_pvalue(stats.wilcoxon_p)}"
+        )
+    if stats.speedup:
+        return (
+            "🟢↑ p="
+            f"{format_pvalue(stats.speedup_permutation_p)}"
+            f"/{format_pvalue(stats.speedup_wilcoxon_p)}"
+        )
+    return (
+        f"🟢 p={format_pvalue(stats.permutation_p)}/{format_pvalue(stats.wilcoxon_p)}"
+    )
+
+
 def print_report(
     report: Report,
     *,
@@ -287,7 +506,9 @@ def print_report(
             print(prefix + f"{'reference':>13}  {'reference':>13}")
             continue
         note = ""
-        if name in report.failures:
+        if name in report.references:
+            note = "  " + format_reference_status(report.references[name])
+        elif name in report.failures:
             note = "  FAIL"
         elif name in report.info_band_misses:
             note = f"  outside {1 - info_ratio:.0%} band (info)"
@@ -295,10 +516,42 @@ def print_report(
         median_ratio = score / report.medians["zig"]
         print(prefix + f"{best_ratio:>13.1%}  {median_ratio:>13.1%}{note}")
 
+    for name in REFERENCE_NAMES:
+        stats = report.references.get(name)
+        if stats is None:
+            continue
+        print()
+        print(f"zig vs {name}, paired over {stats.pairs} scored rounds:")
+        for index, (current, other) in enumerate(
+            zip(report.scored["zig"], report.scored[name])
+        ):
+            print(
+                f"  round {index + warmup + 1}: "
+                f"zig {format_int(current)}, {name} {format_int(other)}"
+            )
+        print(
+            f"  permutation p: slower {stats.permutation_p:.4f}, "
+            f"faster {stats.speedup_permutation_p:.4f}"
+        )
+        tie_note = ""
+        if stats.wilcoxon_pairs != stats.pairs:
+            # The signed-rank test drops exact ties, the sign-flip test does not.
+            tie_note = f" (over {stats.wilcoxon_pairs} non-tie pairs)"
+        print(
+            f"  Wilcoxon p: slower {stats.wilcoxon_p:.4f}, "
+            f"faster {stats.speedup_wilcoxon_p:.4f}{tie_note}"
+        )
+
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
+        failed = bool(report.failures) or any(
+            stats.regression for stats in report.references.values()
+        )
         with open(summary, "a", encoding="utf-8") as handle:
-            handle.write("### Example benchmark throughput vs examples/zig")
+            handle.write(
+                f"### {'🔴' if failed else '🟢'}"
+                " Example benchmark throughput vs examples/zig"
+            )
             if label:
                 handle.write(f" ({label})")
             handle.write("\n\n")
@@ -314,12 +567,14 @@ def print_report(
                 median_ratio = score / report.medians["zig"]
                 if name == "zig":
                     status = "—"
+                elif name in report.references:
+                    status = format_reference_status(report.references[name])
                 elif name in report.failures:
-                    status = "⚠️ **below bar**"
+                    status = "🟡 **below bar**"
                 elif name in report.info_band_misses:
-                    status = "ℹ️ outside band"
+                    status = "🟡 outside band"
                 else:
-                    status = "✅"
+                    status = "🟢"
                 handle.write(
                     f"| {name} | {format_int(score)} "
                     f"| {format_int(median_bytes)} "
@@ -333,16 +588,10 @@ def print_report(
                 warmup_text = "round 1 is warmup"
             else:
                 warmup_text = f"first {warmup} rounds are warmup"
-            shown = {
-                name: count
-                for name, count in round_counts.items()
-                if name in names and count != rounds
-            }
             rounds_text = f"{rounds} interleaved rounds"
-            if shown:
-                rounds_text += f" (overrides: {format_rounds_overrides(shown)})"
             handle.write(
-                f"\n{rounds_text} including zig; {warmup_text}; "
+                f"\n{rounds_text} including zig{rounds_note(round_counts, rounds)}; "
+                f"{warmup_text}; "
                 f"score and median are over the remaining rounds, and the "
                 f"vs-zig columns divide by zig's best and median of those "
                 f"rounds. Fail below {min_ratio:.0%} of zig's second-best "
@@ -351,6 +600,22 @@ def print_report(
             if min_ratio_overrides:
                 handle.write(f" (overrides: {format_overrides(min_ratio_overrides)})")
             handle.write(f". {info_ratio:.0%} band is informational.\n")
+            present = [name for name in REFERENCE_NAMES if name in report.references]
+            if present:
+                sources = ", ".join(
+                    f"{name} ({REFERENCE_SOURCES[name]})" for name in present
+                )
+                handle.write(
+                    f"\n{sources} build examples/zig on the same inputs, "
+                    "interleaved in every round. Each reference row divides "
+                    "by zig's best and median like every row, but its status "
+                    "comes from exact one-sided paired permutation and "
+                    "Wilcoxon signed-rank tests over the "
+                    f"{report.references[present[0]].pairs} scored rounds: "
+                    "it fails only when both judge zig significantly slower "
+                    f"(p < {REFERENCE_ALPHA:g}); significant speedups show "
+                    "an up arrow and never fail.\n"
+                )
 
 
 def self_test_report_table(report: Report) -> None:
@@ -366,7 +631,14 @@ def self_test_report_table(report: Report) -> None:
                     min_ratio_overrides=dict(DEFAULT_MIN_RATIO_OVERRIDES),
                     info_ratio=INFO_RATIO,
                     rounds=3,
-                    round_counts={"zig": 5, "c": 3, "rust": 3, "python": 3},
+                    round_counts={
+                        "zig": 5,
+                        "zig-parent": 3,
+                        "zig-ref": 3,
+                        "c": 3,
+                        "rust": 3,
+                        "python": 3,
+                    },
                     warmup=1,
                     label="self-test",
                 )
@@ -382,15 +654,24 @@ def self_test_report_table(report: Report) -> None:
         "| vs zig median | status |" in table
     )
     assert "| zig | 200 | 190 | 100.0% | 105.3% | — |" in table
-    assert "| c | 190 | 188 | 95.0% | 100.0% | ✅ |" in table
-    assert "| rust | 174 | 172 | 87.0% | 91.6% | ℹ️ outside band |" in table
-    assert "| python | 30 | 25 | 15.0% | 15.8% | ⚠️ **below bar** |" in table
+    assert "| zig-parent | 190 | 190 | 95.0% | 100.0% | 🟢 p=0.75/0.75 |" in table
+    assert "| zig-ref | 195 | 190 | 97.5% | 102.6% | 🟢 p=0.75/0.75 |" in table
+    assert "| c | 190 | 188 | 95.0% | 100.0% | 🟢 |" in table
+    assert "| rust | 174 | 172 | 87.0% | 91.6% | 🟡 outside band |" in table
+    assert "| python | 30 | 25 | 15.0% | 15.8% | 🟡 **below bar** |" in table
     assert "zig's second-best scored round (180 bytes/s)" in table
-    assert "### Example benchmark throughput vs examples/zig (self-test)" in table
+    assert "### 🔴 Example benchmark throughput vs examples/zig (self-test)" in table
+    assert "zig-parent (this build's HEAD^ (the PR base on pull_request))" in table
+    assert "zig-ref (the performance-reference tag)" in table
+    assert "fails only when both judge zig significantly slower" in table
     assert "vs zig best" in output
     assert "vs zig median" in output
     assert "FAIL" in output
     assert "outside 3% band (info)" in output
+    assert "zig vs zig-parent, paired over 2 scored rounds" in output
+    assert "round 2: zig 200, zig-parent 190" in output
+    assert "zig vs zig-ref, paired over 2 scored rounds" in output
+    assert "round 2: zig 200, zig-ref 195" in output
 
 
 def self_test() -> None:
@@ -398,6 +679,8 @@ def self_test() -> None:
     assert second_best([180]) == 180
     rounds = {
         "zig": [100, 200, 180],
+        "zig-parent": [150, 190, 190],
+        "zig-ref": [150, 195, 185],
         "c": [90, 190, 185],
         "rust": [80, 174, 170],
         "python": [10, 20, 30],
@@ -413,6 +696,50 @@ def self_test() -> None:
     assert report.zig_second_best == 180
     assert report.scores["c"] == 190
     assert report.medians["c"] == 187.5
+    # Paired zig-reference tests: exact known answers, both directions.
+    assert paired_sign_flip_pvalues([-1.0] * 7) == (1 / 128, 1.0)
+    assert paired_sign_flip_pvalues([1.0] * 7) == (1.0, 1 / 128)
+    assert paired_sign_flip_pvalues([10.0, -10.0]) == (0.75, 0.75)
+    assert wilcoxon_signed_rank_pvalues([-1.0] * 7) == (1 / 128, 1.0)
+    assert wilcoxon_signed_rank_pvalues([1.0] * 7) == (1.0, 1 / 128)
+    assert wilcoxon_signed_rank_pvalues([10.0, -10.0]) == (0.75, 0.75)
+    assert wilcoxon_signed_rank_pvalues([0.0, 0.0]) == (1.0, 1.0)
+    # Magnitudes not already in difference order: ranks must follow each
+    # difference, not the sorted magnitudes.
+    assert wilcoxon_signed_rank_pvalues([-3.0, 1.0, 5.0, -5.0, -4.0]) == (
+        11 / 32,
+        23 / 32,
+    )
+    # The scored pairs here are zig [200, 180] vs parent [190, 190] and
+    # ref [195, 185]: mixed differences, no verdict either way for either
+    # reference, and both stay out of the bar logic.
+    assert report.references.keys() == {"zig-parent", "zig-ref"}
+    assert report.references[PARENT_NAME].pairs == 2
+    assert report.references[PARENT_NAME].permutation_p == 0.75
+    assert not report.references[PARENT_NAME].regression
+    assert not report.references[PARENT_NAME].speedup
+    assert report.references[REF_NAME].permutation_p == 0.75
+    assert not report.references[REF_NAME].regression
+    assert not report.references[REF_NAME].speedup
+    for name in REFERENCE_NAMES:
+        assert name not in report.failures
+        assert name not in report.info_band_misses
+    # All-negative pairs fail as a regression; all-positive as a speedup.
+    slower = evaluate(
+        {"zig": [100] + [90] * 7, "zig-parent": [100] + [100] * 7},
+        warmup=1,
+        min_ratio=DEFAULT_MIN_RATIO,
+    )
+    assert slower.references[PARENT_NAME].regression
+    assert not slower.references[PARENT_NAME].speedup
+    faster = evaluate(
+        {"zig": [100] + [110] * 7, REF_NAME: [100] + [100] * 7},
+        warmup=1,
+        min_ratio=DEFAULT_MIN_RATIO,
+    )
+    assert faster.references[REF_NAME].speedup
+    assert not faster.references[REF_NAME].regression
+    assert PARENT_NAME not in faster.references
     assert "c" not in report.failures
     assert "c" not in report.info_band_misses
     # rust's 174 clears the 94% bar against zig's second-best (174/180) but
@@ -431,13 +758,49 @@ def self_test() -> None:
     assert "python" in overridden.info_band_misses
     self_test_report_table(report)
     assert parse_rounds_override("zig=6") == ("zig", 6)
-    for bad in ("zig", "=6", "cobol=6", "zig=six", "zig=0", "zig=-2"):
+    for bad in (
+        "zig",
+        "=6",
+        "cobol=6",
+        "zig=six",
+        "zig=0",
+        "zig=-2",
+        "zig-parent=6",
+        "zig-ref=6",
+    ):
         try:
             parse_rounds_override(bad)
         except ValueError:
             pass
         else:
             raise AssertionError(f"parse_rounds_override accepted {bad!r}")
+    assert parse_override("wasm=0.60") == ("wasm", 0.60)
+    for bad in ("zig", "=0.9", "cobol=0.9", "zig-parent=0.9", "zig-ref=0.9"):
+        try:
+            parse_override(bad)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"parse_override accepted {bad!r}")
+    # Exact ties pair but drop out of the signed-rank count.
+    tied = evaluate(
+        {"zig": [100, 100], "zig-parent": [100, 100]},
+        warmup=1,
+        min_ratio=DEFAULT_MIN_RATIO,
+    )
+    assert tied.references[PARENT_NAME].pairs == 1
+    assert tied.references[PARENT_NAME].wilcoxon_pairs == 0
+    # Scored rounds beyond the exact tests' enumeration bound are rejected.
+    try:
+        evaluate(
+            {"zig": [100] * 22, "zig-parent": [90] * 22},
+            warmup=1,
+            min_ratio=DEFAULT_MIN_RATIO,
+        )
+    except ValueError as error:
+        assert "bound" in str(error)
+    else:
+        raise AssertionError("scored-round bound did not fire")
     print("self-test ok")
 
 
@@ -445,6 +808,11 @@ def parse_override(text: str) -> tuple[str, float]:
     name, separator, value = text.partition("=")
     if not separator or not name:
         raise ValueError(f"override must be LANG=RATIO, got {text!r}")
+    if name in REFERENCE_NAMES:
+        raise ValueError(
+            f"{name} is exempt from the bar; a min-ratio override has no "
+            f"effect on it (reference rows fail only on paired tests)"
+        )
     if name not in LANGUAGE_ORDER:
         raise ValueError(f"unknown language in min-ratio override: {name!r}")
     try:
@@ -460,6 +828,11 @@ def parse_rounds_override(text: str) -> tuple[str, int]:
     name, separator, value = text.partition("=")
     if not separator or not name:
         raise ValueError(f"override must be LANG=COUNT, got {text!r}")
+    if name in REFERENCE_NAMES:
+        raise ValueError(
+            f"{name} runs exactly zig's rounds so every scored round pairs; "
+            f"a rounds override would break the pairing"
+        )
     if name not in LANGUAGE_ORDER:
         raise ValueError(f"unknown language in rounds override: {name!r}")
     try:
@@ -486,7 +859,15 @@ def main() -> int:
         ),
     )
     parser.add_argument("--label", type=str, default=None)
-    parser.add_argument("--rounds", type=int, default=DEFAULT_ROUNDS)
+    parser.add_argument(
+        "--rounds",
+        type=int,
+        default=DEFAULT_ROUNDS,
+        help=(
+            "zig's total rounds, mirrored by its reference rows; bindings "
+            f"run {BINDING_ROUNDS} instead (default: {DEFAULT_ROUNDS})"
+        ),
+    )
     parser.add_argument("--warmup", type=int, default=DEFAULT_WARMUP)
     parser.add_argument("--iterations", type=int, default=DEFAULT_ITERATIONS)
     parser.add_argument(
@@ -498,6 +879,26 @@ def main() -> int:
             "(default: random; the seed in use is printed at start)"
         ),
     )
+    parser.add_argument(
+        "--zig-parent-binary",
+        type=Path,
+        default=None,
+        help=(
+            "benchmark binary built from the parent commit's examples/zig; "
+            "adds a zig-parent row interleaved in every round and paired "
+            "against zig (default: no parent comparison)"
+        ),
+    )
+    parser.add_argument(
+        "--zig-ref-binary",
+        type=Path,
+        default=None,
+        help=(
+            "benchmark binary built from the performance-reference tag's "
+            "examples/zig; adds a zig-ref row interleaved in every round "
+            "and paired against zig (default: no tag comparison)"
+        ),
+    )
     parser.add_argument("--min-ratio", type=float, default=DEFAULT_MIN_RATIO)
     parser.add_argument(
         "--rounds-override",
@@ -505,8 +906,9 @@ def main() -> int:
         default=[],
         metavar="LANG=COUNT",
         help=(
-            "per-language round count replacing --rounds, e.g. zig=6 "
-            "(repeatable; built-in: "
+            "per-language total round count replacing that language's "
+            "default (zig: --rounds; bindings: the binding count), e.g. "
+            "zig=6 (repeatable; built-in: "
             + format_rounds_overrides(DEFAULT_ROUNDS_OVERRIDES)
             + ")"
         ),
@@ -538,7 +940,9 @@ def main() -> int:
     round_counts = dict(DEFAULT_ROUNDS_OVERRIDES)
     round_counts.update(cli_rounds)
     for name in LANGUAGE_ORDER:
-        round_counts.setdefault(name, args.rounds)
+        # Zig runs --rounds (its references are pinned to zig below);
+        # bindings run the smaller binding count unless overridden.
+        round_counts.setdefault(name, args.rounds if name == "zig" else BINDING_ROUNDS)
     if args.warmup < 0 or args.warmup >= min(round_counts.values()):
         print(
             "warmup must be >= 0 and below every language round count", file=sys.stderr
@@ -560,7 +964,21 @@ def main() -> int:
         return 1
     parser_dir = (root / (args.parser_dir or Path("languages/json"))).resolve()
 
-    runners = {runner.name: runner for runner in default_runners(root, parser_dir)}
+    runner_list = default_runners(root, parser_dir)
+    reference_binaries = {
+        PARENT_NAME: args.zig_parent_binary,
+        REF_NAME: args.zig_ref_binary,
+    }
+    for name, binary in reference_binaries.items():
+        if binary is not None:
+            runner_list.append(Runner(name, [str(binary.resolve())]))
+    runners = {runner.name: runner for runner in runner_list}
+    for name in REFERENCE_NAMES:
+        if name not in runners:
+            round_counts.pop(name, None)
+        else:
+            # References run exactly zig's rounds, so every scored round pairs.
+            round_counts[name] = round_counts["zig"]
     try:
         cli_overrides = dict(parse_override(text) for text in args.min_ratio_override)
     except ValueError as error:
@@ -569,6 +987,11 @@ def main() -> int:
     overrides = {**DEFAULT_MIN_RATIO_OVERRIDES, **cli_overrides}
     missing = []
     for name in LANGUAGE_ORDER:
+        if name not in runners:
+            if name in REFERENCE_NAMES:
+                # Reference rows are optional, added only by their flags.
+                continue
+            raise AssertionError(f"no runner built for required language {name!r}")
         runner = runners[name]
         if name == "python":
             script = (runner.cwd or root) / "benchmark.py"
@@ -630,22 +1053,27 @@ def main() -> int:
     start = f"interleaved {args.rounds} rounds"
     if args.label:
         start += f" [{args.label}]"
-    extra_rounds = {
-        name: count for name, count in round_counts.items() if count != args.rounds
-    }
-    if extra_rounds:
-        start += f" (overrides: {format_rounds_overrides(extra_rounds)})"
+    start += rounds_note(round_counts, args.rounds)
+    paired = [name for name in REFERENCE_NAMES if name in round_counts]
+    if paired:
+        start += f"; references paired against zig: {', '.join(paired)}"
     print(
         f"{start} (warmup {args.warmup}), {args.iterations} iterations, sample {sample}"
     )
     seed = args.seed if args.seed is not None else random.randrange(1 << 32)
     print(f"order seed: {seed} (replay with --seed {seed})")
     rng = random.Random(seed)
-    rounds: dict[str, list[int]] = {name: [] for name in LANGUAGE_ORDER}
+    rounds: dict[str, list[int]] = {
+        name: [] for name in LANGUAGE_ORDER if name in runners
+    }
     for round_index in range(max(round_counts.values())):
         # Fresh shuffled order every round, so no language keeps the same
         # position (heat, cache, and neighbor effects) across rounds.
-        order = [name for name in LANGUAGE_ORDER if round_index < round_counts[name]]
+        order = [
+            name
+            for name in LANGUAGE_ORDER
+            if name in runners and round_index < round_counts[name]
+        ]
         rng.shuffle(order)
         for name in order:
             bps = run_one(runners[name], sample, args.iterations)
@@ -678,17 +1106,31 @@ def main() -> int:
             + ", ".join(report.info_band_misses),
             flush=True,
         )
+    errors: list[str] = []
     if report.failures:
-        parts = []
-        for name in report.failures:
-            bar = overrides.get(name, args.min_ratio)
-            parts.append(f"{name} below {bar:.0%}")
-        message = (
+        parts = [
+            f"{name} below {overrides.get(name, args.min_ratio):.0%}"
+            for name in report.failures
+        ]
+        errors.append(
             f"benchmark: {', '.join(parts)} of zig second-best "
             f"({format_int(report.zig_second_best)} bytes/s)"
         )
+    regressed = [name for name, stats in report.references.items() if stats.regression]
+    if regressed:
+        parts = []
+        for name in regressed:
+            stats = report.references[name]
+            parts.append(
+                f"{name} (permutation p={stats.permutation_p:.4f}, "
+                f"Wilcoxon p={stats.wilcoxon_p:.4f})"
+            )
+        errors.append(f"benchmark: zig significantly slower than {', '.join(parts)}")
+    for message in errors:
+        # Report every failing gate, not just the first one that fires.
         print(f"::error::{message}")
         print(message, file=sys.stderr)
+    if errors:
         return 1
     print(
         f"all C-ABI examples are >= {args.min_ratio:.0%} of zig second-best "

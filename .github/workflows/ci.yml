@@ -789,6 +789,44 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      - name: Resolve performance references
+        id: references
+        run: |
+          # The performance-reference tag is the approved baseline. When it
+          # points at this very commit, this run approves that level: no
+          # reference checks at all (neither tag nor parent), and no builds.
+          parent=1
+          ref=0
+          sha=
+          git tag -d performance-reference >/dev/null 2>&1 || true
+          # Distinguish "tag absent" (ls-remote --exit-code: 2) from a
+          # failed query: a network or auth error must fail the job, not
+          # silently drop the reference comparison.
+          set +e
+          git ls-remote --exit-code origin refs/tags/performance-reference >/dev/null
+          status=$?
+          set -e
+          if [ "$status" = 0 ]; then
+            git fetch --depth=1 origin refs/tags/performance-reference
+            sha="$(git rev-parse FETCH_HEAD^{commit})"
+            echo "performance-reference: $sha"
+            if [ "$sha" = "$(git rev-parse HEAD)" ]; then
+              parent=0
+            else
+              ref=1
+            fi
+          elif [ "$status" = 2 ]; then
+            echo "performance-reference: absent (no tag comparison)"
+          else
+            echo "::error::cannot query the performance-reference tag (git ls-remote exit $status)"
+            exit 1
+          fi
+          echo "parent=$parent" >> "$GITHUB_OUTPUT"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       - name: Fetch large JSON sample
         if: ${{ matrix.grammar == 'json' }}
@@ -885,6 +923,49 @@ jobs:
           zig build -Doptimize=ReleaseFast -Dgrammar="${{ matrix.grammar }}"
           cd ../..
 
+      - name: Build reference zig benchmarks
+        if: ${{ steps.references.outputs.parent == '1' || steps.references.outputs.ref == '1' }}
+        run: |
+          # Each reference tree builds its benchmark its own way from its
+          # own checkout; -D flags only align this row's config toggles
+          # over the committed languages/<grammar>/config.zig. Indentation
+          # and newline-after-block-end are grammar-intrinsic, already
+          # committed there, and this row's flags agree with them by
+          # construction, so they need no translation. The bindings builds
+          # emit a gitignored host_procedures.zig shim into
+          # languages/<grammar>, and a shim beside the parser wins over
+          # procedures.zig: HEAD's zig and every binding bind session
+          # dispatch. Each reference tree gets a copy of that shim so its
+          # hooks are wired the same way.
+          build_reference() {
+            tree=$1
+            cp "languages/${{ matrix.grammar }}/host_procedures.zig" "$tree/languages/${{ matrix.grammar }}/"
+            flags=()
+            for flag in ${{ matrix.flags }}; do
+              case "$flag" in
+                --with-ast) flags+=("-Dast=true") ;;
+                --no-ast) flags+=("-Dast=false") ;;
+                --with-procedures) flags+=("-Dprocedures=true") ;;
+                --no-procedures) flags+=("-Dprocedures=false") ;;
+                --with-error-recovery) flags+=("-Derror-recovery=true") ;;
+                --no-error-recovery) flags+=("-Derror-recovery=false") ;;
+                --with-ast-for-terminals) flags+=("-Dast-for-terminals=true") ;;
+                --no-ast-for-terminals) flags+=("-Dast-for-terminals=false") ;;
+              esac
+            done
+            (cd "$tree/examples/zig" && zig build -Doptimize=ReleaseFast -Dgrammar="${{ matrix.grammar }}" "${flags[@]}")
+          }
+          if [ "${{ steps.references.outputs.parent }}" = 1 ]; then
+            parent="$RUNNER_TEMP/galley-parent"
+            git worktree add "$parent" HEAD^
+            build_reference "$parent"
+          fi
+          if [ "${{ steps.references.outputs.ref }}" = 1 ]; then
+            reftree="$RUNNER_TEMP/galley-ref"
+            git worktree add "$reftree" "${{ steps.references.outputs.sha }}"
+            build_reference "$reftree"
+          fi
+
       - name: Compare interleaved throughput to examples/zig
         run: |
           if [ "${{ matrix.grammar }}" = indentation ]; then
@@ -893,6 +974,12 @@ jobs:
             sample=languages/json/samples/code-02.json
           fi
           args=()
+          if [ "${{ steps.references.outputs.parent }}" = 1 ]; then
+            args+=(--zig-parent-binary "$RUNNER_TEMP/galley-parent/examples/zig/zig-out/bin/benchmark")
+          fi
+          if [ "${{ steps.references.outputs.ref }}" = 1 ]; then
+            args+=(--zig-ref-binary "$RUNNER_TEMP/galley-ref/examples/zig/zig-out/bin/benchmark")
+          fi
           if [ -n "${{ matrix.iterations }}" ]; then
             args+=(--iterations "${{ matrix.iterations }}")
           fi
