@@ -14,6 +14,7 @@ pub const SymbolRef = galley_grammar.procedures.SymbolRef;
 pub const SymbolKind = galley_grammar.procedures.SymbolKind;
 pub const Annotations = galley_grammar.procedures.Annotations;
 pub const RecoveryPoint = galley_grammar.procedures.RecoveryPoint;
+pub const FollowExclusion = galley_grammar.procedures.FollowExclusion;
 pub const RecoveryResume = galley_grammar.procedures.RecoveryResume;
 pub const Options = common.Options;
 pub const ErrorReporter = common.ErrorReporter;
@@ -90,7 +91,11 @@ fn cloneGrammar(allocator: std.mem.Allocator, source: *const Grammar) !*Grammar 
     return cloned_grammar;
 }
 
+/// Copies `source` so it outlives the parse session. Value fields carry over
+/// by the struct copy, so a new annotation field is copied unless it owns
+/// memory; only the fields that own memory are duplicated here.
 fn cloneAnnotations(allocator: std.mem.Allocator, source: Annotations) !Annotations {
+    var result = source;
     const recovery_points = try allocator.alloc(RecoveryPoint, source.recovery_points.len);
     for (source.recovery_points, recovery_points) |point, *cloned| {
         cloned.* = .{
@@ -98,18 +103,22 @@ fn cloneAnnotations(allocator: std.mem.Allocator, source: Annotations) !Annotati
             .@"resume" = point.@"resume",
         };
     }
-    const verbatim_literal = if (source.verbatim_literal) |literal|
-        try allocator.dupe(u8, literal)
-    else
-        null;
-    return .{
-        .procedures = try cloneStringSlice(allocator, source.procedures),
-        .recovery_points = recovery_points,
-        .verbatim = source.verbatim,
-        .verbatim_literal = verbatim_literal,
-        .verbatim_consume = source.verbatim_consume,
-        .flatten = source.flatten,
-    };
+    result.recovery_points = recovery_points;
+    const follow_exclusions = try allocator.alloc(FollowExclusion, source.follow_exclusions.len);
+    for (source.follow_exclusions, follow_exclusions) |exclusion, *cloned| {
+        cloned.* = .{ .id = try allocator.dupe(u8, exclusion.id), .kind = exclusion.kind };
+    }
+    result.follow_exclusions = follow_exclusions;
+    result.procedures = try cloneStringSlice(allocator, source.procedures);
+    if (source.verbatim_literal) |literal| result.verbatim_literal = try allocator.dupe(u8, literal);
+    return result;
+}
+
+/// `annotations` without its recovery points; everything else is kept.
+fn withoutRecoveryPoints(annotations: Annotations) Annotations {
+    var result = annotations;
+    result.recovery_points = &.{};
+    return result;
 }
 
 fn cloneStringSlice(allocator: std.mem.Allocator, source: []const []const u8) ![]const []const u8 {
@@ -130,17 +139,17 @@ pub fn grammarWithoutRecoveryAnnotations(allocator: std.mem.Allocator, source: *
                 symbol.* = .{
                     .id = source_symbol.id,
                     .kind = source_symbol.kind,
-                    .annotations = .{ .procedures = source_symbol.annotations.procedures, .verbatim = source_symbol.annotations.verbatim, .verbatim_literal = source_symbol.annotations.verbatim_literal, .verbatim_consume = source_symbol.annotations.verbatim_consume, .flatten = source_symbol.annotations.flatten },
+                    .annotations = withoutRecoveryPoints(source_symbol.annotations),
                 };
             }
             rhs.* = .{
                 .symbols = symbols,
-                .annotations = .{ .procedures = source_rhs.annotations.procedures },
+                .annotations = withoutRecoveryPoints(source_rhs.annotations),
             };
         }
         rule.* = .{
             .header = source_rule.header,
-            .annotations = .{ .procedures = source_rule.annotations.procedures, .flatten = source_rule.annotations.flatten },
+            .annotations = withoutRecoveryPoints(source_rule.annotations),
             .right_hand_sides = right_hand_sides,
         };
     }
@@ -312,6 +321,118 @@ test generateParserAlloc {
     const output = try generateParserAlloc(arena.allocator(), source, .ll, .{ .with_procedures = false });
     try std.testing.expect(std.mem.indexOf(u8, output, "pub fn parse") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "parse__AugmentedStart") != null);
+}
+
+test "follow restriction is rejected anywhere but on a quoted terminal" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const misplaced = [_][]const u8{
+        // A variable, a generative terminal, a production and a header name no terminal.
+        "Start\n| Word@-letter\n\nWord\n| \"a\"\n",
+        "Start\n| letter@-digit\n",
+        "Start\n|@-letter \"a\"\n",
+        "Start@-letter\n| \"a\"\n",
+        // An empty follower forbids no continuation, and NUL is the end of input.
+        "Start\n| \"a\"@-\"\"\n",
+        "Start\n| \"a\"@-\"\\x00\"\n",
+    };
+    for (misplaced) |source| {
+        for ([_]ParserType{ .ll, .lr }) |parser_type| {
+            try std.testing.expectError(
+                error.InvalidFollowRestriction,
+                generateParserAlloc(allocator, source, parser_type, .{ .error_reporter = &ignoreDiagnostic }),
+            );
+        }
+    }
+}
+
+test "follow restriction adds a step below the terminal and nothing elsewhere" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const plain = try generateParserAlloc(allocator,
+        \\Start
+        \\| "or" Tail
+        \\
+        \\Tail
+        \\| "x"
+        \\
+    , .ll, .{ .with_procedures = false, .with_ast = false });
+    const restricted = try generateParserAlloc(allocator,
+        \\Start
+        \\| "or"@-"b"@-"c" Tail
+        \\
+        \\Tail
+        \\| "x"
+        \\
+    , .ll, .{ .with_procedures = false, .with_ast = false });
+    // The terminal's decision gains a second switch on the byte after "or",
+    // with the forbidden bytes as one prong; without the annotation there is none.
+    try std.testing.expect(std.mem.indexOf(u8, plain, "switch (context.head(u8, 2))") == null);
+    try std.testing.expect(std.mem.indexOf(u8, restricted, "switch (context.head(u8, 2))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, restricted, "98, 99 =>") != null);
+}
+
+test "terminals with the same bytes and different restrictions are different symbols" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    // Both uses of "if" restrict the same followers and share one terminal;
+    // the third restricts another and gets its own.
+    const parsed_grammar = try parseGrammar(allocator,
+        \\Start
+        \\| "if"@-letter Tail
+        \\| "if"@-letter Other
+        \\| "if"@-digit Other
+        \\
+        \\Tail
+        \\| "x"
+        \\
+        \\Other
+        \\| "y"
+        \\
+    );
+    const prepared = try common.prepareGrammar(allocator, parsed_grammar, .{}, true);
+    var restricted: usize = 0;
+    var plain: usize = 0;
+    for (prepared.symbols.items) |symbol| {
+        if (symbol.kind != .terminal or !std.mem.eql(u8, symbol.id, "if")) continue;
+        if (symbol.forbidden_followers.len == 0) plain += 1 else restricted += 1;
+    }
+    try std.testing.expectEqual(@as(usize, 2), restricted);
+    try std.testing.expectEqual(@as(usize, 0), plain);
+}
+
+test "a terminal may be used both restricted and plain" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const source =
+        \\Start
+        \\| First Second
+        \\
+        \\First
+        \\| "in"@-letter Tail
+        \\
+        \\Second
+        \\| "in" Tail
+        \\
+        \\Tail
+        \\| "x"
+        \\
+    ;
+    for ([_]ParserType{ .ll, .lr }) |parser_type| {
+        const output = try generateParserAlloc(allocator, source, parser_type, .{ .with_procedures = true });
+        // Both uses look up `reduction_"in"`; only the identifier-safe stem
+        // of the restricted one differs, so no hook name is claimed twice.
+        try std.testing.expect(std.mem.indexOf(u8, output, "reduction_terminal_in_not_followed_") != null);
+        try std.testing.expect(std.mem.indexOf(u8, output, "reduction_terminal_in\"") != null);
+    }
 }
 
 test "generateParserAlloc rewrites leftover to new_line without extra prongs" {
@@ -1747,7 +1868,7 @@ test "Galley recovery annotations preserve the canonical LR topology" {
     };
 
     try std.testing.expect(try lr_generator.canonicalTopologyEqualForTesting(arena.allocator(), annotated, stripped));
-    try std.testing.expectEqual(@as(usize, 197), try lr_generator.canonicalStateCountForTesting(arena.allocator(), annotated));
+    try std.testing.expectEqual(@as(usize, 224), try lr_generator.canonicalStateCountForTesting(arena.allocator(), annotated));
 
     var annotated_messages: std.Io.Writer.Allocating = .init(arena.allocator());
     var stripped_messages: std.Io.Writer.Allocating = .init(arena.allocator());

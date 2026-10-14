@@ -1,0 +1,31 @@
+# A keyword does not match when a name continues it: "if a else b" is the
+# keyword form, while "iffy", "if_" and "else1" are plain names. `if` and
+# `else` forbid every name byte right after them; the decision between the
+# keyword form and a name falls back to the name, and `else` in the middle of
+# the keyword form is a syntax error when a name byte follows it directly.
+Start
+| Statement StatementsTail
+
+StatementsTail@<
+| StatementsTail ";" Statement
+|
+
+Statement
+| Conditional
+| Name
+
+Conditional
+| "if"@-letter@-digit@-"_" _Blank Name _Blank "else"@-letter@-digit@-"_" _Blank Name
+
+Name
+| lowercase_letter _NameTail
+
+_NameTail
+| _NameTail letter
+| _NameTail digit
+| _NameTail "_"
+|
+
+_Blank
+| _Blank space
+|

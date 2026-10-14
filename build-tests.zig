@@ -278,6 +278,11 @@ pub fn add(b: *std.Build, options: Options) !void {
                 test_step.dependOn(&run_flatten_tests.step);
             }
 
+            for (follow_restriction_variants) |variant| {
+                const run_follow_restriction_tests = try addFollowRestrictionTests(b, options, parser_type, variant, selection.names);
+                test_step.dependOn(&run_follow_restriction_tests.step);
+            }
+
             const run_explicit_recovery_tests = try addExplicitRecoveryTests(b, options, parser_type, selection.names);
             test_step.dependOn(&run_explicit_recovery_tests.step);
 
@@ -1568,6 +1573,79 @@ const flatten_variants = [_]TailLoopVariant{
     .{ .name = "explicit-values", .flags = &.{ "--no-ast", "--with-procedures", "--with-error-recovery" } },
     .{ .name = "automatic", .flags = &.{ "--with-ast", "--with-procedures", "--with-error-recovery", "--strip-recovery-annotations" } },
 };
+
+/// A follow restriction is a generation-time change to decision trees, so it
+/// shows in every build shape: with a tree, without one, and with the node
+/// builder off.
+const follow_restriction_variants = [_]TailLoopVariant{
+    .{ .name = "ast", .flags = &.{ "--with-ast", "--with-procedures" } },
+    .{ .name = "no-ast", .flags = &.{ "--no-ast", "--no-procedures" } },
+};
+
+fn addFollowRestrictionTests(
+    b: *std.Build,
+    options: Options,
+    parser_type: []const u8,
+    variant: TailLoopVariant,
+    filters: []const []const u8,
+) !*std.Build.Step.Run {
+    const parser_name = b.fmt("follow-restriction-{s}-{s}", .{ parser_type, variant.name });
+    const generate_parser = b.addRunArtifact(options.generate_parser_file_exe);
+    generate_parser.addArg("--grammar");
+    generate_parser.addFileArg(b.path(b.fmt("tests/follow-restriction/{s}.grm", .{parser_type})));
+    generate_parser.addArg("--parser-type");
+    generate_parser.addArg(parser_type);
+    generate_parser.addArg("--label");
+    generate_parser.addArg(parser_name);
+    generate_parser.addArg("--output");
+    const generated_parser_path = generate_parser.addOutputFileArg(b.fmt("{s}-parser.zig", .{parser_name}));
+    generate_parser.addArg("--config-output");
+    const generated_config_path = generate_parser.addOutputFileArg(b.fmt("{s}-config.zig", .{parser_name}));
+    generate_parser.addArgs(variant.flags);
+    generate_parser.stdio = .inherit;
+
+    const procedures_mod = b.createModule(.{
+        .root_source_file = b.path("tests/follow-restriction/procedures.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const config_mod = b.createModule(.{
+        .root_source_file = generated_config_path,
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const error_messages_mod = b.createModule(.{
+        .root_source_file = b.path("tests/follow-restriction/error_messages.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+    const generated_parser = common.addGeneratedParserModule(
+        b,
+        options.target,
+        options.optimize,
+        parser_name,
+        b.fmt("{s}-source", .{parser_name}),
+        generated_parser_path,
+        procedures_mod,
+        config_mod,
+        error_messages_mod,
+        options.generator.runtime_options_mod,
+        options.generator.signals_mod,
+    );
+
+    const test_mod = b.createModule(.{
+        .root_source_file = b.path("src/tests/follow_restriction_test.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+        .imports = &.{.{ .name = "parser-under-test", .module = generated_parser.runtime_mod }},
+    });
+    const tests = b.addTest(.{
+        .name = b.fmt("{s}-tests", .{parser_name}),
+        .root_module = test_mod,
+        .filters = filters,
+    });
+    return b.addRunArtifact(tests);
+}
 
 fn addFlattenTests(
     b: *std.Build,

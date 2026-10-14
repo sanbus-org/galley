@@ -335,12 +335,13 @@ const Builder = struct {
                     continue;
                 }
                 const is_default = if (default_reduce) |index| sameReduction(state.actions.items[index], action) else false;
-                for (self.grammar.symbols.items[action.terminal].terminals.items) |terminal| {
+                const action_symbol = self.grammar.symbols.items[action.terminal];
+                for (action_symbol.terminals.items) |terminal| {
                     if (terminal.len > 0 and terminal[0] == '\n') accepts_newline = true;
                     if (is_default) {
                         try default_terminals.append(self.allocator, terminal);
                     } else {
-                        try entries.append(self.allocator, .{ .terminal = terminal, .target = action_index });
+                        try switch_planning.appendTerminal(self.allocator, &entries, terminal, action_index, action_symbol.forbidden_followers);
                     }
                 }
             }

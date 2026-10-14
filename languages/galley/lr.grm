@@ -61,7 +61,12 @@ Annotation
 | Procedure
 | "!" RecoveryPoint
 | ">" VerbatimMarker
+| "-" FollowRestriction
 | Flatten
+
+FollowRestriction
+| TerminalSymbol
+| GenerativeTerminalSymbol
 
 Flatten
 | "<"

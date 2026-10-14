@@ -49,9 +49,19 @@ pub const RecoveryPoint = struct {
     @"resume": RecoveryResume,
 };
 
+/// One `@-` argument: a terminal or a generative terminal naming bytes that
+/// may not follow the annotated terminal.
+pub const FollowExclusion = struct {
+    id: []const u8,
+    kind: SymbolKind,
+};
+
 pub const Annotations = struct {
     procedures: std.ArrayList([]const u8) = .empty,
     recovery_points: std.ArrayList(RecoveryPoint) = .empty,
+    /// `@-X`: the terminal does not match when the input continues with `X`.
+    /// Only a terminal occurrence takes it.
+    follow_exclusions: std.ArrayList(FollowExclusion) = .empty,
     verbatim: bool = false,
     verbatim_literal: ?[]const u8 = null,
     verbatim_consume: bool = true,
@@ -74,6 +84,10 @@ pub const Symbol = struct {
     /// `_` contract), which drops the entire subtree.
     synthetic_transparent: bool = false,
     terminals: std.ArrayList([]const u8) = .empty,
+    /// A terminal that does not match when the input continues with one of
+    /// these (`"or"@-letter`). Such a terminal is its own symbol, so every
+    /// FIRST and FOLLOW set and every decision sees the restriction.
+    forbidden_followers: []const []const u8 = &.{},
     annotations: Annotations = .{},
 };
 
@@ -187,6 +201,7 @@ pub fn prepareGrammar(
     // prepared grammar is a grammar fact. Configuration is applied at
     // comptime inside the generated parser.
     try validateGrammar(allocator, grammar, options.error_reporter);
+    try validateFollowRestrictions(allocator, grammar, options.error_reporter);
 
     var result = PreparedGrammar{
         .augmented_start = undefined,
@@ -221,7 +236,11 @@ pub fn prepareGrammar(
                     .terminal => .terminal,
                     .generative_terminal => .generative_terminal,
                 };
-                const symbol_index = try addSymbol(allocator, &result.symbols, &result.variables, symbol.id, kind);
+                const forbidden = try forbiddenFollowers(allocator, symbol.annotations);
+                const symbol_index = if (forbidden.len != 0)
+                    try addRestrictedTerminal(allocator, &result.symbols, symbol.id, forbidden)
+                else
+                    try addSymbol(allocator, &result.symbols, &result.variables, symbol.id, kind);
                 try generated_rule.rhs.append(allocator, symbol_index);
                 try generated_rule.rhs_annotations.append(
                     allocator,
@@ -273,6 +292,83 @@ pub fn prepareGrammar(
         }
     }
     return result;
+}
+
+/// The bytes `annotations` forbids after a terminal, sorted and without
+/// duplicates: each `@-` argument is one byte string, and a generative
+/// terminal stands for every byte string it matches.
+fn forbiddenFollowers(allocator: std.mem.Allocator, annotations: anytype) ![]const []const u8 {
+    if (comptime !@hasField(@TypeOf(annotations), "follow_exclusions")) return &.{};
+    if (annotations.follow_exclusions.len == 0) return &.{};
+    var followers: std.ArrayList([]const u8) = .empty;
+    for (annotations.follow_exclusions) |exclusion| {
+        switch (exclusion.kind) {
+            .generative_terminal => try expandGenerativeTerminal(allocator, &followers, exclusion.id),
+            else => try followers.append(allocator, exclusion.id),
+        }
+    }
+    std.mem.sort([]const u8, followers.items, {}, headLessThan);
+    var unique: std.ArrayList([]const u8) = .empty;
+    for (followers.items) |follower| {
+        if (unique.items.len != 0 and std.mem.eql(u8, unique.items[unique.items.len - 1], follower)) continue;
+        try unique.append(allocator, try allocator.dupe(u8, follower));
+    }
+    return unique.toOwnedSlice(allocator);
+}
+
+/// Rejects `@-` anywhere but on a plain terminal occurrence, and arguments
+/// that name nothing: an empty terminal forbids no continuation, and a NUL is
+/// the end of input.
+fn validateFollowRestrictions(allocator: std.mem.Allocator, grammar: anytype, reporter: ErrorReporter) !void {
+    for (grammar.rules) |rule| {
+        if (try followRestrictionError(allocator, rule.annotations, "the rule header of", rule.header, reporter)) return error.InvalidFollowRestriction;
+        for (rule.right_hand_sides) |rhs| {
+            if (try followRestrictionError(allocator, rhs.annotations, "a production of", rule.header, reporter)) return error.InvalidFollowRestriction;
+            for (rhs.symbols) |symbol| {
+                if (comptime !@hasField(@TypeOf(symbol.annotations), "follow_exclusions")) continue;
+                if (symbol.annotations.follow_exclusions.len == 0) continue;
+                if (symbol.kind != .terminal) {
+                    const message = try std.fmt.allocPrint(allocator, "@- on \"{s}\" in rule \"{s}\": only a quoted terminal takes a follow restriction", .{ symbol.id, rule.header });
+                    defer allocator.free(message);
+                    reportError(reporter, message);
+                    return error.InvalidFollowRestriction;
+                }
+                for (symbol.annotations.follow_exclusions) |exclusion| {
+                    if (exclusion.kind == .terminal and (exclusion.id.len == 0 or std.mem.indexOfScalar(u8, exclusion.id, 0) != null)) {
+                        const message = try std.fmt.allocPrint(allocator, "@- on \"{s}\" in rule \"{s}\": a forbidden follower must be a non-empty terminal without NUL bytes", .{ symbol.id, rule.header });
+                        defer allocator.free(message);
+                        reportError(reporter, message);
+                        return error.InvalidFollowRestriction;
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn followRestrictionError(allocator: std.mem.Allocator, annotations: anytype, place: []const u8, header: []const u8, reporter: ErrorReporter) !bool {
+    if (comptime !@hasField(@TypeOf(annotations), "follow_exclusions")) return false;
+    if (annotations.follow_exclusions.len == 0) return false;
+    const message = try std.fmt.allocPrint(allocator, "@- on {s} \"{s}\": put it on the terminal it restricts", .{ place, header });
+    defer allocator.free(message);
+    reportError(reporter, message);
+    return true;
+}
+
+/// Interns a terminal that does not match before `forbidden`. Another
+/// restriction on the same bytes is another symbol.
+pub fn addRestrictedTerminal(allocator: std.mem.Allocator, symbols: *std.ArrayList(Symbol), id: []const u8, forbidden: []const []const u8) !usize {
+    for (symbols.items, 0..) |symbol, index| {
+        if (symbol.kind != .terminal or !std.mem.eql(u8, symbol.id, id)) continue;
+        if (symbol.forbidden_followers.len != forbidden.len) continue;
+        for (symbol.forbidden_followers, forbidden) |lhs, rhs| {
+            if (!std.mem.eql(u8, lhs, rhs)) break;
+        } else return index;
+    }
+    var symbol = Symbol{ .id = try allocator.dupe(u8, id), .kind = .terminal, .forbidden_followers = forbidden };
+    try symbol.terminals.append(allocator, symbol.id);
+    try symbols.append(allocator, symbol);
+    return symbols.items.len - 1;
 }
 
 /// Whether the occurrence at `position` of `rule` is flattened: the variable
@@ -397,6 +493,15 @@ pub fn planSymbolNames(allocator: std.mem.Allocator, symbols: []const Symbol, ru
         defer allocator.free(spelling);
         reprs[index] = try std.mem.concat(allocator, u8, &.{ prefix, spelling });
         stems[index] = try safeIdentifier(allocator, reprs[index]);
+        if (symbol.forbidden_followers.len != 0) {
+            // The same bytes with another restriction are another symbol.
+            var hash = std.hash.Fnv1a_32.init();
+            for (symbol.forbidden_followers) |follower| {
+                hash.update(follower);
+                hash.update("\x00");
+            }
+            stems[index] = try std.fmt.allocPrint(allocator, "{s}_not_followed_{x:0>8}", .{ stems[index], hash.final() });
+        }
     }
     try checkHookNameCollisions(allocator, symbols, rules, stems, reporter);
     return .{ .reprs = reprs, .stems = stems };
@@ -420,7 +525,11 @@ fn checkHookNameCollisions(
     var owners = std.StringHashMap(HookNameProducer).init(arena_allocator);
     for (symbols, stems, 0..) |symbol, stem, index| {
         const hook_names = try symbolHookNames(arena_allocator, symbol, stem) orelse continue;
-        try claimHookName(&owners, symbols, rules, reporter, hook_names.readable, .{ .symbol = index });
+        // A restricted terminal binds the readable hook of the same bytes
+        // unrestricted, so one hook serves every use of the terminal.
+        if (symbol.forbidden_followers.len == 0) {
+            try claimHookName(&owners, symbols, rules, reporter, hook_names.readable, .{ .symbol = index });
+        }
         if (hook_names.identifier_safe) |name| try claimHookName(&owners, symbols, rules, reporter, name, .{ .symbol = index });
     }
     for (rules, 0..) |rule, index| {
@@ -881,7 +990,7 @@ pub fn addSymbol(
     kind: SymbolKind,
 ) !usize {
     for (symbols.items, 0..) |symbol, index| {
-        if (symbol.kind == kind and std.mem.eql(u8, symbol.id, id)) return index;
+        if (symbol.kind == kind and symbol.forbidden_followers.len == 0 and std.mem.eql(u8, symbol.id, id)) return index;
     }
 
     var symbol = Symbol{
@@ -1001,6 +1110,7 @@ pub fn cloneAnnotations(allocator: std.mem.Allocator, source: anytype) !Annotati
             },
         });
     }
+    try appendFollowExclusions(allocator, &result, source);
     return result;
 }
 
@@ -1024,6 +1134,21 @@ pub fn appendAnnotations(allocator: std.mem.Allocator, target: *Annotations, sou
             .@"resume" = switch (point.@"resume") {
                 .before => .before,
                 .after => .after,
+            },
+        });
+    }
+    try appendFollowExclusions(allocator, target, source);
+}
+
+fn appendFollowExclusions(allocator: std.mem.Allocator, target: *Annotations, source: anytype) !void {
+    if (comptime !@hasField(@TypeOf(source), "follow_exclusions")) return;
+    for (source.follow_exclusions) |exclusion| {
+        try target.follow_exclusions.append(allocator, .{
+            .id = try allocator.dupe(u8, exclusion.id),
+            .kind = switch (exclusion.kind) {
+                .variable => .variable,
+                .terminal => .terminal,
+                .generative_terminal => .generative_terminal,
             },
         });
     }

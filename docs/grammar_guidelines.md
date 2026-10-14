@@ -11,6 +11,7 @@
 - [7. Operator Precedence & Ambiguity-Free Expression Extraction](#7-operator-precedence--ambiguity-free-expression-extraction)
 - [8. Verbatim Raw Capture (`@>>` / `@>^"..."` / `@>"..."^`)](#8-verbatim-raw-capture)
 - [9. Flattening](#9-flattening)
+- [10. Follow Restrictions (`@-`)](#10-follow-restrictions--)
 
 ---
 
@@ -445,3 +446,25 @@ position of its production (`| Number "+" Sum@<`); anywhere else generation
 fails.
 
 `tests/flatten` holds an LL and an LR grammar that build the same trees.
+
+---
+
+## 10. Follow Restrictions (`@-`)
+
+A parser without a lexer cannot tell the keyword `or` from the start of the name `orb`. Annotate a terminal with `@-X` to make it match only when the input does not continue with `X`. `X` is a quoted terminal or a generative terminal, and each `@-` adds to the set:
+
+```text
+BinaryOperation
+| "or"@-letter@-digit@-"_" _OptBlank Operand
+```
+
+`"or"` now matches `a or b` and `a or(b)`, but not `a orb`, `a or1` or `a or_`.
+
+- The restriction is decided like longest match (`=` against `==`). When the input continues with a forbidden string, the terminal does not match: the decision falls back to the next-shorter match, such as a name that begins with the same letters, and reports a syntax error when there is none. In `Statement | "if"@-letter@-digit@-"_" ... | Name`, the input `iffy` is a `Name`.
+- A restriction belongs to the terminal, not to the production that wrote it, so it holds wherever a decision can start with the terminal, including through other variables, in LL and LR alike.
+- The same bytes with different restrictions are different terminals. Two of them in one decision are ambiguous exactly as other overlapping terminals are. A restricted terminal shares the `reduction_"or"` hook of its plain spelling.
+- Only a quoted terminal occurrence takes `@-`. Generation fails with `InvalidFollowRestriction` on a variable, a generative terminal, a production or a rule header, and on an empty or NUL-containing argument.
+- It costs nothing at parse time beyond one switch on the byte after the restricted terminal. Grammars without `@-` generate the same parser as before.
+- A rejected terminal reports the error at its first byte, with no expected tokens listed.
+
+`tests/follow-restriction` holds an LL and an LR grammar that behave the same.

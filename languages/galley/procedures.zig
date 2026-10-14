@@ -22,9 +22,18 @@ pub const RecoveryPoint = struct {
     @"resume": RecoveryResume,
 };
 
+/// One `@-` argument: a terminal, or a generative terminal standing for every
+/// byte string it matches.
+pub const FollowExclusion = struct {
+    id: []const u8,
+    kind: SymbolKind,
+};
+
 pub const Annotations = struct {
     procedures: []const []const u8 = &.{},
     recovery_points: []const RecoveryPoint = &.{},
+    /// `@-X`: the terminal does not match when the input continues with `X`.
+    follow_exclusions: []const FollowExclusion = &.{},
     verbatim: bool = false,
     verbatim_literal: ?[]const u8 = null,
     verbatim_consume: bool = true,
@@ -62,6 +71,7 @@ const MutableRightHandSide = struct {
     symbols: std.ArrayList(SymbolRef) = .empty,
     procedures: std.ArrayList([]const u8) = .empty,
     recovery_points: std.ArrayList(RecoveryPoint) = .empty,
+    follow_exclusions: std.ArrayList(FollowExclusion) = .empty,
 };
 
 const MutableRule = struct {
@@ -69,6 +79,7 @@ const MutableRule = struct {
     flatten: bool = false,
     procedures: std.ArrayList([]const u8) = .empty,
     recovery_points: std.ArrayList(RecoveryPoint) = .empty,
+    follow_exclusions: std.ArrayList(FollowExclusion) = .empty,
     right_hand_sides: std.ArrayList(MutableRightHandSide) = .empty,
 };
 
@@ -229,6 +240,7 @@ fn immutableGrammarFromMutableRules(allocator: std.mem.Allocator, mutable_rules:
                 .annotations = .{
                     .procedures = try mutable_rhs.procedures.toOwnedSlice(allocator),
                     .recovery_points = try mutable_rhs.recovery_points.toOwnedSlice(allocator),
+                    .follow_exclusions = try mutable_rhs.follow_exclusions.toOwnedSlice(allocator),
                 },
             };
         }
@@ -238,6 +250,7 @@ fn immutableGrammarFromMutableRules(allocator: std.mem.Allocator, mutable_rules:
             .annotations = .{
                 .procedures = try mutable_rule.procedures.toOwnedSlice(allocator),
                 .recovery_points = try mutable_rule.recovery_points.toOwnedSlice(allocator),
+                .follow_exclusions = try mutable_rule.follow_exclusions.toOwnedSlice(allocator),
                 .flatten = mutable_rule.flatten,
             },
             .right_hand_sides = immutable_right_hand_sides,
@@ -256,7 +269,7 @@ fn mutableRuleFromAst(context: *data_structures.Context, rule_address: Node.Poin
 
     var rule = MutableRule{ .header = try allocator.dupe(u8, nodeText(context, header_address)) };
     if (firstChildNamed(context, rule_address, "AnnotationTail")) |annotations_address| {
-        try appendAnnotationTail(context, annotations_address, &rule.recovery_points, &rule.procedures, &rule.flatten, null, null, null);
+        try appendAnnotationTail(context, annotations_address, &rule.recovery_points, &rule.procedures, &rule.follow_exclusions, &rule.flatten, null, null, null);
     }
 
     var child_address = context.node_allocator.at(right_hand_sides_address).first_child;
@@ -280,7 +293,7 @@ fn rightHandSideFromAst(context: *data_structures.Context, line_address: Node.Po
         firstChildNamed(context, line_address, "NonEmptyRightHandSide");
 
     var rhs = MutableRightHandSide{};
-    try appendAnnotationTail(context, line_annotations_address, &rhs.recovery_points, &rhs.procedures, null, null, null, null);
+    try appendAnnotationTail(context, line_annotations_address, &rhs.recovery_points, &rhs.procedures, &rhs.follow_exclusions, null, null, null, null);
     const symbols_parent_address = rhs_address orelse return rhs;
 
     var child_address = context.node_allocator.at(symbols_parent_address).first_child;
@@ -318,7 +331,8 @@ fn symbolFromAst(
     var verbatim_literal: ?[]const u8 = null;
     var verbatim_consume = true;
     var flatten = false;
-    try appendAnnotationTail(context, annotation_tail_address, &recovery_points, &procedures, &flatten, &verbatim, &verbatim_literal, &verbatim_consume);
+    var follow_exclusions = std.ArrayList(FollowExclusion).empty;
+    try appendAnnotationTail(context, annotation_tail_address, &recovery_points, &procedures, &follow_exclusions, &flatten, &verbatim, &verbatim_literal, &verbatim_consume);
     if (recovery_points.items.len != 0 and kind != .variable) {
         reporterAt(context, symbol_address).report("InvalidRecoveryTarget: recovery points can only annotate variables", .{});
         return error.InvalidRecoveryTarget;
@@ -335,6 +349,7 @@ fn symbolFromAst(
         .annotations = .{
             .procedures = try procedures.toOwnedSlice(allocator),
             .recovery_points = try recovery_points.toOwnedSlice(allocator),
+            .follow_exclusions = try follow_exclusions.toOwnedSlice(allocator),
             .verbatim = verbatim,
             .verbatim_literal = verbatim_literal,
             .verbatim_consume = verbatim_consume,
@@ -413,7 +428,7 @@ fn appendEncodedTerminal(allocator: std.mem.Allocator, id: *std.ArrayList(u8), c
     }
 }
 
-fn appendAnnotationTail(context: *data_structures.Context, tail_address: Node.Pointer, recovery_target: *std.ArrayList(RecoveryPoint), procedure_target: *std.ArrayList([]const u8), flatten_target: ?*bool, verbatim_active: ?*bool, verbatim_literal: ?*?[]const u8, verbatim_consume: ?*bool) !void {
+fn appendAnnotationTail(context: *data_structures.Context, tail_address: Node.Pointer, recovery_target: *std.ArrayList(RecoveryPoint), procedure_target: *std.ArrayList([]const u8), follow_target: *std.ArrayList(FollowExclusion), flatten_target: ?*bool, verbatim_active: ?*bool, verbatim_literal: ?*?[]const u8, verbatim_consume: ?*bool) !void {
     const allocator = context.runtime().arena_allocator;
     var child_address = context.node_allocator.at(tail_address).first_child;
     while (child_address != Node.invalid_pointer) {
@@ -472,6 +487,20 @@ fn appendAnnotationTail(context: *data_structures.Context, tail_address: Node.Po
                 const terminal_node = context.node_allocator.at(terminal_address);
                 const resume_side: RecoveryResume = if (point_node.text_start < terminal_node.text_start) .before else .after;
                 try recovery_target.append(allocator, .{ .terminal = terminal, .@"resume" = resume_side });
+            } else if (firstDescendantNamed(context, child_address, "FollowRestriction")) |restriction_address| {
+                const argument_address = firstChild(context, restriction_address) orelse {
+                    reporterAt(context, child_address).report("MissingFollowRestriction: @- needs a terminal or a generative terminal", .{});
+                    return error.MissingFollowRestriction;
+                };
+                if (nodeIs(context, argument_address, "TerminalSymbol")) {
+                    const terminal = try decodeEscapes(allocator, nodeText(context, argument_address), reporterAt(context, argument_address));
+                    try follow_target.append(allocator, .{ .id = terminal, .kind = .terminal });
+                } else {
+                    try follow_target.append(allocator, .{
+                        .id = try generativeIdFromAst(context, allocator, argument_address),
+                        .kind = .generative_terminal,
+                    });
+                }
             } else if (firstDescendantNamed(context, child_address, "Flatten") != null) {
                 const target = flatten_target orelse {
                     reporterAt(context, child_address).report("InvalidFlattenPlacement: @< belongs on a rule header or a symbol, not a production", .{});

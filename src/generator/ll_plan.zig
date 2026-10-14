@@ -1043,12 +1043,13 @@ const Builder = struct {
             var empty_rule_terminals = std.ArrayList([]const u8).empty;
             for (self.plan.parse_table.items) |entry| {
                 if (entry.variable != symbol_index) continue;
-                for (self.grammar.symbols.items[entry.terminal].terminals.items) |terminal| {
+                const entry_symbol = self.grammar.symbols.items[entry.terminal];
+                for (entry_symbol.terminals.items) |terminal| {
                     if (terminal.len > 0 and terminal[0] == '\n') accepts_newline = true;
                     if (empty_rule == entry.rule) {
                         try empty_rule_terminals.append(self.allocator, terminal);
                     } else {
-                        try entries.append(self.allocator, .{ .terminal = terminal, .target = entry.rule });
+                        try switch_planning.appendTerminal(self.allocator, &entries, terminal, entry.rule, entry_symbol.forbidden_followers);
                     }
                 }
             }
@@ -1060,8 +1061,9 @@ const Builder = struct {
                     var self_repeating_entries = std.ArrayList(switch_planning.Entry).empty;
                     for (self.plan.parse_table.items) |entry| {
                         if (entry.variable != symbol_index or entry.rule != rule_index) continue;
-                        for (self.grammar.symbols.items[entry.terminal].terminals.items) |terminal| {
-                            if (terminal.len > 0) try self_repeating_entries.append(self.allocator, .{ .terminal = terminal, .target = rule_index });
+                        const entry_symbol = self.grammar.symbols.items[entry.terminal];
+                        for (entry_symbol.terminals.items) |terminal| {
+                            if (terminal.len > 0) try switch_planning.appendTerminal(self.allocator, &self_repeating_entries, terminal, rule_index, entry_symbol.forbidden_followers);
                         }
                     }
                     const tree = try switch_planning.build(self.allocator, self_repeating_entries.items, self.options.error_reporter);
@@ -1075,7 +1077,7 @@ const Builder = struct {
                 }
             }
         } else {
-            for (symbol.terminals.items) |terminal| try entries.append(self.allocator, .{ .terminal = terminal, .target = 0 });
+            for (symbol.terminals.items) |terminal| try switch_planning.appendTerminal(self.allocator, &entries, terminal, 0, symbol.forbidden_followers);
         }
         const tree = try switch_planning.build(self.allocator, entries.items, self.options.error_reporter);
         if (symbol.kind == .variable) tree.accepts_newline = accepts_newline;
@@ -1119,6 +1121,7 @@ const Builder = struct {
             try common.appendUniqueString(&stems, self.allocator, try std.fmt.allocPrint(self.allocator, "valid_{s}", .{self.plan.symbol_names.stems[symbol_index]}));
         } else if (self.grammar.symbols.items[symbol_index].kind == .variable) {
             for (node.groups.items) |group| {
+                if (group.blocked) continue;
                 for (group.child.entries) |entry| try common.appendUniqueString(&stems, self.allocator, try self.ruleExpectedStem(symbol_index, entry.target));
             }
         } else try common.appendUniqueString(&stems, self.allocator, self.plan.symbol_names.stems[symbol_index]);
