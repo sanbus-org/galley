@@ -229,3 +229,11 @@ elsewhere = iffy
 importance = 3
 notify = not importance
 async_loop = None
+
+# A statement keyword that begins a name is a name too, in every statement form.
+passed = 1
+returned.attribute()
+pass_ += passed + 1
+breaker: int = 3
+continued, raiser = 1, 2
+passed if returned else raiser

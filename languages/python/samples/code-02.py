@@ -200,6 +200,16 @@ def forward(orbit: int = 1, *iffy: int, **elsewhere: str) -> int:
     return orbit if iffy else notify
 
 
+def keyword_prefixed(passed, returned, raiser):
+    for breaker in passed:
+        continued = breaker
+        if continued:
+            continue
+        pass
+    raiser(returned)(passed)[0] = raiser
+    return(passed)
+
+
 print(order or orbit, android and index, isolated is not inner)
 
 # Two-character operators are single tokens, and a line may break before a

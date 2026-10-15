@@ -23,10 +23,6 @@ const unary_operation_variable = variableIndex("UnaryOperation");
 const conditional_variable = variableIndex("Conditional");
 const named_expression_variable = variableIndex("NamedExpression");
 const trailers_variable = variableIndex("Trailers");
-const name_variable = variableIndex("Name");
-const keyword_name_variable = variableIndex("KeywordName");
-const expression_variable = variableIndex("Expression");
-const expression_statement_variable = variableIndex("ExpressionStatement");
 
 /// Python precedence, loosest first. Conditional and walrus bind looser
 /// still: they take the whole sequence before them.
@@ -315,47 +311,4 @@ pub fn hook_resolveExpression(args: *ProcedureArguments) !void {
         child = next;
     }
     Node.appendChildren(node_address, node_allocator, resolver.finish());
-}
-
-fn isIdentifierByte(byte: u8) bool {
-    return std.ascii.isAlphanumeric(byte) or byte == '_';
-}
-
-/// A KeywordName starts after the keyword it shares its first letters with
-/// ("return" in "return_value"); move its start back over those letters.
-pub fn hook_extendIdentifierStart(args: *ProcedureArguments) !void {
-    const node = args.currentNode() orelse return;
-    var start = node.text_start;
-    while (start > 0 and isIdentifierByte(args.context.getTextSlice(start - 1, 1)[0])) start -= 1;
-    extendStart(node, start);
-}
-
-/// A keyword statement whose keyword turned out to begin an identifier
-/// ("passed = 1") is an ExpressionStatement: its KeywordName becomes a Name
-/// and, with the trailers that follow it, the statement's first Expression.
-pub fn hook_identifierStatement(args: *ProcedureArguments) !void {
-    if (comptime !galley.parser.is_ast_enabled) return;
-    const node_address = args.node_address orelse return;
-    const context = args.context;
-    const node_allocator = context.node_allocator;
-    const node = node_allocator.at(node_address);
-    const head = firstOperand(context, node);
-    if (head == invalid or node_allocator.at(head).variable != keyword_name_variable) return;
-    // The keyword's terminals are the start of the name.
-    while (node.first_child != head) Node.removeSelf(node.first_child, node_allocator);
-
-    node.variable = expression_statement_variable;
-    node_allocator.at(head).variable = name_variable;
-    Node.removeSelf(head, node_allocator);
-    var operand = head;
-    const trailers = node.first_child;
-    if (trailers != invalid and node_allocator.at(trailers).variable == trailers_variable) {
-        Node.removeSelf(trailers, node_allocator);
-        operand = applyTrailers(context, head, trailers);
-    }
-    const operand_node = node_allocator.at(operand);
-    const wrapper = try node_allocator.create(operand_node.text_start, expression_variable);
-    node_allocator.at(wrapper).text_length = operand_node.text_length;
-    Node.appendChildren(wrapper, node_allocator, operand);
-    Node.insertChildren(node_address, node_allocator, 0, wrapper);
 }
