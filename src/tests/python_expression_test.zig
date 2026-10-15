@@ -198,6 +198,18 @@ fn expectRejected(comptime source: []const u8) !void {
     try std.testing.expect(read_guard.syntaxErrorCount() > 0);
 }
 
+test "python input ending right after its last token parses from a sentinel buffer" {
+    // The lexer fills a lookahead as long as the longest keyword, so it
+    // reads past the sentinel unless the buffer is padded after it.
+    const input = "x = not y\n";
+    const sentinel = try std.testing.allocator.allocSentinel(u8, input.len, 0);
+    defer std.testing.allocator.free(sentinel);
+    @memcpy(sentinel, input);
+    var parsed = try parser.parseSentinelBytes(std.testing.io, std.testing.allocator, sentinel, null, .{});
+    defer parsed.deinit();
+    try std.testing.expectEqual(input.len, parsed.result.parsed_bytes);
+}
+
 test "python binary operators follow precedence and associativity" {
     if (comptime !builds_trees) return error.SkipZigTest;
     try expectValue("a + b * c - d / e % f // g @ h", "((a + (b * c)) - ((((d / e) % f) // g) @ h))");

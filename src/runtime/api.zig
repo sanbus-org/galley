@@ -1097,13 +1097,15 @@ pub const Session = struct {
         // Retain a session-owned copy of the input (sentinel byte plus zero
         // padding). The caller's buffer may be freed as soon as this call
         // returns, while node text pointers remain valid until the next
-        // parse — so parsing must never reference caller memory.
+        // parse — so parsing must never reference caller memory. The lexer
+        // reads lookahead past the sentinel, so the context gets the padding
+        // too, as in `parseBytesUnlocked`.
         const retained_length = input.len + 1;
         const owned_input = try self.ensureOwnedInputCapacity(retained_length + input_padding_size);
         @memcpy(owned_input[0..retained_length], input[0..retained_length]);
         @memset(owned_input[retained_length..], 0);
 
-        var context_value = self._makeContext(.{ .bytes = .{ .input = owned_input[0..retained_length] } }, input_path);
+        var context_value = self._makeContext(.{ .bytes = .{ .input = owned_input } }, input_path);
         return try self._parseContextUnlocked(&context_value);
     }
 
