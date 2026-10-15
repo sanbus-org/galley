@@ -70,7 +70,7 @@
 Start
 | File
 
-File@flattenLists
+File
 | _FileLead Statements _FileTail
 | _FileLead
 
@@ -95,7 +95,7 @@ _FileTail
 # followed by the control byte that new_line matches, so the statement list
 # always continues before a clause could attach to its compound statement.
 
-Statements
+Statements@<
 | Comment
 | Comment _StatementEnd
 | Comment _StatementEnd Statements
@@ -192,7 +192,7 @@ _TrailComment
 | "#"@>^"\n"
 |
 
-Block@flattenLists
+Block
 | _OptBlank _TrailComment block_start Statements block_end
 
 Comment
@@ -214,19 +214,19 @@ While
 | "while " _OptBlank Expression ":" Block
 | "while(" _OptBlank Expression ")" _OptBlank ":" Block
 
-For@flattenLists
+For
 | "for " _OptBlank ForTargets
 | "async for " _OptBlank ForTargets
 
-ForTargets
+ForTargets@<
 | Name _OptBlank "," _OptBlank ForTargets
 | Name _OptBlank "in"@-letter@-digit@-"_" _OptBlank Expression ":" Block
 
-With@flattenLists
+With
 | "with " _OptBlank WithItems
 | "async with " _OptBlank WithItems
 
-WithItems
+WithItems@<
 | Expression ":" Block
 | Expression "," _OptBlank WithItems
 | Expression AsName ":" Block
@@ -251,7 +251,7 @@ Finally
 | "finally:" Block
 | "finally " _OptBlank ":" Block
 
-Return@flattenLists@identifierStatement
+Return@identifierStatement
 | "return"
 | "return" space _OptBlank
 | "return" space _OptBlank Expression
@@ -261,7 +261,7 @@ Return@flattenLists@identifierStatement
 | "return" Parenthesized _OptBlank
 | "return" KeywordStatement
 
-Raise@flattenLists@identifierStatement
+Raise@identifierStatement
 | "raise"
 | "raise" space _OptBlank
 | "raise" space _OptBlank Expression
@@ -276,7 +276,7 @@ Assert
 | "assert " _OptBlank Expression
 | "assert " _OptBlank Expression "," _OptBlank Expression
 
-Delete@flattenLists
+Delete
 | "del " _OptBlank ExpressionList
 
 Global
@@ -285,10 +285,10 @@ Global
 Nonlocal
 | "nonlocal " _OptBlank Name _OptBlank
 
-Import@flattenLists
+Import
 | "import " _OptBlank ImportNames
 
-ImportNames
+ImportNames@<
 | DottedName
 | DottedName "," _OptBlank ImportNames
 | DottedName AsName
@@ -301,7 +301,7 @@ _DottedRest
 | "." _OptBlank _IdStart _IdTail _OptBlank _DottedRest
 |
 
-ImportFrom@flattenLists
+ImportFrom
 | "from " _OptBlank ModuleName "import"@-letter@-digit@-"_" _OptBlank "*" _OptBlank
 | "from " _OptBlank ModuleName "import"@-letter@-digit@-"_" _OptBlank FromNames
 | "from " _OptBlank ModuleName "import"@-letter@-digit@-"_" _OptBlank "(" _InsideBlank ParenthesizedFromNames
@@ -315,13 +315,13 @@ _RelativeModule
 | _IdStart _IdTail _OptBlank _DottedRest
 |
 
-FromNames
+FromNames@<
 | Name _OptBlank
 | Name _OptBlank "," _OptBlank FromNames
 | Name _OptBlank AsName
 | Name _OptBlank AsName "," _OptBlank FromNames
 
-ParenthesizedFromNames
+ParenthesizedFromNames@<
 | Name _InsideBlank ")" _OptBlank
 | Name _InsideBlank "," _InsideBlank ")" _OptBlank
 | Name _InsideBlank "," _InsideBlank ParenthesizedFromNames
@@ -333,7 +333,7 @@ ClassDefinition
 | "class " _OptBlank Name _OptBlank ":" Block
 | "class " _OptBlank Name _OptBlank Call _OptBlank ":" Block
 
-FunctionDefinition@flattenLists
+FunctionDefinition
 | "def " _OptBlank Name _OptBlank "(" _InsideBlank ")" _OptBlank ":" Block
 | "def " _OptBlank Name _OptBlank "(" _InsideBlank ")" _OptBlank ReturnAnnotation ":" Block
 | "def " _OptBlank Name _OptBlank "(" _InsideBlank Parameters
@@ -341,7 +341,7 @@ FunctionDefinition@flattenLists
 | "async def " _OptBlank Name _OptBlank "(" _InsideBlank ")" _OptBlank ReturnAnnotation ":" Block
 | "async def " _OptBlank Name _OptBlank "(" _InsideBlank Parameters
 
-Parameters
+Parameters@<
 | Parameter ")" _OptBlank ":" Block
 | Parameter ")" _OptBlank ReturnAnnotation ":" Block
 | Parameter "," _InsideBlank ")" _OptBlank ":" Block
@@ -372,17 +372,17 @@ Decorated
 | "@" _OptBlank Expression _TrailComment new_line FunctionDefinition
 | "@" _OptBlank Expression _TrailComment new_line ClassDefinition
 
-Pass@flattenLists@identifierStatement
+Pass@identifierStatement
 | "pass"
 | "pass" space _OptBlank
 | "pass" KeywordStatement
 
-Break@flattenLists@identifierStatement
+Break@identifierStatement
 | "break"
 | "break" space _OptBlank
 | "break" KeywordStatement
 
-Continue@flattenLists@identifierStatement
+Continue@identifierStatement
 | "continue"
 | "continue" space _OptBlank
 | "continue" KeywordStatement
@@ -414,7 +414,7 @@ TypeParameter
 | "*" _OptBlank Name _OptBlank
 | "**" _OptBlank Name _OptBlank
 
-ExpressionStatement@flattenLists
+ExpressionStatement
 | Expression
 | Expression Assignments
 | Expression AugmentedValue
@@ -422,24 +422,24 @@ ExpressionStatement@flattenLists
 | Expression Annotation AssignedValue
 | Expression "," _OptBlank TargetList
 
-Assignments
+Assignments@<
 | AssignedValue
 | AssignedValue Assignments
 
-AssignedValue@flattenLists
+AssignedValue
 | _Eq Expression
 | _Eq Expression "," _OptBlank ExpressionList
 
 AugmentedValue
 | _AugAssign Expression
 
-TargetList
+TargetList@<
 | Expression Assignments
 | Expression "," _OptBlank TargetList
 | Starred Assignments
 | Starred "," _OptBlank TargetList
 
-ExpressionList
+ExpressionList@<
 | Expression
 | Expression "," _OptBlank ExpressionList
 | Starred
@@ -980,12 +980,12 @@ Conditional
 NamedExpression
 | ":=" _OptBlank Disjunction
 
-Lambda@flattenLists
+Lambda
 | "lambda:" _OptBlank Disjunction
 | "lambda " _OptBlank ":" _OptBlank Disjunction
 | "lambda " _OptBlank LambdaParameters
 
-LambdaParameters
+LambdaParameters@<
 | LambdaParameter ":" _OptBlank Disjunction
 | LambdaParameter "," _OptBlank LambdaParameters
 
@@ -1037,11 +1037,11 @@ Starred
 DoubleStarred
 | "**" _OptBlank Expression
 
-Parenthesized@flattenLists
+Parenthesized
 | "(" _InsideBlank ")"
 | "(" _InsideBlank ParenthesizedItems
 
-ParenthesizedItems
+ParenthesizedItems@<
 | Expression _InsideBreak ")"
 | Expression "," _InsideBlank ")"
 | Expression "," _InsideBlank ParenthesizedItems
@@ -1050,11 +1050,11 @@ ParenthesizedItems
 | Starred "," _InsideBlank ")"
 | Starred "," _InsideBlank ParenthesizedItems
 
-List@flattenLists
+List
 | "[" _InsideBlank "]"
 | "[" _InsideBlank ListItems
 
-ListItems
+ListItems@<
 | Expression _InsideBreak "]"
 | Expression "," _InsideBlank "]"
 | Expression "," _InsideBlank ListItems
@@ -1063,11 +1063,11 @@ ListItems
 | Starred "," _InsideBlank "]"
 | Starred "," _InsideBlank ListItems
 
-Brace@flattenLists
+Brace
 | "{" _InsideBlank "}"
 | "{" _InsideBlank BraceItems
 
-BraceItems
+BraceItems@<
 | Expression _InsideBreak "}"
 | Expression "," _InsideBlank "}"
 | Expression "," _InsideBlank BraceItems
@@ -1083,16 +1083,16 @@ BraceItems
 DictionaryValue
 | ":" _InsideBlank Expression
 
-Comprehension@flattenLists
+Comprehension
 | "for"@-letter@-digit@-"_" _OptBlank ComprehensionTargets
 | "async"@-letter@-digit@-"_" _OptBlank "for"@-letter@-digit@-"_" _OptBlank ComprehensionTargets
 
-ComprehensionTargets
+ComprehensionTargets@<
 | Name _OptBlank "," _OptBlank ComprehensionTargets
 | Name _OptBlank "in"@-letter@-digit@-"_" _OptBlank Disjunction
 | Name _OptBlank "in"@-letter@-digit@-"_" _OptBlank Disjunction ComprehensionTail
 
-ComprehensionTail
+ComprehensionTail@<
 | "if"@-letter@-digit@-"_" _OptBlank Disjunction
 | "if"@-letter@-digit@-"_" _OptBlank Disjunction ComprehensionTail
 | Comprehension
@@ -1107,11 +1107,11 @@ Trailers
 | Attribute _OptBlank
 | Attribute _OptBlank Trailers
 
-Call@flattenLists
+Call
 | "(" _InsideBlank ")"
 | "(" _InsideBlank CallArguments
 
-CallArguments
+CallArguments@<
 | Expression _InsideBreak ")"
 | Expression "," _InsideBlank ")"
 | Expression "," _InsideBlank CallArguments
@@ -1129,10 +1129,10 @@ CallArguments
 KeywordValue
 | "=" _OptBlank Expression
 
-Subscript@flattenLists
+Subscript
 | "[" _InsideBlank SubscriptItems
 
-SubscriptItems
+SubscriptItems@<
 | Expression _InsideBreak "]"
 | Expression "," _InsideBlank "]"
 | Expression "," _InsideBlank SubscriptItems

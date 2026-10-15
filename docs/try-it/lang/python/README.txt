@@ -13,8 +13,8 @@ prefix-sharing alternatives such as `Except`). `config.zig` keeps
 lives in `procedures.js`, registered explicitly by the page (browsers
 cannot auto-scan `procedures.*`).
 
-Stock tree-manipulation annotations (`@flattenLists` and friends) stay
-untouched and compile to no-ops in this no-AST config. Error recovery
+Stock tree-manipulation annotations (`@<` flattening) stay untouched.
+Error recovery
 stays off as in stock (the grammar is untested with recovery on);
 everything else mirrors the lean validation configs. The AST twin (`python-ast.wasm`) is built from
 this same directory by `docs/scripts/build-checker-wasm.mjs`.
