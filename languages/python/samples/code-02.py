@@ -226,3 +226,18 @@ print(
         "a": 1
     }
 )
+
+
+def documented(value):
+    """Return the value.
+
+    Example:
+        documented(1)
+    """
+    return value
+
+
+# Triple-quoted strings keep indented lines, blank lines and quotes inside them.
+raw_text = r"""C:\path\to
+
+        deeply indented"""

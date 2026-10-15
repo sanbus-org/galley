@@ -237,3 +237,15 @@ pass_ += passed + 1
 breaker: int = 3
 continued, raiser = 1, 2
 passed if returned else raiser
+
+# Triple-quoted strings keep indented lines, blank lines and quotes inside them.
+indented_text = """First line.
+
+    Indented example:
+        value = 1
+
+Last line, with a "quoted" word and a ' apostrophe."""
+single_quoted_text = '''
+    Indented
+  and dedented
+'''

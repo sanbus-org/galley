@@ -44,6 +44,10 @@
 #   strings, opaque `!`/`:`/`=` tails); triple-quoted f/t-strings stay
 #   opaque (no nesting); `{` always opens interpolation while a stray
 #   `}` reads as a literal (so `f"}"` is accepted).
+# - Triple-quoted strings are captured as raw bytes up to the next matching
+#   triple quote, so indentation inside them is not lexed. A backslash does
+#   not escape the closing quotes (`\"""` ends the string) and their bytes
+#   are not checked as UTF-8.
 # - Bare conditionals need parens in case patterns, else branches,
 #   lambda bodies and yield-from operands (`a if b else (c if d else e)`,
 #   `lambda: (x if y else z)`); walrus right-hand sides take
@@ -585,144 +589,144 @@ _BinDigit
 String
 | "\u{22}" _DblContent "\u{22}"
 | "'" _SglContent "'"
-| "\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "'''" _TplSglContent "'''"
+| "\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "'''"@>"'''"^
 | "r\u{22}" _DblContent "\u{22}"
 | "r'" _SglContent "'"
-| "r\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "r'''" _TplSglContent "'''"
+| "r\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "r'''"@>"'''"^
 | "R\u{22}" _DblContent "\u{22}"
 | "R'" _SglContent "'"
-| "R\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "R'''" _TplSglContent "'''"
+| "R\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "R'''"@>"'''"^
 | "b\u{22}" _DblContent "\u{22}"
 | "b'" _SglContent "'"
-| "b\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "b'''" _TplSglContent "'''"
+| "b\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "b'''"@>"'''"^
 | "B\u{22}" _DblContent "\u{22}"
 | "B'" _SglContent "'"
-| "B\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "B'''" _TplSglContent "'''"
+| "B\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "B'''"@>"'''"^
 | "u\u{22}" _DblContent "\u{22}"
 | "u'" _SglContent "'"
-| "u\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "u'''" _TplSglContent "'''"
+| "u\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "u'''"@>"'''"^
 | "U\u{22}" _DblContent "\u{22}"
 | "U'" _SglContent "'"
-| "U\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "U'''" _TplSglContent "'''"
+| "U\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "U'''"@>"'''"^
 | "f\u{22}" _FDblContent "\u{22}"
 | "f'" _FSglContent "'"
-| "f\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "f'''" _TplSglContent "'''"
+| "f\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "f'''"@>"'''"^
 | "F\u{22}" _FDblContent "\u{22}"
 | "F'" _FSglContent "'"
-| "F\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "F'''" _TplSglContent "'''"
+| "F\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "F'''"@>"'''"^
 | "t\u{22}" _FDblContent "\u{22}"
 | "t'" _FSglContent "'"
-| "t\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "t'''" _TplSglContent "'''"
+| "t\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "t'''"@>"'''"^
 | "T\u{22}" _FDblContent "\u{22}"
 | "T'" _FSglContent "'"
-| "T\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "T'''" _TplSglContent "'''"
+| "T\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "T'''"@>"'''"^
 | "rb\u{22}" _DblContent "\u{22}"
 | "rb'" _SglContent "'"
-| "rb\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "rb'''" _TplSglContent "'''"
+| "rb\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "rb'''"@>"'''"^
 | "rB\u{22}" _DblContent "\u{22}"
 | "rB'" _SglContent "'"
-| "rB\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "rB'''" _TplSglContent "'''"
+| "rB\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "rB'''"@>"'''"^
 | "Rb\u{22}" _DblContent "\u{22}"
 | "Rb'" _SglContent "'"
-| "Rb\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "Rb'''" _TplSglContent "'''"
+| "Rb\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "Rb'''"@>"'''"^
 | "RB\u{22}" _DblContent "\u{22}"
 | "RB'" _SglContent "'"
-| "RB\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "RB'''" _TplSglContent "'''"
+| "RB\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "RB'''"@>"'''"^
 | "br\u{22}" _DblContent "\u{22}"
 | "br'" _SglContent "'"
-| "br\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "br'''" _TplSglContent "'''"
+| "br\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "br'''"@>"'''"^
 | "bR\u{22}" _DblContent "\u{22}"
 | "bR'" _SglContent "'"
-| "bR\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "bR'''" _TplSglContent "'''"
+| "bR\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "bR'''"@>"'''"^
 | "Br\u{22}" _DblContent "\u{22}"
 | "Br'" _SglContent "'"
-| "Br\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "Br'''" _TplSglContent "'''"
+| "Br\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "Br'''"@>"'''"^
 | "BR\u{22}" _DblContent "\u{22}"
 | "BR'" _SglContent "'"
-| "BR\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "BR'''" _TplSglContent "'''"
+| "BR\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "BR'''"@>"'''"^
 | "fr\u{22}" _FDblContent "\u{22}"
 | "fr'" _FSglContent "'"
-| "fr\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "fr'''" _TplSglContent "'''"
+| "fr\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "fr'''"@>"'''"^
 | "fR\u{22}" _FDblContent "\u{22}"
 | "fR'" _FSglContent "'"
-| "fR\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "fR'''" _TplSglContent "'''"
+| "fR\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "fR'''"@>"'''"^
 | "Fr\u{22}" _FDblContent "\u{22}"
 | "Fr'" _FSglContent "'"
-| "Fr\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "Fr'''" _TplSglContent "'''"
+| "Fr\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "Fr'''"@>"'''"^
 | "FR\u{22}" _FDblContent "\u{22}"
 | "FR'" _FSglContent "'"
-| "FR\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "FR'''" _TplSglContent "'''"
+| "FR\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "FR'''"@>"'''"^
 | "rf\u{22}" _FDblContent "\u{22}"
 | "rf'" _FSglContent "'"
-| "rf\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "rf'''" _TplSglContent "'''"
+| "rf\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "rf'''"@>"'''"^
 | "rF\u{22}" _FDblContent "\u{22}"
 | "rF'" _FSglContent "'"
-| "rF\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "rF'''" _TplSglContent "'''"
+| "rF\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "rF'''"@>"'''"^
 | "Rf\u{22}" _FDblContent "\u{22}"
 | "Rf'" _FSglContent "'"
-| "Rf\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "Rf'''" _TplSglContent "'''"
+| "Rf\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "Rf'''"@>"'''"^
 | "RF\u{22}" _FDblContent "\u{22}"
 | "RF'" _FSglContent "'"
-| "RF\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "RF'''" _TplSglContent "'''"
+| "RF\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "RF'''"@>"'''"^
 | "tr\u{22}" _FDblContent "\u{22}"
 | "tr'" _FSglContent "'"
-| "tr\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "tr'''" _TplSglContent "'''"
+| "tr\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "tr'''"@>"'''"^
 | "tR\u{22}" _FDblContent "\u{22}"
 | "tR'" _FSglContent "'"
-| "tR\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "tR'''" _TplSglContent "'''"
+| "tR\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "tR'''"@>"'''"^
 | "Tr\u{22}" _FDblContent "\u{22}"
 | "Tr'" _FSglContent "'"
-| "Tr\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "Tr'''" _TplSglContent "'''"
+| "Tr\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "Tr'''"@>"'''"^
 | "TR\u{22}" _FDblContent "\u{22}"
 | "TR'" _FSglContent "'"
-| "TR\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "TR'''" _TplSglContent "'''"
+| "TR\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "TR'''"@>"'''"^
 | "rt\u{22}" _FDblContent "\u{22}"
 | "rt'" _FSglContent "'"
-| "rt\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "rt'''" _TplSglContent "'''"
+| "rt\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "rt'''"@>"'''"^
 | "rT\u{22}" _FDblContent "\u{22}"
 | "rT'" _FSglContent "'"
-| "rT\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "rT'''" _TplSglContent "'''"
+| "rT\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "rT'''"@>"'''"^
 | "Rt\u{22}" _FDblContent "\u{22}"
 | "Rt'" _FSglContent "'"
-| "Rt\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "Rt'''" _TplSglContent "'''"
+| "Rt\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "Rt'''"@>"'''"^
 | "RT\u{22}" _FDblContent "\u{22}"
 | "RT'" _FSglContent "'"
-| "RT\u{22}\u{22}\u{22}" _TplDblContent "\u{22}\u{22}\u{22}"
-| "RT'''" _TplSglContent "'''"
+| "RT\u{22}\u{22}\u{22}"@>"\u{22}\u{22}\u{22}"^
+| "RT'''"@>"'''"^
 
 _DblContent
 | "\\" character _DblContent
@@ -736,45 +740,6 @@ _SglContent
 | _Utf8Scalar _SglContent
 |
 
-_TplDblContent
-| "\\" character _TplDblContent
-| new_line _TplDblContent
-| character^"\u{22}"^"\\"^"\n" _TplDblContent
-| _Utf8Scalar _TplDblContent
-| "\u{22}" _TplDblQuoteTail
-|
-
-_TplDblQuoteTail
-| "\u{22}" _TplDblQuoteEnd
-| character^"\u{22}"^"\\"^"\n" _TplDblContent
-| "\\" character _TplDblContent
-|
-
-_TplDblQuoteEnd
-| "\u{22}"
-| character^"\u{22}"^"\\"^"\n" _TplDblContent
-| "\\" character _TplDblContent
-|
-
-_TplSglContent
-| "\\" character _TplSglContent
-| new_line _TplSglContent
-| character^"'"^"\\"^"\n" _TplSglContent
-| _Utf8Scalar _TplSglContent
-| "'" _TplSglQuoteTail
-|
-
-_TplSglQuoteTail
-| "'" _TplSglQuoteEnd
-| character^"'"^"\\"^"\n" _TplSglContent
-| "\\" character _TplSglContent
-|
-
-_TplSglQuoteEnd
-| "'"
-| character^"'"^"\\"^"\n" _TplSglContent
-| "\\" character _TplSglContent
-|
 _FDblContent
 | "\\" character _FDblContent
 | "{" _FBody "}" _FDblContent
