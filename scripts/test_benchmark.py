@@ -1,4 +1,5 @@
 import importlib.util
+import itertools
 import io
 import os
 import pathlib
@@ -15,7 +16,7 @@ SPEC.loader.exec_module(benchmark)
 
 
 class ProgressFormattingTests(unittest.TestCase):
-    def test_wide_progress_includes_bar_global_count_suite_and_card_count(self):
+    def test_wide_progress_includes_bar_total_count_suite_and_card_count(self):
         line = benchmark.format_progress_line(
             completed=18,
             total=42,
@@ -25,7 +26,7 @@ class ProgressFormattingTests(unittest.TestCase):
             terminal_width=120,
         )
 
-        self.assertIn("Global [", line)
+        self.assertIn("Total [", line)
         self.assertIn("] 18/42 (42%)", line)
         self.assertIn("JSON · No AST", line)
         self.assertTrue(line.endswith("Card 2/4"))
@@ -48,7 +49,8 @@ class ProgressFormattingTests(unittest.TestCase):
 
     def test_skipped_cards_stay_in_suite_total_but_not_global_total(self):
         variant = benchmark.BenchmarkVariant(
-            ast_mode="no-ast",
+            ast=False,
+            procedures=False,
             term_ast="no-ast-for-terminals",
         )
         suite = benchmark.BenchmarkSuite(
@@ -98,7 +100,7 @@ class BenchmarkPlanningTests(unittest.TestCase):
         self.assertEqual(
             [
                 ("--no-ast", "--no-ast-for-terminals"),
-                ("--no-procedures", "--no-ast-for-terminals"),
+                ("--with-ast", "--no-ast-for-terminals"),
             ],
             configurations,
         )
@@ -124,7 +126,7 @@ class BenchmarkPlanningTests(unittest.TestCase):
         )
         self.assertEqual(
             [
-                ("--no-procedures", "--no-ast-for-terminals"),
+                ("--with-ast", "--no-ast-for-terminals"),
             ],
             with_ast,
         )
@@ -151,6 +153,88 @@ class BenchmarkPlanningTests(unittest.TestCase):
         self.assertEqual(inputs, [card.input_file for card in suite.cards])
 
 
+class ProcedureVariantTests(unittest.TestCase):
+    def test_with_procedures_adds_procedures_to_the_ast_variant_only(self):
+        self.assertEqual(
+            ["--with-ast", "--no-ast-for-terminals", "--with-procedures"],
+            benchmark.with_procedures(["--with-ast", "--no-ast-for-terminals"]),
+        )
+        self.assertEqual(
+            ["--no-ast", "--no-ast-for-terminals"],
+            benchmark.with_procedures(["--no-ast", "--no-ast-for-terminals"]),
+        )
+
+    def test_ast_and_procedures_are_independent_settings(self):
+        for ast_option, procedures_option in itertools.product(
+            ("--no-ast", "--with-ast"), ([], ["--with-procedures"])
+        ):
+            variant = benchmark.benchmark_variant(
+                [ast_option, *procedures_option, "--no-ast-for-terminals"]
+            )
+
+            self.assertEqual(ast_option == "--with-ast", variant.ast)
+            self.assertEqual(bool(procedures_option), variant.procedures)
+            self.assertIn(f"-Dast={str(variant.ast).lower()}", variant.config_flags)
+            self.assertIn(
+                f"-Dprocedures={str(variant.procedures).lower()}",
+                variant.config_flags,
+            )
+
+    def test_variant_names_are_the_result_path_levels(self):
+        variant = benchmark.BenchmarkVariant(
+            ast=True, procedures=False, term_ast="no-ast-for-terminals"
+        )
+        self.assertEqual(("ast", "no-procedures"), (variant.ast_name, variant.procedures_name))
+        variant = benchmark.BenchmarkVariant(
+            ast=False, procedures=True, term_ast="no-ast-for-terminals"
+        )
+        self.assertEqual(("no-ast", "procedures"), (variant.ast_name, variant.procedures_name))
+
+    def test_details_state_both_settings_whether_on_or_off(self):
+        details = {
+            (ast, procedures): benchmark.BenchmarkVariant(
+                ast=ast, procedures=procedures, term_ast="no-ast-for-terminals"
+            ).details
+            for ast, procedures in itertools.product((False, True), repeat=2)
+        }
+
+        self.assertEqual(["No AST", "No procedures"], details[(False, False)])
+        self.assertEqual(["No AST", "Procedures"], details[(False, True)])
+        self.assertEqual(["AST", "No procedures"], details[(True, False)])
+        self.assertEqual(["AST", "Procedures"], details[(True, True)])
+
+    def test_languages_with_procedures_plan_their_ast_variant_with_procedures(self):
+        args = SimpleNamespace(parser_type=None)
+        plans = {}
+        with (
+            mock.patch.object(
+                benchmark, "get_parser_types_for_language", return_value=["LL"]
+            ),
+            mock.patch.object(benchmark, "sample_inputs", return_value=["sample"]),
+        ):
+            for name in ("python", "json"):
+                for options in (
+                    ["--with-ast", "--no-ast-for-terminals"],
+                    ["--no-ast", "--no-ast-for-terminals"],
+                ):
+                    for inputs in (None, ["custom.input"]):
+                        suite = benchmark.prepare_benchmark_suite(
+                            name, options, args, inputs
+                        )
+                        plans.setdefault(name, []).append(
+                            (suite.variant.ast, suite.variant.procedures)
+                        )
+
+        self.assertEqual(
+            [(True, True), (True, True), (False, False), (False, False)],
+            plans["python"],
+        )
+        self.assertEqual(
+            [(True, False), (True, False), (False, False), (False, False)],
+            plans["json"],
+        )
+
+
 class InteractiveProgressTests(unittest.TestCase):
     def test_updates_overwrite_reserved_bottom_line_without_newlines(self):
         output = io.StringIO()
@@ -169,7 +253,7 @@ class InteractiveProgressTests(unittest.TestCase):
 
         rendered = output.getvalue()
         self.assertEqual(1, rendered.count("\033[1;23r"))
-        self.assertEqual(2, rendered.count("\033[24;1H\033[2KGlobal "))
+        self.assertEqual(2, rendered.count("\033[24;1H\033[2KTotal "))
         self.assertEqual(2, rendered.count("\n"))
         self.assertTrue(rendered.endswith("\033[24;1H\n"))
         self.assertFalse(progress.active)
@@ -213,7 +297,7 @@ class InteractiveProgressTests(unittest.TestCase):
         rendered = output.getvalue()
         self.assertIn("\033[1;23r", rendered)
         self.assertIn("\0337\033[1;19r\0338", rendered)
-        self.assertIn("\033[20;1H\033[2KGlobal ", rendered)
+        self.assertIn("\033[20;1H\033[2KTotal ", rendered)
 
 
 if __name__ == "__main__":

@@ -12,8 +12,24 @@ BENCHMARK_COOLDOWN_SECONDS = 7
 
 @dataclass(frozen=True)
 class BenchmarkVariant:
-    ast_mode: str
+    ast: bool
+    procedures: bool
     term_ast: str
+
+    @property
+    def ast_name(self):
+        return "ast" if self.ast else "no-ast"
+
+    @property
+    def procedures_name(self):
+        return "procedures" if self.procedures else "no-procedures"
+
+    @property
+    def details(self):
+        return [
+            "AST" if self.ast else "No AST",
+            "Procedures" if self.procedures else "No procedures",
+        ]
 
     @property
     def config_flags(self):
@@ -21,12 +37,10 @@ class BenchmarkVariant:
         # reproducing the matrix variant args the parser used to receive
         # through regeneration. Unrecognized variants raise rather than
         # silently build a different parser than the label claims.
-        if self.ast_mode == "no-ast":
-            flags = ["-Dast=false", "-Dprocedures=false"]
-        elif self.ast_mode == "no-procedures":
-            flags = ["-Dast=true", "-Dprocedures=false"]
-        else:
-            raise ValueError(f"unknown ast_mode: {self.ast_mode!r}")
+        flags = [
+            f"-Dast={str(self.ast).lower()}",
+            f"-Dprocedures={str(self.procedures).lower()}",
+        ]
         if self.term_ast == "no-ast-for-terminals":
             flags.append("-Dast-for-terminals=false")
         elif self.term_ast == "ast-for-terminals":
@@ -183,7 +197,7 @@ def format_progress_line(
     percent = 100 if total == 0 else min(100, int(completed * 100 / total))
     count_text = f"{completed}/{total} ({percent}%)"
     card_text = f"Card {card_index}/{card_total}"
-    counter_only = f"Global {count_text} │ {card_text}"
+    counter_only = f"Total {count_text} │ {card_text}"
 
     if terminal_width <= len(counter_only) + 4:
         return truncate_text(
@@ -191,27 +205,25 @@ def format_progress_line(
         )
 
     if terminal_width < 54:
-        suite_width = max(
-            1,
-            terminal_width - len(f"Global {count_text} │  │ {card_text}"),
-        )
+        suite_width = max(1, terminal_width - len(f"Total {count_text} │  │ {card_text}"))
         return (
-            f"Global {count_text} │ "
+            f"Total {count_text} │ "
             f"{truncate_text(suite_label, suite_width)} │ {card_text}"
         )
 
-    fixed_width = len(f"Global [] {count_text} │  │ {card_text}")
-    suite_width = min(len(suite_label), max(8, terminal_width // 3))
+    # The suite label says which variant is running, so the bar gives way to it.
+    minimum_bar_width = 10
+    fixed_width = len(f"Total [] {count_text} │  │ {card_text}")
+    suite_width = max(
+        1, min(len(suite_label), terminal_width - fixed_width - minimum_bar_width)
+    )
     bar_width = min(30, terminal_width - fixed_width - suite_width)
-    if bar_width < 10:
-        suite_width = max(1, terminal_width - fixed_width - 10)
-        bar_width = 10
 
     filled = bar_width if total == 0 else int(bar_width * completed / total)
     filled = min(bar_width, filled)
     bar = "█" * filled + "░" * (bar_width - filled)
     suite_display = truncate_text(suite_label, suite_width)
-    return f"Global [{bar}] {count_text} │ {suite_display} │ {card_text}"
+    return f"Total [{bar}] {count_text} │ {suite_display} │ {card_text}"
 
 
 def format_file_size(size_bytes):
@@ -635,16 +647,33 @@ def write_result_to_file(filepath, content):
 # their config.zig constants at build time; no parser regeneration runs here.
 
 
-def benchmark_variant(gen_opts):
-    ast_mode = "no-ast" if "--no-ast" in gen_opts else "no-procedures"
+# Languages whose tree is only correct after their procedures run, so their
+# AST variant builds with procedures enabled.
+LANGUAGES_WITH_PROCEDURES = frozenset({"python"})
 
+
+def with_procedures(gen_opts):
+    """Adds procedures to the AST variant of `gen_opts`.
+
+    The no-AST variant has no tree for procedures to edit, so it stays as it is.
+    """
+    if "--no-ast" in gen_opts:
+        return list(gen_opts)
+    return [*gen_opts, "--with-procedures"]
+
+
+def benchmark_variant(gen_opts):
     term_ast = "default-term-ast"
     if "--no-ast-for-terminals" in gen_opts:
         term_ast = "no-ast-for-terminals"
     elif "--ast-for-terminals" in gen_opts:
         term_ast = "ast-for-terminals"
 
-    return BenchmarkVariant(ast_mode=ast_mode, term_ast=term_ast)
+    return BenchmarkVariant(
+        ast="--no-ast" not in gen_opts,
+        procedures="--with-procedures" in gen_opts,
+        term_ast=term_ast,
+    )
 
 
 def prepare_benchmark_suite(name, gen_opts, args, inputs=None):
@@ -655,6 +684,8 @@ def prepare_benchmark_suite(name, gen_opts, args, inputs=None):
 
     inputs = sample_inputs(name) if inputs is None else inputs
 
+    if name in LANGUAGES_WITH_PROCEDURES:
+        gen_opts = with_procedures(gen_opts)
     variant = benchmark_variant(gen_opts)
     cards = []
     for input_file in inputs:
@@ -677,14 +708,12 @@ def prepare_benchmark_suite(name, gen_opts, args, inputs=None):
 
 
 def suite_progress_label(suite):
-    details = [
-        "No AST" if suite.variant.ast_mode == "no-ast" else "AST",
-    ]
+    details = suite.variant.details
     if suite.variant.term_ast == "ast-for-terminals":
         details.append("Terminal AST")
     elif (
         suite.variant.term_ast == "no-ast-for-terminals"
-        and suite.variant.ast_mode != "no-ast"
+        and suite.variant.ast
     ):
         details.append("No terminal AST")
     return " · ".join([suite.name.upper(), *details])
@@ -696,8 +725,8 @@ def run_benchmark_suite(suite, args, progress):
     benchmark step directly with config.zig constants overridden via -D.
     """
     name = suite.name
-    ast_mode = suite.variant.ast_mode
-    term_ast = suite.variant.term_ast
+    variant = suite.variant
+    term_ast = variant.term_ast
 
     RESET = "" if args.no_color else "\033[0m"
     BOLD = "" if args.no_color else "\033[1m"
@@ -706,11 +735,7 @@ def run_benchmark_suite(suite, args, progress):
     GRAY = "" if args.no_color else "\033[90m"
 
     # ReleaseFast mode - print beautiful headers and cards grid
-    header_details = []
-    if ast_mode == "no-ast":
-        header_details.append("No AST")
-    else:
-        header_details.append("AST")
+    header_details = variant.details
 
     if term_ast == "ast-for-terminals":
         header_details.append("Terminals in AST")
@@ -1014,7 +1039,8 @@ def run_benchmark_suite(suite, args, progress):
             "benchmark_results",
             "galley",
             name,
-            ast_mode,
+            variant.ast_name,
+            variant.procedures_name,
             term_ast,
             rel_input + ".txt",
         )
@@ -1022,7 +1048,8 @@ def run_benchmark_suite(suite, args, progress):
         file_content = [
             f"Language: {name}",
             f"Input: {input_file}",
-            f"AST Mode: {ast_mode}",
+            f"AST: {variant.ast_name}",
+            f"Procedures: {variant.procedures_name}",
             f"Terminal AST: {term_ast}",
             "-" * 40,
         ]
@@ -1103,9 +1130,9 @@ def run_all_modes(benchmark_fn, args):
     if args.no_ast:
         ast_modes = ["--no-ast"]
     elif args.with_ast:
-        ast_modes = ["--no-procedures"]
+        ast_modes = ["--with-ast"]
     else:
-        ast_modes = ["--no-ast", "--no-procedures"]
+        ast_modes = ["--no-ast", "--with-ast"]
 
     term_asts = ["--no-ast-for-terminals"]
     if args.ast_for_terminals:

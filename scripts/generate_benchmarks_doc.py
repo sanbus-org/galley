@@ -45,7 +45,8 @@ class BenchmarkFile:
     source: str  # "galley" or "third_party"
     language: str  # "json", "galley", "augmented-json", etc.
     input_file: str  # e.g. "languages/json/samples/code-01.json"
-    ast_mode: str  # "no-ast", "no-procedures", "" (third_party)
+    ast: str  # "ast", "no-ast", "" (third_party)
+    procedures: str  # "procedures", "no-procedures", "" (third_party)
     terminal_ast: str  # "ast-for-terminals", "no-ast-for-terminals", ""
     results: List[ParserResult] = field(default_factory=list)
 
@@ -187,7 +188,8 @@ def parse_benchmark_file(path: Path) -> Optional[BenchmarkFile]:
         source=source,
         language=meta.get("Language", ""),
         input_file=meta.get("Input", ""),
-        ast_mode=meta.get("AST Mode", ""),
+        ast=meta.get("AST", ""),
+        procedures=meta.get("Procedures", ""),
         terminal_ast=meta.get("Terminal AST", ""),
         results=results,
     )
@@ -205,11 +207,6 @@ def collect_all(root: Path) -> List[BenchmarkFile]:
 # ─────────────────────────────────────────────
 # Rendering helpers
 # ─────────────────────────────────────────────
-
-AST_MODE_LABEL: Dict[str, str] = {
-    "no-ast": "no-ast",
-    "no-procedures": "with-ast",
-}
 
 BAR_WIDTH = 40
 BAR_CHAR = "█"
@@ -282,54 +279,6 @@ def fmt_ns(ns: int) -> str:
     if ns >= 1_000_000:
         return f"{ns / 1e6:.1f} ms"
     return f"{ns / 1e3:.1f} µs"
-
-
-# ─────────────────────────────────────────────
-# Analysis helpers
-# ─────────────────────────────────────────────
-
-
-# Comparison labels for the Galley rows timed inside the submodule harness.
-SUBMODULE_GALLEY_MODES = {
-    "LL No AST": "Galley LL  (no-ast)",
-    "LL AST": "Galley LL  (with-ast)",
-    "LR No AST": "Galley LR  (no-ast)",
-    "LR AST": "Galley LR  (with-ast)",
-}
-
-
-def submodule_galley_entries(
-    tp: Dict[str, ParserResult],
-) -> Dict[str, ParserResult]:
-    """Return {comparison label: result} for Galley rows timed in the submodule.
-
-    The submodule benchmarks Galley itself in the same harness on the same
-    inputs as every competitor, so these are the apples-to-apples figures for
-    the comparison. (`third_party_results` already keeps the best run per
-    name+mode across datasets.)
-    """
-    entries: Dict[str, ParserResult] = {}
-    for r in tp.values():
-        if r.name == "Galley (Zig)" and r.mode in SUBMODULE_GALLEY_MODES:
-            entries[SUBMODULE_GALLEY_MODES[r.mode]] = r
-    return entries
-
-
-def third_party_results(files: List[BenchmarkFile]) -> Dict[str, ParserResult]:
-    """Return {display_name: result} from third_party data (best throughput per name+mode)."""
-    best: Dict[str, ParserResult] = {}
-    for bf in files:
-        if bf.source != "third_party":
-            continue
-        if "smoke" in bf.path.lower():
-            continue
-        for r in bf.results:
-            if r.skipped:
-                continue
-            key = r.display_name
-            if key not in best or r.throughput > best[key].throughput:
-                best[key] = r
-    return best
 
 
 # ─────────────────────────────────────────────
@@ -628,7 +577,7 @@ def section_galley_language(files: List[BenchmarkFile], grammar: str) -> str:
     if desc:
         lines.append(f"_{desc}_\n")
 
-    # Group by (ast_mode, terminal_ast, input_file)
+    # Group by (ast, procedures, terminal_ast, input_file)
     configs: Dict[Tuple, Dict[str, List[ParserResult]]] = defaultdict(
         lambda: defaultdict(list)
     )
@@ -636,7 +585,7 @@ def section_galley_language(files: List[BenchmarkFile], grammar: str) -> str:
     for bf in files:
         if bf.source != "galley" or bf.language != grammar:
             continue
-        key = (bf.ast_mode, bf.terminal_ast, bf.input_file)
+        key = (bf.ast, bf.procedures, bf.terminal_ast, bf.input_file)
         for r in bf.results:
             if not r.skipped and r.throughput > 0:
                 configs[key][r.name].append(r)
@@ -645,27 +594,32 @@ def section_galley_language(files: List[BenchmarkFile], grammar: str) -> str:
         lines.append("_No results available._\n")
         return "\n".join(lines)
 
-    seen_configs: Dict[Tuple[str, str, str], Tuple[float, float]] = {}
-    for (ast_mode, terminal_ast, input_file), parsers in sorted(configs.items()):
+    seen_configs: Dict[Tuple[str, str, str, str], Tuple[float, float]] = {}
+    for (ast, procedures, terminal_ast, input_file), parsers in sorted(
+        configs.items()
+    ):
         ll_best = max((r.throughput for r in parsers.get("LL", [])), default=0)
         lr_best = max((r.throughput for r in parsers.get("LR", [])), default=0)
-        seen_configs[(ast_mode, terminal_ast, input_file)] = (
+        seen_configs[(ast, procedures, terminal_ast, input_file)] = (
             ll_best,
             lr_best,
         )
 
-    def ast_sym(mode: str) -> str:
-        return "✓" if mode == "no-procedures" else "✗"
+    def ast_sym(ast: str) -> str:
+        return "✓" if ast == "ast" else "✗"
+
+    def procedures_sym(procedures: str) -> str:
+        return "✓" if procedures == "procedures" else "✗"
 
     def term_sym(t: str) -> str:
         return "✓" if t == "ast-for-terminals" else "✗"
 
-    inputs = sorted({input_file for (_, _, input_file) in seen_configs})
+    inputs = sorted({input_file for (_, _, _, input_file) in seen_configs})
 
     def input_configs_for(input_file: str):
         return [
-            (ast_mode, terminal_ast, ll, lr)
-            for (ast_mode, terminal_ast, cfg_input), (
+            (ast, procedures, terminal_ast, ll, lr)
+            for (ast, procedures, terminal_ast, cfg_input), (
                 ll,
                 lr,
             ) in seen_configs.items()
@@ -674,17 +628,19 @@ def section_galley_language(files: List[BenchmarkFile], grammar: str) -> str:
 
     # Columns with no data anywhere in this section stay hidden; they reappear
     # automatically when a run produces such data.
+    section_configs = [
+        config for input_file in inputs for config in input_configs_for(input_file)
+    ]
+    section_show_proc = any(p == "procedures" for (_, p, _, _, _) in section_configs)
     section_show_term = any(
-        terminal_ast == "ast-for-terminals"
-        for input_file in inputs
-        for (_, terminal_ast, _, _) in input_configs_for(input_file)
+        t == "ast-for-terminals" for (_, _, t, _, _) in section_configs
     )
+    legend = ["AST = build syntax tree"]
+    if section_show_proc:
+        legend.append("Proc. = run procedures")
     if section_show_term:
-        lines.append(
-            "_AST = build syntax tree · Term. = include terminal nodes in tree_\n"
-        )
-    else:
-        lines.append("_AST = build syntax tree_\n")
+        legend.append("Term. = include terminal nodes in tree")
+    lines.append(f"_{' · '.join(legend)}_\n")
 
     for input_file in inputs:
         rel_input = input_file
@@ -693,22 +649,29 @@ def section_galley_language(files: List[BenchmarkFile], grammar: str) -> str:
         rows = []
         bar_entries: List[Tuple[str, float]] = []
         input_configs = input_configs_for(input_file)
-        show_term = any(t == "ast-for-terminals" for (_, t, _, _) in input_configs)
-        show_lr = any(lr > 0 for (_, _, _, lr) in input_configs)
+        show_proc = any(p == "procedures" for (_, p, _, _, _) in input_configs)
+        show_term = any(t == "ast-for-terminals" for (_, _, t, _, _) in input_configs)
+        show_lr = any(lr > 0 for (_, _, _, _, lr) in input_configs)
 
         headers = ["AST"]
+        if show_proc:
+            headers.append("Proc.")
         if show_term:
             headers.append("Term.")
         headers.append("LL")
         if show_lr:
             headers.extend(["LR", "LL/LR"])
 
-        for ast_mode, terminal_ast, ll, lr in sorted(input_configs):
-            row = [ast_sym(ast_mode)]
+        for ast, procedures, terminal_ast, ll, lr in sorted(input_configs):
+            row = [ast_sym(ast)]
+            if show_proc:
+                row.append(procedures_sym(procedures))
             if show_term:
                 row.append(term_sym(terminal_ast))
             row.append(fmt_throughput(ll))
-            label = f"{ast_sym(ast_mode)}ast"
+            label = f"{ast_sym(ast)}ast"
+            if show_proc:
+                label += f" {procedures_sym(procedures)}proc"
             if show_term:
                 label += f" {term_sym(terminal_ast)}term"
             # A config only exists because some parser had throughput > 0;
@@ -738,10 +701,18 @@ def section_methodology_galley() -> str:
 ## Methodology
 
 - Benchmarks are run by `scripts/benchmark.py`.
-- Each result file lives under `benchmark_results/galley/{grammar}/{ast_mode}/{terminal_ast}/{input_lang}/{input_file}.txt`.
+- Each result file lives under `benchmark_results/galley/{grammar}/{ast}/{procedures}/{terminal_ast}/{input_lang}/{input_file}.txt`.
 - **Parsed bytes** reflects repeated parsing of the input until a stable total is reached.
 - **LL** = generated LL parser; **LR** = generated LR parser.
 - Each figure uses 6 measured process runs with the first discarded.
+- Rows are comparable only within one input. Different inputs differ in size
+  and content, so there is no overall best figure to compare across them.
+- Rows with and without procedures are separate configurations. Python's tree
+  is only correct after its procedures run, so its AST rows are built with
+  them.
+- These figures compare Galley's configurations with each other. Comparisons
+  with other tools are in [BENCHMARKS.md](BENCHMARKS.md), which lists what
+  they do and do not measure.
 
 ### Environment
 Results will vary by machine. All numbers were recorded on an Apple M1 Pro.
@@ -755,7 +726,9 @@ def section_methodology_third_party() -> str:
 - Benchmarks are run by the `third_party/parser-benchmark/` submodule.
 - Each parser runs 2 untimed warmup iterations plus 5 timed iterations per
   dataset; the best run is reported.
-- Results are written below `third_party/parser-benchmark/benchmark_results/json/`.
+- Results are written below `third_party/parser-benchmark/benchmark_results/`,
+  in `json/` and `python/`. The Python parsers are Galley, Tree-sitter, Ruff
+  and CPython.
 - The standard `twitter`, `canada`, and `citm_catalog` inputs are downloaded on
   demand, checksum-verified, ignored external assets.
 - No benchmark input is stored in either repository.
@@ -771,6 +744,38 @@ def section_methodology_third_party() -> str:
   Galley's long-term tracking numbers across all grammars live in
   `BENCHMARKS_INTERNAL.md` and come from `scripts/benchmark.py`, a different
   harness — expect them to differ.
+
+### What the numbers compare
+
+Every parser is timed the same way: the same input, 2 warmup runs, then the
+best of 5, covering only the work of building the tree. A tree is released
+after the clock stops, a parser meant to be reused is created once, and
+encoding is checked inside the timing for every parser that needs valid
+UTF-8. The rows still do different work, so read a ratio between tools as an
+estimate, not a measurement of equal work:
+
+- **Different trees.** Galley builds a generic node tree of spans with no
+  decoded values. Ruff builds a typed AST with decoded values, a token list
+  and error lists. Tree-sitter builds a concrete tree of every node. CPython
+  builds Python `ast` objects, and `compile` adds code generation.
+- **Memory reuse.** Galley and Bison reuse one arena between parses, and
+  their trees are valid only until the next parse. Ruff, CPython, Nom,
+  RapidJSON and yyjson allocate a new tree each time because the caller owns
+  it.
+- **Language coverage.** Galley's Python grammar parses a subset. Ruff,
+  CPython and Tree-sitter parse full Python, and Ruff also recovers from
+  errors.
+- **Extra passes.** Galley's Python AST row runs a procedure that resolves
+  operator precedence, which the other tools do inside their parsers.
+- **No-AST rows.** For Python, no other tool has a parse-only mode, so
+  Galley's no-AST row has no rival. For JSON, simdjson's Validate row is the
+  closest match.
+- **Encoding checks.** Ruff, CPython and Galley's Python adapter reject invalid
+  UTF-8. Tree-sitter does not check.
+- **One run each.** Results are the best of 5 on one machine and one input,
+  with no variance reported.
+
+The same notes are in `third_party/parser-benchmark/README.md`.
 
 ### Environment
 Results will vary by machine. All numbers were recorded on an Apple M1 Pro.
@@ -869,17 +874,6 @@ Unless noted otherwise, results were recorded on an **Apple M1 Pro**.
     internal_path = repo_root / "BENCHMARKS_INTERNAL.md"
     internal_path.write_text("\n".join(internal_parts), encoding="utf-8")
     print(f"Written: {internal_path}")
-
-    # Summary stats
-    tp = third_party_results(files)
-    galley_ll = submodule_galley_entries(tp).get("Galley LL  (no-ast)")
-    if galley_ll:
-        best_tp = max(tp.values(), key=lambda r: r.throughput) if tp else None
-        print(f"\nGalley LL best JSON:  {galley_ll.throughput:,.1f} MB/s")
-        if best_tp:
-            print(
-                f"Best third-party:     {best_tp.throughput:,.1f} MB/s  ({best_tp.display_name})"
-            )
 
 
 if __name__ == "__main__":
