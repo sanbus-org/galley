@@ -754,8 +754,9 @@ pub fn parserName(
 }
 
 /// Build-time overrides for a language's checked-in `config.zig` constants,
-/// supplied with `-Dast`, `-Dprocedures`, `-Derror-recovery`, and
-/// `-Dast-for-terminals`. A null field keeps the checked-in value. The
+/// supplied with `-Dast`, `-Dprocedures`, `-Derror-recovery`,
+/// `-Dast-for-terminals`, and `-Dposition-tracking`. A null field keeps the
+/// checked-in value. The
 /// checked-in generated parser selects every codegen variant at comptime
 /// from these constants, so an override takes effect on rebuild without
 /// regenerating the parser.
@@ -764,12 +765,14 @@ pub const ConfigOverrides = struct {
     procedures: ?bool = null,
     error_recovery: ?bool = null,
     ast_for_terminals: ?bool = null,
+    position_tracking: ?bool = null,
 
     pub fn isUnset(overrides: ConfigOverrides) bool {
         return overrides.ast == null and
             overrides.procedures == null and
             overrides.error_recovery == null and
-            overrides.ast_for_terminals == null;
+            overrides.ast_for_terminals == null and
+            overrides.position_tracking == null;
     }
 };
 
@@ -798,6 +801,11 @@ pub fn readConfigOverrides(b: *std.Build) ConfigOverrides {
             "ast-for-terminals",
             "Override the config.zig ast_for_terminals constant for every language parser (default: keep the checked-in value; delegated test suites regenerate with their own flags)",
         ),
+        .position_tracking = b.option(
+            bool,
+            "position-tracking",
+            "Override the config.zig position_tracking constant for every language parser (default: keep the checked-in value; delegated test suites regenerate with their own flags)",
+        ),
     };
 }
 
@@ -812,7 +820,7 @@ pub fn applyConfigOverrides(
     overrides: ConfigOverrides,
 ) ![]const u8 {
     var edited: []const u8 = base;
-    inline for (.{ "ast", "procedures", "error_recovery", "ast_for_terminals" }) |name| {
+    inline for (.{ "ast", "procedures", "error_recovery", "ast_for_terminals", "position_tracking" }) |name| {
         if (@field(overrides, name)) |enabled| {
             edited = try config_edit.editedConstantSource(
                 allocator,

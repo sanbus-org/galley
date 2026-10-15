@@ -5,10 +5,10 @@ const common = @import("common.zig");
 /// CI exercises: the matrix suites regenerate parsers with explicit flags,
 /// while these overrides edit the checked-in `languages/<lang>/config.zig`.
 /// This runs the production `common.applyConfigOverrides` sequence over
-/// every checked-in language config, so a config missing one of the four
+/// every checked-in language config, so a config missing one of the five
 /// spliced constants fails here — in the build suite — instead of
 /// mid-benchmark.
-const splice_names = [_][]const u8{ "ast", "procedures", "error_recovery", "ast_for_terminals" };
+const splice_names = [_][]const u8{ "ast", "procedures", "error_recovery", "ast_for_terminals", "position_tracking" };
 
 fn overrideWith(comptime name: []const u8, value: bool) common.ConfigOverrides {
     var overrides: common.ConfigOverrides = .{};
@@ -22,10 +22,11 @@ fn allOverrides(value: bool) common.ConfigOverrides {
         .procedures = value,
         .error_recovery = value,
         .ast_for_terminals = value,
+        .position_tracking = value,
     };
 }
 
-test "every language config carries all four spliced constants" {
+test "every language config carries all five spliced constants" {
     // The API documents its intermediates as arena-owned (the build passes
     // b.allocator); an arena mirrors that here.
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -55,7 +56,7 @@ test "every language config carries all four spliced constants" {
             };
         }
 
-        // The full production sequence, both polarities: four spliced lines
+        // The full production sequence, both polarities: five spliced lines
         // differ between them, so byte-identical results would mean nothing
         // was spliced at all.
         const all_true = try common.applyConfigOverrides(allocator, base, allOverrides(true));
