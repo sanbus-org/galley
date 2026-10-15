@@ -331,15 +331,18 @@ def section_bundled_grammar_coverage() -> str:
     )
 
 
-def section_json_comparison(files: List[BenchmarkFile]) -> str:
-    """Head-to-head JSON parsing with proper category grouping and framing."""
-    # One table per dataset: {dataset: [(name, mode, mbps)]} using raw harness
-    # names. Every parser in a table ran on that exact input in the same
-    # harness, so rows within a table are directly comparable; tables are not
-    # comparable with each other. Columns are split at render time.
+def third_party_datasets(
+    files: List[BenchmarkFile], language: str
+) -> Dict[str, List[Tuple[str, str, float]]]:
+    """One entry per dataset of one language: {dataset: [(name, mode, mbps)]}.
+
+    Names are the raw harness names. Every parser in an entry ran on that exact
+    input in the same harness, so its rows are directly comparable; entries are
+    not comparable with each other.
+    """
     datasets: Dict[str, List[Tuple[str, str, float]]] = defaultdict(list)
     for bf in files:
-        if bf.source != "third_party":
+        if bf.source != "third_party" or bf.language != language:
             continue
         if "smoke" in bf.path.lower():
             continue
@@ -350,6 +353,55 @@ def section_json_comparison(files: List[BenchmarkFile]) -> str:
             if r.skipped or r.throughput <= 0:
                 continue
             datasets[dataset].append((r.name, r.mode, r.throughput))
+    return datasets
+
+
+def comparison_tables(datasets: Dict[str, List[Tuple[str, str, float]]]) -> List[str]:
+    """Markdown for one table per dataset, fastest row first."""
+    lines: List[str] = [
+        "Each table below runs every parser on one shared input in the same harness "
+        "(2 warmup + best of 5 runs), Galley included. **AST** means a syntax tree "
+        "is built, **No AST** means the input is parsed and checked but no tree is "
+        "built, and **CST** is Tree-sitter's concrete tree of every token. A ✓ under "
+        "**General-purpose** marks a parser that takes a grammar for any language; "
+        "a blank marks a parser written for only one. Parsers "
+        "build different trees and parse different amounts of the language (see "
+        "Methodology), so small gaps should not be over-read.\n"
+    ]
+    headers = ["Parser", "Lang", "General-purpose", "Mode", "Throughput"]
+    for dataset in sorted(datasets):
+        # Parsers without SIMD first, then the SIMD libraries as a reference
+        # block, each group fastest first. Both groups in one table get a bold
+        # group row each; a table with only one group needs no grouping.
+        rows = sorted(
+            (comparison_row(n, m, v) for n, m, v in datasets[dataset]),
+            key=lambda row: -row[5],
+        )
+        scalar = [r for r in rows if r[2] != "✓"]
+        simd = [r for r in rows if r[2] == "✓"]
+
+        def cells(group):
+            return [
+                [parser, lang, cat, mode, fmt_throughput(mbps)]
+                for parser, lang, _, cat, mode, mbps in group
+            ]
+
+        lines.append(f"### `{dataset}`\n")
+        if scalar and simd:
+            table = [["**Without SIMD**", "", "", "", "", ""]]
+            table += [[""] + row for row in cells(scalar)]
+            table.append(["**With SIMD**", "", "", "", "", ""])
+            table += [[""] + row for row in cells(simd)]
+            lines.append(md_table(["Group"] + headers, table))
+        else:
+            lines.append(md_table(headers, cells(scalar or simd)))
+        lines.append("")
+    return lines
+
+
+def section_json_comparison(files: List[BenchmarkFile]) -> str:
+    """Head-to-head JSON parsing with proper category grouping and framing."""
+    datasets = third_party_datasets(files, "json")
 
     lines: List[str] = []
     lines.append("## JSON Parsing — Throughput Comparison\n")
@@ -376,79 +428,76 @@ implementation can achieve, not direct competitors to a parser generator.
         lines.append("_No results available._\n")
         return "\n".join(lines)
 
-    # Headline ratios use the canonical twitter.json fixture; every dataset
-    # below carries its own table for the full picture.
+    # Headline ratios use the canonical twitter.json fixture, and each one
+    # compares modes that do the same kind of work.
     headline_key = "twitter.json" if "twitter.json" in datasets else sorted(datasets)[0]
     headline = {(parser, mode): mbps for parser, mode, mbps in datasets[headline_key]}
 
-    def h(parser: str, mode: str) -> float:
-        return headline.get((parser, mode), 0.0)
+    def ratio(galley_mode: str, parser: str, mode: str) -> Optional[str]:
+        galley = headline.get(("Galley (Zig)", galley_mode), 0.0)
+        other = headline.get((parser, mode), 0.0)
+        return f"{galley / other:.1f}×" if galley > 0 and other > 0 else None
 
-    galley_ll = h("Galley (Zig)", "LL No AST")
-    galley_ll_ast = h("Galley (Zig)", "LL AST")
-    lalrpop = h("LALRPOP (Rust)", "No AST")
-    bison = h("Bison / Flex (C)", "No AST")
-    nom = h("Nom (Rust)", "AST")
-    rapidjson_sax = h("RapidJSON (C++)", "SAX Validate")
-    if galley_ll > 0 and lalrpop > 0 and bison > 0 and nom > 0:
-        lines.append(
-            f"""\
-> On `{headline_key}`, **within the parser-generator category**, Galley LL is
-> **{galley_ll / lalrpop:.1f}× faster than LALRPOP** (Rust),
-> **{galley_ll / bison:.1f}× faster than Bison/Flex** (C), and
-> **{galley_ll / nom:.1f}× faster than Nom** (Rust) — with full AST construction
-> ({galley_ll_ast:.0f} MB/s) still outpacing LALRPOP's non-AST mode ({lalrpop:.0f} MB/s).
-"""
+    no_tree = [
+        f"{label} {value}"
+        for label, value in (
+            ("LALRPOP", ratio("LL No AST", "LALRPOP (Rust)", "No AST")),
+            ("Bison/Flex", ratio("LL No AST", "Bison / Flex (C)", "No AST")),
         )
-    if galley_ll > 0 and rapidjson_sax > 0:
-        gap = abs(1 - galley_ll / rapidjson_sax) * 100
+        if value
+    ]
+    tree = [
+        f"{label} {value}"
+        for label, value in (
+            ("LALRPOP", ratio("LL AST", "LALRPOP (Rust)", "AST")),
+            ("Nom", ratio("LL AST", "Nom (Rust)", "AST")),
+        )
+        if value
+    ]
+    if no_tree or tree:
+        lines.append(f"On `{headline_key}`, Galley LL's throughput divided by the other parser's, in matching modes:\n")
+        if no_tree:
+            lines.append(f"- **No AST:** {', '.join(no_tree)}.")
+        if tree:
+            lines.append(f"- **AST:** {', '.join(tree)}.")
         lines.append(
-            f"""\
-Notably, Galley's no-ast throughput of **{galley_ll:.0f} MB/s** is within ~{gap:.0f}% of
-RapidJSON's SAX mode ({rapidjson_sax:.0f} MB/s) — a hand-tuned C++ library with SIMD
-acceleration — despite Galley being a general-purpose parser generated from a grammar
-specification with no JSON-specific optimisations.
-"""
+            "\nThe trees differ between tools, so treat these ratios as estimates.\n"
         )
 
+    lines.extend(comparison_tables(datasets))
+    return "\n".join(lines)
+
+
+def section_python_comparison(files: List[BenchmarkFile]) -> str:
+    """Head-to-head Python parsing: Galley, Tree-sitter, Ruff and CPython."""
+    datasets = third_party_datasets(files, "python")
+
+    lines: List[str] = ["## Python Parsing — Throughput Comparison\n"]
+    if not datasets:
+        lines.append("_No results available._\n")
+        return "\n".join(lines)
     lines.append(
-        "Each table below runs every parser on one shared input in the same harness "
-        "(2 warmup + best of 5 runs) — Galley included. Grammars and tree shapes "
-        "still differ per parser (see Methodology), so small gaps should not be "
-        "over-read.\n"
+        """\
+Galley and Tree-sitter generate their parsers from a grammar. Ruff and CPython are
+hand-written Python parsers. Ruff, CPython and Tree-sitter parse full Python, while
+Galley's Python grammar parses a subset. No tool except Galley has a parse-only
+mode, so Galley's no-AST row has no direct counterpart.
+"""
     )
-
-    headers = ["Parser", "Lang", "SIMD", "Category", "Mode", "Throughput"]
-    for dataset in sorted(datasets):
-        rows = sorted(
-            (comparison_row(n, m, v) for n, m, v in datasets[dataset]),
-            key=lambda row: row[5],
-            reverse=True,
-        )
-        lines.append(f"### `{dataset}`\n")
-        lines.append(
-            md_table(
-                headers,
-                [
-                    [parser, lang, simd, cat, mode, fmt_throughput(mbps)]
-                    for parser, lang, simd, cat, mode, mbps in rows
-                ],
-            )
-        )
-        lines.append("")
-
+    lines.extend(comparison_tables(datasets))
     return "\n".join(lines)
 
 
 # Display columns for one harness row: language leaves the parser name, SIMD
-# mirrors the harness table marker, and Mode uses a shared vocabulary so rows
-# stay comparable instead of each carrying its own bespoke mode string.
+# mirrors the harness table marker, General-purpose marks parsers that take a
+# grammar for any language, and Mode uses a shared vocabulary so rows stay comparable
+# instead of each carrying its own bespoke mode string.
 COMPARISON_PARSERS = {
     "Bison / Flex (C)": (
         "Bison / Flex",
         "C",
         "",
-        "General",
+        "✓",
         {
             "No AST": "No AST",
             "Simple AST": "AST (simple)",
@@ -460,25 +509,33 @@ COMPARISON_PARSERS = {
         "LALRPOP",
         "Rust",
         "",
-        "General",
+        "✓",
         {"No AST": "No AST", "AST": "AST"},
     ),
-    "Nom (Rust)": ("Nom", "Rust", "", "General", {"AST": "AST"}),
-    "Tree-sitter (C)": ("Tree-sitter", "C", "", "General", {"CST": "CST"}),
+    "Nom (Rust)": ("Nom", "Rust", "", "✓", {"AST": "AST"}),
+    "Tree-sitter (C)": ("Tree-sitter", "C", "", "✓", {"CST": "CST"}),
+    "Ruff (Rust)": ("Ruff", "Rust", "", "", {"AST": "AST"}),
+    "CPython (Python)": (
+        "CPython",
+        "C",
+        "",
+        "",
+        {"AST": "AST", "AST + codegen": "AST + codegen"},
+    ),
     "simdjson (C++)": (
         "simdjson",
         "C++",
         "✓",
-        "JSON-specific",
-        {"Validate": "Validate", "DOM AST": "AST"},
+        "",
+        {"Validate": "No AST", "DOM AST": "AST"},
     ),
-    "yyjson (C)": ("yyjson", "C", "✓", "JSON-specific", {"DOM AST": "AST"}),
+    "yyjson (C)": ("yyjson", "C", "✓", "", {"DOM AST": "AST"}),
     "RapidJSON (C++)": (
         "RapidJSON",
         "C++",
         "✓",
-        "JSON-specific",
-        {"DOM AST": "AST", "SAX Validate": "SAX"},
+        "",
+        {"DOM AST": "AST", "SAX Validate": "No AST"},
     ),
 }
 
@@ -486,15 +543,15 @@ COMPARISON_PARSERS = {
 def comparison_row(
     name: str, mode: str, mbps: float
 ) -> Tuple[str, str, str, str, str, float]:
-    """Split a harness row into Parser/Lang/SIMD/Category/Mode columns."""
+    """Split a harness row into Parser/Lang/SIMD/General-purpose/Mode columns."""
     if name == "Galley (Zig)":
         # Harness modes are "LL No AST", "LL AST", "LR No AST", "LR AST".
         variant, _, rest = mode.partition(" ")
-        return (f"Galley {variant}", "Zig", "", "General", rest, mbps)
+        return (f"Galley {variant}", "Zig", "", "✓", rest, mbps)
     if name in COMPARISON_PARSERS:
         parser, lang, simd, cat, modes = COMPARISON_PARSERS[name]
         return (parser, lang, simd, cat, modes.get(mode, mode), mbps)
-    return (name, "", "", "General", mode, mbps)
+    return (name, "", "", "✓", mode, mbps)
 
 
 GRAMMAR_DESCRIPTIONS: Dict[str, str] = {
@@ -737,9 +794,9 @@ def section_methodology_third_party() -> str:
   grammars, and Nom were tightened to match, and RapidJSON runs with encoding
   validation enabled. Tree-sitter runs upstream as-is, with laxer string
   rules.
-- Parsers included: Tree-sitter (C, CST), Bison/Flex (C, multiple AST modes),
-  LALRPOP (Rust, Non-AST & AST), simdjson (C++, Validate & DOM), Nom (Rust, AST),
-  RapidJSON (C++, DOM & SAX), yyjson (C, DOM AST).
+- Parsers included: Tree-sitter (C, CST), Bison/Flex (C, No AST and three AST
+  modes), LALRPOP (Rust, No AST and AST), simdjson (C++, No AST and AST),
+  Nom (Rust, AST), RapidJSON (C++, No AST and AST), yyjson (C, AST).
 - Galley rows are timed in this same harness from its unicode JSON grammar.
   Galley's long-term tracking numbers across all grammars live in
   `BENCHMARKS_INTERNAL.md` and come from `scripts/benchmark.py`, a different
@@ -768,8 +825,9 @@ estimate, not a measurement of equal work:
 - **Extra passes.** Galley's Python AST row runs a procedure that resolves
   operator precedence, which the other tools do inside their parsers.
 - **No-AST rows.** For Python, no other tool has a parse-only mode, so
-  Galley's no-AST row has no rival. For JSON, simdjson's Validate row is the
-  closest match.
+  Galley's no-AST row has no rival. For JSON, the no-AST rows of simdjson
+  (validation) and RapidJSON (SAX with an empty handler) do the same kind of
+  work.
 - **Encoding checks.** Ruff, CPython and Galley's Python adapter reject invalid
   UTF-8. Tree-sitter does not check.
 - **One run each.** Results are the best of 5 on one machine and one input,
@@ -827,7 +885,7 @@ def main() -> None:
 > Generated by `scripts/generate_benchmarks_doc.py`. Re-run to refresh after new benchmark runs.
 
 This document compares **Galley** (the generated LL/LR parser in this repository) against
-widely-used third-party parsers and parser-generators on JSON inputs.
+widely-used third-party parsers and parser-generators on JSON and Python inputs.
 
 Unless noted otherwise, results were recorded on an **Apple M1 Pro**.
 
@@ -835,6 +893,9 @@ Unless noted otherwise, results were recorded on an **Apple M1 Pro**.
 """)
 
     comparison_parts.append(section_json_comparison(files))
+    comparison_parts.append("---\n")
+
+    comparison_parts.append(section_python_comparison(files))
     comparison_parts.append("---\n")
 
     comparison_parts.append(section_methodology_third_party())
