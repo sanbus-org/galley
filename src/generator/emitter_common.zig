@@ -563,14 +563,16 @@ pub fn emitModeGatedBody(
 /// Option values are no longer baked here: every option is a comptime
 /// expression over the consumer's `config.zig`, so changing configuration
 /// requires recompilation only — never regeneration. What stays baked is
-/// grammar *content* (recovery-annotation presence, verbatim usage, longest
-/// terminal) and family capability (parser type, syntax-error stack support).
+/// grammar *content* (recovery-annotation presence, verbatim usage,
+/// indentation terminal usage, longest terminal) and family capability
+/// (parser type, syntax-error stack support).
 pub fn emitParserMetadata(
     writer: *std.Io.Writer,
     parser_type: []const u8,
     has_recovery_annotations: bool,
     longest_terminal_length: usize,
     uses_verbatim: bool,
+    uses_indentation_terminals: bool,
     syntax_error_stack_supported: bool,
 ) !void {
     try writer.print(
@@ -590,7 +592,7 @@ pub fn emitParserMetadata(
         \\pub const is_input_streaming_enabled = config.input_streaming;
         \\pub const syntax_error_stack_depth = {s};
         \\pub const is_syntax_error_stack_enabled = {s};
-        \\{s}pub const longest_terminal_length = {d};
+        \\{s}{s}pub const longest_terminal_length = {d};
         \\
         \\
     , .{
@@ -602,6 +604,7 @@ pub fn emitParserMetadata(
             "1",
         if (syntax_error_stack_supported) "syntax_error_stack_depth > 1" else "false",
         if (uses_verbatim) "pub const uses_verbatim = true;\n" else "",
+        if (uses_indentation_terminals) "pub const uses_indentation_terminals = true;\n" else "",
         longest_terminal_length,
     });
 }

@@ -1,0 +1,5 @@
+# The indentation terminals only exist under indentation_syntax; this
+# grammar pairs with a configuration that disables it, so compilation must
+# refuse the combination.
+Start
+| block_start "x" block_end

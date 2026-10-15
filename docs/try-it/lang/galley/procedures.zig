@@ -100,12 +100,6 @@ pub fn reduction_IdTail(args: *root.data_structures.ProcedureArguments) void {
 pub fn reduction_CamelCaseIdTail(args: *root.data_structures.ProcedureArguments) void {
     root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_CamelCaseIdTail" }));
 }
-pub fn reduction_BlockStart(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_BlockStart" }));
-}
-pub fn reduction_BlockEnd(args: *root.data_structures.ProcedureArguments) void {
-    root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_BlockEnd" }));
-}
 pub fn reduction_CommentLine(args: *root.data_structures.ProcedureArguments) void {
     root.data_structures.host_hooks.callCompiled(args, @extern(*const fn (?*anyopaque, u64) callconv(.c) void, .{ .name = "reduction_CommentLine" }));
 }

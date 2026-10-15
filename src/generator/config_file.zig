@@ -94,6 +94,9 @@ pub fn write(
         \\/// true  - the lexer emits indentation/deduction tokens derived from
         \\///         leading whitespace.
         \\/// false - whitespace is insignificant.
+        \\///
+        \\/// Required by grammars that name the `block_start`/`block_end`
+        \\/// terminals; otherwise compilation fails.
         \\pub const indentation_syntax = {};
         \\
         \\/// After each dedent, emit a control byte that `new_line` matches and

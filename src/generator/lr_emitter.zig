@@ -31,6 +31,7 @@ const Generator = struct {
     uses_explicit_recovery: bool,
     has_recovery_annotations: bool,
     uses_verbatim: bool,
+    uses_indentation_terminals: bool,
     end_symbol: usize,
 
     fn init(allocator: std.mem.Allocator, options: Options, grammar: *const common.PreparedGrammar, plan: *const LRPlan) Generator {
@@ -44,6 +45,7 @@ const Generator = struct {
             .uses_explicit_recovery = grammar.uses_explicit_recovery,
             .has_recovery_annotations = grammar.has_recovery_annotations,
             .uses_verbatim = grammar.uses_verbatim,
+            .uses_indentation_terminals = grammar.uses_indentation_terminals,
             .end_symbol = grammar.eof,
         };
     }
@@ -65,6 +67,7 @@ const Generator = struct {
             self.has_recovery_annotations,
             self.longestTerminalLength(),
             self.uses_verbatim,
+            self.uses_indentation_terminals,
             false,
         );
         try emitter_common.emitGrammarTables(writer, self.symbols.items, self.variables.items, self.rules.items, self.end_symbol);

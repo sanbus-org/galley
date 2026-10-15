@@ -37,6 +37,7 @@ const Generator = struct {
     uses_explicit_recovery: bool,
     has_recovery_annotations: bool,
     uses_verbatim: bool,
+    uses_indentation_terminals: bool,
     end_symbol: usize,
     verbatim_literal: ?[]const u8 = null,
     verbatim_consume: bool = true,
@@ -78,6 +79,7 @@ const Generator = struct {
             .uses_explicit_recovery = grammar.uses_explicit_recovery,
             .has_recovery_annotations = grammar.has_recovery_annotations,
             .uses_verbatim = grammar.uses_verbatim,
+            .uses_indentation_terminals = grammar.uses_indentation_terminals,
             .end_symbol = grammar.eof,
         };
     }
@@ -99,6 +101,7 @@ const Generator = struct {
             self.has_recovery_annotations,
             self.longestTerminalLength(),
             self.uses_verbatim,
+            self.uses_indentation_terminals,
             true,
         );
 

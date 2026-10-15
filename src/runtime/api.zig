@@ -31,12 +31,17 @@ pub const sliding_input_enabled = input_streaming_enabled and !source_retention_
 
 // Options that only refine another option fail the build when the option they
 // refine is off, so a configuration never carries a setting that does nothing.
+// Grammar content that requires an option (the indentation terminals) fails
+// the same way.
 comptime {
     if (config.ast_for_terminals and !config.ast and !config.procedures) {
         @compileError("config.zig: ast_for_terminals = true requires ast = true or procedures = true; enable one of them or set ast_for_terminals = false");
     }
     if (@hasDecl(config, "newline_after_block_end") and config.newline_after_block_end and !config.indentation_syntax) {
         @compileError("config.zig: newline_after_block_end = true requires indentation_syntax = true; enable indentation_syntax or set newline_after_block_end = false");
+    }
+    if (@hasDecl(parser, "uses_indentation_terminals") and parser.uses_indentation_terminals and !config.indentation_syntax) {
+        @compileError("config.zig: block_start/block_end require indentation_syntax = true; enable indentation_syntax or remove them from the grammar");
     }
 }
 pub const string_utilities = @import("string.zig");

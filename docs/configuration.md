@@ -41,7 +41,7 @@ Each language directory contains a user-owned `config.zig`. Its contract:
 | `ast_for_terminals` | `bool` | Allocate AST nodes for individual terminals. Disabling keeps AST allocations minimal. Requires `ast` or `procedures`; otherwise compilation fails. |
 | `position_tracking` | `?bool` | Line/column tracking. `null` (the default) enables it except in `ReleaseFast`; `true`/`false` force it regardless of build mode. |
 | `input_streaming` | `bool` | Stream files incrementally. Only parsers with no AST, no procedures, and no verbatim capture use a bounded input window; AST-, procedure-, or verbatim-enabled parsers retain the complete source. |
-| `indentation_syntax` | `bool` | Track indentation changes at line starts and emit virtual `block_start` (`\x01`) / `block_end` (`\x02`) tokens for indentation-sensitive grammars. |
+| `indentation_syntax` | `bool` | Track indentation changes at line starts and emit virtual `block_start` (`\x01`) / `block_end` (`\x02`) tokens for indentation-sensitive grammars. Grammars that name the `block_start`/`block_end` terminals require it; otherwise compilation fails. |
 | `newline_after_block_end` | `bool` | After each `block_end` sequence, emit `\x03`. Productions that expect `new_line` match it as a newline; every other expected terminal skips it. Requires `indentation_syntax`; otherwise compilation fails. |
 | `error_messages` | anonymous struct | Template overrides for syntax-error messages — see [below](#syntax-error-message-overrides). |
 

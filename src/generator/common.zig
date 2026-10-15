@@ -189,6 +189,9 @@ pub const PreparedGrammar = struct {
     has_recovery_annotations: bool = false,
     uses_explicit_recovery: bool = false,
     uses_verbatim: bool = false,
+    /// Whether the grammar mentions the `block_start`/`block_end` generative
+    /// terminals, which only exist under `indentation_syntax`.
+    uses_indentation_terminals: bool = false,
 };
 
 pub fn prepareGrammar(
@@ -247,6 +250,7 @@ pub fn prepareGrammar(
                     try cloneAnnotations(allocator, symbol.annotations),
                 );
                 if (@hasField(@TypeOf(symbol.annotations), "verbatim") and symbol.annotations.verbatim) result.uses_verbatim = true;
+                if (symbol.kind == .generative_terminal and isIndentationTerminalId(symbol.id)) result.uses_indentation_terminals = true;
                 // Grammar fact only: whether ANY annotated procedure
                 // occurrence exists. Which occurrences actually run is a
                 // configuration decision made at comptime inside the
@@ -1080,6 +1084,54 @@ test "prepared grammar preserves annotations and stable synthetic symbols" {
     } else return error.RootRuleMissing;
 }
 
+test "prepared grammar records indentation terminal use" {
+    const SourceAnnotations = struct {
+        procedures: []const []const u8 = &.{},
+        recovery_points: []const struct { terminal: []const u8, @"resume": enum { before, after } } = &.{},
+    };
+    const SourceSymbol = struct {
+        id: []const u8,
+        kind: enum { variable, terminal, generative_terminal },
+        annotations: SourceAnnotations = .{},
+    };
+    const SourceRhs = struct {
+        symbols: []const SourceSymbol,
+        annotations: SourceAnnotations = .{},
+    };
+    const SourceRule = struct {
+        header: []const u8,
+        right_hand_sides: []const SourceRhs,
+        annotations: SourceAnnotations = .{},
+    };
+
+    const plain_source = .{ .rules = &[_]SourceRule{
+        .{
+            .header = "Root",
+            .right_hand_sides = &.{.{ .symbols = &.{
+                .{ .id = "letter", .kind = .generative_terminal },
+                .{ .id = "block_started", .kind = .terminal },
+                .{ .id = "block_start", .kind = .terminal },
+            } }},
+        },
+    } };
+    const indented_source = .{ .rules = &[_]SourceRule{
+        .{
+            .header = "Root",
+            .right_hand_sides = &.{.{ .symbols = &.{
+                .{ .id = "block_start", .kind = .generative_terminal },
+                .{ .id = "block_end", .kind = .generative_terminal },
+            } }},
+        },
+    } };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    try std.testing.expect(!(try prepareGrammar(allocator, plain_source, .{}, true)).uses_indentation_terminals);
+    try std.testing.expect((try prepareGrammar(allocator, indented_source, .{}, true)).uses_indentation_terminals);
+}
+
 pub fn appendProcedureNames(allocator: std.mem.Allocator, target: *std.ArrayList([]const u8), procedure_names: []const []const u8) !void {
     for (procedure_names) |name| try target.append(allocator, try allocator.dupe(u8, name));
 }
@@ -1606,6 +1658,17 @@ pub fn expandGenerativeTerminal(allocator: std.mem.Allocator, out: *std.ArrayLis
     }
 }
 
+/// Whether a generative terminal id names an injected indentation control
+/// byte: `block_start` or `block_end`, with or without an exception suffix
+/// (the base `expandBaseTerminal` recognizes). Both members exist only under
+/// `indentation_syntax`, so a grammar that names them cannot compile
+/// without it.
+fn isIndentationTerminalId(id: []const u8) bool {
+    const caret = std.mem.indexOfScalar(u8, id, '^');
+    const base = if (caret) |index| id[0..index] else id;
+    return std.mem.eql(u8, base, "block_start") or std.mem.eql(u8, base, "block_end");
+}
+
 fn expandBaseTerminal(allocator: std.mem.Allocator, out: *std.ArrayList([]const u8), base: []const u8) !void {
     if (std.mem.eql(u8, base, "digit")) return appendChars(allocator, out, "0123456789");
     if (std.mem.eql(u8, base, "hex_digit")) return appendChars(allocator, out, "0123456789abcdefABCDEF");
@@ -1784,6 +1847,15 @@ test "UTF-8 generative terminals expand to their exact byte ranges" {
         }
         try std.testing.expectEqual(index, expanded.items.len);
     }
+}
+
+test "indentation terminal ids are recognized by their base" {
+    try std.testing.expect(isIndentationTerminalId("block_start"));
+    try std.testing.expect(isIndentationTerminalId("block_end"));
+    try std.testing.expect(isIndentationTerminalId("block_start^\"\\u{01}\""));
+    try std.testing.expect(!isIndentationTerminalId("block_started"));
+    try std.testing.expect(!isIndentationTerminalId("BlockStart"));
+    try std.testing.expect(!isIndentationTerminalId("character^\"block_start\""));
 }
 
 test "character exceptions exclude raw string and quoted content" {
