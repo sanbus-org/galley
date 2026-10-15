@@ -423,6 +423,11 @@ failure that ran to its end with errors recorded — exposes `astAllocator()`,
 and a recovered syntax error leaves its damaged regions there as nodes with
 `is_recovered` set.
 
+`parser.lineColumnAt(input, offset)` converts a byte offset in a parse's input,
+such as a node's `text_start`, into a 1-based line and column, whatever the
+configuration: every byte is one column and each `\n` starts a line. It scans
+from the start of `input`, so its cost is linear in the offset.
+
 `SyntaxDiagnostic.recovery` is `null` until explicit synchronization succeeds. On success it identifies the winning terminal, whether parsing resumed `.before` or `.after` it, and the winning target: an LHS variable, a production `{ variable, rhs_index }`, or an occurrence `{ parent_variable, rhs_index, symbol_index, variable }`. The original unexpected token, expected tokens, source location, mismatch context, and LL/LR message-hook name are unchanged. Default plain and ANSI rendering append a `Recovery:` line, and custom message hooks receive the finalized diagnostic.
 
 Recovery procedures may run on partial trees, so AST results from an erroneous parse are not a validity guarantee. Explicit recovery skips hooks belonging to the damaged occurrence, selected production, and variable.

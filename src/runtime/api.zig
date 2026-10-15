@@ -645,6 +645,34 @@ pub fn writeDiagnostics(writer: *std.Io.Writer, diagnostics: []const ParseDiagno
     for (diagnostics) |diagnostic| try writeDiagnostic(writer, diagnostic);
 }
 
+/// A 1-based position in a parse's input.
+pub const LineColumn = struct { line: usize, column: usize };
+
+/// The line and column of byte `offset` in `input`, the input of a parse:
+/// every byte is one column and each `\n` starts a new line. Works with or
+/// without line and column tracking. Scans `input` from its start, so the
+/// cost is linear in `offset`. `offset` may equal `input.len`, the position
+/// just past the last byte.
+pub fn lineColumnAt(input: []const u8, offset: usize) error{OffsetOutOfRange}!LineColumn {
+    if (offset > input.len) return error.OffsetOutOfRange;
+    const before = input[0..offset];
+    const line_start = if (std.mem.lastIndexOfScalar(u8, before, '\n')) |newline| newline + 1 else 0;
+    return .{
+        .line = std.mem.countScalar(u8, before, '\n') + 1,
+        .column = offset - line_start + 1,
+    };
+}
+
+test "lineColumnAt counts lines by newline and columns by byte" {
+    const input = "ab\ncd\n\xc3\xa9f";
+    try std.testing.expectEqual(LineColumn{ .line = 1, .column = 1 }, try lineColumnAt(input, 0));
+    try std.testing.expectEqual(LineColumn{ .line = 1, .column = 3 }, try lineColumnAt(input, 2));
+    try std.testing.expectEqual(LineColumn{ .line = 2, .column = 1 }, try lineColumnAt(input, 3));
+    try std.testing.expectEqual(LineColumn{ .line = 3, .column = 3 }, try lineColumnAt(input, 8));
+    try std.testing.expectEqual(LineColumn{ .line = 3, .column = 4 }, try lineColumnAt(input, input.len));
+    try std.testing.expectError(error.OffsetOutOfRange, lineColumnAt(input, input.len + 1));
+}
+
 /// The errors a parse reports after publishing its tree: the parse ran to its
 /// end and its result carries recorded errors.
 pub const ParseFailure = error{ SyntaxError, SemanticError };

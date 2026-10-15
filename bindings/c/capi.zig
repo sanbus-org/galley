@@ -611,8 +611,6 @@ fn nodeSpanCore(
     return galley_ok;
 }
 
-/// Scans the door's input up to the node's start offset, so cost is linear
-/// in the offset.
 fn nodeLineColumnCore(
     door: *const Door,
     address: GalleyNodeAddress,
@@ -621,19 +619,9 @@ fn nodeLineColumnCore(
 ) i64 {
     if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
     const node = door.nodeAt(address) orelse return galley_error_invalid_node;
-    const input = door.inputBytes();
-    if (node.text_start > input.len) return galley_error_internal;
-
-    var line: u32 = 1;
-    var column: u32 = 1;
-    for (input[0..node.text_start]) |byte| {
-        if (byte == '\n') {
-            line += 1;
-            column = 1;
-        } else {
-            column += 1;
-        }
-    }
+    const position = root.lineColumnAt(door.inputBytes(), node.text_start) catch return galley_error_internal;
+    const line = std.math.cast(u32, position.line) orelse return galley_error_internal;
+    const column = std.math.cast(u32, position.column) orelse return galley_error_internal;
     out_line.?.* = line;
     out_column.?.* = column;
     return galley_ok;
