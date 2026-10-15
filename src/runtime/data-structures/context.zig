@@ -1236,10 +1236,22 @@ pub const Context = struct {
         }
     }
 
+    /// Offset just past `terminator` (or at it, when `consume` is false), or
+    /// `null` when a NUL, which ends the valid input, comes first. One scan
+    /// stops at whichever of the two it meets first, so a capture costs the
+    /// distance to its terminator and not the rest of the input.
     fn findVerbatimTerminatorEnd(buffer: []const u8, start: usize, terminator: []const u8, consume: bool) ?usize {
-        const region_end = std.mem.indexOfScalarPos(u8, buffer, start, 0) orelse buffer.len;
-        const terminator_at = std.mem.indexOf(u8, buffer[start..region_end], terminator) orelse return null;
-        return start + terminator_at + (if (consume) terminator.len else 0);
+        if (terminator.len == 0) return start;
+        if (std.mem.indexOfScalar(u8, terminator, 0) != null) return null;
+        var position = start;
+        while (std.mem.indexOfAnyPos(u8, buffer, position, &.{ 0, terminator[0] })) |found| {
+            if (buffer[found] == 0) return null;
+            if (std.mem.startsWith(u8, buffer[found..], terminator)) {
+                return found + (if (consume) terminator.len else 0);
+            }
+            position = found + 1;
+        }
+        return null;
     }
 
     /// Number of leading spaces on the line containing `offset`.
@@ -1897,4 +1909,13 @@ test "newline summary counts markers enabled by config" {
     else
         2;
     try std.testing.expectEqual(expected_last, summary.last);
+}
+
+test "verbatim terminator search ends at the first terminator or NUL" {
+    try std.testing.expectEqual(@as(?usize, 4), Context.findVerbatimTerminatorEnd("# ab\ncd\n", 1, "\n", false));
+    try std.testing.expectEqual(@as(?usize, 5), Context.findVerbatimTerminatorEnd("# ab\ncd\n", 1, "\n", true));
+    try std.testing.expectEqual(@as(?usize, 7), Context.findVerbatimTerminatorEnd("x\"\"a\"\"\"b", 1, "\"\"\"", true));
+    try std.testing.expectEqual(@as(?usize, null), Context.findVerbatimTerminatorEnd("# ab\x00\ncd", 1, "\n", false));
+    try std.testing.expectEqual(@as(?usize, null), Context.findVerbatimTerminatorEnd("# ab", 1, "\n", false));
+    try std.testing.expectEqual(@as(?usize, null), Context.findVerbatimTerminatorEnd("a\x00b\x00", 0, "\x00", true));
 }
