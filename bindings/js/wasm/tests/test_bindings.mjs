@@ -353,6 +353,7 @@ await test("syntax error throws error with code and diagnostic", async () => {
       assert.ok(err.diagnostic);
       const d = err.diagnostic;
       assert.equal(d.kind, Kind.Syntax);
+      assert.equal(d.offset, 6);
       assert.equal(d.line, 1);
       assert.equal(d.column, 7);
       assert.ok(d.message.includes("parse failed"));

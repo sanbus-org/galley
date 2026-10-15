@@ -745,7 +745,10 @@ type SemanticInfo struct {
 // Diagnostic describes the failure of the most recent parse, mirroring the
 // structured diagnostic of the C API.
 type Diagnostic struct {
-	Kind            DiagnosticKind
+	Kind DiagnosticKind
+	// Offset is the byte offset of the failure in the input.
+	Offset uint64
+	// Line and Column are 1-based; both are 0 when the diagnostic has none.
 	Line, Column    uint32
 	Message         string
 	UnexpectedToken []byte
@@ -762,10 +765,12 @@ type Diagnostic struct {
 // built-in generic renderer.
 func (s *Session) diagnosticAt(diagIndex C.ulonglong) (Diagnostic, bool) {
 	var diagnostic Diagnostic
+	var offset C.ulonglong
 	var line, column C.uint
-	if C.galley_recorded_diagnostic_position(s.ptr, diagIndex, &line, &column) != 0 {
+	if C.galley_recorded_diagnostic_position(s.ptr, diagIndex, &offset, &line, &column) != 0 {
 		return Diagnostic{}, false
 	}
+	diagnostic.Offset = uint64(offset)
 	diagnostic.Line, diagnostic.Column = uint32(line), uint32(column)
 	diagnostic.Kind = DiagnosticKind(C.galley_recorded_diagnostic_kind(s.ptr, diagIndex))
 	var message *C.char

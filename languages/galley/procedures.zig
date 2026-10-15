@@ -175,19 +175,6 @@ fn grammarFromAst(args: *ProcedureArguments, start_address: Node.Pointer) !*Gram
     return try immutableGrammarFromMutableRules(allocator, mutable_rules.items);
 }
 
-fn sourcePositionOf(input: []const u8, offset: usize) struct { line: usize, column: usize } {
-    const bounded = @min(offset, input.len);
-    var line: usize = 1;
-    var line_start: usize = 0;
-    for (input[0..bounded], 0..) |byte, index| {
-        if (byte == '\n') {
-            line += 1;
-            line_start = index + 1;
-        }
-    }
-    return .{ .line = line, .column = bounded - line_start + 1 };
-}
-
 /// Records grammar-model errors as semantic diagnostics at the offending
 /// node's source position, so they stay readable from the session like every
 /// other parse error. Validation choke points that decode or check grammar
@@ -200,11 +187,12 @@ const GrammarModelReporter = struct {
 
     fn report(self: GrammarModelReporter, comptime format: []const u8, args: anytype) void {
         const node = self.context.node_allocator.at(self.node_address);
-        const position = sourcePositionOf(self.context.diagnosticInput(), node.text_start);
+        const position = self.context.positionOfOffset(node.text_start);
         const message = std.fmt.allocPrint(self.context.runtime().arena_allocator, format, args) catch return;
         _ = self.context.recordSemanticDiagnostic(.{
-            .line = @intCast(position.line),
-            .column = @intCast(position.column),
+            .offset = position.offset,
+            .line = position.line,
+            .column = position.column,
             .variable = if (node.variable < root.parser.variables.len) root.parser.variables[node.variable] else "*",
             .message = message,
             .text_start = node.text_start,
@@ -223,7 +211,7 @@ fn reportDuplicateRuleHeader(
     second_address: Node.Pointer,
     header: []const u8,
 ) void {
-    const first_position = sourcePositionOf(context.diagnosticInput(), context.node_allocator.at(first_address).text_start);
+    const first_position = context.positionOfOffset(context.node_allocator.at(first_address).text_start);
     reporterAt(context, second_address).report(
         "DuplicateRuleHeader: rule header \"{s}\" is defined more than once (first at line {d}, column {d})",
         .{ header, first_position.line, first_position.column },

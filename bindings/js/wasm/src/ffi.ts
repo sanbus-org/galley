@@ -128,7 +128,7 @@ interface GalleyWasmExports extends DoorNames<"">, DoorNames<"hook_"> {
   galley_diagnostic_kind(session: number): bigint;
   galley_diagnostic_message(session: number, out: number): bigint;
   galley_diagnostic_message_ansi(session: number, out: number): bigint;
-  galley_diagnostic_position(session: number, outLine: number, outCol: number): bigint;
+  galley_diagnostic_position(session: number, outOffset: number, outLine: number, outCol: number): bigint;
   galley_diagnostic_unexpected_token(session: number, outData: number, outLen: number): bigint;
   galley_diagnostic_expected_count(session: number): bigint;
   galley_diagnostic_expected_at(session: number, index: bigint, outData: number, outLen: number): bigint;
@@ -168,6 +168,7 @@ interface GalleyWasmExports extends DoorNames<"">, DoorNames<"hook_"> {
   galley_recorded_diagnostic_position(
     session: number,
     index: bigint,
+    outOffset: number,
     outLine: number,
     outCol: number,
   ): bigint;
@@ -1051,15 +1052,15 @@ export class WasmPort implements FfiPort {
     }
   }
 
-  diagnosticPosition(handle: Handle): [number, number] | null {
-    const out = this.malloc(8);
+  diagnosticPosition(handle: Handle): [number, number, number] | null {
+    const out = this.malloc(16);
     try {
-      if (isNegative(this.wasm.galley_diagnostic_position(handle as number, out, out + 4)))
+      if (isNegative(this.wasm.galley_diagnostic_position(handle as number, out, out + 8, out + 12)))
         return null;
       const view = this.dataView();
-      return [view.getUint32(out, true), view.getUint32(out + 4, true)];
+      return [Number(view.getBigUint64(out, true)), view.getUint32(out + 8, true), view.getUint32(out + 12, true)];
     } finally {
-      this.free(out, 8);
+      this.free(out, 16);
     }
   }
 
@@ -1209,17 +1210,19 @@ export class WasmPort implements FfiPort {
     return toNumber(this.wasm.galley_recorded_diagnostic_kind(handle as number, BigInt(diagIndex)));
   }
 
-  recordedDiagnosticPosition(handle: Handle, diagIndex: number): [number, number] | null {
-    const out = this.malloc(8);
+  recordedDiagnosticPosition(handle: Handle, diagIndex: number): [number, number, number] | null {
+    const out = this.malloc(16);
     try {
       if (
-        isNegative(this.wasm.galley_recorded_diagnostic_position(handle as number, BigInt(diagIndex), out, out + 4))
+        isNegative(
+          this.wasm.galley_recorded_diagnostic_position(handle as number, BigInt(diagIndex), out, out + 8, out + 12),
+        )
       )
         return null;
       const view = this.dataView();
-      return [view.getUint32(out, true), view.getUint32(out + 4, true)];
+      return [Number(view.getBigUint64(out, true)), view.getUint32(out + 8, true), view.getUint32(out + 12, true)];
     } finally {
-      this.free(out, 8);
+      this.free(out, 16);
     }
   }
 

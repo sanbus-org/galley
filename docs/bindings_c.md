@@ -441,8 +441,9 @@ parse:
 ```c
 if (galley_has_diagnostic(session)) {
     long long kind = galley_diagnostic_kind(session); /* none/syntax/indentation/semantic */
-    unsigned int line, column;
-    galley_diagnostic_position(session, &line, &column);
+    unsigned long long offset;
+    unsigned int line, column;          /* 0, 0 when it has none */
+    galley_diagnostic_position(session, &offset, &line, &column);
 
     const char *msg;
     galley_diagnostic_message(session, &msg);        /* plain text */
@@ -469,8 +470,9 @@ index (0-based, in recording order) until the next parse:
 ```c
 long long recorded = galley_recorded_diagnostic_count(session);
 for (long long i = 0; i < recorded; ++i) {
+    unsigned long long offset;
     unsigned int line, column;
-    galley_recorded_diagnostic_position(session, i, &line, &column);
+    galley_recorded_diagnostic_position(session, i, &offset, &line, &column);
     long long kind = galley_recorded_diagnostic_kind(session, i);
     /* plus recorded_{unexpected_token,expected_count,expected_token,
        context_count,context_name,indentation,recovery_*}, mirroring the

@@ -859,6 +859,7 @@ class SessionTests(unittest.TestCase):
         self.assertIsNotNone(diagnostic)
         assert diagnostic is not None
         self.assertEqual(diagnostic.kind, grammar.Kind.SYNTAX)
+        self.assertEqual(diagnostic.offset, 6)
         self.assertEqual(diagnostic.line, 1)
         self.assertEqual(diagnostic.column, 7)
         self.assertIn("parse failed", diagnostic.message)
@@ -946,6 +947,7 @@ class SemanticErrorTests(unittest.TestCase):
         recorded = self.session.diagnostics()
         self.assertEqual(len(recorded), 2)
         self.assertTrue(all(item.kind == grammar.Kind.SEMANTIC for item in recorded))
+        self.assertLess(recorded[0].offset, recorded[1].offset)
         self.assertTrue(
             all(item.semantic == (b"Number", "value out of range") for item in recorded)
         )

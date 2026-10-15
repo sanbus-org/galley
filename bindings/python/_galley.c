@@ -1811,6 +1811,7 @@ static PyObject *Session_has_diagnostic(PyObject *self, PyObject *Py_UNUSED(igno
 typedef struct {
     PyObject_HEAD
     long kind;
+    unsigned long long offset;
     long line;
     long column;
     PyObject *message;               /* str */
@@ -1851,10 +1852,12 @@ static void Diagnostic_dealloc(DiagnosticObject *self)
 static PyMemberDef Diagnostic_members[] = {
     {"kind", T_LONG, offsetof(DiagnosticObject, kind), READONLY,
      "diagnostic classification: Kind.NONE, Kind.SYNTAX, Kind.SEMANTIC, Kind.INDENTATION, Kind.HOOK"},
+    {"offset", T_ULONGLONG, offsetof(DiagnosticObject, offset), READONLY,
+     "byte offset in the input of the failure"},
     {"line", T_LONG, offsetof(DiagnosticObject, line), READONLY,
-     "1-based line of the failure"},
+     "1-based line of the failure (0 when it has none)"},
     {"column", T_LONG, offsetof(DiagnosticObject, column), READONLY,
-     "1-based column of the failure"},
+     "1-based column of the failure (0 when it has none)"},
     {"message", T_OBJECT_EX, offsetof(DiagnosticObject, message), READONLY,
      "rendered plain-text message"},
     {"message_ansi", T_OBJECT_EX, offsetof(DiagnosticObject, message_ansi),
@@ -1924,6 +1927,7 @@ static PyObject *diagnostic_rendered_message(PyObject *diagnostic)
 static PyObject *build_diagnostic(GalleySession *session)
 {
     DiagnosticObject *diagnostic;
+    unsigned long long offset = 0;
     unsigned int line = 0;
     unsigned int column = 0;
     unsigned int first = 0;
@@ -1941,6 +1945,7 @@ static PyObject *build_diagnostic(GalleySession *session)
     if (diagnostic == NULL)
         return NULL;
     diagnostic->kind = galley_diagnostic_kind_none;
+    diagnostic->offset = 0;
     diagnostic->line = 0;
     diagnostic->column = 0;
     diagnostic->syntax_error_count = 0;
@@ -1962,7 +1967,8 @@ static PyObject *build_diagnostic(GalleySession *session)
         goto fail;
 
     diagnostic->kind = (long)galley_diagnostic_kind(session);
-    if (galley_diagnostic_position(session, &line, &column) == galley_ok) {
+    if (galley_diagnostic_position(session, &offset, &line, &column) == galley_ok) {
+        diagnostic->offset = offset;
         diagnostic->line = (long)line;
         diagnostic->column = (long)column;
     }
@@ -2153,6 +2159,7 @@ static PyObject *Session_diagnostic(PyObject *self, PyObject *Py_UNUSED(ignored)
 static PyObject *build_recorded_diagnostic(GalleySession *session, unsigned long long index)
 {
     DiagnosticObject *diagnostic;
+    unsigned long long offset = 0;
     unsigned int line = 0;
     unsigned int column = 0;
     const char *text = NULL;
@@ -2164,6 +2171,7 @@ static PyObject *build_recorded_diagnostic(GalleySession *session, unsigned long
     if (diagnostic == NULL)
         return NULL;
     diagnostic->kind = (long)galley_recorded_diagnostic_kind(session, index);
+    diagnostic->offset = 0;
     diagnostic->line = 0;
     diagnostic->column = 0;
     diagnostic->syntax_error_count = 0;
@@ -2184,7 +2192,8 @@ static PyObject *build_recorded_diagnostic(GalleySession *session, unsigned long
     if (diagnostic->expected_tokens == NULL || diagnostic->context == NULL)
         goto fail;
 
-    if (galley_recorded_diagnostic_position(session, index, &line, &column) == galley_ok) {
+    if (galley_recorded_diagnostic_position(session, index, &offset, &line, &column) == galley_ok) {
+        diagnostic->offset = offset;
         diagnostic->line = (long)line;
         diagnostic->column = (long)column;
     }

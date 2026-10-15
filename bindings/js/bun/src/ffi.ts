@@ -102,7 +102,7 @@ interface GalleySymbols extends DoorNames<"">, DoorNames<"hook_"> {
   galley_diagnostic_kind(session: NativeHandle): bigint;
   galley_diagnostic_message(session: NativeHandle, out: number): bigint;
   galley_diagnostic_message_ansi(session: NativeHandle, out: number): bigint;
-  galley_diagnostic_position(session: NativeHandle, outLine: number, outCol: number): bigint;
+  galley_diagnostic_position(session: NativeHandle, outOffset: number, outLine: number, outCol: number): bigint;
   galley_diagnostic_unexpected_token(session: NativeHandle, outData: number, outLen: number): bigint;
   galley_diagnostic_expected_count(session: NativeHandle): bigint;
   galley_diagnostic_expected_at(session: NativeHandle, index: bigint, outData: number, outLen: number): bigint;
@@ -120,7 +120,7 @@ interface GalleySymbols extends DoorNames<"">, DoorNames<"hook_"> {
   galley_diagnostic_recovery_occurrence(session: NativeHandle, outParent: number, outParentLen: number, outRhs: number, outSym: number, outVar: number, outVarLen: number): bigint;
   galley_recorded_diagnostic_count(session: NativeHandle): bigint;
   galley_recorded_diagnostic_kind(session: NativeHandle, diagIndex: bigint): bigint;
-  galley_recorded_diagnostic_position(session: NativeHandle, diagIndex: bigint, outLine: number, outCol: number): bigint;
+  galley_recorded_diagnostic_position(session: NativeHandle, diagIndex: bigint, outOffset: number, outLine: number, outCol: number): bigint;
   galley_recorded_unexpected_token(session: NativeHandle, diagIndex: bigint, outData: number, outLen: number): bigint;
   galley_recorded_diagnostic_message(session: NativeHandle, diagIndex: bigint, out: number): bigint;
   galley_recorded_indentation(session: NativeHandle, diagIndex: bigint, outSpaces: number, outWidth: number): bigint;
@@ -240,7 +240,7 @@ const BASE_SYMBOLS = {
   galley_diagnostic_kind: { args: [FFIType.ptr], returns: FFIType.i64 },
   galley_diagnostic_message: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   galley_diagnostic_message_ansi: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
-  galley_diagnostic_position: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
+  galley_diagnostic_position: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   galley_diagnostic_unexpected_token: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   galley_diagnostic_expected_count: { args: [FFIType.ptr], returns: FFIType.i64 },
   galley_diagnostic_expected_at: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
@@ -258,7 +258,7 @@ const BASE_SYMBOLS = {
   galley_diagnostic_recovery_occurrence: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   galley_recorded_diagnostic_count: { args: [FFIType.ptr], returns: FFIType.i64 },
   galley_recorded_diagnostic_kind: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
-  galley_recorded_diagnostic_position: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
+  galley_recorded_diagnostic_position: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   galley_recorded_unexpected_token: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   galley_recorded_diagnostic_message: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr], returns: FFIType.i64 },
   galley_recorded_indentation: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
@@ -765,11 +765,12 @@ export class BunPort implements FfiPort {
     return readCString(out[0]);
   }
 
-  diagnosticPosition(handle: Handle): [number, number] | null {
+  diagnosticPosition(handle: Handle): [number, number, number] | null {
+    const outOffset = ptrOut64();
     const outLine = u32Out();
     const outCol = u32Out();
-    if (this.native.galley_diagnostic_position(handle as NativeHandle, ptr(outLine), ptr(outCol)) < 0n) return null;
-    return [outLine[0], outCol[0]];
+    if (this.native.galley_diagnostic_position(handle as NativeHandle, ptr(outOffset), ptr(outLine), ptr(outCol)) < 0n) return null;
+    return [Number(outOffset[0]), outLine[0], outCol[0]];
   }
 
   diagnosticUnexpectedToken(handle: Handle): Uint8Array | null {
@@ -874,11 +875,12 @@ export class BunPort implements FfiPort {
     return Number(this.native.galley_recorded_diagnostic_kind(handle as NativeHandle, BigInt(diagIndex)));
   }
 
-  recordedDiagnosticPosition(handle: Handle, diagIndex: number): [number, number] | null {
+  recordedDiagnosticPosition(handle: Handle, diagIndex: number): [number, number, number] | null {
+    const outOffset = ptrOut64();
     const outLine = u32Out();
     const outCol = u32Out();
-    if (this.native.galley_recorded_diagnostic_position(handle as NativeHandle, BigInt(diagIndex), ptr(outLine), ptr(outCol)) < 0n) return null;
-    return [outLine[0], outCol[0]];
+    if (this.native.galley_recorded_diagnostic_position(handle as NativeHandle, BigInt(diagIndex), ptr(outOffset), ptr(outLine), ptr(outCol)) < 0n) return null;
+    return [Number(outOffset[0]), outLine[0], outCol[0]];
   }
 
   recordedUnexpectedToken(handle: Handle, diagIndex: number): Uint8Array | null {

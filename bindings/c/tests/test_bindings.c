@@ -396,9 +396,11 @@ static void test_syntax_diagnostic(void) {
     CHECK(galley_parse_sentinel(session, broken_sample) == galley_error_syntax);
     CHECK(galley_has_diagnostic(session));
     CHECK(galley_diagnostic_kind(session) == galley_diagnostic_kind_syntax);
+    unsigned long long offset = 0;
     unsigned int line = 0, column = 0;
     const char *message = NULL;
-    CHECK(galley_diagnostic_position(session, &line, &column) == galley_ok);
+    CHECK(galley_diagnostic_position(session, &offset, &line, &column) == galley_ok);
+    CHECK(offset == strlen(broken_sample));
     CHECK(line == 1 && column == (unsigned int)strlen(broken_sample) + 1);
     CHECK(galley_diagnostic_message(session, &message) == galley_ok);
     CHECK(message != NULL && message[0] != '\0');
@@ -440,9 +442,10 @@ static void test_recorded_diagnostics(void) {
      * which the parity job covers byte-for-byte. */
     CHECK(recorded == 3);
     CHECK(galley_recorded_diagnostic_kind(session, 0) == galley_diagnostic_kind_syntax);
+    unsigned long long offset = 0;
     unsigned int line = 0, column = 0;
-    CHECK(galley_recorded_diagnostic_position(session, 0, &line, &column) == galley_ok);
-    CHECK(line == 1 && column == 7);
+    CHECK(galley_recorded_diagnostic_position(session, 0, &offset, &line, &column) == galley_ok);
+    CHECK(offset == 6 && line == 1 && column == 7);
     const char *unexpected_data = NULL;
     size_t unexpected_len = 0;
     CHECK(galley_recorded_unexpected_token(session, 0, &unexpected_data,

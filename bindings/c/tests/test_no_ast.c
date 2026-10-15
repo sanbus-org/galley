@@ -107,6 +107,7 @@ static void test_failing_hook_aborts_the_parse(void) {
     unsigned char enabled[256];
     GalleyNodeAddress root = 0;
     unsigned long long generation = 99;
+    unsigned long long offset = 0;
     unsigned line = 0, column = 0;
     const char *message = NULL;
     CHECK(session != NULL && count > 0 && count <= sizeof enabled);
@@ -117,7 +118,7 @@ static void test_failing_hook_aborts_the_parse(void) {
     CHECK(failing_calls == 1);
     CHECK(strcmp(galley_status_string(galley_error_hook_failed), "hook failed") == 0);
     CHECK(galley_diagnostic_kind(session) == galley_diagnostic_kind_hook);
-    CHECK(galley_diagnostic_position(session, &line, &column) == galley_ok);
+    CHECK(galley_diagnostic_position(session, &offset, &line, &column) == galley_ok);
     CHECK(line >= 1 && column >= 1);
     CHECK(galley_diagnostic_message(session, &message) == galley_ok);
     CHECK(message != NULL && strstr(message, "HookError") != NULL);

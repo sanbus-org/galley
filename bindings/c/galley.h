@@ -531,9 +531,10 @@ int galley_has_diagnostic(GalleySession *session);
  * parse succeeded. */
 long long galley_diagnostic_message(GalleySession *session, const char **out);
 
-/* Writes the 1-based line and column of a diagnostic. Returns
- * galley_error_no_diagnostic when the previous parse succeeded. */
-long long galley_diagnostic_position(GalleySession *session,
+/* Writes a diagnostic's byte offset in the input and its 1-based line and
+ * column (0, 0 when it has none). Returns galley_error_no_diagnostic when the
+ * previous parse succeeded. */
+long long galley_diagnostic_position(GalleySession *session, unsigned long long *out_offset,
                                      unsigned int *out_line, unsigned int *out_column);
 
 /* Writes the unexpected token bytes of a syntax diagnostic into *out_data /
@@ -749,6 +750,7 @@ long long galley_recorded_diagnostic_count(GalleySession *session);
  * until the next parse. */
 long long galley_recorded_diagnostic_kind(GalleySession *session, unsigned long long diag_index);
 long long galley_recorded_diagnostic_position(GalleySession *session, unsigned long long diag_index,
+                                              unsigned long long *out_offset,
                                               unsigned int *out_line, unsigned int *out_column);
 long long galley_recorded_unexpected_token(GalleySession *session, unsigned long long diag_index,
                                            const char **out_data, size_t *out_len);
@@ -926,7 +928,7 @@ long long galley_hook_tree_snapshot(GalleyHookDoor *door, unsigned long long gen
 int galley_hook_has_diagnostic(GalleyHookDoor *door);
 long long galley_hook_diagnostic_message(GalleyHookDoor *door, const char **out);
 long long galley_hook_diagnostic_message_ansi(GalleyHookDoor *door, const char **out);
-long long galley_hook_diagnostic_position(GalleyHookDoor *door,
+long long galley_hook_diagnostic_position(GalleyHookDoor *door, unsigned long long *out_offset,
                                           unsigned int *out_line, unsigned int *out_column);
 long long galley_hook_diagnostic_unexpected_token(GalleyHookDoor *door,
                                                   const char **out_data, size_t *out_len);

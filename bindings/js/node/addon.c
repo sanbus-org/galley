@@ -226,7 +226,7 @@ typedef long long (*fn_galley_diagnostic_indentation_t)(GalleySession *session, 
 typedef long long (*fn_galley_diagnostic_kind_t)(GalleySession *session);
 typedef long long (*fn_galley_diagnostic_message_t)(GalleySession *session, const char **out);
 typedef long long (*fn_galley_diagnostic_message_ansi_t)(GalleySession *session, const char **out);
-typedef long long (*fn_galley_diagnostic_position_t)(GalleySession *session, unsigned int *out_line, unsigned int *out_column);
+typedef long long (*fn_galley_diagnostic_position_t)(GalleySession *session, unsigned long long *out_offset, unsigned int *out_line, unsigned int *out_column);
 typedef long long (*fn_galley_diagnostic_recovery_kind_t)(GalleySession *session);
 typedef long long (*fn_galley_diagnostic_recovery_lhs_variable_t)(GalleySession *session, const char **out_data, size_t *out_len);
 typedef long long (*fn_galley_diagnostic_recovery_occurrence_t)(GalleySession *session, const char **out_parent_variable, size_t *out_parent_variable_len, unsigned int *out_rhs_index, unsigned int *out_symbol_index, const char **out_variable, size_t *out_variable_len);
@@ -274,7 +274,7 @@ typedef long long (*fn_galley_recorded_context_name_t)(GalleySession *session, u
 typedef long long (*fn_galley_recorded_diagnostic_count_t)(GalleySession *session);
 typedef long long (*fn_galley_recorded_diagnostic_kind_t)(GalleySession *session, unsigned long long diag_index);
 typedef long long (*fn_galley_recorded_diagnostic_message_t)(GalleySession *session, unsigned long long diag_index, const char **out);
-typedef long long (*fn_galley_recorded_diagnostic_position_t)(GalleySession *session, unsigned long long diag_index, unsigned int *out_line, unsigned int *out_column);
+typedef long long (*fn_galley_recorded_diagnostic_position_t)(GalleySession *session, unsigned long long diag_index, unsigned long long *out_offset, unsigned int *out_line, unsigned int *out_column);
 typedef long long (*fn_galley_recorded_diagnostic_recovery_kind_t)(GalleySession *session, unsigned long long diag_index);
 typedef long long (*fn_galley_recorded_expected_count_t)(GalleySession *session, unsigned long long diag_index);
 typedef long long (*fn_galley_recorded_expected_token_t)(GalleySession *session, unsigned long long diag_index, unsigned long long token_index, const char **out_data, size_t *out_len);
@@ -749,6 +749,23 @@ static napi_value pair_u32_or_null(napi_env env, long long status, uint32_t firs
   if (napi_set_element(env, pair, 0, first_value) != napi_ok) return NULL;
   if (napi_set_element(env, pair, 1, second_value) != napi_ok) return NULL;
   return pair;
+}
+
+/* A diagnostic position as [offset, line, column], or null on a refusal. */
+static napi_value position_or_null(napi_env env, long long status, unsigned long long offset,
+                                   uint32_t line, uint32_t column) {
+  if (status < 0) return make_null(env);
+  napi_value position;
+  napi_value offset_value;
+  napi_value line_value = make_u32(env, line);
+  napi_value column_value = make_u32(env, column);
+  if (line_value == NULL || column_value == NULL) return NULL;
+  if (napi_create_double(env, (double)offset, &offset_value) != napi_ok) return NULL;
+  if (napi_create_array_with_length(env, 3, &position) != napi_ok) return NULL;
+  if (napi_set_element(env, position, 0, offset_value) != napi_ok) return NULL;
+  if (napi_set_element(env, position, 1, line_value) != napi_ok) return NULL;
+  if (napi_set_element(env, position, 2, column_value) != napi_ok) return NULL;
+  return position;
 }
 
 static napi_value pair_string_or_null(napi_env env, long long status, const char *variable,
@@ -1418,10 +1435,11 @@ static napi_value method_galley_diagnostic_position(napi_env env, Lib *lib, size
                                                    napi_value *argv) {
   GalleySession *session = NULL;
   if (!session_arg(env, argc, argv, &session)) return NULL;
+  unsigned long long offset = 0;
   unsigned int line = 0;
   unsigned int column = 0;
-  long long status = ((fn_galley_diagnostic_position_t)lib->fn[SLOT_galley_diagnostic_position])(session, &line, &column);
-  return pair_u32_or_null(env, status, line, column);
+  long long status = ((fn_galley_diagnostic_position_t)lib->fn[SLOT_galley_diagnostic_position])(session, &offset, &line, &column);
+  return position_or_null(env, status, offset, line, column);
 }
 
 static napi_value method_galley_diagnostic_unexpected_token(napi_env env, Lib *lib, size_t argc,
@@ -1598,10 +1616,11 @@ static napi_value method_galley_recorded_diagnostic_position(napi_env env, Lib *
   GalleySession *session = NULL;
   uint64_t index = 0;
   if (!recorded_arg(env, argc, argv, &session, &index)) return NULL;
+  unsigned long long offset = 0;
   unsigned int line = 0;
   unsigned int column = 0;
-  long long status = ((fn_galley_recorded_diagnostic_position_t)lib->fn[SLOT_galley_recorded_diagnostic_position])(session, index, &line, &column);
-  return pair_u32_or_null(env, status, line, column);
+  long long status = ((fn_galley_recorded_diagnostic_position_t)lib->fn[SLOT_galley_recorded_diagnostic_position])(session, index, &offset, &line, &column);
+  return position_or_null(env, status, offset, line, column);
 }
 
 static napi_value method_galley_recorded_unexpected_token(napi_env env, Lib *lib, size_t argc,

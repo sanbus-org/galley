@@ -277,7 +277,8 @@ export interface FfiPort {
   diagnosticKind(handle: Handle): number;
   diagnosticMessage(handle: Handle): string | null;
   diagnosticMessageAnsi(handle: Handle): string | null;
-  diagnosticPosition(handle: Handle): [number, number] | null;
+  /** `[offset, line, column]`: line and column are 0, 0 when the diagnostic has none. */
+  diagnosticPosition(handle: Handle): [number, number, number] | null;
   diagnosticUnexpectedToken(handle: Handle): Uint8Array | null;
   diagnosticExpectedCount(handle: Handle): number;
   diagnosticExpectedAt(handle: Handle, index: number): Uint8Array | null;
@@ -301,7 +302,7 @@ export interface FfiPort {
   // -- recovery, recorded diagnostics ------------------------------------------
   recordedDiagnosticCount(handle: Handle): number;
   recordedDiagnosticKind(handle: Handle, diagIndex: number): number;
-  recordedDiagnosticPosition(handle: Handle, diagIndex: number): [number, number] | null;
+  recordedDiagnosticPosition(handle: Handle, diagIndex: number): [number, number, number] | null;
   recordedUnexpectedToken(handle: Handle, diagIndex: number): Uint8Array | null;
   recordedDiagnosticMessage(handle: Handle, diagIndex: number): string | null;
   recordedIndentation(handle: Handle, diagIndex: number): [number, number] | null;

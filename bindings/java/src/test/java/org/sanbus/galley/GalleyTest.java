@@ -289,6 +289,7 @@ public class GalleyTest {
             assertEquals(DiagnosticKind.SYNTAX, d.getKind());
             assertEquals(1, d.getLine());
             assertEquals(7, d.getColumn());
+            assertEquals(6L, d.getOffset());
             assertTrue(d.getMessage().contains("parse failed"));
             assertNotNull(d.getMessageAnsi());
             assertFalse(d.getExpectedTokens().isEmpty());

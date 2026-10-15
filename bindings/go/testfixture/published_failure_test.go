@@ -132,7 +132,7 @@ func TestRecoveryReportsEachDamagedValue(t *testing.T) {
 		t.Fatalf("diagnostics = %d, want %d", len(diagnostics), len(want))
 	}
 	for index, diagnostic := range diagnostics {
-		if diagnostic.Kind != galley.DiagnosticKindSyntax || diagnostic.Line != 1 || diagnostic.Column != want[index].column || string(diagnostic.UnexpectedToken) != want[index].unexpected {
+		if diagnostic.Kind != galley.DiagnosticKindSyntax || diagnostic.Offset != uint64(want[index].column-1) || diagnostic.Line != 1 || diagnostic.Column != want[index].column || string(diagnostic.UnexpectedToken) != want[index].unexpected {
 			t.Fatalf("diagnostic %d = %+v, want syntax at 1:%d near %q", index, diagnostic, want[index].column, want[index].unexpected)
 		}
 	}

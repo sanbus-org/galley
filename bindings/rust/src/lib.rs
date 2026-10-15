@@ -109,6 +109,7 @@ extern "C" {
     fn galley_diagnostic_message(session: *mut GalleySessionRaw, out: *mut *const c_char) -> i64;
     fn galley_diagnostic_position(
         session: *mut GalleySessionRaw,
+        out_offset: *mut u64,
         out_line: *mut u32,
         out_column: *mut u32,
     ) -> i64;
@@ -146,6 +147,7 @@ extern "C" {
     fn galley_recorded_diagnostic_position(
         session: *mut GalleySessionRaw,
         diag_index: u64,
+        out_offset: *mut u64,
         out_line: *mut u32,
         out_column: *mut u32,
     ) -> i64;
@@ -537,6 +539,8 @@ pub struct ParseInfo {
 #[derive(Debug, Default)]
 pub struct Diagnostic {
     pub kind: DiagnosticKind,
+    pub offset: u64,
+    /// 1-based line of the failure; 0 when it has none.
     pub line: u32,
     pub column: u32,
     pub message: String,
@@ -962,6 +966,7 @@ impl Session {
             if galley_recorded_diagnostic_position(
                 self.inner,
                 diag_index,
+                &mut d.offset,
                 &mut d.line,
                 &mut d.column,
             ) != 0

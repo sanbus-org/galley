@@ -445,7 +445,7 @@ and `BigInt(node)` throws; `session.snapshot().node(address)` is the one
 conversion from a stored address back to a node.
 
 `session.diagnostic()` returns a frozen snapshot (`Diagnostic`) with `kind`,
-`line`, `column`, `message`, `messageAnsi`,
+`offset` (byte offset in the input), `line`, `column` (0, 0 when it has none), `message`, `messageAnsi`,
 `unexpectedToken`, `expectedTokens`, `context`, `syntaxErrorCount`,
 indentation details, and the full structured recovery information — or
 `null` when the last parse succeeded.

@@ -62,9 +62,10 @@ int main(int argc, char **argv) {
     if (argc > 1) {
         long long parsed = galley_parse_file(session, argv[1]);
         if (parsed < 0) {
+            unsigned long long offset = 0;
             unsigned int line = 0, column = 0;
             const char *message = NULL;
-            galley_diagnostic_position(session, &line, &column);
+            galley_diagnostic_position(session, &offset, &line, &column);
             galley_diagnostic_message(session, &message);
             fprintf(stderr, "%s:%u:%u: %s\n", argv[1], line, column, message);
             galley_session_destroy(session);
@@ -120,9 +121,10 @@ int main(int argc, char **argv) {
         galley_session_destroy(session);
         return 1;
     }
+    unsigned long long offset = 0;
     unsigned int line = 0, column = 0;
     const char *message = NULL;
-    galley_diagnostic_position(session, &line, &column);
+    galley_diagnostic_position(session, &offset, &line, &column);
     galley_diagnostic_message(session, &message);
     printf("diagnostic at %u:%u: %s\n", line, column, message);
 
@@ -156,9 +158,10 @@ int main(int argc, char **argv) {
     long long recorded_count = galley_recorded_diagnostic_count(session);
     printf("recorded diagnostics: %lld\n", recorded_count);
     for (long long i = 0; i < recorded_count; ++i) {
+        unsigned long long recorded_offset = 0;
         unsigned int recorded_line = 0, recorded_column = 0;
         galley_recorded_diagnostic_position(session, (unsigned long long)i,
-                                            &recorded_line, &recorded_column);
+                                            &recorded_offset, &recorded_line, &recorded_column);
         long long kind = galley_recorded_diagnostic_kind(session, (unsigned long long)i);
         const char *kind_name = kind == galley_diagnostic_kind_syntax     ? "syntax"
                                 : kind == galley_diagnostic_kind_indentation ? "indentation"

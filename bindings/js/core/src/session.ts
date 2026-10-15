@@ -1035,9 +1035,7 @@ export class Session implements HookOwner {
   #buildDiagnosticSingular(): Diagnostic {
     const h = this.#requireHandle();
     const kind = this.port.diagnosticKind(h) as Kind;
-    const pos = this.port.diagnosticPosition(h);
-    const line = pos ? pos[0] : 0;
-    const col = pos ? pos[1] : 0;
+    const [offset, line, col] = this.port.diagnosticPosition(h) ?? [0, 0, 0];
 
     const message = this.port.diagnosticMessage(h) ?? "";
     const messageAnsi = this.port.diagnosticMessageAnsi(h) ?? "";
@@ -1070,6 +1068,7 @@ export class Session implements HookOwner {
 
     return {
       kind,
+      offset,
       line,
       column: col,
       message,
@@ -1109,7 +1108,7 @@ export class Session implements HookOwner {
     if (pos === null) return null;
 
     const kind = this.port.recordedDiagnosticKind(h, index) as Kind;
-    const [line, col] = pos;
+    const [offset, line, col] = pos;
 
     const message = this.port.recordedDiagnosticMessage(h, index) ?? "";
 
@@ -1139,6 +1138,7 @@ export class Session implements HookOwner {
 
     return {
       kind,
+      offset,
       line,
       column: col,
       message,
@@ -1159,6 +1159,7 @@ export class Session implements HookOwner {
   #readRecoverySingular(handle: Handle): Omit<
     Diagnostic,
     | "kind"
+    | "offset"
     | "line"
     | "column"
     | "message"
@@ -1197,6 +1198,7 @@ export class Session implements HookOwner {
   ): Omit<
     Diagnostic,
     | "kind"
+    | "offset"
     | "line"
     | "column"
     | "message"

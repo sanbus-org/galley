@@ -97,8 +97,8 @@ test "file read failures propagate through the parser API" {
     try std.testing.expectEqual(null, read_guard.lastDiagnostic());
 }
 
-/// The line and column of the syntax error `input` ends in.
-fn syntaxErrorPosition(input: []const u8) !struct { u32, u32 } {
+/// The offset, line and column of the syntax error `input` ends in.
+fn syntaxErrorPosition(input: []const u8) !struct { usize, u32, u32 } {
     var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
     defer session.deinit();
     try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes(input, "position"));
@@ -106,7 +106,7 @@ fn syntaxErrorPosition(input: []const u8) !struct { u32, u32 } {
     defer read_guard.deinit();
     const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
     return switch (diagnostic) {
-        .syntax => |syntax| .{ syntax.line, syntax.column },
+        .syntax => |syntax| .{ syntax.offset, syntax.line, syntax.column },
         .semantic, .indentation, .hook => error.ExpectedSyntaxDiagnostic,
     };
 }
@@ -116,10 +116,10 @@ test "a syntax error carries its line and column, with or without tracking" {
 
     // A bounded window without tracking reports no position, whatever the input.
     const chunked = parser.sliding_input_enabled and !parser.position_tracking_enabled;
-    const inside: struct { u32, u32 } = if (chunked) .{ 0, 0 } else .{ 3, 3 };
+    const inside: struct { usize, u32, u32 } = if (chunked) .{ 11, 0, 0 } else .{ 11, 3, 3 };
     try std.testing.expectEqual(inside, try syntaxErrorPosition("[1,\n  2,\n  ?]"));
     // An error at the end of the input sits just past its last byte.
-    const at_end: struct { u32, u32 } = if (chunked) .{ 0, 0 } else .{ 3, 1 };
+    const at_end: struct { usize, u32, u32 } = if (chunked) .{ 9, 0, 0 } else .{ 9, 3, 1 };
     try std.testing.expectEqual(at_end, try syntaxErrorPosition("[1,\n  2,\n"));
 }
 
@@ -238,6 +238,7 @@ test "input streaming invalid indentation returns a structured diagnostic" {
             .indentation => |indentation| indentation,
             .syntax, .semantic, .hook => return error.ExpectedIndentationDiagnostic,
         };
+        try std.testing.expectEqual(@as(usize, "Rule:\n  - field: int\n".len), indentation.offset);
         try std.testing.expectEqual(@as(u32, 3), indentation.line);
         try std.testing.expectEqual(@as(u32, 1), indentation.column);
         try std.testing.expectEqual(@as(u16, 3), indentation.spaces);

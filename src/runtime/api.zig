@@ -128,6 +128,8 @@ pub const SyntaxRecoveryPoint = struct {
 };
 
 pub const SyntaxDiagnostic = struct {
+    /// Byte offset in the input where the error was found.
+    offset: usize,
     line: u32,
     column: u32,
     unexpected_token: []const u8,
@@ -141,6 +143,8 @@ pub const SyntaxDiagnostic = struct {
 };
 
 pub const IndentationDiagnostic = struct {
+    /// Byte offset in the input of the start of the offending line.
+    offset: usize,
     line: u32,
     column: u32,
     spaces: u16,
@@ -148,6 +152,8 @@ pub const IndentationDiagnostic = struct {
 };
 
 pub const SemanticDiagnostic = struct {
+    /// Byte offset in the input where the error was reported.
+    offset: usize,
     line: u32,
     column: u32,
     variable: []const u8,
@@ -160,6 +166,8 @@ pub const SemanticDiagnostic = struct {
 /// and the hook's name. Recorded by the core when a host's dispatch reports
 /// the hook's failure; the host keeps the cause itself.
 pub const HookDiagnostic = struct {
+    /// Byte offset in the input where the hook failed.
+    offset: usize,
     line: u32,
     column: u32,
     variable: []const u8,
@@ -1338,6 +1346,7 @@ test "synthetic terminals render display names in diagnostics" {
     defer output.deinit();
 
     try formatParseDiagnostic(&output.writer, .{ .syntax = .{
+        .offset = 0,
         .line = 1,
         .column = 10,
         .unexpected_token = "\x00",
@@ -1362,6 +1371,7 @@ test "message override placeholders show synthetic display names" {
     defer arena_state.deinit();
 
     const diagnostic: ParseDiagnostic = .{ .syntax = .{
+        .offset = 0,
         .line = 1,
         .column = 10,
         .unexpected_token = "\x00",
@@ -1390,6 +1400,7 @@ test "galley LL grammar error hook returns custom guidance" {
     var dummy_runtime: data_structures.RuntimeContext = .{ .io = std.testing.io, .arena_allocator = std.testing.allocator };
     var context: data_structures.Context = .{ .runtime_context = &dummy_runtime };
     const diagnostic: ParseDiagnostic = .{ .syntax = .{
+        .offset = 0,
         .line = 51,
         .column = 1,
         .unexpected_token = "F",
@@ -1518,6 +1529,7 @@ test "message templates resolve session overrides then config entries" {
     try overrides.put(std.testing.allocator, "*", "session-star {column}");
 
     const diagnostic: ParseDiagnostic = .{ .syntax = .{
+        .offset = 0,
         .line = 4,
         .column = 9,
         .unexpected_token = "?",
@@ -1549,6 +1561,7 @@ test "message templates resolve session overrides then config entries" {
 
     // The universal config entry applies to every other variable.
     const other: ParseDiagnostic = .{ .syntax = .{
+        .offset = 0,
         .line = 1,
         .column = 2,
         .unexpected_token = "x",
@@ -1621,6 +1634,7 @@ test "writeDiagnostics writes each recorded diagnostic as users read it" {
     // its line and column.
     output.clearRetainingCapacity();
     try writeDiagnostic(&output.writer, .{ .syntax = .{
+        .offset = 0,
         .line = 3,
         .column = 7,
         .unexpected_token = "?",
@@ -1633,6 +1647,7 @@ test "writeDiagnostic keeps the author's newlines and adds exactly one" {
     var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer output.deinit();
     try writeDiagnostic(&output.writer, .{ .syntax = .{
+        .offset = 0,
         .line = 1,
         .column = 1,
         .unexpected_token = "?",
@@ -1675,6 +1690,7 @@ test "message override placeholders expand against the diagnostic" {
 
 test "structured syntax recovery renders in plain and ANSI diagnostics" {
     const diagnostic: ParseDiagnostic = .{ .syntax = .{
+        .offset = 0,
         .line = 3,
         .column = 7,
         .unexpected_token = "?",
@@ -1704,6 +1720,7 @@ test "structured syntax recovery renders in plain and ANSI diagnostics" {
 
 test "while parsing stack renders with <~ separators, coloring only variables" {
     const diagnostic: ParseDiagnostic = .{ .syntax = .{
+        .offset = 0,
         .line = 3,
         .column = 7,
         .unexpected_token = "?",

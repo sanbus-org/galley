@@ -928,11 +928,14 @@ public final class Session implements AutoCloseable {
     /** The snapshot proper: one handle the gate claimed, held across every read it makes. */
     private Diagnostic buildDiagnosticSingularWith(MemorySegment sessionHandle) {
         long kind = lib.galley_diagnostic_kind(sessionHandle);
+        long offset;
         int line, col;
         try (Arena arena = Arena.ofConfined()) {
+            MemorySegment outOffset = arena.allocate(ValueLayout.JAVA_LONG);
             MemorySegment outLine = arena.allocate(ValueLayout.JAVA_INT);
             MemorySegment outCol = arena.allocate(ValueLayout.JAVA_INT);
-            lib.galley_diagnostic_position(sessionHandle, outLine, outCol);
+            lib.galley_diagnostic_position(sessionHandle, outOffset, outLine, outCol);
+            offset = outOffset.get(ValueLayout.JAVA_LONG, 0);
             line = outLine.get(ValueLayout.JAVA_INT, 0);
             col = outCol.get(ValueLayout.JAVA_INT, 0);
         }
@@ -1096,7 +1099,7 @@ public final class Session implements AutoCloseable {
             }
         }
 
-        return new Diagnostic(DiagnosticKind.fromCode(kind), line, col, message, messageAnsi, unexpected, expected, context,
+        return new Diagnostic(DiagnosticKind.fromCode(kind), offset, line, col, message, messageAnsi, unexpected, expected, context,
                 contextBytes,
                 syntaxErrorCount, semanticErrorCount, semantic, indentation, recoveryKind, recoveryTerminal, recoveryResume,
                 recoveryLhs, recoveryProd, recoveryOcc);
@@ -1108,12 +1111,15 @@ public final class Session implements AutoCloseable {
 
     /** The recorded-snapshot proper: one handle the gate claimed, held across every read it makes. */
     private Diagnostic buildRecordedDiagnosticWith(long diagIndex, MemorySegment sessionHandle) {
+        long offset;
         int line, col;
         try (Arena arena = Arena.ofConfined()) {
+            MemorySegment outOffset = arena.allocate(ValueLayout.JAVA_LONG);
             MemorySegment outLine = arena.allocate(ValueLayout.JAVA_INT);
             MemorySegment outCol = arena.allocate(ValueLayout.JAVA_INT);
-            long st = lib.galley_recorded_diagnostic_position(sessionHandle, diagIndex, outLine, outCol);
+            long st = lib.galley_recorded_diagnostic_position(sessionHandle, diagIndex, outOffset, outLine, outCol);
             if (st < 0) return null;
+            offset = outOffset.get(ValueLayout.JAVA_LONG, 0);
             line = outLine.get(ValueLayout.JAVA_INT, 0);
             col = outCol.get(ValueLayout.JAVA_INT, 0);
         }
@@ -1265,7 +1271,7 @@ public final class Session implements AutoCloseable {
             }
         }
 
-        return new Diagnostic(DiagnosticKind.fromCode(kind), line, col, message, messageAnsi, unexpected, expected, context,
+        return new Diagnostic(DiagnosticKind.fromCode(kind), offset, line, col, message, messageAnsi, unexpected, expected, context,
                 contextBytes,
                 0, 0, readSemanticWith(diagIndex, true, sessionHandle), indentation, recoveryKind, recoveryTerminal, recoveryResume,
                 recoveryLhs, recoveryProd, recoveryOcc);

@@ -14,6 +14,7 @@ import java.util.List;
  */
 public final class Diagnostic {
     private final DiagnosticKind kind;
+    private final long offset;
     private final int line;
     private final int column;
     private final String message;
@@ -64,7 +65,7 @@ public final class Diagnostic {
         return out;
     }
 
-    public Diagnostic(DiagnosticKind kind, int line, int column, String message, String messageAnsi,
+    Diagnostic(DiagnosticKind kind, long offset, int line, int column, String message, String messageAnsi,
                       byte[] unexpectedToken, List<byte[]> expectedTokens, List<String> context,
                       List<byte[]> contextBytes,
                       int syntaxErrorCount, int semanticErrorCount, String[] semantic, int[] indentation,
@@ -72,6 +73,7 @@ public final class Diagnostic {
                       String recoveryLhsVariable, RecoveryProduction recoveryProduction,
                       RecoveryOccurrence recoveryOccurrence) {
         this.kind = kind != null ? kind : DiagnosticKind.UNKNOWN;
+        this.offset = offset;
         this.line = line;
         this.column = column;
         this.message = message != null ? message : "";
@@ -95,6 +97,9 @@ public final class Diagnostic {
     }
 
     public DiagnosticKind getKind() { return kind; }
+    /** Byte offset in the input of the failure. */
+    public long getOffset() { return offset; }
+    /** 1-based line of the failure; 0 when it has none. */
     public int getLine() { return line; }
     public int getColumn() { return column; }
     public String getMessage() { return message; }

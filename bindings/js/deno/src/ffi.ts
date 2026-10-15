@@ -101,7 +101,7 @@ interface GalleySymbols extends DoorNames<"">, DoorNames<"hook_"> {
   galley_diagnostic_kind(session: Deno.PointerValue): bigint;
   galley_diagnostic_message(session: Deno.PointerValue, out: FfiOut): bigint;
   galley_diagnostic_message_ansi(session: Deno.PointerValue, out: FfiOut): bigint;
-  galley_diagnostic_position(session: Deno.PointerValue, outLine: FfiOut, outCol: FfiOut): bigint;
+  galley_diagnostic_position(session: Deno.PointerValue, outOffset: FfiOut, outLine: FfiOut, outCol: FfiOut): bigint;
   galley_diagnostic_unexpected_token(session: Deno.PointerValue, outData: FfiOut, outLen: FfiOut): bigint;
   galley_diagnostic_expected_count(session: Deno.PointerValue): bigint;
   galley_diagnostic_expected_at(session: Deno.PointerValue, index: bigint, outData: FfiOut, outLen: FfiOut): bigint;
@@ -119,7 +119,7 @@ interface GalleySymbols extends DoorNames<"">, DoorNames<"hook_"> {
   galley_diagnostic_recovery_occurrence(session: Deno.PointerValue, outParent: FfiOut, outParentLen: FfiOut, outRhs: FfiOut, outSym: FfiOut, outVar: FfiOut, outVarLen: FfiOut): bigint;
   galley_recorded_diagnostic_count(session: Deno.PointerValue): bigint;
   galley_recorded_diagnostic_kind(session: Deno.PointerValue, diagIndex: bigint): bigint;
-  galley_recorded_diagnostic_position(session: Deno.PointerValue, diagIndex: bigint, outLine: FfiOut, outCol: FfiOut): bigint;
+  galley_recorded_diagnostic_position(session: Deno.PointerValue, diagIndex: bigint, outOffset: FfiOut, outLine: FfiOut, outCol: FfiOut): bigint;
   galley_recorded_unexpected_token(session: Deno.PointerValue, diagIndex: bigint, outData: FfiOut, outLen: FfiOut): bigint;
   galley_recorded_diagnostic_message(session: Deno.PointerValue, diagIndex: bigint, out: FfiOut): bigint;
   galley_recorded_indentation(session: Deno.PointerValue, diagIndex: bigint, outSpaces: FfiOut, outWidth: FfiOut): bigint;
@@ -246,7 +246,7 @@ const BASE_SYMBOLS = {
   galley_diagnostic_kind: { parameters: ["pointer"], result: "i64" },
   galley_diagnostic_message: { parameters: ["pointer", "buffer"], result: "i64" },
   galley_diagnostic_message_ansi: { parameters: ["pointer", "buffer"], result: "i64" },
-  galley_diagnostic_position: { parameters: ["pointer", "buffer", "buffer"], result: "i64" },
+  galley_diagnostic_position: { parameters: ["pointer", "buffer", "buffer", "buffer"], result: "i64" },
   galley_diagnostic_unexpected_token: { parameters: ["pointer", "buffer", "buffer"], result: "i64" },
   galley_diagnostic_expected_count: { parameters: ["pointer"], result: "i64" },
   galley_diagnostic_expected_at: { parameters: ["pointer", "u64", "buffer", "buffer"], result: "i64" },
@@ -264,7 +264,7 @@ const BASE_SYMBOLS = {
   galley_diagnostic_recovery_occurrence: { parameters: ["pointer", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer"], result: "i64" },
   galley_recorded_diagnostic_count: { parameters: ["pointer"], result: "i64" },
   galley_recorded_diagnostic_kind: { parameters: ["pointer", "u64"], result: "i64" },
-  galley_recorded_diagnostic_position: { parameters: ["pointer", "u64", "buffer", "buffer"], result: "i64" },
+  galley_recorded_diagnostic_position: { parameters: ["pointer", "u64", "buffer", "buffer", "buffer"], result: "i64" },
   galley_recorded_unexpected_token: { parameters: ["pointer", "u64", "buffer", "buffer"], result: "i64" },
   galley_recorded_diagnostic_message: { parameters: ["pointer", "u64", "buffer"], result: "i64" },
   galley_recorded_indentation: { parameters: ["pointer", "u64", "buffer", "buffer"], result: "i64" },
@@ -785,11 +785,12 @@ export class DenoPort implements FfiPort {
     return readCString(Deno.UnsafePointer.create(out[0]));
   }
 
-  diagnosticPosition(handle: Handle): [number, number] | null {
+  diagnosticPosition(handle: Handle): [number, number, number] | null {
+    const outOffset = lenOut();
     const outLine = u32Out();
     const outCol = u32Out();
-    if (this.native.galley_diagnostic_position(handle as Deno.PointerValue, outLine, outCol) < 0n) return null;
-    return [outLine[0], outCol[0]];
+    if (this.native.galley_diagnostic_position(handle as Deno.PointerValue, outOffset, outLine, outCol) < 0n) return null;
+    return [Number(outOffset[0]), outLine[0], outCol[0]];
   }
 
   diagnosticUnexpectedToken(handle: Handle): Uint8Array | null {
@@ -892,11 +893,12 @@ export class DenoPort implements FfiPort {
     return Number(this.native.galley_recorded_diagnostic_kind(handle as Deno.PointerValue, BigInt(diagIndex)));
   }
 
-  recordedDiagnosticPosition(handle: Handle, diagIndex: number): [number, number] | null {
+  recordedDiagnosticPosition(handle: Handle, diagIndex: number): [number, number, number] | null {
+    const outOffset = lenOut();
     const outLine = u32Out();
     const outCol = u32Out();
-    if (this.native.galley_recorded_diagnostic_position(handle as Deno.PointerValue, BigInt(diagIndex), outLine, outCol) < 0n) return null;
-    return [outLine[0], outCol[0]];
+    if (this.native.galley_recorded_diagnostic_position(handle as Deno.PointerValue, BigInt(diagIndex), outOffset, outLine, outCol) < 0n) return null;
+    return [Number(outOffset[0]), outLine[0], outCol[0]];
   }
 
   recordedUnexpectedToken(handle: Handle, diagIndex: number): Uint8Array | null {

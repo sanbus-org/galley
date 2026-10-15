@@ -50,6 +50,7 @@ pub const ProcedureArguments = struct {
         const runtime_context = self.context.runtime();
         const position = self.context.diagnosticPosition();
         runtime_context.recorded_diagnostics.append(runtime_context.arena_allocator, .{ .hook = .{
+            .offset = position.offset,
             .line = position.line,
             .column = position.column,
             .variable = self.variableName(),
@@ -78,6 +79,7 @@ pub const ProcedureArguments = struct {
 
         const position = self.context.diagnosticPosition();
         return self.context.recordSemanticDiagnostic(.{
+            .offset = position.offset,
             .line = position.line,
             .column = position.column,
             .variable = variable_name,

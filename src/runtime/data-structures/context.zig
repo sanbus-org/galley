@@ -614,6 +614,7 @@ pub const Context = struct {
         const position = self.diagnosticPosition();
         try self.retainDiagnostic(.{
             .syntax = .{
+                .offset = position.offset,
                 .line = position.line,
                 .column = position.column,
                 .unexpected_token = unexpected_token,
@@ -1206,6 +1207,7 @@ pub const Context = struct {
         const position = self.diagnosticPosition();
         try self.retainDiagnostic(.{
             .syntax = .{
+                .offset = position.offset,
                 .line = position.line,
                 .column = position.column,
                 .unexpected_token = unexpected_token,
@@ -1573,7 +1575,7 @@ pub const Context = struct {
             if (self.indent_width == 0) {
                 self.indent_width = line_spaces;
             } else if (line_spaces % self.indent_width != 0) {
-                self.recordIndentationDiagnostic(line_spaces);
+                self.recordIndentationDiagnostic(line_spaces, line_head.newline_offset + 1);
                 while (self.token.len() < @max(root.parser.longest_terminal_length, 1)) {
                     self.appendToken(0, self.read_bytes + self.seek);
                 }
@@ -1643,7 +1645,7 @@ pub const Context = struct {
         }
     }
 
-    fn recordIndentationDiagnostic(self: *Self, line_spaces: u16) void {
+    fn recordIndentationDiagnostic(self: *Self, line_spaces: u16, line_start: usize) void {
         @branchHint(.cold);
         comptime std.debug.assert(root.config.indentation_syntax);
 
@@ -1652,8 +1654,9 @@ pub const Context = struct {
         const line = if (comptime root.position_tracking_enabled)
             self.line + 1
         else
-            self.positionOfOffset(self.read_bytes + self.seek).line;
+            self.positionOfOffset(line_start).line;
         const diagnostic: root.ParseDiagnostic = .{ .indentation = .{
+            .offset = line_start,
             .line = line,
             .column = if (line == 0) 0 else 1,
             .spaces = line_spaces,
@@ -1924,13 +1927,15 @@ pub const Context = struct {
         return self.diagnosticInput();
     }
 
-    /// The line and column of `source_offset`, computed from the input; 0, 0
-    /// for a parser that reads its input in chunks.
-    fn positionOfOffset(self: *Self, source_offset: usize) DiagnosticPosition {
-        const input = self.inputFromStart() orelse return .{ .line = 0, .column = 0 };
-        self.line_scan = self.line_scan.advance(input, source_offset) catch return .{ .line = 0, .column = 0 };
+    /// The position of `source_offset`, its line and column computed from the
+    /// input; 0, 0 for a parser that reads its input in chunks.
+    pub fn positionOfOffset(self: *Self, source_offset: usize) DiagnosticPosition {
+        const unknown: DiagnosticPosition = .{ .offset = source_offset, .line = 0, .column = 0 };
+        const input = self.inputFromStart() orelse return unknown;
+        self.line_scan = self.line_scan.advance(input, source_offset) catch return unknown;
         const position = self.line_scan.lineColumn();
         return .{
+            .offset = source_offset,
             .line = std.math.cast(u32, position.line) orelse 0,
             .column = std.math.cast(u32, position.column) orelse 0,
         };
@@ -1942,13 +1947,15 @@ pub const Context = struct {
     /// token's offset, off the hot path. It is 0, 0 only for a parser that
     /// reads its input in chunks (`inputFromStart`).
     pub fn diagnosticPosition(self: *Self) DiagnosticPosition {
-        if (comptime root.position_tracking_enabled) return .{ .line = self.line, .column = self.column };
-        return self.positionOfOffset(self.currentTokenSourceOffset());
+        const offset = self.currentTokenSourceOffset();
+        if (comptime root.position_tracking_enabled) return .{ .offset = offset, .line = self.line, .column = self.column };
+        return self.positionOfOffset(offset);
     }
 };
 
-/// A diagnostic's 1-based line and column; 0, 0 when it has none.
-pub const DiagnosticPosition = struct { line: u32, column: u32 };
+/// Where a diagnostic points: its byte offset in the input, and its 1-based
+/// line and column (0, 0 when it has none).
+pub const DiagnosticPosition = struct { offset: usize, line: u32, column: u32 };
 
 test "newline summary counts markers enabled by config" {
     const summary = summarizeNewlines("a\n\nb\x01c\x02\x02\x03d");

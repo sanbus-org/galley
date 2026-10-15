@@ -33,7 +33,8 @@ export function displayTokenName(token: Uint8Array): string | null {
 
 export interface Diagnostic {
   readonly kind: Kind;
-  readonly line: number; // 1-based
+  readonly offset: number; // byte offset in the input
+  readonly line: number; // 1-based; 0 when it has none
   readonly column: number;
   readonly message: string; // plain text
   readonly messageAnsi: string; // with ANSI

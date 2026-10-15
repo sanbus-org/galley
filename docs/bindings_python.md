@@ -346,7 +346,7 @@ generation, and address), hash consistently with that, and expose
 conversion from a stored address back to a node.
 
 `session.diagnostic()` returns a frozen snapshot (`parser.Diagnostic`)
-with `kind`, `line`, `column`, `message`, `message_ansi`,
+with `kind`, `offset` (byte offset in the input), `line`, `column` (0, 0 when it has none), `message`, `message_ansi`,
 `unexpected_token`, `expected_tokens`, `context`, `syntax_error_count`,
 `semantic_error_count`, `semantic` (a `(variable bytes, message)` pair
 for semantic errors, else `None`),

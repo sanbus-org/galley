@@ -134,10 +134,12 @@ class Diagnostic:
 
     kind: int
     """``Kind`` classification (``Kind.SYNTAX``, ...)."""
+    offset: int
+    """Byte offset in the input of the failure."""
     line: int
-    """1-based line of the failure."""
+    """1-based line of the failure (0 when it has none)."""
     column: int
-    """1-based column of the failure."""
+    """1-based column of the failure (0 when it has none)."""
     message: str
     """Plain-text rendered message."""
     message_ansi: str

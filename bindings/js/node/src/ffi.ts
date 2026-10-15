@@ -155,7 +155,7 @@ export interface AddonApi extends AddonDoorNames<""> , AddonDoorNames<"hook_"> {
   galley_diagnostic_kind(session: bigint): bigint;
   galley_diagnostic_message(session: bigint): string | null;
   galley_diagnostic_message_ansi(session: bigint): string | null;
-  galley_diagnostic_position(session: bigint): [number, number] | null;
+  galley_diagnostic_position(session: bigint): [number, number, number] | null;
   galley_diagnostic_unexpected_token(session: bigint): Buffer | null;
   galley_diagnostic_expected_count(session: bigint): bigint;
   galley_diagnostic_expected_at(session: bigint, index: bigint): Buffer | null;
@@ -180,7 +180,7 @@ export interface AddonApi extends AddonDoorNames<""> , AddonDoorNames<"hook_"> {
   galley_recorded_diagnostic_position(
     session: bigint,
     index: bigint,
-  ): [number, number] | null;
+  ): [number, number, number] | null;
   galley_recorded_unexpected_token(session: bigint, index: bigint): Buffer | null;
   galley_recorded_diagnostic_message(session: bigint, index: bigint): string | null;
   galley_recorded_indentation(session: bigint, index: bigint): [number, number] | null;
@@ -651,7 +651,7 @@ export class NodePort implements FfiPort {
     return this.api.galley_diagnostic_message_ansi(handle as bigint);
   }
 
-  diagnosticPosition(handle: Handle): [number, number] | null {
+  diagnosticPosition(handle: Handle): [number, number, number] | null {
     return this.api.galley_diagnostic_position(handle as bigint);
   }
 
@@ -723,7 +723,7 @@ export class NodePort implements FfiPort {
     return toNumber(this.api.galley_recorded_diagnostic_kind(handle as bigint, BigInt(diagIndex)));
   }
 
-  recordedDiagnosticPosition(handle: Handle, diagIndex: number): [number, number] | null {
+  recordedDiagnosticPosition(handle: Handle, diagIndex: number): [number, number, number] | null {
     return this.api.galley_recorded_diagnostic_position(handle as bigint, BigInt(diagIndex));
   }
 

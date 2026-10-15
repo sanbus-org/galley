@@ -789,9 +789,9 @@ fn diagnosticKindCore(door: *const Door) i64 {
     return diagnosticKindValue(door.runtime_context.lastDiagnostic());
 }
 
-fn diagnosticPositionCore(door: *const Door, out_line: ?*u32, out_column: ?*u32) i64 {
-    if (out_line == null or out_column == null) return galley_error_null_argument;
-    return writeDiagnosticPosition(door.runtime_context.lastDiagnostic(), out_line, out_column);
+fn diagnosticPositionCore(door: *const Door, out_offset: ?*u64, out_line: ?*u32, out_column: ?*u32) i64 {
+    if (out_offset == null or out_line == null or out_column == null) return galley_error_null_argument;
+    return writeDiagnosticPosition(door.runtime_context.lastDiagnostic(), out_offset, out_line, out_column);
 }
 
 fn diagnosticUnexpectedTokenCore(door: *const Door, out_data: ?*[*]const u8, out_len: ?*usize) i64 {
@@ -1526,47 +1526,39 @@ export fn galley_recorded_diagnostic_message(
     return galley_ok;
 }
 
-/// Writes the 1-based line and column of a diagnostic. Fails with
-/// `galley_error_no_diagnostic` when the diagnostic is null.
+/// Writes a diagnostic's byte offset and its 1-based line and column (0, 0
+/// when it has none). Fails with `galley_error_no_diagnostic` when the
+/// diagnostic is null.
 fn writeDiagnosticPosition(
     diagnostic: ?root.ParseDiagnostic,
+    out_offset: ?*u64,
     out_line: ?*u32,
     out_column: ?*u32,
 ) i64 {
     switch (diagnostic orelse return galley_error_no_diagnostic) {
-        .syntax => |syntax| {
-            out_line.?.* = syntax.line;
-            out_column.?.* = syntax.column;
-        },
-        .semantic => |semantic| {
-            out_line.?.* = semantic.line;
-            out_column.?.* = semantic.column;
-        },
-        .indentation => |indentation| {
-            out_line.?.* = indentation.line;
-            out_column.?.* = indentation.column;
-        },
-        .hook => |hook| {
-            out_line.?.* = hook.line;
-            out_column.?.* = hook.column;
+        inline else => |recorded| {
+            out_offset.?.* = recorded.offset;
+            out_line.?.* = recorded.line;
+            out_column.?.* = recorded.column;
         },
     }
     return galley_ok;
 }
 
-/// Writes the 1-based line and column of a diagnostic. Fails with
-/// `galley_error_no_diagnostic` when the previous parse succeeded, and
+/// Writes a diagnostic's byte offset and its 1-based line and column. Fails
+/// with `galley_error_no_diagnostic` when the previous parse succeeded, and
 /// `galley_error_session_in_use` while a parse is in flight.
 export fn galley_diagnostic_position(
     session_ptr: ?*GalleySession,
+    out_offset: ?*u64,
     out_line: ?*u32,
     out_column: ?*u32,
 ) i64 {
     const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    if (out_line == null or out_column == null) return galley_error_null_argument;
+    if (out_offset == null or out_line == null or out_column == null) return galley_error_null_argument;
     var guard = embedded.session.readLatest() catch |err| return statusForError(err);
     defer guard.deinit();
-    return diagnosticPositionCore(&sessionDoor(embedded), out_line, out_column);
+    return diagnosticPositionCore(&sessionDoor(embedded), out_offset, out_line, out_column);
 }
 
 /// Hook-time door: `galley_diagnostic_position` over the in-flight parse's
@@ -1574,28 +1566,29 @@ export fn galley_diagnostic_position(
 /// until the parse that produced the door ends.
 export fn galley_hook_diagnostic_position(
     hook_door: ?*anyopaque,
+    out_offset: ?*u64,
     out_line: ?*u32,
     out_column: ?*u32,
 ) i64 {
     const door = hookDoor(hook_door) orelse return galley_error_null_argument;
-    if (out_line == null or out_column == null) return galley_error_null_argument;
-    return diagnosticPositionCore(&door, out_line, out_column);
+    return diagnosticPositionCore(&door, out_offset, out_line, out_column);
 }
 
-/// Writes the 1-based line and column of the diagnostic recorded at
-/// `diag_index` during the most recent parse. Fails with
+/// Writes the byte offset and the 1-based line and column of the diagnostic
+/// recorded at `diag_index` during the most recent parse. Fails with
 /// `galley_error_no_diagnostic` when the index is out of range.
 export fn galley_recorded_diagnostic_position(
     session_ptr: ?*GalleySession,
     diag_index: u64,
+    out_offset: ?*u64,
     out_line: ?*u32,
     out_column: ?*u32,
 ) i64 {
     const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    if (out_line == null or out_column == null) return galley_error_null_argument;
+    if (out_offset == null or out_line == null or out_column == null) return galley_error_null_argument;
     var guard = embedded.session.readLatest() catch |err| return statusForError(err);
     defer guard.deinit();
-    return writeDiagnosticPosition(recordedDiagnostic(&sessionDoor(embedded), diag_index), out_line, out_column);
+    return writeDiagnosticPosition(recordedDiagnostic(&sessionDoor(embedded), diag_index), out_offset, out_line, out_column);
 }
 
 /// Writes the unexpected token bytes of a syntax diagnostic into
