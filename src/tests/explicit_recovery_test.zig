@@ -245,6 +245,7 @@ test "explicit custom message hook sees finalized recovery" {
         .symbol_index = 1,
         .variable = "Damaged",
     } }, ";", .after);
-    try std.testing.expectEqual(@as(usize, 1), parser.error_messages.callCount());
+    // One error, rendered once per style: plain and ANSI.
+    try std.testing.expectEqual(@as(usize, 2), parser.error_messages.callCount());
     try std.testing.expect(parser.error_messages.sawFinalizedRecovery());
 }

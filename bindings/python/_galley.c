@@ -2202,7 +2202,12 @@ static PyObject *build_recorded_diagnostic(GalleySession *session, unsigned long
         if (rendered == NULL)
             goto fail;
         Py_SETREF(diagnostic->message, rendered);
-        Py_SETREF(diagnostic->message_ansi, Py_NewRef(rendered));
+    }
+    if (galley_recorded_diagnostic_message_ansi(session, index, &text) == galley_ok && text != NULL) {
+        PyObject *rendered = PyUnicode_FromString(text);
+        if (rendered == NULL)
+            goto fail;
+        Py_SETREF(diagnostic->message_ansi, rendered);
     }
     if (galley_recorded_unexpected_token(session, index, &text, &length) == galley_ok) {
         PyObject *token = bytes_from_pair(text, length);

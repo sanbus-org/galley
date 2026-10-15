@@ -179,6 +179,7 @@ interface GalleyWasmExports extends DoorNames<"">, DoorNames<"hook_"> {
     outLen: number,
   ): bigint;
   galley_recorded_diagnostic_message(session: number, index: bigint, out: number): bigint;
+  galley_recorded_diagnostic_message_ansi(session: number, index: bigint, out: number): bigint;
   galley_recorded_indentation(
     session: number,
     index: bigint,
@@ -1237,6 +1238,17 @@ export class WasmPort implements FfiPort {
     const out = this.malloc(4);
     try {
       if (toNumber(this.wasm.galley_recorded_diagnostic_message(handle as number, BigInt(diagIndex), out)) !== 0)
+        return null;
+      return this.readCString(this.dataView().getUint32(out, true));
+    } finally {
+      this.free(out, 4);
+    }
+  }
+
+  recordedDiagnosticMessageAnsi(handle: Handle, diagIndex: number): string | null {
+    const out = this.malloc(4);
+    try {
+      if (toNumber(this.wasm.galley_recorded_diagnostic_message_ansi(handle as number, BigInt(diagIndex), out)) !== 0)
         return null;
       return this.readCString(this.dataView().getUint32(out, true));
     } finally {

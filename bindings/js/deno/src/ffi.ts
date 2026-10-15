@@ -122,6 +122,7 @@ interface GalleySymbols extends DoorNames<"">, DoorNames<"hook_"> {
   galley_recorded_diagnostic_position(session: Deno.PointerValue, diagIndex: bigint, outOffset: FfiOut, outLine: FfiOut, outCol: FfiOut): bigint;
   galley_recorded_unexpected_token(session: Deno.PointerValue, diagIndex: bigint, outData: FfiOut, outLen: FfiOut): bigint;
   galley_recorded_diagnostic_message(session: Deno.PointerValue, diagIndex: bigint, out: FfiOut): bigint;
+  galley_recorded_diagnostic_message_ansi(session: Deno.PointerValue, diagIndex: bigint, out: FfiOut): bigint;
   galley_recorded_indentation(session: Deno.PointerValue, diagIndex: bigint, outSpaces: FfiOut, outWidth: FfiOut): bigint;
   galley_recorded_semantic(session: Deno.PointerValue, diagIndex: bigint, outVariable: FfiOut, outVariableLen: FfiOut, outMessage: FfiOut, outMessageLen: FfiOut): bigint;
   galley_recorded_expected_count(session: Deno.PointerValue, diagIndex: bigint): bigint;
@@ -267,6 +268,7 @@ const BASE_SYMBOLS = {
   galley_recorded_diagnostic_position: { parameters: ["pointer", "u64", "buffer", "buffer", "buffer"], result: "i64" },
   galley_recorded_unexpected_token: { parameters: ["pointer", "u64", "buffer", "buffer"], result: "i64" },
   galley_recorded_diagnostic_message: { parameters: ["pointer", "u64", "buffer"], result: "i64" },
+  galley_recorded_diagnostic_message_ansi: { parameters: ["pointer", "u64", "buffer"], result: "i64" },
   galley_recorded_indentation: { parameters: ["pointer", "u64", "buffer", "buffer"], result: "i64" },
   galley_recorded_semantic: { parameters: ["pointer", "u64", "buffer", "buffer", "buffer", "buffer"], result: "i64" },
   galley_recorded_expected_count: { parameters: ["pointer", "u64"], result: "i64" },
@@ -910,6 +912,12 @@ export class DenoPort implements FfiPort {
   recordedDiagnosticMessage(handle: Handle, diagIndex: number): string | null {
     const out = ptrOut();
     if (this.native.galley_recorded_diagnostic_message(handle as Deno.PointerValue, BigInt(diagIndex), out) !== 0n) return null;
+    return readCString(Deno.UnsafePointer.create(out[0]));
+  }
+
+  recordedDiagnosticMessageAnsi(handle: Handle, diagIndex: number): string | null {
+    const out = ptrOut();
+    if (this.native.galley_recorded_diagnostic_message_ansi(handle as Deno.PointerValue, BigInt(diagIndex), out) !== 0n) return null;
     return readCString(Deno.UnsafePointer.create(out[0]));
   }
 

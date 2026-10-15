@@ -299,8 +299,10 @@ for step in session.root_node().walk():
 Run `galley --fill-error-messages <language-dir>` and edit the generated
 `ll_error_messages.zig` next to your grammar. The build command detects it
 and compiles it into the grammar archive;
-`session.diagnostic().message` then returns your hooks' text instead of
-the built-in generic renderer. LR grammars use `lr_error_messages.zig`.
+`session.diagnostic().message` and the `message` of every entry of
+`session.diagnostics()` then return your hooks' text instead of the built-in
+generic renderer; `message_ansi` returns their ANSI rendering. LR grammars use
+`lr_error_messages.zig`.
 
 ## Sessions
 

@@ -434,6 +434,25 @@ static void test_message_override(void) {
     galley_session_destroy(session);
 }
 
+static void test_override_reaches_recorded_messages(void) {
+    GalleySession *session = make_session();
+    const char *override_text = "custom";
+    CHECK(galley_session_set_message_override(session, "*", 1, override_text,
+                                              strlen(override_text)) == galley_ok);
+    CHECK(galley_parse_sentinel(session, multi_error_sample) < 0);
+    long long recorded = galley_recorded_diagnostic_count(session);
+    CHECK(recorded == 3);
+    for (long long i = 0; i < recorded; ++i) {
+        const char *message = NULL;
+        CHECK(galley_recorded_diagnostic_message(session, (unsigned long long)i, &message) == galley_ok);
+        CHECK(message != NULL && strcmp(message, override_text) == 0);
+        CHECK(galley_recorded_diagnostic_message_ansi(session, (unsigned long long)i, &message) ==
+              galley_ok);
+        CHECK(message != NULL && strcmp(message, override_text) == 0);
+    }
+    galley_session_destroy(session);
+}
+
 static void test_recorded_diagnostics(void) {
     GalleySession *session = make_session();
     CHECK(galley_parse_sentinel(session, multi_error_sample) < 0);
@@ -1757,6 +1776,7 @@ int main(void) {
     test_syntax_diagnostic();
     test_message_override();
     test_recorded_diagnostics();
+    test_override_reaches_recorded_messages();
     test_semantic_error();
     test_error_paths();
     test_published_result_gate();

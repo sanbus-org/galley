@@ -1608,7 +1608,7 @@ const Generator = struct {
 
     fn emitFailFastSyntaxErrorSupport(self: *Generator, writer: *std.Io.Writer) !void {
         _ = self;
-        try emitter_common.emitFailFastSyntaxErrorSupport(writer, "lr", "LR");
+        try emitter_common.emitFailFastSyntaxErrorSupport(writer, "lr");
     }
 
     fn emitFailFastSyntaxErrorMessageRenderer(

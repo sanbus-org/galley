@@ -154,7 +154,9 @@ picks it up automatically, otherwise pass it explicitly:
 
 `galley_diagnostic_message` then returns the text your hooks render;
 without the flag (or for un-customized grammars) it returns the built-in
-generic renderer output. The `_ansi` accessor always renders generically.
+generic renderer output. Every message accessor, recorded entries included,
+applies the same customization. The `_ansi` accessors call your hooks with the
+ANSI style; an override or template has one text for both styles.
 Messages carry no trailing newline; hook text is returned exactly as your hook
 produced it, so end it without one.
 LR grammars use the same flow with `lr_error_messages.zig` and
@@ -476,8 +478,8 @@ for (long long i = 0; i < recorded; ++i) {
     long long kind = galley_recorded_diagnostic_kind(session, i);
     /* plus recorded_{unexpected_token,expected_count,expected_token,
        context_count,context_name,indentation,recovery_*}, mirroring the
-       singular accessors above; messages render generically via
-       galley_recorded_diagnostic_message */
+       singular accessors above, and
+       galley_recorded_diagnostic_message{,_ansi} */
 }
 ```
 

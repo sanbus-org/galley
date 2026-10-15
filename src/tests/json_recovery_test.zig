@@ -194,3 +194,23 @@ test "json remains fail fast outside committed recovery scopes" {
     try std.testing.expect(syntaxDiagnostic(&read_guard).recovery == null);
     try std.testing.expect(parsed.context.currentTokenSourceOffset() <= input.len);
 }
+
+test "a message override reaches every recorded error, in both styles" {
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{
+        .message_overrides = &.{.{ .name = "*", .message = "custom" }},
+    });
+    defer session.deinit();
+    try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes("[1, ?, 2, ?, 3]", null));
+    var read_guard = try session.readLatest();
+    defer read_guard.deinit();
+    const recorded = read_guard.recordedDiagnostics();
+    try std.testing.expectEqual(@as(usize, 2), recorded.len);
+    for (recorded) |diagnostic| {
+        inline for (.{ parser.DiagnosticStyle.plain, parser.DiagnosticStyle.ansi }) |style| {
+            var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+            defer output.deinit();
+            try parser.formatRecordedDiagnostic(&output.writer, diagnostic, style);
+            try std.testing.expectEqualStrings("custom", output.written());
+        }
+    }
+}

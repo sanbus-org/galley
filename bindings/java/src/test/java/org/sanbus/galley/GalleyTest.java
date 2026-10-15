@@ -1831,6 +1831,22 @@ public class GalleyTest {
         }
 
         @Test
+        void overrideReachesEveryRecordedMessage() {
+            Session overridden = parser.openSession(SessionOptions.builder().messageOverride("*", "custom").build());
+            try {
+                assertThrows(GalleyException.class, () -> overridden.parse("alpha:x,beta:y,gamma:z"));
+                List<Diagnostic> recorded = overridden.diagnostics();
+                assertEquals(3, recorded.size());
+                for (Diagnostic diagnostic : recorded) {
+                    assertEquals("custom", diagnostic.getMessage());
+                    assertEquals("custom", diagnostic.getMessageAnsi());
+                }
+            } finally {
+                overridden.close();
+            }
+        }
+
+        @Test
         void diagnosticsAreCopies() {
             GalleyException failure = assertThrows(GalleyException.class, () -> session.parse("alpha:"));
             Diagnostic frozen = failure.getDiagnostic();

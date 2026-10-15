@@ -265,6 +265,22 @@ await test("parse accepts string and buffers", async () => {
   }
 });
 
+await test("an override reaches every recorded message, in both styles", async () => {
+  const s = await newSession();
+  try {
+    s.setMessageOverride("*", "custom");
+    assert.throws(() => s.parse("alpha:x,beta:y,gamma:z"));
+    const recorded = s.diagnostics();
+    assert.equal(recorded.length, 3);
+    for (const d of recorded) {
+      assert.equal(d.message, "custom");
+      assert.equal(d.messageAnsi, "custom");
+    }
+  } finally {
+    s.close();
+  }
+});
+
 await test("message inputs accept bytes", async () => {
   const encode = new TextEncoder().encode.bind(new TextEncoder());
   const parser = await newParser();

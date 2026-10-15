@@ -183,6 +183,7 @@ export interface AddonApi extends AddonDoorNames<""> , AddonDoorNames<"hook_"> {
   ): [number, number, number] | null;
   galley_recorded_unexpected_token(session: bigint, index: bigint): Buffer | null;
   galley_recorded_diagnostic_message(session: bigint, index: bigint): string | null;
+  galley_recorded_diagnostic_message_ansi(session: bigint, index: bigint): string | null;
   galley_recorded_indentation(session: bigint, index: bigint): [number, number] | null;
   galley_recorded_semantic(session: bigint, index: bigint): [string, string] | null;
   galley_recorded_expected_count(session: bigint, index: bigint): bigint;
@@ -733,6 +734,10 @@ export class NodePort implements FfiPort {
 
   recordedDiagnosticMessage(handle: Handle, diagIndex: number): string | null {
     return this.api.galley_recorded_diagnostic_message(handle as bigint, BigInt(diagIndex));
+  }
+
+  recordedDiagnosticMessageAnsi(handle: Handle, diagIndex: number): string | null {
+    return this.api.galley_recorded_diagnostic_message_ansi(handle as bigint, BigInt(diagIndex));
   }
 
   recordedIndentation(handle: Handle, diagIndex: number): [number, number] | null {

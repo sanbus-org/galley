@@ -1133,8 +1133,10 @@ public final class Session implements AutoCloseable {
             if (lib.galley_recorded_diagnostic_message(sessionHandle, diagIndex, outMsg) == 0) {
                 MemorySegment p = outMsg.get(ValueLayout.ADDRESS, 0);
                 if (!p.equals(MemorySegment.NULL)) message = p.reinterpret(Long.MAX_VALUE).getString(0);
-                // No recorded-ANSI entry in the C ABI; the plain message stands in.
-                messageAnsi = message;
+            }
+            if (lib.galley_recorded_diagnostic_message_ansi(sessionHandle, diagIndex, outMsg) == 0) {
+                MemorySegment p = outMsg.get(ValueLayout.ADDRESS, 0);
+                if (!p.equals(MemorySegment.NULL)) messageAnsi = p.reinterpret(Long.MAX_VALUE).getString(0);
             }
         }
 

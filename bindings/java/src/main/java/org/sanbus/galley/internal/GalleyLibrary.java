@@ -91,6 +91,7 @@ public final class GalleyLibrary {
     private final MethodHandle mh_galley_recorded_diagnostic_position;
     private final MethodHandle mh_galley_recorded_unexpected_token;
     private final MethodHandle mh_galley_recorded_diagnostic_message;
+    private final MethodHandle mh_galley_recorded_diagnostic_message_ansi;
     private final MethodHandle mh_galley_recorded_indentation;
     private final MethodHandle mh_galley_recorded_semantic;
     private final MethodHandle mh_galley_recorded_expected_count;
@@ -180,6 +181,7 @@ public final class GalleyLibrary {
         this.mh_galley_recorded_diagnostic_position = downcall("galley_recorded_diagnostic_position", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.mh_galley_recorded_unexpected_token = downcall("galley_recorded_unexpected_token", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.mh_galley_recorded_diagnostic_message = downcall("galley_recorded_diagnostic_message", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
+        this.mh_galley_recorded_diagnostic_message_ansi = downcall("galley_recorded_diagnostic_message_ansi", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
         this.mh_galley_recorded_indentation = downcall("galley_recorded_indentation", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.mh_galley_recorded_expected_count = downcall("galley_recorded_expected_count", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
         this.mh_galley_recorded_expected_token = downcall("galley_recorded_expected_token", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
@@ -323,6 +325,7 @@ public final class GalleyLibrary {
     public long galley_recorded_diagnostic_position(MemorySegment session, long idx, MemorySegment outOffset, MemorySegment outLine, MemorySegment outColumn) { try { return (long) mh_galley_recorded_diagnostic_position.invoke(session, idx, outOffset, outLine, outColumn); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_recorded_unexpected_token(MemorySegment session, long idx, MemorySegment outData, MemorySegment outLen) { try { return (long) mh_galley_recorded_unexpected_token.invoke(session, idx, outData, outLen); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_recorded_diagnostic_message(MemorySegment session, long idx, MemorySegment out) { try { return (long) mh_galley_recorded_diagnostic_message.invoke(session, idx, out); } catch (Throwable t) { throw new RuntimeException(t); } }
+    public long galley_recorded_diagnostic_message_ansi(MemorySegment session, long idx, MemorySegment out) { try { return (long) mh_galley_recorded_diagnostic_message_ansi.invoke(session, idx, out); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_recorded_indentation(MemorySegment session, long idx, MemorySegment outSpaces, MemorySegment outWidth) { try { return (long) mh_galley_recorded_indentation.invoke(session, idx, outSpaces, outWidth); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_recorded_semantic(MemorySegment session, long idx, MemorySegment outVariable, MemorySegment outVariableLen, MemorySegment outMessage, MemorySegment outMessageLen) { try { return (long) mh_galley_recorded_semantic.invoke(session, idx, outVariable, outVariableLen, outMessage, outMessageLen); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_recorded_expected_count(MemorySegment session, long idx) { try { return (long) mh_galley_recorded_expected_count.invoke(session, idx); } catch (Throwable t) { throw new RuntimeException(t); } }

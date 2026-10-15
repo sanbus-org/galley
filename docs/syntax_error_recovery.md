@@ -128,3 +128,8 @@ The full message resolution order at every error site is:
 2. grammar hooks (`--fill-error-messages` / hand-written), exact name,
    then family, then general;
 3. Galley's built-in renderer.
+
+Each syntax error is resolved twice when it is recorded, once per style (plain
+and ANSI), and keeps both texts, so every message a session returns, for the
+last error or any recorded one, follows this order. A hook is called once per
+style and receives it in `args.style`; an override has one text for both.

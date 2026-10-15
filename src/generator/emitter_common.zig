@@ -78,44 +78,28 @@ pub fn emitProductionRecoveryScope(writer: *std.Io.Writer, scopes: *const common
     try writer.writeAll(" }");
 }
 
-/// Emits the shared boilerplate that stores an already-rendered
-/// `diagnostic_message` with the syntax diagnostic it describes. The parser
-/// only records; callers print through `root.writeDiagnostics`.
-pub fn emitRenderedMessageRecord(writer: *std.Io.Writer, indent: []const u8) !void {
-    try writer.print("{s}context.recordRenderedMessage(diagnostic_message);\n", .{indent});
-}
-
-/// Emits an automatic-recovery message render through a per-site `*_message`
-/// renderer, plus the shared record.
+/// Emits the record of an automatic-recovery error's messages through its
+/// per-site `*_message` chain. The parser only records; callers print through
+/// `root.writeDiagnostics`.
 pub fn emitSiteMessageRecord(writer: *std.Io.Writer, message_function: []const u8, indent: []const u8) !void {
-    try writer.print("{s}const diagnostic = context.runtime().lastDiagnostic().?;\n", .{indent});
-    try writer.print("{s}const diagnostic_message = {s}_message(.{{ .allocator = context.runtime().arena_allocator, .context = context, .diagnostic = diagnostic, .style = .plain }}) catch \"\";\n", .{ indent, message_function });
-    try emitRenderedMessageRecord(writer, indent);
+    try writer.print("{s}context.recordSyntaxMessages(&{s}_message);\n", .{ indent, message_function });
 }
 
 /// Emits the fail-fast syntax error support block shared verbatim by the LL
 /// and LR backends (emitted when error recovery is disabled).
-pub fn emitFailFastSyntaxErrorSupport(writer: *std.Io.Writer, function_prefix: []const u8, renderer_decl: []const u8) !void {
+pub fn emitFailFastSyntaxErrorSupport(writer: *std.Io.Writer, function_prefix: []const u8) !void {
     try writer.print(
-        \\const {s}FailFastMessageRenderer = *const fn (root.SyntaxErrorMessageArgs) anyerror![]const u8;
-        \\
         \\fn {s}FailFastSyntaxError(
         \\    context: *data_structures.Context,
         \\    diagnostic_context: root.SyntaxDiagnosticContext,
         \\    expected_tokens: []const []const u8,
-        \\    render_message: {s}FailFastMessageRenderer,
+        \\    render_message: root.SyntaxMessageRenderer,
         \\) linksection(if (builtin.os.tag == .macos) "__TEXT,__unlikely" else ".text.unlikely") anyerror {{
         \\    @branchHint(.cold);
         \\    context.recordSyntaxDiagnostic(diagnostic_context, expected_tokens) catch |err| return err;
-        \\    const diagnostic_message = render_message(.{{
-        \\        .allocator = context.runtime().arena_allocator,
-        \\        .context = context,
-        \\        .diagnostic = context.runtime().lastDiagnostic().?,
-        \\        .style = .plain,
-        \\    }}) catch "";
-    , .{ renderer_decl, function_prefix, renderer_decl });
-    try writer.writeByte('\n');
-    try emitRenderedMessageRecord(writer, "    ");
+        \\    context.recordSyntaxMessages(render_message);
+        \\
+    , .{function_prefix});
     try writer.writeAll(
         \\    return root.ParseError.SyntaxError;
         \\}
@@ -129,7 +113,7 @@ pub fn emitFailFastSyntaxErrorSupport(writer: *std.Io.Writer, function_prefix: [
 /// diagnostic is the final fallback.
 pub fn emitFailFastMessageRenderer(writer: *std.Io.Writer, function_name: []const u8, error_message_fields: []const []const u8) !void {
     try writer.print("fn {s}_message(args: root.SyntaxErrorMessageArgs) linksection(if (builtin.os.tag == .macos) \"__TEXT,__unlikely\" else \".text.unlikely\") anyerror![]const u8 {{\n", .{function_name});
-    try writer.writeAll("    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{");
+    try writer.writeAll("    if (root.resolveSyntaxErrorMessage(args.context, args.diagnostic, args.style, root.config.error_messages, error_messages, .{");
     for (error_message_fields, 0..) |field, index| {
         if (index != 0) try writer.writeAll(", ");
         try writer.print("\"{s}\"", .{field});
@@ -1256,7 +1240,7 @@ pub fn emitExplicitDiagnosticFlusher(
     renderer_names: []const []const u8,
 ) !void {
     try writer.print(
-        "const {s}_flushed_syntax_messages = [_]*const fn (root.SyntaxErrorMessageArgs) anyerror![]const u8{{\n",
+        "const {s}_flushed_syntax_messages = [_]root.SyntaxMessageRenderer{{\n",
         .{prefix},
     );
     for (renderer_names) |name| {
@@ -1267,11 +1251,9 @@ pub fn emitExplicitDiagnosticFlusher(
         \\fn {s}FlushSyntaxDiagnostic(context: *data_structures.Context) !void {{
         \\    const site = context.pendingSyntaxErrorSite() orelse return;
         \\    context.clearPendingSyntaxErrorSite();
-        \\    const diagnostic = context.runtime().lastDiagnostic().?;
-        \\    const diagnostic_message = {s}_flushed_syntax_messages[site](.{{ .allocator = context.runtime().arena_allocator, .context = context, .diagnostic = diagnostic, .style = .plain }}) catch "";
+        \\    context.recordSyntaxMessages({s}_flushed_syntax_messages[site]);
+        \\
     , .{ prefix, prefix });
-    try writer.writeByte('\n');
-    try emitRenderedMessageRecord(writer, "    ");
     try writer.writeAll(
         \\}
         \\

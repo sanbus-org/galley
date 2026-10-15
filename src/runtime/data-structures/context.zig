@@ -749,17 +749,33 @@ pub const Context = struct {
         }
     }
 
-    /// Stores the text rendered for the syntax error recorded last, so the
-    /// message stays with its own diagnostic. An empty message (a renderer
-    /// that failed) is dropped and the built-in rendering applies on read.
-    pub fn recordRenderedMessage(self: *Self, message: []const u8) void {
-        if (message.len == 0) return;
+    /// Renders the syntax error recorded last through `render`, its error
+    /// site's message chain, in both styles, and stores each text with that
+    /// diagnostic. A style the chain fails on, or renders empty, is left to
+    /// the built-in rendering on read.
+    pub fn recordSyntaxMessages(self: *Self, render: root.SyntaxMessageRenderer) void {
         const records = &self.runtime().recorded_diagnostics;
         if (records.items.len == 0) return;
-        switch (records.items[records.items.len - 1]) {
-            .syntax => |*syntax| syntax.rendered_message = message,
-            .semantic, .indentation, .hook => {},
-        }
+        const index = records.items.len - 1;
+        const diagnostic = records.items[index];
+        if (diagnostic != .syntax) return;
+        const plain = self.renderSyntaxMessage(render, diagnostic, .plain);
+        const ansi = self.renderSyntaxMessage(render, diagnostic, .ansi);
+        // A message function may record diagnostics of its own: the list can
+        // move and grow, but the record at `index` is still this one.
+        const syntax = &records.items[index].syntax;
+        syntax.rendered_message = plain;
+        syntax.rendered_message_ansi = ansi;
+    }
+
+    fn renderSyntaxMessage(self: *Self, render: root.SyntaxMessageRenderer, diagnostic: root.ParseDiagnostic, style: root.DiagnosticStyle) ?[]const u8 {
+        const message = render(.{
+            .allocator = self.runtime().arena_allocator,
+            .context = self,
+            .diagnostic = diagnostic,
+            .style = style,
+        }) catch return null;
+        return if (message.len == 0) null else message;
     }
 
     pub inline fn setPendingSyntaxErrorSite(self: *Self, site: usize) void {
@@ -1956,6 +1972,35 @@ pub const Context = struct {
 /// Where a diagnostic points: its byte offset in the input, and its 1-based
 /// line and column (0, 0 when it has none).
 pub const DiagnosticPosition = struct { offset: usize, line: u32, column: u32 };
+
+/// A message function that records a diagnostic of its own while it renders.
+fn renderAndRecord(args: root.SyntaxErrorMessageArgs) anyerror![]const u8 {
+    _ = try args.context.recordSemanticDiagnostic(.{ .offset = 0, .line = 1, .column = 1, .variable = "V", .message = "from the hook" });
+    return switch (args.style) {
+        .plain => "plain",
+        .ansi => "ansi",
+    };
+}
+
+test "a message function that records diagnostics leaves its messages on its own error" {
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    var runtime_context: RuntimeContext = .{ .io = std.testing.io, .arena_allocator = arena.allocator() };
+    var context: Context = .{ .runtime_context = &runtime_context };
+    try runtime_context.recorded_diagnostics.append(arena.allocator(), .{ .syntax = .{
+        .offset = 0,
+        .line = 1,
+        .column = 1,
+        .unexpected_token = "x",
+        .expected_tokens = &.{},
+    } });
+    context.recordSyntaxMessages(&renderAndRecord);
+    const records = runtime_context.recorded_diagnostics.items;
+    try std.testing.expectEqual(@as(usize, 3), records.len);
+    try std.testing.expectEqualStrings("plain", records[0].syntax.rendered_message.?);
+    try std.testing.expectEqualStrings("ansi", records[0].syntax.rendered_message_ansi.?);
+    try std.testing.expect(records[1] == .semantic and records[2] == .semantic);
+}
 
 test "newline summary counts markers enabled by config" {
     const summary = summarizeNewlines("a\n\nb\x01c\x02\x02\x03d");

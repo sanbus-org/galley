@@ -761,8 +761,7 @@ type Diagnostic struct {
 }
 
 // diagnosticAt snapshots the diagnostic recorded at diagIndex (0-based, in
-// recording order) of the most recent parse. The message always uses the
-// built-in generic renderer.
+// recording order) of the most recent parse.
 func (s *Session) diagnosticAt(diagIndex C.ulonglong) (Diagnostic, bool) {
 	var diagnostic Diagnostic
 	var offset C.ulonglong

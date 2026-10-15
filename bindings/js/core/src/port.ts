@@ -305,6 +305,7 @@ export interface FfiPort {
   recordedDiagnosticPosition(handle: Handle, diagIndex: number): [number, number, number] | null;
   recordedUnexpectedToken(handle: Handle, diagIndex: number): Uint8Array | null;
   recordedDiagnosticMessage(handle: Handle, diagIndex: number): string | null;
+  recordedDiagnosticMessageAnsi(handle: Handle, diagIndex: number): string | null;
   recordedIndentation(handle: Handle, diagIndex: number): [number, number] | null;
   recordedSemantic(handle: Handle, diagIndex: number): [string, string] | null;
   recordedExpectedCount(handle: Handle, diagIndex: number): number;

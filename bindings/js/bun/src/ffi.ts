@@ -123,6 +123,7 @@ interface GalleySymbols extends DoorNames<"">, DoorNames<"hook_"> {
   galley_recorded_diagnostic_position(session: NativeHandle, diagIndex: bigint, outOffset: number, outLine: number, outCol: number): bigint;
   galley_recorded_unexpected_token(session: NativeHandle, diagIndex: bigint, outData: number, outLen: number): bigint;
   galley_recorded_diagnostic_message(session: NativeHandle, diagIndex: bigint, out: number): bigint;
+  galley_recorded_diagnostic_message_ansi(session: NativeHandle, diagIndex: bigint, out: number): bigint;
   galley_recorded_indentation(session: NativeHandle, diagIndex: bigint, outSpaces: number, outWidth: number): bigint;
   galley_recorded_semantic(session: NativeHandle, diagIndex: bigint, outVariable: number, outVariableLen: number, outMessage: number, outMessageLen: number): bigint;
   galley_recorded_expected_count(session: NativeHandle, diagIndex: bigint): bigint;
@@ -261,6 +262,7 @@ const BASE_SYMBOLS = {
   galley_recorded_diagnostic_position: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   galley_recorded_unexpected_token: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   galley_recorded_diagnostic_message: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr], returns: FFIType.i64 },
+  galley_recorded_diagnostic_message_ansi: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr], returns: FFIType.i64 },
   galley_recorded_indentation: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   galley_recorded_semantic: { args: [FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   galley_recorded_expected_count: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
@@ -892,6 +894,12 @@ export class BunPort implements FfiPort {
   recordedDiagnosticMessage(handle: Handle, diagIndex: number): string | null {
     const out = ptrOut64();
     if (this.native.galley_recorded_diagnostic_message(handle as NativeHandle, BigInt(diagIndex), ptr(out)) !== 0n) return null;
+    return readCString(out[0]);
+  }
+
+  recordedDiagnosticMessageAnsi(handle: Handle, diagIndex: number): string | null {
+    const out = ptrOut64();
+    if (this.native.galley_recorded_diagnostic_message_ansi(handle as NativeHandle, BigInt(diagIndex), ptr(out)) !== 0n) return null;
     return readCString(out[0]);
   }
 

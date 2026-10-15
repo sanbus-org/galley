@@ -156,9 +156,7 @@ const Embedded = struct {
     /// session's published result (`galley_last_input`).
     last_input: []const u8 = &.{},
 
-    const RenderingKind = enum { plain, ansi };
-
-    fn renderingSlot(self: *Embedded, comptime kind: RenderingKind) *?[:0]u8 {
+    fn renderingSlot(self: *Embedded, comptime kind: root.DiagnosticStyle) *?[:0]u8 {
         return switch (kind) {
             .plain => &self.rendered_diagnostic,
             .ansi => &self.rendered_ansi_diagnostic,
@@ -171,7 +169,7 @@ const Embedded = struct {
     /// Only a miss takes the exclusive door, drops renderings that belong
     /// to an earlier parse, and fills the slot, re-checking under that
     /// door because another caller may have filled it in between.
-    fn renderedDiagnostic(self: *Embedded, comptime kind: RenderingKind, out: *[*:0]const u8) i64 {
+    fn renderedDiagnostic(self: *Embedded, comptime kind: root.DiagnosticStyle, out: *[*:0]const u8) i64 {
         {
             var guard = self.session.readLatest() catch |err| return statusForError(err);
             defer guard.deinit();
@@ -196,10 +194,7 @@ const Embedded = struct {
             out.* = cached.ptr;
             return galley_ok;
         }
-        const rendered = (switch (kind) {
-            .plain => diagnosticMessageCore(diagnostic, std.heap.c_allocator),
-            .ansi => diagnosticMessageAnsiCore(diagnostic, std.heap.c_allocator),
-        }) catch return galley_error_out_of_memory;
+        const rendered = diagnosticMessageCore(diagnostic, std.heap.c_allocator, kind) catch return galley_error_out_of_memory;
         slot.* = rendered;
         out.* = rendered.ptr;
         return galley_ok;
@@ -890,25 +885,17 @@ fn recordedDiagnosticCountCore(door: *const Door) i64 {
     return @intCast(door.runtime_context.recorded_diagnostics.items.len);
 }
 
+/// One diagnostic's message in `style`, as users read it: every message
+/// export renders through here.
 fn diagnosticMessageCore(
     diagnostic: root.ParseDiagnostic,
     allocator: std.mem.Allocator,
+    style: root.DiagnosticStyle,
 ) error{OutOfMemory}![:0]u8 {
     var output: std.Io.Writer.Allocating = .init(allocator);
     errdefer output.deinit();
-    root.formatRecordedDiagnostic(&output.writer, diagnostic) catch return error.OutOfMemory;
+    root.formatRecordedDiagnostic(&output.writer, diagnostic, style) catch return error.OutOfMemory;
     return output.toOwnedSliceSentinel(0);
-}
-
-fn diagnosticMessageAnsiCore(
-    diagnostic: root.ParseDiagnostic,
-    allocator: std.mem.Allocator,
-) error{OutOfMemory}![:0]u8 {
-    var transient: ?[]const u8 = null;
-    defer if (transient) |rendered| allocator.free(rendered);
-    const rendered = root.renderParseDiagnostic(allocator, diagnostic, .ansi) catch return error.OutOfMemory;
-    transient = rendered;
-    return allocator.dupeSentinel(u8, rendered, 0);
 }
 
 // --- recorded diagnostics ------------------------------------------------
@@ -1498,30 +1485,45 @@ export fn galley_hook_diagnostic_message(hook_door: ?*anyopaque, out: ?*[*:0]con
     const door = hookDoor(hook_door) orelse return galley_error_null_argument;
     if (out == null) return galley_error_null_argument;
     const diagnostic = door.runtime_context.lastDiagnostic() orelse return galley_error_no_diagnostic;
-    const z = diagnosticMessageCore(diagnostic, door.runtime_context.arena_allocator) catch return galley_error_out_of_memory;
+    const z = diagnosticMessageCore(diagnostic, door.runtime_context.arena_allocator, .plain) catch return galley_error_out_of_memory;
     out.?.* = z.ptr;
     return galley_ok;
 }
 
-/// Writes a rendered message (plain text, no trailing newline) for the
-/// diagnostic recorded at `diag_index` into `out`. Unlike
-/// `galley_diagnostic_message`, which prefers the text the grammar's
-/// error-message hooks rendered during the parse, recorded messages always
-/// use the built-in generic renderer. The string is NUL-terminated and
-/// remains valid until the next parse or session destruction.
+/// Writes the plain message (no trailing newline) of the diagnostic recorded
+/// at `diag_index` into `out`, with every customization applied, as
+/// `galley_diagnostic_message` writes the last one. The string is
+/// NUL-terminated and remains valid until the next parse or session
+/// destruction.
 export fn galley_recorded_diagnostic_message(
     session_ptr: ?*GalleySession,
     diag_index: u64,
     out: ?*[*:0]const u8,
+) i64 {
+    return recordedDiagnosticMessage(session_ptr, diag_index, out, .plain);
+}
+
+/// The ANSI twin of `galley_recorded_diagnostic_message`.
+export fn galley_recorded_diagnostic_message_ansi(
+    session_ptr: ?*GalleySession,
+    diag_index: u64,
+    out: ?*[*:0]const u8,
+) i64 {
+    return recordedDiagnosticMessage(session_ptr, diag_index, out, .ansi);
+}
+
+fn recordedDiagnosticMessage(
+    session_ptr: ?*GalleySession,
+    diag_index: u64,
+    out: ?*[*:0]const u8,
+    style: root.DiagnosticStyle,
 ) i64 {
     const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out == null) return galley_error_null_argument;
     var guard = embedded.session.readLatest() catch |err| return statusForError(err);
     defer guard.deinit();
     const diagnostic = recordedDiagnostic(&sessionDoor(embedded), diag_index) orelse return galley_error_no_diagnostic;
-    const arena = embedded.session.arena.allocator();
-    const rendered = root.renderParseDiagnostic(arena, diagnostic, .plain) catch return galley_error_out_of_memory;
-    const z = arena.dupeSentinel(u8, rendered, 0) catch return galley_error_out_of_memory;
+    const z = diagnosticMessageCore(diagnostic, embedded.session.arena.allocator(), style) catch return galley_error_out_of_memory;
     out.?.* = z.ptr;
     return galley_ok;
 }
@@ -1980,7 +1982,7 @@ export fn galley_hook_diagnostic_message_ansi(hook_door: ?*anyopaque, out: ?*[*:
     const door = hookDoor(hook_door) orelse return galley_error_null_argument;
     if (out == null) return galley_error_null_argument;
     const diagnostic = door.runtime_context.lastDiagnostic() orelse return galley_error_no_diagnostic;
-    const z = diagnosticMessageAnsiCore(diagnostic, door.runtime_context.arena_allocator) catch return galley_error_out_of_memory;
+    const z = diagnosticMessageCore(diagnostic, door.runtime_context.arena_allocator, .ansi) catch return galley_error_out_of_memory;
     out.?.* = z.ptr;
     return galley_ok;
 }

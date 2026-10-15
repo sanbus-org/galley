@@ -136,10 +136,15 @@ pub const SyntaxDiagnostic = struct {
     expected_tokens: []const []const u8,
     context: SyntaxDiagnosticContext = .none,
     recovery: ?SyntaxRecovery = null,
-    /// The text the grammar's error-message hooks (or their built-in
-    /// fallback) rendered for this error, plain style. Null until the parser
-    /// renders it. Arena-backed: valid until the next parse begins.
+    /// The message for this error, plain style, resolved through the
+    /// customization chain (overrides, templates, message functions, then
+    /// the built-in rendering). Null until the parser renders it.
+    /// Arena-backed: valid until the next parse begins.
     rendered_message: ?[]const u8 = null,
+    /// The same message resolved for the ANSI style: an override or template
+    /// text unchanged, a message function's ANSI rendering, or the built-in
+    /// colored rendering.
+    rendered_message_ansi: ?[]const u8 = null,
 };
 
 pub const IndentationDiagnostic = struct {
@@ -235,6 +240,9 @@ pub const SyntaxErrorMessageArgs = struct {
     style: DiagnosticStyle,
 };
 
+/// An error site's message chain: renders one syntax diagnostic in one style.
+pub const SyntaxMessageRenderer = *const fn (SyntaxErrorMessageArgs) anyerror![]const u8;
+
 /// Full syntax-message resolution shared by every generated diagnostic site.
 /// Chain order: session overrides and `config.zig` `error_messages` entries
 /// (via the runtime's template resolver), then each named hook declaration
@@ -244,6 +252,7 @@ pub const SyntaxErrorMessageArgs = struct {
 pub fn resolveSyntaxErrorMessage(
     context: *data_structures.Context,
     diagnostic: ParseDiagnostic,
+    style: DiagnosticStyle,
     comptime config_messages: anytype,
     comptime hooks_module: anytype,
     comptime hook_names: anytype,
@@ -256,7 +265,7 @@ pub fn resolveSyntaxErrorMessage(
                 .allocator = runtime_context.arena_allocator,
                 .context = context,
                 .diagnostic = diagnostic,
-                .style = .plain,
+                .style = style,
             })) |rendered| {
                 return rendered;
             } else |_| {}
@@ -621,27 +630,30 @@ pub fn renderParseDiagnostic(allocator: std.mem.Allocator, diagnostic: ParseDiag
     return output.toOwnedSlice();
 }
 
-/// Writes one recorded diagnostic as users read it, without a trailing
-/// newline: a syntax error as the grammar's error-message hooks rendered it
-/// (the built-in rendering when none did), every other kind in the built-in
-/// plain rendering. The text is written exactly as stored; hook and override
-/// messages are the author's responsibility, including any newlines.
-pub fn formatRecordedDiagnostic(writer: *std.Io.Writer, diagnostic: ParseDiagnostic) !void {
+/// Writes one recorded diagnostic as users read it, in `style`, without a
+/// trailing newline: a syntax error as its customization chain rendered it
+/// for that style (the built-in rendering when nothing did), every other kind
+/// in the built-in rendering. The text is written exactly as stored; hook and
+/// override messages are the author's responsibility, including any newlines.
+pub fn formatRecordedDiagnostic(writer: *std.Io.Writer, diagnostic: ParseDiagnostic, style: DiagnosticStyle) !void {
     const rendered = switch (diagnostic) {
-        .syntax => |syntax| syntax.rendered_message,
+        .syntax => |syntax| switch (style) {
+            .plain => syntax.rendered_message,
+            .ansi => syntax.rendered_message_ansi,
+        },
         .semantic, .indentation, .hook => null,
     };
     if (rendered) |message| {
         try writer.writeAll(message);
     } else {
-        try formatParseDiagnostic(writer, diagnostic, .plain);
+        try formatParseDiagnostic(writer, diagnostic, style);
     }
 }
 
-/// Writes one recorded diagnostic (`formatRecordedDiagnostic`) followed by
-/// exactly one newline.
+/// Writes one recorded diagnostic (`formatRecordedDiagnostic`, plain style)
+/// followed by exactly one newline.
 pub fn writeDiagnostic(writer: *std.Io.Writer, diagnostic: ParseDiagnostic) !void {
-    try formatRecordedDiagnostic(writer, diagnostic);
+    try formatRecordedDiagnostic(writer, diagnostic, .plain);
     try writer.writeByte('\n');
 }
 

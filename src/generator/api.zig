@@ -1667,7 +1667,7 @@ test "generateParserAlloc emits LL syntax error hook fallback chain" {
     // Site renderers resolve the full chain in one place: exact and
     // symbol-level hooks, then family and global fallbacks, then the builtin
     // diagnostic. Hook failures fall through inside the shared resolver.
-    const site = try expectContains(output, "root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{");
+    const site = try expectContains(output, "root.resolveSyntaxErrorMessage(args.context, args.diagnostic, args.style, root.config.error_messages, error_messages, .{");
     const exact = try expectContainsAfter(output, "\"syntax_error_ll_Items__expected_Item\"", site);
     const symbol = try expectContainsAfter(output, "\"syntax_error_ll_Items\"", exact);
     const family = try expectContainsAfter(output, "\"syntax_error_ll\"", symbol);
@@ -1684,7 +1684,7 @@ test "generateParserAlloc emits LR syntax error hook fallback chain" {
 
     // Site renderers resolve the full chain in one place: state hook first,
     // then family and global fallbacks, then the builtin diagnostic.
-    const site = try expectContains(output, "root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{");
+    const site = try expectContains(output, "root.resolveSyntaxErrorMessage(args.context, args.diagnostic, args.style, root.config.error_messages, error_messages, .{");
     const state = try expectContainsAfter(output, "\"syntax_error_lr_state_", site);
     const family = try expectContainsAfter(output, "\"syntax_error_lr\"", state);
     _ = try expectContainsAfter(output, "\"syntax_error\"", family);
@@ -1748,7 +1748,7 @@ test "generateParserAlloc emits position-based LR recovery" {
     _ = try expectContains(output, "context.adoptRecoveredNodes(parent_address, start_pos);");
     // Message resolution goes through the shared chain with the state hook
     // named first.
-    const site = try expectContains(output, "root.resolveSyntaxErrorMessage(args.context, args.diagnostic, root.config.error_messages, error_messages, .{");
+    const site = try expectContains(output, "root.resolveSyntaxErrorMessage(args.context, args.diagnostic, args.style, root.config.error_messages, error_messages, .{");
     _ = try expectContainsAfter(output, "\"syntax_error_lr_state_", site);
 }
 

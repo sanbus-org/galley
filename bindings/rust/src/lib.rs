@@ -958,8 +958,7 @@ impl Session {
     }
 
     /// Builds an owned snapshot of the diagnostic recorded at `diag_index`
-    /// (0-based, in recording order) of the most recent parse. The message
-    /// always uses the built-in generic renderer.
+    /// (0-based, in recording order) of the most recent parse.
     fn recorded_diagnostic_at(&self, diag_index: u64) -> Option<Diagnostic> {
         let mut d = Diagnostic::default();
         unsafe {

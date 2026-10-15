@@ -1111,6 +1111,7 @@ export class Session implements HookOwner {
     const [offset, line, col] = pos;
 
     const message = this.port.recordedDiagnosticMessage(h, index) ?? "";
+    const messageAnsi = this.port.recordedDiagnosticMessageAnsi(h, index) ?? "";
 
     const unexpected = this.port.recordedUnexpectedToken(h, index);
 
@@ -1142,7 +1143,7 @@ export class Session implements HookOwner {
       line,
       column: col,
       message,
-      messageAnsi: message,
+      messageAnsi,
       unexpectedToken: unexpected,
       expectedTokens,
       context,

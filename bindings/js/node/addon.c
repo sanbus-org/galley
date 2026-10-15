@@ -274,6 +274,7 @@ typedef long long (*fn_galley_recorded_context_name_t)(GalleySession *session, u
 typedef long long (*fn_galley_recorded_diagnostic_count_t)(GalleySession *session);
 typedef long long (*fn_galley_recorded_diagnostic_kind_t)(GalleySession *session, unsigned long long diag_index);
 typedef long long (*fn_galley_recorded_diagnostic_message_t)(GalleySession *session, unsigned long long diag_index, const char **out);
+typedef long long (*fn_galley_recorded_diagnostic_message_ansi_t)(GalleySession *session, unsigned long long diag_index, const char **out);
 typedef long long (*fn_galley_recorded_diagnostic_position_t)(GalleySession *session, unsigned long long diag_index, unsigned long long *out_offset, unsigned int *out_line, unsigned int *out_column);
 typedef long long (*fn_galley_recorded_diagnostic_recovery_kind_t)(GalleySession *session, unsigned long long diag_index);
 typedef long long (*fn_galley_recorded_expected_count_t)(GalleySession *session, unsigned long long diag_index);
@@ -430,6 +431,7 @@ SHARED_FN_ALIAS(tree_remove_children_at)
   X(galley_recorded_diagnostic_count) \
   X(galley_recorded_diagnostic_kind) \
   X(galley_recorded_diagnostic_message) \
+  X(galley_recorded_diagnostic_message_ansi) \
   X(galley_recorded_diagnostic_position) \
   X(galley_recorded_diagnostic_recovery_kind) \
   X(galley_recorded_expected_count) \
@@ -1644,6 +1646,16 @@ static napi_value method_galley_recorded_diagnostic_message(napi_env env, Lib *l
   return message_or_null(env, status, text);
 }
 
+static napi_value method_galley_recorded_diagnostic_message_ansi(napi_env env, Lib *lib, size_t argc,
+                                                                napi_value *argv) {
+  GalleySession *session = NULL;
+  uint64_t index = 0;
+  if (!recorded_arg(env, argc, argv, &session, &index)) return NULL;
+  const char *text = NULL;
+  long long status = ((fn_galley_recorded_diagnostic_message_ansi_t)lib->fn[SLOT_galley_recorded_diagnostic_message_ansi])(session, index, &text);
+  return message_or_null(env, status, text);
+}
+
 static napi_value method_galley_recorded_indentation(napi_env env, Lib *lib, size_t argc,
                                                     napi_value *argv) {
   GalleySession *session = NULL;
@@ -2224,6 +2236,7 @@ static napi_value method_load(napi_env env, napi_callback_info info) {
   BIND_OR_THROW(api, lib, galley_recorded_diagnostic_position);
   BIND_OR_THROW(api, lib, galley_recorded_unexpected_token);
   BIND_OR_THROW(api, lib, galley_recorded_diagnostic_message);
+  BIND_OR_THROW(api, lib, galley_recorded_diagnostic_message_ansi);
   BIND_OR_THROW(api, lib, galley_recorded_indentation);
   BIND_OR_THROW(api, lib, galley_recorded_semantic);
   BIND_OR_THROW(api, lib, galley_recorded_expected_count);

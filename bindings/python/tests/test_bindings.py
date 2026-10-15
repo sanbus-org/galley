@@ -2704,6 +2704,16 @@ class BorrowedMemoryTests(unittest.TestCase):
         self.churn()
         self.assertEqual(seen[:2], [(b"alpha:12", b"Pair"), (b"beta:3", b"Pair")])
 
+    def test_override_reaches_every_recorded_message(self) -> None:
+        self.session.set_message_override("*", "custom")
+        with self.assertRaises(grammar.GalleyError):
+            self.session.parse("alpha:x,beta:y,gamma:z")
+        recorded = self.session.diagnostics()
+        self.assertEqual(len(recorded), 3)
+        for diagnostic in recorded:
+            self.assertEqual(diagnostic.message, "custom")
+            self.assertEqual(diagnostic.message_ansi, "custom")
+
     def test_diagnostics_are_copies(self) -> None:
         with self.assertRaises(grammar.GalleyError) as raised:
             self.session.parse("alpha:")

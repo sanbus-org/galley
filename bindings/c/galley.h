@@ -746,8 +746,8 @@ long long galley_recorded_diagnostic_count(GalleySession *session);
 
 /* Kind, position, unexpected token, and rendered message of a recorded
  * diagnostic; the indentation width and spaces of a recorded indentation
- * diagnostic. Messages use the built-in generic renderer and remain valid
- * until the next parse. */
+ * diagnostic. Messages carry every customization, like
+ * galley_diagnostic_message, and remain valid until the next parse. */
 long long galley_recorded_diagnostic_kind(GalleySession *session, unsigned long long diag_index);
 long long galley_recorded_diagnostic_position(GalleySession *session, unsigned long long diag_index,
                                               unsigned long long *out_offset,
@@ -756,6 +756,8 @@ long long galley_recorded_unexpected_token(GalleySession *session, unsigned long
                                            const char **out_data, size_t *out_len);
 long long galley_recorded_diagnostic_message(GalleySession *session, unsigned long long diag_index,
                                              const char **out);
+long long galley_recorded_diagnostic_message_ansi(GalleySession *session, unsigned long long diag_index,
+                                                  const char **out);
 long long galley_recorded_indentation(GalleySession *session, unsigned long long diag_index,
                                       unsigned int *out_spaces, unsigned int *out_indentation_width);
 long long galley_recorded_semantic(GalleySession *session, unsigned long long diag_index,
