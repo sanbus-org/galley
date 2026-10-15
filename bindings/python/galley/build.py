@@ -180,7 +180,7 @@ def emit_package_init(language_dir: Path) -> None:
         f"""# {GENERATED_MARKER}
 \"\"\"Language package: parser surface plus bundled hook wiring.\"\"\"
 
-import sys as _sys
+import warnings as _warnings
 
 from .{IMPL_MODULE_NAME} import *  # noqa: F401,F403
 from . import {IMPL_MODULE_NAME} as _impl  # noqa: F401
@@ -196,14 +196,15 @@ del {IMPL_MODULE_NAME}
 # joining the package's public surface.
 from . import procedures as _procedures
 _installed = _impl.install_procedures(_procedures.__dict__)
-if _installed == 0 and any(
+if _installed == 0 and _impl.has_procedures() and any(
     not name.startswith("_") for name in vars(_procedures)
 ):
-    print(
-        f"galley: {{__name__}}.procedures defines no procedure hooks",
-        file=_sys.stderr,
+    _warnings.warn(
+        f"galley: no hooks wired from {{__name__}}.procedures",
+        RuntimeWarning,
+        stacklevel=2,
     )
-del procedures, _procedures, _installed, _sys
+del procedures, _procedures, _installed, _warnings
 """,
         encoding="utf-8",
     )

@@ -3265,6 +3265,18 @@ class GeneratedPackageInitTests(unittest.TestCase):
         self.assertEqual(stderr.getvalue(), "")
         self.assertEqual(silentlang.list_procedures(), {})
 
+    def test_module_that_wires_no_hook_warns(self) -> None:
+        import warnings
+
+        self._make_package("helperlang", "def helper() -> None:\n    pass\n")
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            import helperlang  # noqa: F401
+
+        messages = [str(warning.message) for warning in caught]
+        self.assertEqual(messages, ["galley: no hooks wired from helperlang.procedures"])
+        self.assertIs(caught[0].category, RuntimeWarning)
+
 
 class SessionHookTests(unittest.TestCase):
     """Hooks belong to the session: a copy of the defaults at open."""

@@ -673,7 +673,6 @@ export {};
   // marks a member that is a value rather than a method.
   const PARSER_MEMBERS = [
     { name: "backend", bind: false, doc: ["/** The leg serving this parser: `\"native\"` or `\"wasm\"`. */"] },
-    { name: "installBundledProcedures" },
     { name: "version" },
     { name: "parserType" },
     { name: "errorRecoveryMode" },

@@ -536,7 +536,6 @@ await test("generated package entry follows the hook contracts", () => {
   // parser() accessor, no manual wiring call.
   assert.ok(!entry.includes("await"));
   assert.ok(!/\bparser\(/.test(entry));
-  assert.ok(!entry.includes("installBundledProcedures(procedures)"));
   assert.ok(!entry.includes("initialize"));
   // Generated example content never names another language.
   assert.ok(!/\bpython\b/i.test(entry));

@@ -321,7 +321,9 @@ artifact defines it; with `procedures = false` every install throws. A scan
 considers only names beginning with `reduction`, or with `hook` followed by
 `_` or an ASCII uppercase letter, and warns through `console.warn` once per
 name per parser (its sessions' scans included), naming each considered
-export the artifact lacks. Every
+export the artifact lacks, and once per module about hooks held in a default
+export, which never wire. A generated entry's bundled module that holds
+exports but wires no hook warns once per module when procedures are enabled. Every
 hook is called with the `ProcedureArguments` object; one that declares no
 parameter ignores it.
 

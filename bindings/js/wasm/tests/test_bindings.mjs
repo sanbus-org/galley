@@ -233,7 +233,7 @@ await test("direct package import wires bundled hooks", async () => {
     }
     return [...names];
   })();
-  assert.equal(parserInterface.length, 21);
+  assert.equal(parserInterface.length, 20);
   assert.deepEqual(
     Object.keys(kv).sort(),
     [...parserInterface, ...surface].sort(),

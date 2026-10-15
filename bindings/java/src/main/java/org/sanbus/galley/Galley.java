@@ -38,16 +38,7 @@ public final class Galley {
      */
     public static Parser load(String path) throws MissingArtifactException {
         String canonical = GalleyLibraryLoader.findLibrary(path);
-        GalleyLibrary library = LIBRARIES.computeIfAbsent(canonical, Galley::openLibrary);
+        GalleyLibrary library = LIBRARIES.computeIfAbsent(canonical, GalleyLibrary::new);
         return Parser.create(canonical, library);
-    }
-
-    /** Opens the library once per artifact, with the one-time notice for a grammar that forwards no hooks. */
-    private static GalleyLibrary openLibrary(String canonical) {
-        GalleyLibrary library = new GalleyLibrary(canonical);
-        if (library.galley_hooks_count() == 0) {
-            System.err.println("galley: " + canonical + " forwards no hooks to the host; procedure hooks stay inert");
-        }
-        return library;
     }
 }

@@ -253,7 +253,9 @@ artifact defines it; with `procedures = false` every install raises. A scan
 considers only names beginning with `reduction`, or with `hook` followed by
 `_` or an ASCII uppercase letter, and warns with a `RuntimeWarning` naming
 each considered export the artifact lacks; the active warning filters decide
-how often it prints (once per name under the defaults).
+how often it prints (once per name under the defaults). A package import whose
+`procedures` module holds public names but wires no hook warns the same way,
+when procedures are enabled.
 
 A hook whose signature declares no positional parameter (read once at
 install through `inspect.signature`; `*args` alone counts as none) is called

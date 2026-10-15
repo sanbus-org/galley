@@ -2051,7 +2051,16 @@ public class GalleyTest {
 
             Path library = work.resolve(GalleyLibraryLoader.libFileName());
             assertTrue(Files.isRegularFile(library), "no built library at " + library);
-            Parser parser = Galley.load(library.toString());
+            PrintStream originalError = System.err;
+            ByteArrayOutputStream loadError = new ByteArrayOutputStream();
+            Parser parser;
+            System.setErr(new PrintStream(loadError, true, StandardCharsets.UTF_8));
+            try {
+                parser = Galley.load(library.toString());
+            } finally {
+                System.setErr(originalError);
+            }
+            assertEquals("", loadError.toString(StandardCharsets.UTF_8), "loading writes nothing to stderr");
             assertEquals(0, parser.hookCount());
             IllegalArgumentException onParser = assertThrows(IllegalArgumentException.class,
                     () -> parser.installProcedure("reduction", args -> {}));

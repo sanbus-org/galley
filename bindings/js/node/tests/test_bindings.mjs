@@ -251,7 +251,7 @@ await test("direct package import wires bundled hooks", async () => {
     }
     return [...names];
   })();
-  assert.equal(parserInterface.length, 21);
+  assert.equal(parserInterface.length, 20);
   assert.deepEqual(
     Object.keys(kv).sort(),
     [...parserInterface, ...surface].sort(),
@@ -1463,18 +1463,16 @@ await test("installProcedures warns when a wrong-typed top-level export does not
 });
 
 await test("bundled wiring reports a non-empty module that exports no hooks", async () => {
-  const parser = await newParser();
-  parser.clearProcedures();
   const original = console.warn;
   const lines = [];
   console.warn = (message) => lines.push(String(message));
   try {
     const broken = { helper: () => {} };
-    parser.installBundledProcedures(broken);
-    parser.installBundledProcedures(broken); // same module: one report, wasm's double scan included
-    parser.installBundledProcedures({ helper: () => {} }); // a distinct broken module still reports
-    parser.installBundledProcedures({}); // the build's empty stub shape: silent
-    parser.installBundledProcedures(null); // bare load: silent
+    await openLanguageDirectory(languageDir, {}, broken);
+    await openLanguageDirectory(languageDir, {}, broken); // same module: one report
+    await openLanguageDirectory(languageDir, {}, { helper: () => {} }); // a distinct broken module still reports
+    await openLanguageDirectory(languageDir, {}, {}); // the build's empty stub shape: silent
+    await openLanguageDirectory(languageDir, {}, null); // bare load: silent
   } finally {
     console.warn = original;
   }
@@ -1483,13 +1481,11 @@ await test("bundled wiring reports a non-empty module that exports no hooks", as
 });
 
 await test("bundled wiring reports a default-shaped module once", async () => {
-  const parser = await newParser();
-  parser.clearProcedures();
   const original = console.warn;
   const lines = [];
   console.warn = (message) => lines.push(String(message));
   try {
-    parser.installBundledProcedures({ default: { hook_print: () => {} } });
+    await openLanguageDirectory(languageDir, {}, { default: { hook_print: () => {} } });
   } finally {
     console.warn = original;
   }

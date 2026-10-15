@@ -26,24 +26,15 @@ export class Parser {
    * Each parser owns its default hook table — two loads of one
    * artifact never share one — and `bundledProcedures` carries the
    * entry's statically imported hook namespace (or null for bare
-   * loads); it fills only hook names never installed, so explicit
-   * installs win regardless of order. The table lives here and nowhere
-   * else: a subclass that constructs sessions itself receives it
-   * through `openSessionWith`.
+   * loads), wired before anything else can install. The table lives
+   * here and nowhere else: a subclass that constructs sessions itself
+   * receives it through `openSessionWith`.
    */
   constructor(port: FfiPort, bundledProcedures: unknown = null) {
     if (!port) throw new TypeError("galley: Parser needs a bound port");
     this.#port = port;
     this.#registry = new ProcedureRegistry(port.hookNames());
-    this.installBundledProcedures(bundledProcedures);
-  }
-
-  /**
-   * Wires the bundled namespace in bulk for names not yet installed.
-   * Explicit installs win per hook name regardless of order.
-   */
-  installBundledProcedures(value: unknown): void {
-    this.#registry.installBundled(value, this.hasProcedures());
+    this.#registry.installBundled(bundledProcedures, this.hasProcedures());
   }
 
   /** The bound port. Sessions opened here share it. */
