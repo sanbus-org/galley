@@ -241,3 +241,91 @@ def documented(value):
 raw_text = r"""C:\path\to
 
         deeply indented"""
+
+# Subscript items take a trailing comma, displays unpack both stars, and
+# base-prefixed numbers take an underscore after the prefix.
+sliced_tail = items[1:3,]
+stepped_tail = items[::2,]
+unpacked_tail = items[*items,]
+unpacked_set = {*items}
+unpacked_set_mixed = {*items, 4}
+hex_underscored = 0x_FF
+oct_underscored = 0o_17
+bin_underscored = 0b_1
+
+
+# Type parameters attach to def, class and async def (PEP 695) and take
+# PEP 696 defaults; a vararg may unpack its annotation (PEP 646).
+def typed_signature[T](value: T) -> T:
+    return value
+
+
+class TypedWidget[T](Thing):
+    pass
+
+
+type DefaultedAlias[T: str = int] = list[T]
+type VariadicAlias[*Ts = ()] = tuple[*Ts]
+type StarDefaultAlias[*Ts = *tuple[int]] = tuple[*Ts]
+type ParamsAlias[**P = [int]] = Callable[P, int]
+type TrailingAlias[T = int,] = T
+
+
+async def typed_fetch[T](url: T) -> T:
+    return url
+
+
+def variadic(*args: *Ts):
+    return args
+
+
+# Handler lists drop the parentheses around their exceptions (PEP 758).
+try:
+    risky = int(name)
+except ValueError, TypeError:
+    print("bad value")
+except OSError, KeyError,:
+    print("bad lookup")
+
+try:
+    pass
+except* ValueError, TypeError:
+    print("bad group")
+
+
+# A comment line, even one followed by a blank line, may sit between
+# decorator lines.
+@decorator
+# The decorator list continues after this comment.
+
+@other_decorator
+def commented_decorator() -> None:
+    pass
+
+
+# global and nonlocal take comma-separated name lists.
+def name_lists():
+    first_state = second_state = 0
+    global another_name, third_name
+
+    def inner():
+        nonlocal first_state, second_state
+        first_state = second_state = 1
+
+    inner()
+
+
+# Any number of spaces may separate tokens in the newer constructs too.
+type  SpacedDefault  [  T  :  int  =  str  ]  =  list  [  T  ]
+sliced_tail_spaced  =  items  [  1  :  2  ,  ]
+unpacked_spaced  =  {  *  items  ,  }
+
+try:
+    pass
+except  ValueError  ,  TypeError  ,  :
+    pass
+
+try:
+    pass
+except*  ValueError  ,  TypeError  :
+    pass

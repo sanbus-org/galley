@@ -249,3 +249,68 @@ single_quoted_text = '''
     Indented
   and dedented
 '''
+
+# Subscript items take a trailing comma, displays unpack both stars, and
+# base-prefixed numbers take an underscore after the prefix.
+sliced_tail = items[1:3,]
+stepped_tail = items[::2,]
+unpacked_tail = items[*items,]
+unpacked_set = {*items}
+unpacked_set_mixed = {*items, 4}
+hex_underscored = 0x_FF
+oct_underscored = 0o_17
+bin_underscored = 0b_1
+
+
+# Type parameters attach to def and class (PEP 695), type parameters take
+# PEP 696 defaults, and a vararg may unpack its annotation (PEP 646).
+def typed_signature[T](value: T) -> T:
+    return value
+
+
+class TypedWidget[T](Thing):
+    pass
+
+
+type DefaultedAlias[T: str = int] = list[T]
+type VariadicAlias[*Ts = ()] = tuple[*Ts]
+type StarDefaultAlias[*Ts = *tuple[int]] = tuple[*Ts]
+type ParamsAlias[**P = [int]] = Callable[P, int]
+type TrailingAlias[T = int,] = T
+
+
+def variadic(*args: *Ts):
+    return args
+
+
+# Handler lists drop the parentheses around their exceptions (PEP 758).
+try:
+    risky = int(name)
+except ValueError, TypeError:
+    print("bad value")
+except (KeyError, IndexError), OSError,:
+    print("bad lookup")
+
+try:
+    pass
+except* ValueError, TypeError:
+    print("bad group")
+
+
+# A comment line may sit between decorator lines.
+@decorator
+# The decorator list continues after this comment.
+def commented_decorator() -> None:
+    pass
+
+
+# global and nonlocal take comma-separated name lists.
+def name_lists():
+    first_state = second_state = 0
+    global another_name, third_name
+
+    def inner():
+        nonlocal first_state, second_state
+        first_state = second_state = 1
+
+    inner()

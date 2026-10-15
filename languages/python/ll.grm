@@ -9,14 +9,17 @@
 # apart from its @count hooks, so update it too.
 #
 # Covers: imports (dotted, as-lists, from-lists, relative dots),
-# type aliases with type params, match/case with as-patterns and guards,
-# def (annotated/default/star params, returns), async def, decorators,
-# class with call-style bases, comprehensions (incl. async for),
-# generators, slices, walrus, yield/yield-from, f/t-strings (balanced
-# braces, nested strings), full operator precedence, elif/else,
-# while/for-else, with-items, try/except/except*/else/finally,
-# assert/raise/del with tails, global/nonlocal, tuple/star/annotated/
-# chained/augmented/attribute/subscript assignment, kwargs/stars in calls.
+# type aliases and def/class/async def with type params (PEP 695 forms,
+# PEP 696 defaults incl. `*Ts = *tuple[int]`, `*Ts`/`**P`, star-annotated
+# varargs), match/case with as-patterns and guards, def (annotated/default/
+# star params, returns), decorators (comments between lines), class with call-style
+# bases, comprehensions (incl. async for), generators, slices, walrus,
+# yield/yield-from, f/t-strings (balanced braces, nested strings), full
+# operator precedence, elif/else, while/for-else, with-items,
+# try/except/except*/else/finally (PEP 758 comma lists), assert/raise/
+# del with tails, global/nonlocal name lists, tuple/star/annotated/
+# chained/augmented/attribute/subscript assignment (trailing commas in
+# subscripts), kwargs/stars in calls, set unpacking (`{*x}`).
 #
 # Spacing: every symbol that can end an operand takes the spaces after it,
 # so no terminal starts with a space and any number of spaces may separate
@@ -48,23 +51,21 @@
 #   triple quote, so indentation inside them is not lexed. A backslash does
 #   not escape the closing quotes (`\"""` ends the string) and their bytes
 #   are not checked as UTF-8.
-# - Bare conditionals need parens in case patterns, else branches,
-#   lambda bodies and yield-from operands (`a if b else (c if d else e)`,
-#   `lambda: (x if y else z)`); walrus right-hand sides take
+# - Bare conditionals need parens in case patterns, lambda bodies and
+#   yield-from operands (`lambda: (x if y else z)`,
+#   `yield from (a if b else c)`); walrus right-hand sides take
 #   `Disjunction` only (`x := (a if b else c)`).
 # - Do not name variables exactly `yield` (`yield = 5` fails).
 # - `0.`-style floats need the trailing digit (`0.0`); identifiers
 #   are ASCII letters/digits/`_` (no PEP 3131 names); strings accept
-#   full UTF-8 (validated scalars, same shapes as json-unicode);
-#   `**` dict unpacking and trailing commas work in displays but
-#   `{*x}` set-unpacking does not.
+#   full UTF-8 (validated scalars, same shapes as json-unicode).
 # - Comprehension targets are bare names (`k, v` works; `(k, v)`,
-#   `*rest`, attribute targets do not); def/class take no type params,
-#   no `/` or bare-`*` markers; `global`/`nonlocal` take single names.
+#   `*rest`, attribute targets do not); def/class parameter lists take
+#   no `/` or bare-`*` markers.
 # - `match` patterns accept an expression superset (e.g. `case a + b:`
-#   parses though invalid); `except (A, B)` tuples work; `from` import
-#   lists take parens but no trailing commas; relative imports allow
-#   up to `...`; `with (a as b):` needs the parens dropped.
+#   parses though invalid); parenthesized `from` import lists take
+#   trailing commas; relative imports allow any number of dots; `with
+#   (a as b):` needs the parens dropped.
 # - Adjacent string literal concatenation (`"a" "b"`, including across
 #   lines) is not supported. Write one string per expression or use
 #   explicit `+`.
@@ -247,8 +248,15 @@ Except
 | "except " _OptBlank ":" Block
 | "except " _OptBlank Expression ":" Block
 | "except " _OptBlank Expression AsName ":" Block
+| "except " _OptBlank Expression "," _OptBlank _ExceptTupleTail ":" Block
 | "except*" _OptBlank Expression ":" Block
 | "except*" _OptBlank Expression AsName ":" Block
+| "except*" _OptBlank Expression "," _OptBlank _ExceptTupleTail ":" Block
+
+_ExceptTupleTail
+| Expression "," _OptBlank _ExceptTupleTail
+| Expression
+|
 
 Finally
 | "finally:" Block
@@ -281,10 +289,14 @@ Delete
 | "del " _OptBlank ExpressionList
 
 Global
-| "global " _OptBlank Name _OptBlank
+| "global " _OptBlank NameList
 
 Nonlocal
-| "nonlocal " _OptBlank Name _OptBlank
+| "nonlocal " _OptBlank NameList
+
+NameList@<
+| Name _OptBlank
+| Name _OptBlank "," _OptBlank NameList
 
 Import
 | "import " _OptBlank ImportNames
@@ -331,16 +343,16 @@ ParenthesizedFromNames@<
 | Name _InsideBlank AsName _InsideBreak "," _InsideBlank ParenthesizedFromNames
 
 ClassDefinition
-| "class " _OptBlank Name _OptBlank ":" Block
-| "class " _OptBlank Name _OptBlank Call _OptBlank ":" Block
+| "class " _OptBlank Name _OptBlank _TypeParams ":" Block
+| "class " _OptBlank Name _OptBlank _TypeParams Call _OptBlank ":" Block
 
 FunctionDefinition
-| "def " _OptBlank Name _OptBlank "(" _InsideBlank ")" _OptBlank ":" Block
-| "def " _OptBlank Name _OptBlank "(" _InsideBlank ")" _OptBlank ReturnAnnotation ":" Block
-| "def " _OptBlank Name _OptBlank "(" _InsideBlank Parameters
-| "async def " _OptBlank Name _OptBlank "(" _InsideBlank ")" _OptBlank ":" Block
-| "async def " _OptBlank Name _OptBlank "(" _InsideBlank ")" _OptBlank ReturnAnnotation ":" Block
-| "async def " _OptBlank Name _OptBlank "(" _InsideBlank Parameters
+| "def " _OptBlank Name _OptBlank _TypeParams "(" _InsideBlank ")" _OptBlank ":" Block
+| "def " _OptBlank Name _OptBlank _TypeParams "(" _InsideBlank ")" _OptBlank ReturnAnnotation ":" Block
+| "def " _OptBlank Name _OptBlank _TypeParams "(" _InsideBlank Parameters
+| "async def " _OptBlank Name _OptBlank _TypeParams "(" _InsideBlank ")" _OptBlank ":" Block
+| "async def " _OptBlank Name _OptBlank _TypeParams "(" _InsideBlank ")" _OptBlank ReturnAnnotation ":" Block
+| "async def " _OptBlank Name _OptBlank _TypeParams "(" _InsideBlank Parameters
 
 Parameters@<
 | Parameter ")" _OptBlank ":" Block
@@ -355,15 +367,25 @@ Parameter
 | Name _OptBlank Annotation Default
 | Name _OptBlank Default
 | "*" _OptBlank Name _OptBlank
-| "*" _OptBlank Name _OptBlank Annotation
+| "*" _OptBlank Name _OptBlank StarAnnotation
 | "**" _OptBlank Name _OptBlank
 | "**" _OptBlank Name _OptBlank Annotation
 
 Annotation
 | ":" _OptBlank Expression
 
+StarAnnotation
+| ":" _OptBlank StarAnnotationValue
+
+StarAnnotationValue
+| Expression
+| Starred
+
 Default
 | "=" _OptBlank Expression
+
+StarDefault
+| "=" _OptBlank StarAnnotationValue
 
 ReturnAnnotation
 | "->" _OptBlank Expression
@@ -372,6 +394,13 @@ Decorated
 | "@" _OptBlank Expression _TrailComment new_line Decorated@<
 | "@" _OptBlank Expression _TrailComment new_line FunctionDefinition
 | "@" _OptBlank Expression _TrailComment new_line ClassDefinition
+| "@" _OptBlank Expression _TrailComment new_line _DecoratorComments Decorated@<
+| "@" _OptBlank Expression _TrailComment new_line _DecoratorComments FunctionDefinition
+| "@" _OptBlank Expression _TrailComment new_line _DecoratorComments ClassDefinition
+
+_DecoratorComments
+| Comment _StatementEnd
+| Comment _StatementEnd _DecoratorComments
 
 Pass
 | "pass"@-letter@-digit@-"_"
@@ -398,19 +427,26 @@ Guard
 | "if"@-letter@-digit@-"_" _OptBlank Expression
 
 TypeAlias
-| "type " _OptBlank Name _OptBlank _Eq Expression
-| "type " _OptBlank Name _OptBlank "[" _InsideBlank TypeParameters _OptBlank _Eq Expression
+| "type " _OptBlank Name _OptBlank _TypeParams _Eq Expression
+
+_TypeParams
+| "[" _InsideBlank TypeParameters _OptBlank
+|
 
 TypeParameters@<
 | TypeParameter "]"
+| TypeParameter "," _InsideBlank "]"
 | TypeParameter "," _InsideBlank TypeParameters
 
 TypeParameter
 | Name _OptBlank
 | Name _OptBlank Annotation
+| Name _OptBlank Annotation Default
 | Name _OptBlank Default
 | "*" _OptBlank Name _OptBlank
+| "*" _OptBlank Name _OptBlank StarDefault
 | "**" _OptBlank Name _OptBlank
+| "**" _OptBlank Name _OptBlank Default
 
 ExpressionStatement
 | Expression
@@ -499,11 +535,17 @@ _NonZeroDec
 
 _AfterZero
 | "x" _HexDigit _HexTail _ImagTail
+| "x" "_" _HexDigit _HexTail _ImagTail
 | "X" _HexDigit _HexTail _ImagTail
+| "X" "_" _HexDigit _HexTail _ImagTail
 | "o" _OctDigit _OctTail _ImagTail
+| "o" "_" _OctDigit _OctTail _ImagTail
 | "O" _OctDigit _OctTail _ImagTail
+| "O" "_" _OctDigit _OctTail _ImagTail
 | "b" _BinDigit _BinTail _ImagTail
+| "b" "_" _BinDigit _BinTail _ImagTail
 | "B" _BinDigit _BinTail _ImagTail
+| "B" "_" _BinDigit _BinTail _ImagTail
 | ".0" _DecTail _ExpTail _ImagTail
 | ".1" _DecTail _ExpTail _ImagTail
 | ".2" _DecTail _ExpTail _ImagTail
@@ -1016,6 +1058,9 @@ BraceItems@<
 | Expression DictionaryValue "," _InsideBlank "}"
 | Expression DictionaryValue "," _InsideBlank BraceItems
 | Expression DictionaryValue Comprehension _InsideBreak "}"
+| Starred _InsideBreak "}"
+| Starred "," _InsideBlank "}"
+| Starred "," _InsideBlank BraceItems
 | DoubleStarred _InsideBreak "}"
 | DoubleStarred "," _InsideBlank "}"
 | DoubleStarred "," _InsideBlank BraceItems
@@ -1077,10 +1122,13 @@ SubscriptItems@<
 | Expression "," _InsideBlank "]"
 | Expression "," _InsideBlank SubscriptItems
 | Expression Slice "]"
+| Expression Slice "," _InsideBlank "]"
 | Expression Slice "," _InsideBlank SubscriptItems
 | Slice "]"
+| Slice "," _InsideBlank "]"
 | Slice "," _InsideBlank SubscriptItems
 | Starred _InsideBreak "]"
+| Starred "," _InsideBlank "]"
 | Starred "," _InsideBlank SubscriptItems
 
 Slice
