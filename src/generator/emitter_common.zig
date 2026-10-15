@@ -588,7 +588,7 @@ pub fn emitParserMetadata(
         \\pub const error_recovery_mode: ErrorRecoveryMode =
         \\    if (!is_error_recovery_enabled) .disabled else if (has_recovery_annotations) .explicit else .automatic;
         \\pub const is_position_tracking_enabled =
-        \\    if (config.position_tracking) |enabled| enabled else builtin.mode != .fast;
+        \\    if (config.position_tracking) |enabled| enabled else builtin.mode == .debug or builtin.mode == .safe;
         \\pub const is_input_streaming_enabled = config.input_streaming;
         \\pub const syntax_error_stack_depth = {s};
         \\pub const is_syntax_error_stack_enabled = {s};

@@ -1,4 +1,3 @@
-const builtin = @import("builtin");
 const root = @import("galley");
 const signals = @import("signals");
 const std = @import("std");
@@ -58,16 +57,17 @@ const StackOverflowDiagnostic = struct {
     }
 };
 
-fn stackOverflowDiagnostic(context: *const root.data_structures.Context) StackOverflowDiagnostic {
+fn stackOverflowDiagnostic(context: *root.data_structures.Context) StackOverflowDiagnostic {
     const input = context.diagnosticInput();
     const cursor: usize = if (comptime root.config.indentation_syntax)
         context.seek
     else
         context.token.cursor;
 
+    const position = context.diagnosticPosition();
     return .{
-        .line = if (comptime root.position_tracking_enabled) context.line else 0,
-        .column = if (comptime root.position_tracking_enabled) context.column else 0,
+        .line = position.line,
+        .column = position.column,
         .excerpt = centeredExcerpt(input, cursor),
         .token = if (comptime root.config.indentation_syntax)
             context.token.items()
@@ -376,20 +376,20 @@ test "stack overflow diagnostic captures parser location and token" {
         context.token.cursor = 6;
         break :token "6";
     };
-    if (comptime builtin.mode != .fast) {
+    if (comptime root.position_tracking_enabled) {
         context.line = 7;
         context.column = 9;
     }
 
     const diagnostic = stackOverflowDiagnostic(&context);
-    try std.testing.expectEqual(
-        @as(u32, if (builtin.mode != .fast) 7 else 0),
-        diagnostic.line,
-    );
-    try std.testing.expectEqual(
-        @as(u32, if (builtin.mode != .fast) 9 else 0),
-        diagnostic.column,
-    );
+    if (comptime root.position_tracking_enabled) {
+        try std.testing.expectEqual(@as(u32, 7), diagnostic.line);
+        try std.testing.expectEqual(@as(u32, 9), diagnostic.column);
+    } else if (comptime !root.config.indentation_syntax) {
+        // Untracked, the position comes from the cursor's offset.
+        try std.testing.expectEqual(@as(u32, 1), diagnostic.line);
+        try std.testing.expectEqual(@as(u32, 7), diagnostic.column);
+    }
     try std.testing.expectEqualStrings(expected_token, diagnostic.token);
     try std.testing.expectEqual(@as(usize, 6), diagnostic.excerpt.caret_offset);
 }

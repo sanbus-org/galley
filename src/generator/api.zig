@@ -1789,7 +1789,7 @@ test "generated header derives position tracking from config" {
     const output = try generateParserAlloc(arena.allocator(), semantic_hook_grammar, .ll, .{ .with_procedures = false });
     _ = try expectContains(output,
         \\pub const is_position_tracking_enabled =
-        \\    if (config.position_tracking) |enabled| enabled else builtin.mode != .fast;
+        \\    if (config.position_tracking) |enabled| enabled else builtin.mode == .debug or builtin.mode == .safe;
         \\
     );
 }

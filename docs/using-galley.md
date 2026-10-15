@@ -102,12 +102,14 @@ const options = generator.Options{
 ```
 
 The defaults are shown above. A `null` position-tracking setting enables
-tracking except in `ReleaseFast`; set it explicitly to `true` or `false` to
+tracking in `Debug` and `ReleaseSafe`; set it explicitly to `true` or `false` to
 override that build-mode default. `with_input_streaming` selects incremental
 file input at generation time. When disabled, file inputs are loaded completely
 before parsing. Streaming uses a bounded input window only when the parser has
 no AST, no procedures, and no verbatim capture; AST-, procedure-, and
-verbatim-enabled parsers retain the complete source. `require_reduction_procedures`
+verbatim-enabled parsers keep the complete source available, an
+indentation-syntax parser streaming a file by reading it again from the file.
+`require_reduction_procedures`
 adds a compile-time check to the emitted parser that every visible production
 declares its `reduction_<Var>_<N>` hook.
 

@@ -101,7 +101,7 @@ The user can attach code to points in the grammar ([hooks](docs/procedures.md)).
 
 Every problem found during a parse, whether a syntax error or an error reported by a hook, is recorded with its location and a readable message. What the parser does after a syntax error is [defined](docs/syntax_error_recovery.md#syntax-error-recovery).
 
-1. Each recorded error carries the byte offset in the input where it was found, and also the line and column when [line and column tracking](#3-parser-options) is enabled.
+1. Each recorded error carries the byte offset in the input where it was found, and its line and column, except in two parsers without [line and column tracking](#3-parser-options): one that reads in a [bounded window](docs/configuration.md#the-configzig-contract), and an indentation-syntax parser streaming a file.
 2. After a parse, the session holds the errors of that parse in the order they were recorded.
 3. The user can [customize error messages](docs/syntax_error_recovery.md#syntax-error-messages) with [per-session overrides](docs/configuration.md#syntax-error-message-overrides), with compile-time templates, and with message functions written with the hooks.
 4. The precedence among these customizations is defined and documented.

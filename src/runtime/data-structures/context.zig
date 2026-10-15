@@ -488,6 +488,8 @@ pub const Context = struct {
     // These fields are defined based on build mode and generated-parser options.
     verbosity: if (builtin.mode == .debug) usize else void = if (builtin.mode == .debug) 0 else {},
 
+    /// Where computed diagnostic positions resume (`positionOfOffset`).
+    line_scan: root.LineScan = .{},
     line: if (root.position_tracking_enabled) u32 else void = if (root.position_tracking_enabled) 1 else {},
     column: if (root.position_tracking_enabled) u32 else void = if (root.position_tracking_enabled) 1 else {},
 
@@ -577,6 +579,9 @@ pub const Context = struct {
     /// (whose strings the caller allocated in the parse arena) and returns
     /// the total semantic error count so hooks can limit themselves.
     pub fn recordSemanticDiagnostic(self: *Self, diagnostic: root.SemanticDiagnostic) !usize {
+        // Only an error records a diagnostic. Every recorder stays out of
+        // line, so the hot paths that call one pay nothing for it.
+        @branchHint(.cold);
         try self.retainDiagnostic(.{ .semantic = diagnostic });
         const runtime_context = self.runtime();
         runtime_context.semantic_error_count += 1;
@@ -588,6 +593,7 @@ pub const Context = struct {
         diagnostic_context: root.SyntaxDiagnosticContext,
         expected_tokens: []const []const u8,
     ) !void {
+        @branchHint(.cold);
         if (self.input_read_failed) return error.ReadFailed;
         if (comptime root.config.indentation_syntax) {
             if (self.indentation_error) return error.IndentationError;
@@ -605,10 +611,11 @@ pub const Context = struct {
             }
         }
         const unexpected_token = try self.runtime().arena_allocator.dupe(u8, self.diagnosticTokenItems());
+        const position = self.diagnosticPosition();
         try self.retainDiagnostic(.{
             .syntax = .{
-                .line = if (comptime root.position_tracking_enabled) self.line else 0,
-                .column = if (comptime root.position_tracking_enabled) self.column else 0,
+                .line = position.line,
+                .column = position.column,
                 .unexpected_token = unexpected_token,
                 .expected_tokens = expected_tokens,
                 .context = effective_diagnostic_context,
@@ -1187,6 +1194,7 @@ pub const Context = struct {
     /// Reports an unterminated verbatim capture with the expected terminator
     /// bytes as the diagnostic's expected tokens.
     fn recordUnterminatedVerbatim(self: *Self, terminator: []const u8) !void {
+        @branchHint(.cold);
         if (self.input_read_failed) return error.ReadFailed;
         if (comptime root.config.indentation_syntax) {
             if (self.indentation_error) return error.IndentationError;
@@ -1195,10 +1203,11 @@ pub const Context = struct {
         const unexpected_token = try arena.dupe(u8, self.diagnosticTokenItems());
         const expected_tokens = try arena.alloc([]const u8, 1);
         expected_tokens[0] = try arena.dupe(u8, terminator);
+        const position = self.diagnosticPosition();
         try self.retainDiagnostic(.{
             .syntax = .{
-                .line = if (comptime root.position_tracking_enabled) self.line else 0,
-                .column = if (comptime root.position_tracking_enabled) self.column else 0,
+                .line = position.line,
+                .column = position.column,
                 .unexpected_token = unexpected_token,
                 .expected_tokens = expected_tokens,
                 .context = .none,
@@ -1635,12 +1644,18 @@ pub const Context = struct {
     }
 
     fn recordIndentationDiagnostic(self: *Self, line_spaces: u16) void {
+        @branchHint(.cold);
         comptime std.debug.assert(root.config.indentation_syntax);
 
         self.indentation_error = true;
+        // The error points at the start of the offending line.
+        const line = if (comptime root.position_tracking_enabled)
+            self.line + 1
+        else
+            self.positionOfOffset(self.read_bytes + self.seek).line;
         const diagnostic: root.ParseDiagnostic = .{ .indentation = .{
-            .line = if (comptime root.position_tracking_enabled) self.line + 1 else 0,
-            .column = if (comptime root.position_tracking_enabled) 1 else 0,
+            .line = line,
+            .column = if (line == 0) 0 else 1,
             .spaces = line_spaces,
             .indentation_width = self.indent_width,
         } };
@@ -1895,7 +1910,45 @@ pub const Context = struct {
         }
         return self.token.buffer;
     }
+
+    /// The parse's input from its first byte, or null for the two parsers
+    /// that read their input in chunks: a bounded input window, and an
+    /// indentation-mode parser streaming a file. A file read whole arrives
+    /// as bytes.
+    fn inputFromStart(self: *const Self) ?[]const u8 {
+        if (comptime root.sliding_input_enabled) return null;
+        if (comptime root.config.indentation_syntax) return switch (self.source) {
+            .bytes => |bytes| bytes.input,
+            .file => null,
+        };
+        return self.diagnosticInput();
+    }
+
+    /// The line and column of `source_offset`, computed from the input; 0, 0
+    /// for a parser that reads its input in chunks.
+    fn positionOfOffset(self: *Self, source_offset: usize) DiagnosticPosition {
+        const input = self.inputFromStart() orelse return .{ .line = 0, .column = 0 };
+        self.line_scan = self.line_scan.advance(input, source_offset) catch return .{ .line = 0, .column = 0 };
+        const position = self.line_scan.lineColumn();
+        return .{
+            .line = std.math.cast(u32, position.line) orelse 0,
+            .column = std.math.cast(u32, position.column) orelse 0,
+        };
+    }
+
+    /// Where a diagnostic recorded now points: the current token. Every
+    /// diagnostic takes its position here. Line and column tracking answers
+    /// when it is enabled; otherwise the position is computed from the
+    /// token's offset, off the hot path. It is 0, 0 only for a parser that
+    /// reads its input in chunks (`inputFromStart`).
+    pub fn diagnosticPosition(self: *Self) DiagnosticPosition {
+        if (comptime root.position_tracking_enabled) return .{ .line = self.line, .column = self.column };
+        return self.positionOfOffset(self.currentTokenSourceOffset());
+    }
 };
+
+/// A diagnostic's 1-based line and column; 0, 0 when it has none.
+pub const DiagnosticPosition = struct { line: u32, column: u32 };
 
 test "newline summary counts markers enabled by config" {
     const summary = summarizeNewlines("a\n\nb\x01c\x02\x02\x03d");

@@ -19,7 +19,7 @@ else if (builtin.mode == .debug) 5 else 1;
 pub const position_tracking_enabled = if (@hasDecl(parser, "is_position_tracking_enabled"))
     parser.is_position_tracking_enabled
 else
-    builtin.mode != .fast;
+    builtin.mode == .debug or builtin.mode == .safe;
 pub const input_streaming_enabled = if (@hasDecl(parser, "is_input_streaming_enabled"))
     parser.is_input_streaming_enabled
 else
@@ -654,14 +654,34 @@ pub const LineColumn = struct { line: usize, column: usize };
 /// cost is linear in `offset`. `offset` may equal `input.len`, the position
 /// just past the last byte.
 pub fn lineColumnAt(input: []const u8, offset: usize) error{OffsetOutOfRange}!LineColumn {
-    if (offset > input.len) return error.OffsetOutOfRange;
-    const before = input[0..offset];
-    const line_start = if (std.mem.lastIndexOfScalar(u8, before, '\n')) |newline| newline + 1 else 0;
-    return .{
-        .line = std.mem.countScalar(u8, before, '\n') + 1,
-        .column = offset - line_start + 1,
-    };
+    return (try (LineScan{}).advance(input, offset)).lineColumn();
 }
+
+/// A scan of a parse's input that resumes where it stopped: its offset, the
+/// line there and the offset that line starts at. Positions requested in
+/// increasing order cost one pass over the input in total.
+pub const LineScan = struct {
+    offset: usize = 0,
+    line: usize = 1,
+    line_start: usize = 0,
+
+    /// The scan moved to `offset` in `input`. An offset behind the scan
+    /// starts again from the first byte.
+    pub fn advance(self: LineScan, input: []const u8, offset: usize) error{OffsetOutOfRange}!LineScan {
+        if (offset > input.len) return error.OffsetOutOfRange;
+        const from: LineScan = if (offset >= self.offset) self else .{};
+        const passed = input[from.offset..offset];
+        return .{
+            .offset = offset,
+            .line = from.line + std.mem.countScalar(u8, passed, '\n'),
+            .line_start = if (std.mem.lastIndexOfScalar(u8, passed, '\n')) |newline| from.offset + newline + 1 else from.line_start,
+        };
+    }
+
+    pub fn lineColumn(self: LineScan) LineColumn {
+        return .{ .line = self.line, .column = self.offset - self.line_start + 1 };
+    }
+};
 
 test "lineColumnAt counts lines by newline and columns by byte" {
     const input = "ab\ncd\n\xc3\xa9f";
@@ -671,6 +691,15 @@ test "lineColumnAt counts lines by newline and columns by byte" {
     try std.testing.expectEqual(LineColumn{ .line = 3, .column = 3 }, try lineColumnAt(input, 8));
     try std.testing.expectEqual(LineColumn{ .line = 3, .column = 4 }, try lineColumnAt(input, input.len));
     try std.testing.expectError(error.OffsetOutOfRange, lineColumnAt(input, input.len + 1));
+}
+
+test "a resumed line scan agrees with a scan from the start, in any order" {
+    const input = "ab\ncd\n\nef\n";
+    var scan: LineScan = .{};
+    for ([_]usize{ 1, 3, 4, 7, 7, 10, 2, 9, input.len }) |offset| {
+        scan = try scan.advance(input, offset);
+        try std.testing.expectEqual(try lineColumnAt(input, offset), scan.lineColumn());
+    }
 }
 
 /// The errors a parse reports after publishing its tree: the parse ran to its

@@ -41,8 +41,8 @@ pub const ast_for_terminals = false;
 /// Track line and column positions during lexing.
 ///
 /// null - decide by build mode: tracking is enabled in Debug and
-///        ReleaseSafe (better diagnostics) and disabled in ReleaseFast
-///        (best throughput).
+///        ReleaseSafe (for debugging) and disabled in ReleaseFast and
+///        ReleaseSmall (best throughput).
 /// true / false - force tracking on or off regardless of build mode.
 pub const position_tracking: ?bool = false;
 

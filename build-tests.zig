@@ -2208,6 +2208,12 @@ const InputStreamingTestKind = enum {
     indentation_recovery,
     recovery_eof,
     ast_large_input,
+    /// Line and column tracking off: diagnostics compute their position, or
+    /// report none in the bounded window.
+    non_streaming_untracked,
+    indentation_untracked,
+    sliding_untracked,
+    ast_streaming_untracked,
 };
 
 fn addInputStreamingTests(
@@ -2217,7 +2223,13 @@ fn addInputStreamingTests(
     kind: InputStreamingTestKind,
     filters: []const []const u8,
 ) !*std.Build.Step.Run {
-    const language = if (kind == .indentation or kind == .indentation_no_streaming or kind == .indentation_recovery) "indentation" else "json";
+    const indentation_syntax = kind == .indentation or kind == .indentation_no_streaming or kind == .indentation_recovery or kind == .indentation_untracked;
+    const non_streaming = kind == .non_streaming or kind == .non_streaming_untracked;
+    const streaming = !non_streaming and kind != .indentation_no_streaming and kind != .indentation_untracked;
+    const untracked = kind == .non_streaming_untracked or kind == .indentation_untracked or
+        kind == .sliding_untracked or kind == .ast_streaming_untracked;
+    const ast = kind == .ast_large_input or kind == .ast_streaming_untracked;
+    const language = if (indentation_syntax) "indentation" else "json";
     const label = @tagName(kind);
     const parser_name = b.fmt("input-streaming-{s}-{s}", .{ parser_type, label });
 
@@ -2232,22 +2244,11 @@ fn addInputStreamingTests(
     const parser_path = generate_parser.addOutputFileArg(b.fmt("{s}-parser.zig", .{parser_name}));
     generate_parser.addArg("--config-output");
     const config_path = generate_parser.addOutputFileArg(b.fmt("{s}-config.zig", .{parser_name}));
-    generate_parser.addArgs(&.{
-        "--no-procedures",
-        "--with-position-tracking",
-    });
-    if (kind == .non_streaming or kind == .indentation_no_streaming) {
-        generate_parser.addArg("--no-input-streaming");
-    } else {
-        generate_parser.addArg("--with-input-streaming");
-    }
-    if (kind == .ast_large_input) {
-        generate_parser.addArg("--with-ast");
-    } else {
-        generate_parser.addArg("--no-ast");
-    }
+    generate_parser.addArg("--no-procedures");
+    generate_parser.addArg(if (untracked) "--no-position-tracking" else "--with-position-tracking");
+    generate_parser.addArg(if (streaming) "--with-input-streaming" else "--no-input-streaming");
+    generate_parser.addArg(if (ast) "--with-ast" else "--no-ast");
     if (kind == .recovery_eof or kind == .indentation_recovery) generate_parser.addArg("--with-error-recovery");
-    const indentation_syntax = kind == .indentation or kind == .indentation_no_streaming or kind == .indentation_recovery;
     if (indentation_syntax) generate_parser.addArg("--indentation-syntax");
 
     const procedures_mod = b.createModule(.{
@@ -2281,12 +2282,14 @@ fn addInputStreamingTests(
 
     const test_options = b.addOptions();
     test_options.addOption(bool, "sliding", kind == .sliding);
-    test_options.addOption(bool, "non_streaming", kind == .non_streaming);
+    test_options.addOption(bool, "non_streaming", non_streaming);
     test_options.addOption(bool, "indentation", indentation_syntax);
     test_options.addOption(bool, "indentation_recovery", kind == .indentation_recovery);
     test_options.addOption(bool, "recovery_eof", kind == .recovery_eof);
     test_options.addOption(bool, "ast_large_input", kind == .ast_large_input);
-    test_options.addOption(bool, "streaming_enabled", kind != .non_streaming and kind != .indentation_no_streaming);
+    test_options.addOption(bool, "ast", ast);
+    test_options.addOption(bool, "streaming_enabled", streaming);
+    test_options.addOption(bool, "position_tracking", !untracked);
     test_options.addOption(
         bool,
         "read_error",

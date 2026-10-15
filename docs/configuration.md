@@ -39,8 +39,8 @@ Each language directory contains a user-owned `config.zig`. Its contract:
 | `procedures` | `bool` | Execute grammar-annotated procedure hooks (`@Name`). |
 | `error_recovery` | `bool` | Enable generated syntax-error recovery. Enabled unannotated grammars use automatic recovery; grammars containing recovery annotations use explicit-only recovery. |
 | `ast_for_terminals` | `bool` | Allocate AST nodes for individual terminals. Disabling keeps AST allocations minimal. Requires `ast` or `procedures`; otherwise compilation fails. |
-| `position_tracking` | `?bool` | Line/column tracking. `null` (the default) enables it except in `ReleaseFast`; `true`/`false` force it regardless of build mode. |
-| `input_streaming` | `bool` | Stream files incrementally. Only parsers with no AST, no procedures, and no verbatim capture use a bounded input window; AST-, procedure-, or verbatim-enabled parsers retain the complete source. |
+| `position_tracking` | `?bool` | Line/column tracking while parsing, for debugging. `null` (the default) enables it in `Debug` and `ReleaseSafe`; `true`/`false` force it regardless of build mode. Diagnostics carry line and column either way. |
+| `input_streaming` | `bool` | Stream files incrementally. Only parsers with no AST, no procedures, and no verbatim capture use a bounded input window; AST-, procedure-, or verbatim-enabled parsers keep the complete source available, an indentation-syntax parser streaming a file by reading it again from the file. |
 | `indentation_syntax` | `bool` | Track indentation changes at line starts and emit virtual `block_start` (`\x01`) / `block_end` (`\x02`) tokens for indentation-sensitive grammars. Grammars that name the `block_start`/`block_end` terminals require it; otherwise compilation fails. |
 | `newline_after_block_end` | `bool` | After each `block_end` sequence, emit `\x03`. Productions that expect `new_line` match it as a newline; every other expected terminal skips it. Requires `indentation_syntax`; otherwise compilation fails. |
 | `error_messages` | anonymous struct | Template overrides for syntax-error messages — see [below](#syntax-error-message-overrides). |
@@ -143,8 +143,12 @@ defer session.deinit();
 disabled by default. `message_overrides` registers dynamic per-session syntax
 message overrides (layer 1 above).
 
-ReleaseFast builds compile out debugging instrumentation and position tracking
-where configured to maximize throughput.
+Without tracking, a diagnostic computes its line and column from its byte offset
+when it is recorded, so the parse pays nothing for it until an error occurs; one
+pass over the input serves all of a parse's diagnostics. A parser reading through
+a bounded input window, or an indentation-syntax parser streaming a file, reads
+its input in chunks, so without tracking its diagnostics carry no line and
+column (0, 0).
 
 ---
 

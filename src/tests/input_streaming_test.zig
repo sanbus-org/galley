@@ -70,13 +70,13 @@ fn parseFile(input: []const u8) !parser.ParseResult {
 
 test "input streaming generated capability" {
     try std.testing.expectEqual(test_options.streaming_enabled, parser.input_streaming_enabled);
-    try std.testing.expectEqual(test_options.ast_large_input, parser.parser.is_ast_enabled);
+    try std.testing.expectEqual(test_options.ast, parser.parser.is_ast_enabled);
     try std.testing.expectEqual(
-        test_options.streaming_enabled and !test_options.ast_large_input and !parser.uses_verbatim,
+        test_options.streaming_enabled and !test_options.ast and !parser.uses_verbatim,
         parser.sliding_input_enabled,
     );
     try std.testing.expectEqual(test_options.indentation, parser.config.indentation_syntax);
-    try std.testing.expect(parser.position_tracking_enabled);
+    try std.testing.expectEqual(test_options.position_tracking, parser.position_tracking_enabled);
 }
 
 test "file read failures propagate through the parser API" {
@@ -95,6 +95,32 @@ test "file read failures propagate through the parser API" {
     var read_guard = try session.readLatest();
     defer read_guard.deinit();
     try std.testing.expectEqual(null, read_guard.lastDiagnostic());
+}
+
+/// The line and column of the syntax error `input` ends in.
+fn syntaxErrorPosition(input: []const u8) !struct { u32, u32 } {
+    var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
+    defer session.deinit();
+    try std.testing.expectError(parser.ParseError.SyntaxError, session.parseBytes(input, "position"));
+    var read_guard = try session.readLatest();
+    defer read_guard.deinit();
+    const diagnostic = read_guard.lastDiagnostic() orelse return error.MissingDiagnostic;
+    return switch (diagnostic) {
+        .syntax => |syntax| .{ syntax.line, syntax.column },
+        .semantic, .indentation, .hook => error.ExpectedSyntaxDiagnostic,
+    };
+}
+
+test "a syntax error carries its line and column, with or without tracking" {
+    if (test_options.indentation) return error.SkipZigTest;
+
+    // A bounded window without tracking reports no position, whatever the input.
+    const chunked = parser.sliding_input_enabled and !parser.position_tracking_enabled;
+    const inside: struct { u32, u32 } = if (chunked) .{ 0, 0 } else .{ 3, 3 };
+    try std.testing.expectEqual(inside, try syntaxErrorPosition("[1,\n  2,\n  ?]"));
+    // An error at the end of the input sits just past its last byte.
+    const at_end: struct { u32, u32 } = if (chunked) .{ 0, 0 } else .{ 3, 1 };
+    try std.testing.expectEqual(at_end, try syntaxErrorPosition("[1,\n  2,\n"));
 }
 
 test "non-streaming file parsing loads the complete input" {
