@@ -262,7 +262,7 @@ pub fn reduction_Item_1(args: *ProcedureArguments) !void {
 }
 ```
 
-The gate records an arena-backed diagnostic, marks the current node (`is_semantic_error = true`), and returns the total count so hooks can limit themselves:
+The gate records an arena-backed diagnostic, marks the current node (`is_semantic_error = true`), and returns the total count. The runtime sets no limit on semantic errors, so a hook that wants one uses that count:
 
 ```zig
 const count = try args.reportSemanticError("duplicate key");

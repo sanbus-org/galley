@@ -868,7 +868,9 @@ class SessionTests(unittest.TestCase):
         self.assertTrue(
             all(isinstance(token, bytes) for token in diagnostic.expected_tokens)
         )
-        self.assertEqual(diagnostic.context[-1], b"Number")
+        # Innermost first; how many outer variables follow depends on the
+        # build mode's syntax-error stack depth.
+        self.assertEqual(diagnostic.context[0], b"Number")
         self.assertIsInstance(diagnostic.syntax_error_count, int)
 
     def test_diagnostic_resets_after_successful_parse(self):

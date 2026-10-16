@@ -96,10 +96,14 @@ pub const is_syntax_error_stack_enabled = syntax_error_stack_depth > 1;
 ```
 
 The runtime resolves the depth: `-Dsyntax-error-stack-depth=N` overrides the
-default, otherwise the stack defaults to 5 variables in debug builds and 1 in
-release builds. A depth of 1 drops the feature entirely — the push/pop
+default, otherwise the stack defaults to 5 variables in Debug builds and 1 in
+ReleaseSafe, ReleaseFast and ReleaseSmall. A depth of 1 drops the feature entirely — the push/pop
 instrumentation and its deferred cleanup fold away at compile time, so release parsers carry no
-stack overhead unless the build was compiled with the option. When the stack
+stack overhead unless the build was compiled with the option. The difference is
+deliberate: a Debug build and a release build of one parser report the same
+error at the same position, but the Debug message and context chain list the
+outer variables too, while the release ones name only the innermost. Pass the same
+`-Dsyntax-error-stack-depth` to both builds when their messages must match. When the stack
 is enabled, each LL variable parse function pushes its variable onto a ring
 (consecutive repeats of a self-recursive rule occupy one slot) and pops it on
 return.

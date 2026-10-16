@@ -139,6 +139,7 @@ defer session.deinit();
 ```
 
 `max_errors` and `recovery_window` configure generated error recovery.
+`max_errors` counts syntax errors only; semantic errors have no runtime limit.
 `stack_overflow_recovery` enables the optional native recovery boundary and is
 disabled by default. `message_overrides` registers dynamic per-session syntax
 message overrides (layer 1 above).
