@@ -56,4 +56,6 @@ capacity and comparisons against other parser libraries. Applications own their
 own input and output layers, so measure those separately when end-to-end behavior
 matters.
 
+CI compares the Zig benchmark with its parent commit and the `performance-reference` tag by instruction count, which layout does not move.
+
 When investigating performance regressions, record hot parser symbol addresses with `nm -an zig-out/bin/<parser>` and compare them alongside throughput. Address changes do not prove a parser-code regression; they may indicate a layout-induced frontend effect.

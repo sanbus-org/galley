@@ -10,13 +10,13 @@
 # CLI with the given flags (building the CLI first when it is missing),
 # then repoints the compiled example benchmarks' ll.grm symlinks at
 # languages/<grammar>/ll.grm and rewrites each of those benchmarks' configs
-# the same way. Each example benchmark grammar also gets a
-# host_procedures.zig so its parser binds hooks to the session's host
+# the same way. languages/<grammar> and each example benchmark grammar get
+# a host_procedures.zig so their parsers bind hooks to the session's host
 # dispatch (disabled by default) instead of extern entry points nobody
-# implements — the same shim the python, js, and java builds pass for
-# languages/<grammar>. The python, js, java, and zig benchmark builds
-# compile languages/<grammar> directly; c, cpp, rust, and go keep their
-# own benchmark grammar directories.
+# implements: the zig benchmark and every binding run the same hooks,
+# whether or not the row builds the bindings. The python, js, java, and
+# zig benchmark builds compile languages/<grammar> directly; c, cpp, rust,
+# and go keep their own benchmark grammar directories.
 #
 # Every generation against languages/<grammar> pins --parser-type ll:
 # one library embeds one parser, and languages/json also ships lr.grm.
@@ -52,7 +52,7 @@ fi
 # parser this row builds makes the consumer build refuse the directory.
 # Both parser files are generated, never tracked.
 rm -f "${repo_root}/languages/${grammar}/_lr-parser.zig"
-"$cli" --parser-type ll "$@" "${repo_root}/languages/${grammar}"
+"$cli" --parser-type ll "$@" --emit-host-procedures "${repo_root}/languages/${grammar}"
 
 for dir in "${dirs[@]}"; do
 	ln -sfn "../../../languages/${grammar}/ll.grm" "${repo_root}/${dir}/ll.grm"

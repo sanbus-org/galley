@@ -12,14 +12,19 @@ throughput benchmark.
 Zig is not a binding. The other examples are.
 
 CI (`benchmark`) runs a matrix over parser configurations: seven JSON rows
-covering AST, procedures, and error recovery, plus two Python rows with
+covering AST, procedures, and error recovery, plus one row with
 indentation syntax. Each row reconfigures the grammar
-(`scripts/configure-benchmarks.sh`): the python, js, and java
-benchmarks compile `languages/<grammar>` directly, while the compiled
-examples keep their own benchmark grammar directories pointed at the same
-grammar. Every row builds the binaries ReleaseFast, runs interleaved
-rounds on one machine, and fails if a C-ABI example lags native Zig by a
-wide margin.
+(`scripts/configure-benchmarks.sh`) and compares the Zig benchmark with
+builds from the parent commit and the `performance-reference` tag: it
+fails when Zig runs more than 0.5% more instructions, or loses more than
+10% of its throughput.
+
+The bindings run the parser Zig runs whatever the configuration, so only
+the `json-base` row builds them: the python, js, and java benchmarks
+compile `languages/<grammar>` directly, while the compiled examples keep
+their own benchmark grammar directories pointed at the same grammar. That
+row runs every binding interleaved with Zig on one machine and fails when
+one falls below 90% of Zig's throughput.
 
 ## Building a binding example
 
