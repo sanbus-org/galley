@@ -18,12 +18,18 @@
 # zig benchmark builds compile languages/<grammar> directly; c, cpp, rust,
 # and go keep their own benchmark grammar directories.
 #
+# Set CONFIGURE_BENCHMARKS_EXAMPLES=0 to skip those c/cpp/rust/go example
+# benchmark grammar directories entirely (no binding benchmark build will
+# consume them, only the zig example does); unset or 1 keeps the default
+# of configuring them.
+#
 # Every generation against languages/<grammar> pins --parser-type ll:
 # one library embeds one parser, and languages/json also ships lr.grm.
 set -euo pipefail
 
 grammar="${1:?usage: configure-benchmarks.sh <grammar> [<galley-flag>...]}"
 shift
+examples="${CONFIGURE_BENCHMARKS_EXAMPLES:-1}"
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -54,8 +60,12 @@ fi
 rm -f "${repo_root}/languages/${grammar}/_lr-parser.zig"
 "$cli" --parser-type ll "$@" --emit-host-procedures "${repo_root}/languages/${grammar}"
 
-for dir in "${dirs[@]}"; do
-	ln -sfn "../../../languages/${grammar}/ll.grm" "${repo_root}/${dir}/ll.grm"
-	"$cli" "$@" --emit-host-procedures "${repo_root}/${dir}"
-done
-echo "configured languages/${grammar} and ${#dirs[@]} example benchmark grammars"
+if [[ "$examples" == 0 ]]; then
+	echo "configured ${grammar} (example benchmark grammars skipped)"
+else
+	for dir in "${dirs[@]}"; do
+		ln -sfn "../../../languages/${grammar}/ll.grm" "${repo_root}/${dir}/ll.grm"
+		"$cli" "$@" --emit-host-procedures "${repo_root}/${dir}"
+	done
+	echo "configured languages/${grammar} and ${#dirs[@]} example benchmark grammars"
+fi

@@ -72,7 +72,6 @@ pub fn build(b: *std.Build) void {
         }),
     });
     demo.step.dependOn(&generate_demo.step);
-    b.installArtifact(demo);
 
     const run_demo = b.addRunArtifact(demo);
     run_demo.addPassthruArgs();
@@ -98,10 +97,19 @@ pub fn build(b: *std.Build) void {
         }),
     });
     benchmark.step.dependOn(&generate_benchmark.step);
-    b.installArtifact(benchmark);
 
     const run_benchmark = b.addRunArtifact(benchmark);
     run_benchmark.addPassthruArgs();
     const run_benchmark_step = b.step("run-benchmark", "Run the throughput benchmark");
     run_benchmark_step.dependOn(&run_benchmark.step);
+
+    // Plain `zig build` installs demo and benchmark through the default
+    // install step; a target name (e.g. `zig build benchmark`) installs
+    // one, so the benchmark CI rows do not compile the key/value demo.
+    const demo_install = b.addInstallArtifact(demo, .{});
+    b.step("demo", "Build the key/value demo").dependOn(&demo_install.step);
+    const benchmark_install = b.addInstallArtifact(benchmark, .{});
+    b.step("benchmark", "Build the throughput benchmark").dependOn(&benchmark_install.step);
+    b.getInstallStep().dependOn(&demo_install.step);
+    b.getInstallStep().dependOn(&benchmark_install.step);
 }

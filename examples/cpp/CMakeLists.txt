@@ -134,7 +134,7 @@ add_custom_command(
             --prefix "${BENCHMARK_DIR}"
             install
     WORKING_DIRECTORY "${GALLEY_SOURCE_DIR}"
-    DEPENDS "${GALLEY_OPTIMIZE_STAMP}" "${BENCHMARK_PARSER}" "${GALLEY_LIBRARY}"
+    DEPENDS "${GALLEY_OPTIMIZE_STAMP}" "${BENCHMARK_PARSER}"
     VERBATIM
 )
 add_custom_target(galley_benchmark_c_api DEPENDS

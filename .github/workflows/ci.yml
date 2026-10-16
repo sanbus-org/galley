@@ -900,6 +900,10 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq valgrind
 
       - name: Configure benchmark grammars
+        env:
+          # Only the bindings row consumes the example benchmark grammar
+          # directories; zig-only rows skip generating their parsers.
+          CONFIGURE_BENCHMARKS_EXAMPLES: ${{ matrix.bindings && '1' || '0' }}
         run: bash scripts/configure-benchmarks.sh "${{ matrix.grammar }}" ${{ matrix.flags }}
 
       - name: Build binding benchmarks
@@ -916,7 +920,7 @@ jobs:
           cmake --build /tmp/build-cpp --target benchmark
           cargo build --release --manifest-path examples/rust/Cargo.toml -p galley-rust-benchmark
           cd examples/go
-          go generate ./...
+          go generate ./benchmark
           go build -o /tmp/galley-go-benchmark ./benchmark
           cd ../python
           pip install -e .
@@ -946,8 +950,8 @@ jobs:
           # The counting build targets one CPU, so callgrind runs the same
           # instructions on every runner and never meets AVX-512.
           cd examples/zig
-          zig build -Doptimize=ReleaseFast -Dgrammar="${{ matrix.grammar }}"
-          zig build -Doptimize=ReleaseFast -Dgrammar="${{ matrix.grammar }}" -Dcpu=x86_64_v3 --prefix zig-out-counting
+          zig build -Doptimize=ReleaseFast -Dgrammar="${{ matrix.grammar }}" benchmark
+          zig build -Doptimize=ReleaseFast -Dgrammar="${{ matrix.grammar }}" benchmark -Dcpu=x86_64_v3 --prefix zig-out-counting
 
       - name: Build reference zig benchmarks
         if: ${{ steps.references.outputs.parent == '1' || steps.references.outputs.ref == '1' }}
@@ -979,8 +983,15 @@ jobs:
                 --no-ast-for-terminals) flags+=("-Dast-for-terminals=false") ;;
               esac
             done
-            (cd "$tree/examples/zig" && zig build -Doptimize=ReleaseFast -Dgrammar="${{ matrix.grammar }}" "${flags[@]}")
-            (cd "$tree/examples/zig" && zig build -Doptimize=ReleaseFast -Dgrammar="${{ matrix.grammar }}" "${flags[@]}" -Dcpu=x86_64_v3 --prefix zig-out-counting)
+            # A tree older than the benchmark-only install step (a stale
+            # performance-reference tag) has no benchmark step; build it the
+            # old way so the row still gets its reference numbers.
+            targets=()
+            if grep -q 'b.step("benchmark"' "$tree/examples/zig/build.zig"; then
+              targets+=(benchmark)
+            fi
+            (cd "$tree/examples/zig" && zig build -Doptimize=ReleaseFast -Dgrammar="${{ matrix.grammar }}" "${targets[@]}" "${flags[@]}")
+            (cd "$tree/examples/zig" && zig build -Doptimize=ReleaseFast -Dgrammar="${{ matrix.grammar }}" "${targets[@]}" "${flags[@]}" -Dcpu=x86_64_v3 --prefix zig-out-counting)
           }
           if [ "${{ steps.references.outputs.parent }}" = 1 ]; then
             parent="$RUNNER_TEMP/galley-parent"

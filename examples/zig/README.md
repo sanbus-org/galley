@@ -15,6 +15,7 @@ above.
 
 ```sh
 zig build run
+zig build benchmark
 zig build -Doptimize=ReleaseFast run-benchmark
 ```
 
