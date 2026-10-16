@@ -250,15 +250,26 @@ public final class Session implements AutoCloseable {
 
     /**
      * The host failure for a negative status the core reported on the session
-     * door, with the session's diagnostic snapshot when one exists.
+     * door. Only a parse failure carries a diagnostic ({@link #parseFailure}).
      */
     GalleyException errorFromStatus(long status) {
+        return statusFailure(lib, status, null);
+    }
+
+    /**
+     * The failure of a parse, with that parse's diagnostic snapshot. A parse
+     * refused with {@code ERROR_SESSION_IN_USE} started nothing, so it carries
+     * none.
+     */
+    private GalleyException parseFailure(long status) {
         Diagnostic diagnostic = null;
-        try {
-            if (gate(sessionHandle -> lib.galley_has_diagnostic(sessionHandle) != 0)) {
-                diagnostic = buildDiagnosticSingular();
-            }
-        } catch (Exception ignored) {}
+        if (status != StatusCode.ERROR_SESSION_IN_USE.getCode()) {
+            try {
+                if (gate(sessionHandle -> lib.galley_has_diagnostic(sessionHandle) != 0)) {
+                    diagnostic = buildDiagnosticSingular();
+                }
+            } catch (Exception ignored) {}
+        }
         return statusFailure(lib, status, diagnostic);
     }
 
@@ -301,7 +312,7 @@ public final class Session implements AutoCloseable {
         }
         Throwable cause = holder.failure;
         if (status < 0) {
-            GalleyException failure = errorFromStatus(status);
+            GalleyException failure = parseFailure(status);
             if (status == StatusCode.ERROR_HOOK_FAILED.getCode() && cause != null) failure.initCause(cause);
             throw failure;
         }

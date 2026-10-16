@@ -324,6 +324,9 @@ try (Session session = parser.openSession(SessionOptions.builder()
 // if (session.hasDiagnostic()) { Diagnostic d = session.diagnostic(); }
 ```
 
+A parse failure's `getDiagnostic()` is the frozen `Diagnostic` of where the
+parse stopped; every other failure's is `null`.
+
 Parsing entry points: `parse(byte[])`, `parse(ByteBuffer)`, `parse(String)`, `parseSentinel(String|byte[]|ByteBuffer)`, and `parseFile(String|File)`. `ByteBuffer` honors `position`/`remaining`/`arrayOffset`; direct buffers are passed by pointer with `Reference.reachabilityFence`.
 
 Sessions own their IO backend and allocator and are not safe for concurrent

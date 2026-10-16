@@ -105,6 +105,42 @@ export async function runPublishedFailureScenarios({ test, assert, newParser, St
     }
   });
 
+  await test("only the parse failure carries the parse diagnostic", async () => {
+    const parser = await newParser();
+    const s = await parser.openSession();
+    try {
+      let parseFailure = null;
+      try {
+        s.parse(RECOVERED);
+      } catch (error) {
+        parseFailure = error;
+      }
+      assert.ok(parseFailure instanceof GalleyError && parseFailure.diagnostic !== null);
+
+      // An invalid node on the published tree is not a parse failure: it
+      // carries no diagnostic and keeps its own message.
+      const walker = s.rootNode().walk();
+      let leaf = null;
+      for (const step of walker) {
+        if (step.depth >= 1 && step.node.length === 0) {
+          leaf = step.node;
+          break;
+        }
+      }
+      assert.ok(leaf !== null);
+      s.removeSelf(leaf);
+      assert.throws(() => walker.next(), (error) => {
+        assert.ok(error instanceof GalleyError);
+        assert.equal(error.code, Status.ErrorInvalidNode);
+        assert.equal(error.diagnostic, null);
+        assert.notEqual(error.message, parseFailure.diagnostic.message);
+        return true;
+      });
+    } finally {
+      s.close();
+    }
+  });
+
   await test("an unrecovered syntax error publishes nothing", async () => {
     const parser = await newParser();
     // One error is the limit, so the parser raises instead of recovering.

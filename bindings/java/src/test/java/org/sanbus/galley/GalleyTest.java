@@ -1491,6 +1491,30 @@ public class GalleyTest {
         }
 
         @Test
+        void onlyTheParseFailureCarriesTheParseDiagnostic() {
+            GalleyException parseFailure = assertThrows(GalleyException.class, () -> session.parse(RECOVERED));
+            assertNotNull(parseFailure.getDiagnostic());
+
+            // An invalid node on the published tree is not a parse failure: it
+            // carries no diagnostic and keeps its own message.
+            Walker walker = session.rootNode().walk(false, false);
+            Node leaf = null;
+            while (walker.hasNext()) {
+                Walker.WalkStep step = walker.next();
+                if (step.depth >= 1 && session.childCount(step.node) == 0) {
+                    leaf = step.node;
+                    break;
+                }
+            }
+            assertNotNull(leaf);
+            session.removeSelf(leaf);
+            GalleyException invalid = assertThrows(GalleyException.class, walker::next);
+            assertEquals(StatusCode.ERROR_INVALID_NODE, invalid.getCode());
+            assertNull(invalid.getDiagnostic());
+            assertNotEquals(parseFailure.getDiagnostic().getMessage(), invalid.getMessage());
+        }
+
+        @Test
         void anUnrecoveredSyntaxErrorPublishesNothing() {
             // One error is the limit, so the parser raises instead of recovering.
             try (Session strict = parser.openSession(SessionOptions.builder().maxErrors(1).build())) {

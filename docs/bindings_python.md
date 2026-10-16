@@ -321,8 +321,8 @@ Options mirror the runtime defaults: `max_errors=10`,
 `recovery_window=500`, `stack_overflow_recovery=False`,
 `syntax_error_stack_depth=0`, `verbosity=0`,
 `ast_preallocation_ratio=-1.0`, `ast_preallocation_cap=0`.
-Failures raise `parser.GalleyError`, whose `code` and `diagnostic` attributes carry the raw
-status code and the snapshot for that failure (`error.diagnostic` is `None` when no diagnostic, otherwise a `parser.Diagnostic`; `session.diagnostic()` remains for the last diagnostic).
+Failures raise `parser.GalleyError`, whose `code` is the raw status code. A parse
+failure's `diagnostic` is the frozen `parser.Diagnostic` of where the parse stopped; every other failure's is `None`. `session.diagnostic()` returns the last diagnostic.
 
 `Session` is a context manager (`with parser.Session() as s:` closes on exit)
 and `close()` is idempotent. Every session method that takes a node takes

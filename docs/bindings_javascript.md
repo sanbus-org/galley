@@ -414,10 +414,10 @@ Overrides register per session through the method:
 session.setMessageOverride("Number", "expected a number at {line}:{column}");
 ```
 
-Failures throw `GalleyError`, whose `code` and `diagnostic` carry the raw
-status code and the snapshot for that failure (`error.diagnostic` is `null`
-when no diagnostic, otherwise a `Diagnostic`; `session.diagnostic()` returns
-the last diagnostic). Use after close throws `SessionClosedError` instead.
+Failures throw `GalleyError`, whose `code` is the raw status code. A parse
+failure's `diagnostic` is the frozen `Diagnostic` of where the parse stopped;
+every other failure's is `null`. `session.diagnostic()` returns the last
+diagnostic. Use after close throws `SessionClosedError` instead.
 
 `Session` implements `Symbol.dispose` so `using`/`await using` closes on
 exit, and `close()` is idempotent. Every session method that takes a node

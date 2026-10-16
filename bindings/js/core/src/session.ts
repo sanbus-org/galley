@@ -552,6 +552,17 @@ export class Session implements HookOwner {
     if (status === Status.ErrorStaleTree) {
       return new StaleTreeError(STALE_TREE_MESSAGE);
     }
+    // Boundary trust: `status` is the port's raw status, already known negative.
+    return new GalleyError(fallback ?? this.#statusMessage(status), status as Status, null, options);
+  }
+
+  /**
+   * The failure of a parse, with that parse's diagnostic snapshot: only a
+   * parse failure carries one. A parse refused with `ErrorSessionInUse`
+   * started nothing, so it carries none.
+   */
+  #parseFailure(status: number, options?: ErrorOptions): GalleyError {
+    if (status === Status.ErrorSessionInUse) return this.errorFromStatus(status, undefined, options);
     let diag: Diagnostic | null = null;
     try {
       if (this.#handle !== null && this.#port.hasDiagnostic(this.#handle)) {
@@ -560,9 +571,8 @@ export class Session implements HookOwner {
     } catch {
       // ignore
     }
-    const message = fallback ?? diag?.message ?? this.#statusMessage(status);
     // Boundary trust: `status` is the port's raw status, already known negative.
-    return new GalleyError(message, status as Status, diag, options);
+    return new GalleyError(diag?.message ?? this.#statusMessage(status), status as Status, diag, options);
   }
 
   #checkStatus(status: number, fallback?: string): void {
@@ -783,7 +793,7 @@ export class Session implements HookOwner {
       const cause = status === Status.ErrorHookFailed && hookFailure !== null
         ? { cause: hookFailure.thrown }
         : undefined;
-      throw this.errorFromStatus(status, undefined, cause);
+      throw this.#parseFailure(status, cause);
     }
     return status;
   }
