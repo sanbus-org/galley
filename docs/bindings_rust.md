@@ -82,7 +82,9 @@ general `reduction`); author-defined grammar hooks are declared as
 `hook_<name>`. Each hook fires after the corresponding variable is reduced.
 The helper compiles `procedures.rs` with `panic=abort`, so a panic inside a
 hook aborts rather than unwinding through generated parser code. Semantic
-payloads are unavailable through bindings.
+payloads are unavailable through bindings. Hook-door diagnostics are not
+bound either, and a parse failure carries no attached snapshot: diagnostics
+are read from the session afterwards.
 
 ## Semantic Errors
 
@@ -98,9 +100,23 @@ if value > 999 {
 }
 ```
 
-Read them through `Session::diagnostic` / `Session::diagnostics`; the
-snapshot carries `kind == DiagnosticKind::Semantic` and
+Read them through `Session::diagnostic` (`Ok(None)` when the last parse
+recorded none), `Session::diagnostics` / `Session::diagnostic_at(index)` for
+every record in recording order, or `Session::has_diagnostic()` to ask
+whether any was recorded. The snapshot carries the parse's
+`syntax_error_count` / `semantic_error_count` totals, and for a semantic
+error `kind == DiagnosticKind::Semantic` with
 `semantic == Some((variable, message))`.
+
+## Grammar Tables
+
+`galley::symbol_count()` and `galley::variable_count()` size the grammar's
+symbol and variable tables; `Session::symbol_name_at(index)`,
+`Session::symbol_is_terminal(index)`, and `Session::variable_name_at(index)`
+read them. `galley::hooks_count()` and `galley::hooks_name(index)` list the
+hooks the library forwards to a host shim; a library built with compiled
+hooks — Rust hooks included — forwards none. Every index at or past its
+table's count fails with `Error::OutOfRange`.
 
 ## Tree Walking
 
@@ -234,7 +250,7 @@ if let Some(root) = session.root_node().expect("root read") {
 
 // Diagnostics on failure.
 if session.parse_sentinel("bad input").is_err() {
-    if let Some(d) = session.diagnostic() {
+    if let Some(d) = session.diagnostic().expect("diagnostic read") {
         eprintln!("{}:{} {}", d.line, d.column, d.message);
     }
 }
@@ -270,6 +286,8 @@ let opts = SessionOptions {
     recovery_window: 1000,
     stack_overflow_recovery: true,
     syntax_error_stack_depth: 3,
+    message_overrides: Vec::new(),
+    ..Default::default()
 };
 let mut session = Session::with_options(opts).expect("session");
 ```

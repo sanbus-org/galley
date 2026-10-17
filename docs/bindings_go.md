@@ -138,6 +138,10 @@ process under *your* Go runtime — the shared library stays runtime-free,
 which is what keeps loading it from Go programs safe (embedding a second
 Go runtime via c-archive segfaults on linux/amd64). Each hook fires after
 the corresponding variable is reduced; unregistered slots are no-ops.
+Because the hooks are installed at generation time, a Go-hooked library
+reports zero host hooks (`HooksCount() == 0`) and has no hook-name list:
+the C ABI's host-hook surface addresses shim libraries (such as the JS
+and Python ones), not compiled-in hooks.
 Reduction hooks keep their `reduction_<VariableName>` names (plus the
 general `reduction`); author-defined grammar hooks are declared as
 `hook_<name>`. Semantic payloads are unavailable through bindings. Tree
@@ -190,7 +194,60 @@ if value > 999 {
 
 Read them through `Session.Diagnostic` / `Session.Diagnostics`; the
 snapshot carries `Kind == DiagnosticKindSemantic` and a `Semantic`
-`{Variable, Message}` pair.
+`{Variable, Message}` pair. Both return an error rather than a zero
+answer when the core refuses the read: `ErrSessionInUse` while a parse is
+in flight (hook code reads the running parse through
+`HookDoor.Diagnostic`) and `ErrNullArgument` after `Close`.
+
+## Diagnostics
+
+Every parse leg returns a `*ParseError` on failure: `Status` is the
+negative status (`errors.Is(err, galley.ErrSyntax)` holds), and
+`Diagnostic` is a snapshot of the diagnostic the parse stopped at, frozen
+into Go when the failure is created — nil when the parse recorded none,
+such as an IO failure. A parse refused with `ErrSessionInUse` carries no
+snapshot: the refusal records no diagnostic.
+
+```go
+parsed, err := session.Parse(input)
+var failure *galley.ParseError
+if errors.As(err, &failure) && failure.Diagnostic != nil {
+    fmt.Fprintf(os.Stderr, "%d:%d: %s\n",
+        failure.Diagnostic.Line, failure.Diagnostic.Column, failure.Diagnostic.Message)
+}
+```
+
+Post-parse readers return the core's refusals instead of empty answers:
+`Diagnostic()` (the most recent diagnostic; a parse that succeeded
+answers present=false), `Diagnostics()` (all recorded diagnostics, in
+recording order; nil after a success), `HasDiagnostic()`,
+`SyntaxErrorCount()`, and `SemanticErrorCount()`. A read while a parse is
+in flight is `ErrSessionInUse`; after `Close` it is `ErrNullArgument`.
+The one skippable refusal is `ErrSessionInUse` while attaching the
+snapshot to a parse failure: the failure is returned without it. Any
+other refused read replaces the failure with the refusal.
+
+Every `Diagnostic` — the failure's snapshot, `Diagnostic()`'s, each of
+`Diagnostics()`'s, and a hook door's twin — carries the parse's error
+totals: `SyntaxErrorCount` and `SemanticErrorCount` describe the parse,
+not one diagnostic, so every diagnostic of one parse carries the same
+counts. A hook-door snapshot reports the running parse's totals so far,
+read through the hook door's twins while the session's own readers are
+`ErrSessionInUse`.
+
+Grammar introspection: `SymbolCount()`, `SymbolNameAt(index)`,
+`SymbolIsTerminal(index)`, and `VariableNameAt(index)` describe the
+generated grammar's symbol table; `HooksCount()` and `HookName(index)`
+list the host hooks a library forwards — zero for a Go-hooked library
+(its hooks are installed at generation time; see Procedures). An index at
+or past a table's count is `ErrOutOfRange`; a closed session refuses the
+session-handled reads with `ErrNullArgument`.
+
+The shared statuses include `ErrOutOfRange` (-17, "out of range") and
+`ErrInvalidArgument` (-18, "invalid argument"). Option values are
+validated by the core alone: a negative `MaxErrors`, `RecoveryWindow`, or
+`Verbosity`, or a non-finite `ASTPreallocationRatio`, comes back from
+`WithOptions` as `ErrInvalidArgument`.
 
 ## Tree Walking
 
@@ -247,8 +304,8 @@ the same session or `Close`. A parse that fails after running to its end —
 semantic errors only, or syntax errors the parser recovered from — publishes
 its tree like a success, `Parse` still returning the failure, and
 `LastInput()` is that input; the damaged regions are nodes spanning the input
-recovery skipped (`WalkStep.IsSemanticError` flags semantic errors; the
-recovered flag and the snapshot's flag columns are not in Go yet). A failed
+recovery skipped (`WalkStep.IsSemanticError` flags semantic errors, and the
+failure's `ParseError.Diagnostic` carries the diagnostic snapshot). A failed
 parse that publishes nothing counts as a later parse: `Snapshot()`,
 `NodeCount()`, `LastInput()`, `Info()`, and every node read return
 `ErrStaleTree` until a parse publishes, and so do they before the first parse.
@@ -260,8 +317,13 @@ probe — a real read is the answer, and it fails. A `Node` carries the
 core's parse generation and its address, and every read and edit hands that
 generation to the core, which refuses one it no longer holds with
 `ErrStaleTree`. `RootNode()` reports the generation with the root, a
-`Snapshot` stamps its own (`Snapshot.Node(index)` makes a handle of that
-parse), and links and walk steps carry their source's. Nothing is cached, so
+`Snapshot` stamps its own, and links and walk steps carry their source's.
+`Snapshot.Node(index)` is the one conversion from a stored column address
+back to a handle: the invalid-node constant answers the empty `Node`
+(really empty — no parse has generation 0 — so every use is
+`ErrStaleTree`), an index at or past `Snapshot.Count` panics with the
+host's index error at the call, and every other address is a node of that
+parse. Nothing is cached, so
 no host-side reading can disagree with the core.
 
 ## Development builds

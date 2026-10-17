@@ -109,7 +109,17 @@ public final class Diagnostic {
     public List<String> getContext() { return context; }
     /** Raw bytes behind {@link #getContext()}, one entry per name. */
     public List<byte[]> getContextBytes() { return Collections.unmodifiableList(copyBytes(contextBytes)); }
+    /**
+     * The parse's total syntax errors — the session door's
+     * {@code galley_syntax_error_count} — the same value on the current and
+     * every recorded snapshot of that parse.
+     */
     public int getSyntaxErrorCount() { return syntaxErrorCount; }
+    /**
+     * The parse's total semantic errors — the session door's
+     * {@code galley_semantic_error_count} — the same value on the current and
+     * every recorded snapshot of that parse.
+     */
     public int getSemanticErrorCount() { return semanticErrorCount; }
     public String[] getSemantic() { return semantic != null ? semantic.clone() : null; }
     public int[] getIndentation() { return indentation != null ? indentation.clone() : null; }

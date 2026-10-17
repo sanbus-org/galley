@@ -11,7 +11,16 @@ import { INVALID_NODE, NO_VARIABLE, Status } from "./constants.ts";
 import type { Kind, RecoveryTarget, Resume } from "./constants.ts";
 import type { Diagnostic } from "./diagnostic.ts";
 import { GalleyError, SessionClosedError, StaleTreeError } from "./errors.ts";
-import type { FfiPort, Handle, HookTicket, NodeFamily, SessionCOptions, SnapshotColumns, StagedHandle } from "./port.ts";
+import type {
+  CurrentDiagnosticFamily,
+  FfiPort,
+  Handle,
+  HookTicket,
+  NodeFamily,
+  SessionCOptions,
+  SnapshotColumns,
+  StagedHandle,
+} from "./port.ts";
 import { decodeUtf8 } from "./text.ts";
 import { checkArtifactPath, checkMessageBytes, checkParseInput } from "./sources.ts";
 import { rejectSessionOptions } from "./internal.ts";
@@ -62,6 +71,38 @@ export interface TreeSnapshot extends SnapshotColumns {
    * @throws RangeError when `address` is at or past `count`, or negative.
    */
   node(address: number | bigint): Node | null;
+}
+
+/**
+ * The field reads of one diagnostic source — the session door's current
+ * diagnostic, the hook door's twin, or one recorded diagnostic — as a set
+ * of refusal-or-value crossings. Each member answers its value, with the
+ * conditional fields answering the field's absence; a refusal raises
+ * there, so it can never reach the snapshot as an empty field.
+ * {@link Session} builds one set per source, and `#buildDiagnostic` is the
+ * one snapshot builder over any of them.
+ */
+interface DiagnosticReads {
+  hasDiagnostic(): boolean;
+  kind(): number;
+  position(): [number, number, number];
+  message(): string;
+  messageAnsi(): string;
+  unexpectedToken(): Uint8Array | null;
+  expectedCount(): number;
+  expectedAt(index: number): Uint8Array;
+  contextCount(): number;
+  contextAt(index: number): Uint8Array;
+  syntaxErrorCount(): number;
+  semanticErrorCount(): number;
+  semantic(): [string, string] | null;
+  indentation(): [number, number] | null;
+  recoveryKind(): number;
+  recoveryTerminal(): Uint8Array | null;
+  recoveryResume(): number | null;
+  recoveryLhsVariable(): string | null;
+  recoveryProduction(): [string, number] | null;
+  recoveryOccurrence(): [string, number, number, string] | null;
 }
 
 /**
@@ -324,6 +365,12 @@ export class Session implements HookOwner {
    */
   #parseDoor: Door | null = null;
   /**
+   * The same parse's raw native door, the handle the hook-door diagnostic
+   * family (`galley_hook_diagnostic_*`) reads through; set and dropped
+   * together with {@link #parseDoor}.
+   */
+  #parseDoorHandle: Handle | null = null;
+  /**
    * The core generation of the running parse, read through
    * `galley_hook_generation` on its first dispatch: only the stamp for the
    * nodes its hooks produce, never compared with anything — the core checks
@@ -406,9 +453,11 @@ export class Session implements HookOwner {
       };
     }
 
-    const handle = port.createSession(cOptions);
+    const { status, handle } = port.createSession(cOptions);
+    if (status < 0) throw this.errorFromStatus(status);
     if (handle === null || handle === undefined) {
-      throw new GalleyError("out of memory", Status.ErrorOutOfMemory, null);
+      // A success without a handle is a broken backend, not OOM.
+      throw new GalleyError("galley: session create reported success without a handle", Status.ErrorInternal, null);
     }
     this.#handle = handle;
     this.#sessionDoor = new Door(this, port.session, handle);
@@ -559,17 +608,22 @@ export class Session implements HookOwner {
   /**
    * The failure of a parse, with that parse's diagnostic snapshot: only a
    * parse failure carries one. A parse refused with `ErrorSessionInUse`
-   * started nothing, so it carries none.
+   * is refused before it begins, so it carries none. While attaching the
+   * snapshot the one skippable status is `session in use` (another
+   * thread's parse can hold the session between this parse's failure and
+   * the read): the failure then carries no snapshot; every other refusal
+   * raises.
    */
   #parseFailure(status: number, options?: ErrorOptions): GalleyError {
     if (status === Status.ErrorSessionInUse) return this.errorFromStatus(status, undefined, options);
     let diag: Diagnostic | null = null;
-    try {
-      if (this.#handle !== null && this.#port.hasDiagnostic(this.#handle)) {
-        diag = this.#buildDiagnosticSingular();
+    if (this.#handle !== null) {
+      try {
+        const reads = this.#currentReads(this.#port.diagnostics, this.#handle);
+        if (reads.hasDiagnostic()) diag = this.#buildDiagnostic(reads);
+      } catch (error) {
+        if (!(error instanceof GalleyError && error.code === Status.ErrorSessionInUse)) throw error;
       }
-    } catch {
-      // ignore
     }
     // Boundary trust: `status` is the port's raw status, already known negative.
     return new GalleyError(diag?.message ?? this.#statusMessage(status), status as Status, diag, options);
@@ -671,6 +725,7 @@ export class Session implements HookOwner {
       if (generation < 0) throw this.errorFromStatus(generation);
       this.#parseGeneration = generation;
       this.#parseDoor = new Door(this, this.#port.hook, nativeDoor);
+      this.#parseDoorHandle = nativeDoor;
     }
     this.#dispatching = true;
     // Always pass the object: this language ignores a surplus argument,
@@ -711,6 +766,7 @@ export class Session implements HookOwner {
     // here on, and the empty table can never adopt a lingering parse
     // door's generation.
     this.#parseDoor = null;
+    this.#parseDoorHandle = null;
     // Nothing is live on a closed session: the table must not retain the
     // handles it holds strongly, or the session would keep its whole tree
     // reachable after close.
@@ -777,6 +833,7 @@ export class Session implements HookOwner {
       status = nativeParse();
     } catch (error) {
       this.#parseDoor = null;
+      this.#parseDoorHandle = null;
       this.#hookFailure = null;
       throw error;
     }
@@ -786,6 +843,7 @@ export class Session implements HookOwner {
       // a hook of it raised once its failure carries it. A refused parse
       // started nothing, so it leaves the running parse's state alone.
       this.#parseDoor = null;
+      this.#parseDoorHandle = null;
       hookFailure = this.#hookFailure;
       this.#hookFailure = null;
     }
@@ -1025,9 +1083,13 @@ export class Session implements HookOwner {
     return read;
   }
 
+  /**
+   * Whether the calling context has a diagnostic at all: the in-flight
+   * parse's inside a hook (through the hook door), the previous parse's
+   * elsewhere (through the session door). A refusal raises, never false.
+   */
   hasDiagnostic(): boolean {
-    const h = this.#requireHandle();
-    return this.port.hasDiagnostic(h);
+    return this.#diagnosticReads().hasDiagnostic();
   }
 
   setMessageOverride(name: string | Uint8Array, message: string | Uint8Array): void {
@@ -1042,204 +1104,185 @@ export class Session implements HookOwner {
 
   // -- diagnostics -----------------------------------------------------
 
-  #buildDiagnosticSingular(): Diagnostic {
-    const h = this.#requireHandle();
-    const kind = this.port.diagnosticKind(h) as Kind;
-    const [offset, line, col] = this.port.diagnosticPosition(h) ?? [0, 0, 0];
+  /**
+   * The one read-or-raise path: a negative status becomes the host's
+   * failure of that kind, anything else is the value. Every diagnostic
+   * read crosses here, so no refusal ever becomes a value the snapshot
+   * would spell empty.
+   */
+  #read<T>(value: T): Exclude<T, number> {
+    if (typeof value === "number" && value < 0) throw this.errorFromStatus(value);
+    return value as Exclude<T, number>;
+  }
 
-    const message = this.port.diagnosticMessage(h) ?? "";
-    const messageAnsi = this.port.diagnosticMessageAnsi(h) ?? "";
+  /** {@link #read} for a value that is a bare number (a kind, a count, a resume side). */
+  #readNumber(value: number): number {
+    if (value < 0) throw this.errorFromStatus(value);
+    return value;
+  }
 
-    const unexpected = this.port.diagnosticUnexpectedToken(h);
+  /**
+   * A conditional field: the value, or null for `galley_error_no_diagnostic`
+   * (no diagnostic, or one of another kind — the field's absence). Every
+   * other negative status raises like {@link #read}.
+   */
+  #field<T>(value: T): Exclude<T, number> | null {
+    if (typeof value === "number") {
+      if (value === Status.ErrorNoDiagnostic) return null;
+      if (value < 0) throw this.errorFromStatus(value);
+    }
+    return value as Exclude<T, number>;
+  }
+
+  /**
+   * A conditional list count: zero for `galley_error_no_diagnostic` (the
+   * diagnostic carries no such list); every other negative status raises.
+   */
+  #countField(value: number): number {
+    if (value === Status.ErrorNoDiagnostic) return 0;
+    return this.#readNumber(value);
+  }
+
+  /** A conditional numeric field: null for `galley_error_no_diagnostic`. */
+  #optionalNumber(value: number): number | null {
+    if (value === Status.ErrorNoDiagnostic) return null;
+    return this.#readNumber(value);
+  }
+
+  /** The reads of one door's current-diagnostic family over `handle`. */
+  #currentReads(family: CurrentDiagnosticFamily, handle: Handle): DiagnosticReads {
+    return {
+      hasDiagnostic: () => this.#read(family.hasDiagnostic(handle)),
+      kind: () => this.#readNumber(family.diagnosticKind(handle)),
+      position: () => this.#read(family.diagnosticPosition(handle)),
+      message: () => this.#read(family.diagnosticMessage(handle)),
+      messageAnsi: () => this.#read(family.diagnosticMessageAnsi(handle)),
+      unexpectedToken: () => this.#field(family.diagnosticUnexpectedToken(handle)),
+      expectedCount: () => this.#countField(family.diagnosticExpectedCount(handle)),
+      expectedAt: (index) => this.#read(family.diagnosticExpectedAt(handle, index)),
+      contextCount: () => this.#countField(family.diagnosticContextCount(handle)),
+      contextAt: (index) => this.#read(family.diagnosticContextAt(handle, index)),
+      syntaxErrorCount: () => this.#readNumber(family.syntaxErrorCount(handle)),
+      semanticErrorCount: () => this.#readNumber(family.semanticErrorCount(handle)),
+      semantic: () => this.#field(family.diagnosticSemantic(handle)),
+      indentation: () => this.#field(family.diagnosticIndentation(handle)),
+      recoveryKind: () => this.#readNumber(family.diagnosticRecoveryKind(handle)),
+      recoveryTerminal: () => this.#field(family.diagnosticRecoveryTerminal(handle)),
+      recoveryResume: () => this.#optionalNumber(family.diagnosticRecoveryResume(handle)),
+      recoveryLhsVariable: () => this.#field(family.diagnosticRecoveryLhsVariable(handle)),
+      recoveryProduction: () => this.#field(family.diagnosticRecoveryProduction(handle)),
+      recoveryOccurrence: () => this.#field(family.diagnosticRecoveryOccurrence(handle)),
+    };
+  }
+
+  /** The reads of the recorded diagnostic at `index`. */
+  #recordedReads(handle: Handle, index: number): DiagnosticReads {
+    const port = this.#port;
+    return {
+      // Built only for an index below the recorded count.
+      hasDiagnostic: () => true,
+      kind: () => this.#readNumber(port.recordedDiagnosticKind(handle, index)),
+      position: () => this.#read(port.recordedDiagnosticPosition(handle, index)),
+      message: () => this.#read(port.recordedDiagnosticMessage(handle, index)),
+      messageAnsi: () => this.#read(port.recordedDiagnosticMessageAnsi(handle, index)),
+      unexpectedToken: () => this.#field(port.recordedUnexpectedToken(handle, index)),
+      expectedCount: () => this.#countField(port.recordedExpectedCount(handle, index)),
+      expectedAt: (tokenIndex) => this.#read(port.recordedExpectedToken(handle, index, tokenIndex)),
+      contextCount: () => this.#countField(port.recordedContextCount(handle, index)),
+      contextAt: (contextIndex) => this.#read(port.recordedContextName(handle, index, contextIndex)),
+      // The recorded family has no count export: totals are the most
+      // recent parse's, the session door's reads the current snapshot uses.
+      syntaxErrorCount: () => this.#readNumber(port.diagnostics.syntaxErrorCount(handle)),
+      semanticErrorCount: () => this.#readNumber(port.diagnostics.semanticErrorCount(handle)),
+      semantic: () => this.#field(port.recordedSemantic(handle, index)),
+      indentation: () => this.#field(port.recordedIndentation(handle, index)),
+      recoveryKind: () => this.#readNumber(port.recordedRecoveryKind(handle, index)),
+      recoveryTerminal: () => this.#field(port.recordedRecoveryTerminal(handle, index)),
+      recoveryResume: () => this.#optionalNumber(port.recordedRecoveryResume(handle, index)),
+      recoveryLhsVariable: () => this.#field(port.recordedRecoveryLhsVariable(handle, index)),
+      recoveryProduction: () => this.#field(port.recordedRecoveryProduction(handle, index)),
+      recoveryOccurrence: () => this.#field(port.recordedRecoveryOccurrence(handle, index)),
+    };
+  }
+
+  /**
+   * The diagnostic reads for the calling context, chosen now: inside a
+   * hook dispatch of this session's running parse, the hook door's
+   * current-diagnostic family over its native door; everywhere else the
+   * session door's, which the core refuses while a parse runs.
+   */
+  #diagnosticReads(): DiagnosticReads {
+    if (this.#dispatching && this.#parseDoorHandle !== null) {
+      return this.#currentReads(this.port.hookDiagnostics, this.#parseDoorHandle);
+    }
+    return this.#currentReads(this.port.diagnostics, this.#requireHandle());
+  }
+
+  /**
+   * The one diagnostic snapshot builder, shared by every source (the
+   * session door's current diagnostic, the hook door's twin, a recorded
+   * one): each read is a refusal-or-value crossing, so a refused member
+   * raises instead of leaving an empty field.
+   */
+  #buildDiagnostic(reads: DiagnosticReads): Diagnostic {
+    const kind = reads.kind() as Kind;
+    const [offset, line, col] = reads.position();
 
     const expectedTokens: Uint8Array[] = [];
-    const expCount = this.port.diagnosticExpectedCount(h);
-    if (expCount > 0) {
-      for (let i = 0; i < expCount; i++) {
-        const b = this.port.diagnosticExpectedAt(h, i);
-        if (b) expectedTokens.push(b);
-      }
-    }
+    const expCount = reads.expectedCount();
+    for (let i = 0; i < expCount; i++) expectedTokens.push(reads.expectedAt(i));
 
     const context: string[] = [];
-    const ctxCount = this.port.diagnosticContextCount(h);
-    if (ctxCount > 0) {
-      for (let i = 0; i < ctxCount; i++) {
-        const b = this.port.diagnosticContextAt(h, i);
-        if (b) context.push(decodeUtf8(b));
-      }
-    }
+    const ctxCount = reads.contextCount();
+    for (let i = 0; i < ctxCount; i++) context.push(decodeUtf8(reads.contextAt(i)));
 
-    const syntaxErrorCount = this.port.syntaxErrorCount(h);
-    const semanticErrorCount = this.port.semanticErrorCount(h);
-    const semantic = this.port.diagnosticSemantic(h);
-    const indentation = this.port.diagnosticIndentation(h);
-    const recovery = this.#readRecoverySingular(h);
+    const recoveryKind = reads.recoveryKind();
 
     return {
       kind,
       offset,
       line,
       column: col,
-      message,
-      messageAnsi,
-      unexpectedToken: unexpected,
+      message: reads.message(),
+      messageAnsi: reads.messageAnsi(),
+      unexpectedToken: reads.unexpectedToken(),
       expectedTokens,
       context,
-      syntaxErrorCount: syntaxErrorCount < 0 ? 0 : syntaxErrorCount,
-      semanticErrorCount: semanticErrorCount < 0 ? 0 : semanticErrorCount,
-      semantic,
-      indentation,
-      ...recovery,
+      syntaxErrorCount: reads.syntaxErrorCount(),
+      semanticErrorCount: reads.semanticErrorCount(),
+      semantic: reads.semantic(),
+      indentation: reads.indentation(),
+      recoveryKind: recoveryKind === 0 ? null : (recoveryKind as RecoveryTarget),
+      recoveryTerminal: reads.recoveryTerminal(),
+      recoveryResume: reads.recoveryResume() as Resume | null,
+      recoveryLhsVariable: reads.recoveryLhsVariable(),
+      recoveryProduction: reads.recoveryProduction(),
+      recoveryOccurrence: reads.recoveryOccurrence(),
     };
   }
 
+  /**
+   * The previous parse's current diagnostic, or null when it produced
+   * none. Inside a hook it answers the in-flight parse's diagnostic
+   * through the hook door; a refusal raises, never null.
+   */
   diagnostic(): Diagnostic | null {
-    const h = this.#requireHandle();
-    if (!this.port.hasDiagnostic(h)) return null;
-    return this.#buildDiagnosticSingular();
+    const reads = this.#diagnosticReads();
+    if (!reads.hasDiagnostic()) return null;
+    return this.#buildDiagnostic(reads);
   }
 
+  /**
+   * The diagnostics the most recent parse recorded, in recording order
+   * (post-parse only: inside a hook the recorded family is refused with
+   * `session in use`). An empty list means the parse recorded none.
+   */
   diagnostics(): Diagnostic[] {
     const h = this.#requireHandle();
-    const count = this.port.recordedDiagnosticCount(h);
-    if (count <= 0) return [];
+    const count = this.#readNumber(this.port.recordedDiagnosticCount(h));
     const out: Diagnostic[] = [];
-    for (let i = 0; i < count; i++) {
-      const d = this.#buildRecordedDiagnostic(i);
-      if (d) out.push(d);
-    }
+    for (let i = 0; i < count; i++) out.push(this.#buildDiagnostic(this.#recordedReads(h, i)));
     return out;
-  }
-
-  #buildRecordedDiagnostic(index: number): Diagnostic | null {
-    const h = this.#requireHandle();
-    const pos = this.port.recordedDiagnosticPosition(h, index);
-    if (pos === null) return null;
-
-    const kind = this.port.recordedDiagnosticKind(h, index) as Kind;
-    const [offset, line, col] = pos;
-
-    const message = this.port.recordedDiagnosticMessage(h, index) ?? "";
-    const messageAnsi = this.port.recordedDiagnosticMessageAnsi(h, index) ?? "";
-
-    const unexpected = this.port.recordedUnexpectedToken(h, index);
-
-    const expectedTokens: Uint8Array[] = [];
-    const expCount = this.port.recordedExpectedCount(h, index);
-    if (expCount > 0) {
-      for (let j = 0; j < expCount; j++) {
-        const b = this.port.recordedExpectedToken(h, index, j);
-        if (b) expectedTokens.push(b);
-      }
-    }
-
-    const context: string[] = [];
-    const ctxCount = this.port.recordedContextCount(h, index);
-    if (ctxCount > 0) {
-      for (let j = 0; j < ctxCount; j++) {
-        const b = this.port.recordedContextName(h, index, j);
-        if (b) context.push(decodeUtf8(b));
-      }
-    }
-
-    const indentation = this.port.recordedIndentation(h, index);
-    const semantic = this.port.recordedSemantic(h, index);
-    const recovery = this.#readRecoveryRecorded(h, index);
-
-    return {
-      kind,
-      offset,
-      line,
-      column: col,
-      message,
-      messageAnsi,
-      unexpectedToken: unexpected,
-      expectedTokens,
-      context,
-      syntaxErrorCount: 0,
-      semanticErrorCount: 0,
-      semantic,
-      indentation,
-      ...recovery,
-    };
-  }
-
-  // -- recovery ---------------------------------------------------------
-
-  #readRecoverySingular(handle: Handle): Omit<
-    Diagnostic,
-    | "kind"
-    | "offset"
-    | "line"
-    | "column"
-    | "message"
-    | "messageAnsi"
-    | "unexpectedToken"
-    | "expectedTokens"
-    | "context"
-    | "syntaxErrorCount"
-    | "semanticErrorCount"
-    | "semantic"
-    | "indentation"
-  > {
-    const h = handle;
-    const kindVal = this.port.diagnosticRecoveryKind(h);
-    const recoveryKind = kindVal === 0 ? null : (kindVal as RecoveryTarget);
-
-    const terminal = this.port.diagnosticRecoveryTerminal(h);
-    const resume = this.port.diagnosticRecoveryResume(h) as Resume | null;
-    const lhs = this.port.diagnosticRecoveryLhsVariable(h);
-    const production = this.port.diagnosticRecoveryProduction(h);
-    const occurrence = this.port.diagnosticRecoveryOccurrence(h);
-
-    return {
-      recoveryKind,
-      recoveryTerminal: terminal,
-      recoveryResume: resume,
-      recoveryLhsVariable: lhs,
-      recoveryProduction: production,
-      recoveryOccurrence: occurrence,
-    };
-  }
-
-  #readRecoveryRecorded(
-    handle: Handle,
-    idx: number,
-  ): Omit<
-    Diagnostic,
-    | "kind"
-    | "offset"
-    | "line"
-    | "column"
-    | "message"
-    | "messageAnsi"
-    | "unexpectedToken"
-    | "expectedTokens"
-    | "context"
-    | "syntaxErrorCount"
-    | "semanticErrorCount"
-    | "semantic"
-    | "indentation"
-  > {
-    const h = handle;
-    const kindVal = this.port.recordedRecoveryKind(h, idx);
-    const recoveryKind = kindVal === 0 ? null : (kindVal as RecoveryTarget);
-
-    const terminal = this.port.recordedRecoveryTerminal(h, idx);
-    const resume = this.port.recordedRecoveryResume(h, idx) as Resume | null;
-    const lhs = this.port.recordedRecoveryLhsVariable(h, idx);
-    const production = this.port.recordedRecoveryProduction(h, idx);
-    const occurrence = this.port.recordedRecoveryOccurrence(h, idx);
-
-    return {
-      recoveryKind,
-      recoveryTerminal: terminal,
-      recoveryResume: resume,
-      recoveryLhsVariable: lhs,
-      recoveryProduction: production,
-      recoveryOccurrence: occurrence,
-    };
   }
 
   // -- tree editing ----------------------------------------------------
@@ -1286,19 +1329,31 @@ export class Session implements HookOwner {
 
   // -- symbol table ----------------------------------------------------
 
-  symbolNameAt(index: number): Uint8Array | null {
+  /**
+   * The symbol name at `index`. A read at or past `symbolCount()` is the
+   * core's `out of range` refusal, raised, never null.
+   */
+  symbolNameAt(index: number): Uint8Array {
     const h = this.#requireHandle();
-    return this.port.symbolNameAt(h, index);
+    return this.#read(this.port.symbolNameAt(h, index));
   }
 
+  /**
+   * The terminal flag of the symbol at `index`. A read at or past
+   * `symbolCount()` is the core's `out of range` refusal, raised.
+   */
   symbolIsTerminal(index: number): boolean {
     const h = this.#requireHandle();
-    return this.port.symbolIsTerminal(h, index);
+    return this.#read(this.port.symbolIsTerminal(h, index));
   }
 
-  variableNameAt(index: number): Uint8Array | null {
+  /**
+   * The variable name at `index`. A read at or past `variableCount()` is
+   * the core's `out of range` refusal, raised, never null.
+   */
+  variableNameAt(index: number): Uint8Array {
     const h = this.#requireHandle();
-    return this.port.variableNameAt(h, index);
+    return this.#read(this.port.variableNameAt(h, index));
   }
 }
 

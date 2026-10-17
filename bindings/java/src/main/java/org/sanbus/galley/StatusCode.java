@@ -29,6 +29,10 @@ public enum StatusCode {
     ERROR_STALE_HOOK(-15),
     /** A hook raised: the parse stopped there and published nothing; the failure's cause is the hook's exception. */
     ERROR_HOOK_FAILED(-16),
+    /** An index outside the table it was read from: a hook name, or a grammar symbol or variable name. */
+    ERROR_OUT_OF_RANGE(-17),
+    /** A session option value outside its domain, or a hook-flag count that does not match the hook count. */
+    ERROR_INVALID_ARGUMENT(-18),
     /** Fallback for codes this binding does not know (newer native builds). */
     UNKNOWN(Integer.MIN_VALUE);
 

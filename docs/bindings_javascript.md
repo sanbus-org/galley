@@ -251,9 +251,11 @@ export function hook_print(args: ProcedureArguments): void {
 `ProcedureArguments` is valid only while its hook runs: the core refuses every call made with
 the arguments of a hook that has returned, and the object keeps no expiry state of its own, so a kept
 reference throws a `GalleyError` with code `Status.ErrorStaleHook`, from a later hook of the same
-parse and after the parse alike. `nodeCapacity()`, `nodeCount()`, `snapshot()`, `lastInput()` and
-`lastPosition()` throw `GalleyError` with `Status.ErrorSessionInUse` inside a hook, never an empty
-answer; a walker belongs to the parse of the tree it was created over, so stepping it after a re-parse
+parse and after the parse alike. `nodeCapacity()`, `nodeCount()`, `snapshot()`, `lastInput()`,
+`lastPosition()` and the recorded `diagnostics()` throw `GalleyError` with
+`Status.ErrorSessionInUse` inside a hook, never an empty answer — while `diagnostic()` and
+`hasDiagnostic()` answer the in-flight parse's current diagnostic through the hook's own door; a
+walker belongs to the parse of the tree it was created over, so stepping it after a re-parse
 throws `StaleTreeError`, even if it had already finished. Text and input the core returns are borrowed
 until the next parse, and every adapter copies them out before returning.
 The nodes it yields belong to the parse: a hook may keep one for later hooks
@@ -408,7 +410,10 @@ Options mirror the runtime defaults: `maxErrors: 10`,
 `recoveryWindow: 500`, `stackOverflowRecovery: false`,
 `syntaxErrorStackDepth: 0`, `verbosity: 0`,
 `astPreallocationRatio: -1.0`, `astPreallocationCap: 0`.
-Overrides register per session through the method:
+The library validates them when the session opens: a negative count field or a
+non-finite ratio throws a `GalleyError` with `Status.ErrorInvalidArgument`
+(-18) before anything is created. Overrides register per session through the
+method:
 
 ```ts
 session.setMessageOverride("Number", "expected a number at {line}:{column}");
@@ -450,7 +455,10 @@ conversion from a stored address back to a node.
 `offset` (byte offset in the input), `line`, `column` (0, 0 when it has none), `message`, `messageAnsi`,
 `unexpectedToken`, `expectedTokens`, `context`, `syntaxErrorCount`,
 indentation details, and the full structured recovery information — or
-`null` when the last parse succeeded.
+`null` when the last parse succeeded. A symbol or variable read with an index
+at or past its table — `symbolNameAt`, `symbolIsTerminal`, `variableNameAt` —
+throws a `GalleyError` with `Status.ErrorOutOfRange` (-17), never `null` or
+`false`; a closed session throws `SessionClosedError` first.
 
 ## Appendix: backends
 

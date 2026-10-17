@@ -67,9 +67,9 @@ func main() {
 	if len(args) > 0 {
 		parsed, err := session.ParseFile(args[0])
 		if err != nil {
-			var galleyErr galley.Error
-			if diagnostic, ok := session.Diagnostic(); ok && errors.As(err, &galleyErr) {
-				fmt.Fprintf(os.Stderr, "%s:%d:%d: %s\n", args[0], diagnostic.Line, diagnostic.Column, diagnostic.Message)
+			var failure *galley.ParseError
+			if errors.As(err, &failure) && failure.Diagnostic != nil {
+				fmt.Fprintf(os.Stderr, "%s:%d:%d: %s\n", args[0], failure.Diagnostic.Line, failure.Diagnostic.Column, failure.Diagnostic.Message)
 			} else {
 				fmt.Fprintf(os.Stderr, "parse failed: %v\n", err)
 			}
@@ -107,8 +107,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "expected the broken sample to fail\n")
 		os.Exit(1)
 	}
-	diagnostic, ok := session.Diagnostic()
-	if !ok {
+	diagnostic, ok, err := session.Diagnostic()
+	if err != nil || !ok {
 		fmt.Fprintf(os.Stderr, "expected a diagnostic for the broken sample\n")
 		os.Exit(1)
 	}
@@ -133,7 +133,11 @@ func main() {
 		fmt.Fprintln(os.Stderr, "expected the multi-error sample to fail")
 		os.Exit(1)
 	}
-	recorded := session.Diagnostics()
+	recorded, err := session.Diagnostics()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "diagnostics failed: %v\n", err)
+		os.Exit(1)
+	}
 	fmt.Printf("recorded diagnostics: %d\n", len(recorded))
 	for index, d := range recorded {
 		kindName := "none"

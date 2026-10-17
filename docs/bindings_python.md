@@ -188,8 +188,9 @@ def hook_print(args: ProcedureArguments) -> None:
 call made with the arguments of a hook that has returned, and the object keeps
 no expiry state of its own, so a kept reference raises `GalleyError` with code
 `ERROR_STALE_HOOK`, from a later hook of the same parse and after the parse
-alike. `node_capacity()`, `node_count()`, `snapshot()`, `last_input()` and
-`last_position()` raise `GalleyError` with `ERROR_SESSION_IN_USE` inside a hook,
+alike. `node_capacity()`, `node_count()`, `snapshot()`, `last_input()`,
+`last_position()`, `has_diagnostic()`, `diagnostic()` and `diagnostics()`
+raise `GalleyError` with `ERROR_SESSION_IN_USE` inside a hook,
 never 0 or an empty value, and a walker belongs to the parse of the tree it was
 created over: stepping it after a re-parse raises `StaleTreeError`, even if it
 had already finished. Text and input bytes are copies that outlive the next
@@ -320,9 +321,15 @@ with parser.Session(max_errors=10, recovery_window=500) as session:
 Options mirror the runtime defaults: `max_errors=10`,
 `recovery_window=500`, `stack_overflow_recovery=False`,
 `syntax_error_stack_depth=0`, `verbosity=0`,
-`ast_preallocation_ratio=-1.0`, `ast_preallocation_cap=0`.
+`ast_preallocation_ratio=-1.0`, `ast_preallocation_cap=0`. A value outside
+its domain (a negative `max_errors`, `recovery_window`, or `verbosity`, or a
+non-finite `ast_preallocation_ratio`) raises `GalleyError` with
+`ERROR_INVALID_ARGUMENT` at construction.
+`syntax_error_stack_depth` and `ast_preallocation_cap` are unsigned counts:
+`0` selects the build default, and a negative value is reinterpreted as
+unsigned (wrapped modulo 2^32 / 2^64) rather than refused.
 Failures raise `parser.GalleyError`, whose `code` is the raw status code. A parse
-failure's `diagnostic` is the frozen `parser.Diagnostic` of where the parse stopped; every other failure's is `None`. `session.diagnostic()` returns the last diagnostic.
+failure's `diagnostic` is the frozen `parser.Diagnostic` of where the parse stopped; every other failure's is `None` — including a parse refused with `session in use` (a hook parsing its own session), which carries no diagnostic. `session.diagnostic()` returns the last diagnostic.
 
 `Session` is a context manager (`with parser.Session() as s:` closes on exit)
 and `close()` is idempotent. Every session method that takes a node takes
@@ -342,10 +349,15 @@ directly from the node. Editing helpers are available both ways:
 `remove_children_at`)
 live on `Session` and take `Node`. Missing links return `None`.
 `session.diagnostics()` returns every recorded diagnostic as a tuple of
-snapshots. Nodes compare by identity (`==` checks same session, parse
+snapshots, each carrying the same fields as `session.diagnostic()`. Nodes
+compare by identity (`==` checks same session, parse
 generation, and address), hash consistently with that, and expose
 `node.address` for display; `session.snapshot().node(index)` is the one
 conversion from a stored address back to a node.
+`session.symbol_name_at(index)`, `session.variable_name_at(index)` and
+`session.symbol_is_terminal(index)` read the grammar's tables; an index at
+or past the table's count raises `GalleyError` with `ERROR_OUT_OF_RANGE`
+rather than answering for a name that is not there.
 
 `session.diagnostic()` returns a frozen snapshot (`parser.Diagnostic`)
 with `kind`, `offset` (byte offset in the input), `line`, `column` (0, 0 when it has none), `message`, `message_ansi`,

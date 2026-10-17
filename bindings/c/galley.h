@@ -120,6 +120,16 @@ enum {
      * and published nothing. The diagnostic is of kind
      * galley_diagnostic_kind_hook; the host keeps the cause of the failure. */
     galley_error_hook_failed              = -16,
+    /* An index outside the table it was read from: a hook name, a grammar
+     * symbol or variable name, or an expected-token or context-name index
+     * past its diagnostic's table. An address outside the live node
+     * storage is galley_error_invalid_node instead. */
+    galley_error_out_of_range             = -17,
+    /* A value in GalleyCOptions is outside its domain (a negative
+     * max_errors, recovery_window, or verbosity, or a non-finite
+     * ast_preallocation_ratio), or the enable-flag count passed to
+     * galley_session_set_hooks does not match galley_hooks_count(). */
+    galley_error_invalid_argument         = -18,
 };
 
 /* Returns the build-supplied version string of this library. The pointer
@@ -127,9 +137,8 @@ enum {
 const char *galley_version(void);
 
 /* Build-configuration query flags. These describe how the library was
- * generated; several API surfaces degrade gracefully when the matching
- * feature is off (for example node queries when AST construction is
- * disabled). */
+ * generated; a surface whose feature is off refuses with a status instead of
+ * answering (for example node reads without AST construction). */
 enum {
     galley_parser_type_ll = 0,
     galley_parser_type_lr = 1
@@ -157,22 +166,24 @@ int galley_uses_verbatim(void);                /* grammar uses verbatim capture 
 int galley_stack_overflow_recovery_available(void); /* platform support */
 
 /* Grammar symbol table: variables and terminals declared by the grammar.
- * Names reference static storage valid for the process lifetime. Index
- * errors return galley_error_invalid_node. */
+ * Names reference static storage valid for the process lifetime. A NULL
+ * session or output is galley_error_null_argument; an index at or past
+ * galley_symbol_count / galley_variable_count is galley_error_out_of_range. */
 unsigned long long galley_symbol_count(void);
 long long galley_symbol_name(GalleySession *session, unsigned long long index,
                              const char **out_data, size_t *out_len);
-int galley_symbol_is_terminal(GalleySession *session, unsigned long long index);
+/* Writes 1 when the symbol at index is a terminal (or generative
+ * terminal), 0 when it is a variable. */
+long long galley_symbol_is_terminal(GalleySession *session, unsigned long long index,
+                                    int *out_is_terminal);
 unsigned long long galley_variable_count(void);
 long long galley_variable_name(GalleySession *session, unsigned long long index,
                                const char **out_data, size_t *out_len);
 
-/* Creates a parsing session, or returns NULL on initialization failure
- * (most commonly allocation failure). Destroy with
- * galley_session_destroy. */
-GalleySession *galley_session_create(void);
-
-/* Session creation options; zero/negative fields select runtime defaults. */
+/* Session creation options; zero fields select runtime defaults. A negative
+ * max_errors, recovery_window, or verbosity, or a non-finite
+ * ast_preallocation_ratio, is rejected with galley_error_invalid_argument.
+ * A negative ast_preallocation_ratio selects the default. */
 typedef struct GalleyCOptions {
     int max_errors;                        /* default 10 */
     int recovery_window;                   /* default 500 */
@@ -183,9 +194,16 @@ typedef struct GalleyCOptions {
     unsigned long long ast_preallocation_cap; /* 0 = default */
 } GalleyCOptions;
 
-/* Creates a parsing session with explicit options. Passing NULL is
- * equivalent to galley_session_create. */
-GalleySession *galley_session_create_ex(const GalleyCOptions *options);
+/* Creates a parsing session with explicit options and writes it to
+ * *out_session. Passing NULL options selects the runtime defaults, as do
+ * zero fields of a non-NULL options struct. A NULL out_session is
+ * galley_error_null_argument; an option value outside its domain (see
+ * GalleyCOptions) is galley_error_invalid_argument; initialization failure
+ * (most commonly allocation failure) is galley_error_out_of_memory.
+ * *out_session is written only on success. Destroy the session with
+ * galley_session_destroy. */
+long long galley_session_create(const GalleyCOptions *options,
+                                GalleySession **out_session);
 
 /* Destroys a session created by galley_session_create. NULL is ignored and
  * returns galley_ok (like free(NULL)), so a repeated close stays a no-op.
@@ -232,19 +250,19 @@ size_t galley_hooks_count(void);
 /* Name of hook index, always an identifier: reduction, reduction_<Variable>,
  * reduction_<terminal stem> (reduction_terminal__x123 for "{"),
  * reduction_<Variable>_<RhsIndex>, or hook_<name>. Static storage valid for
- * the process lifetime. NULL and 0 for an index out
- * of range. The pointer and the length are separate calls so every host
- * reads them as plain scalars. */
-const char *galley_hooks_name_data(size_t index);
-size_t galley_hooks_name_length(size_t index);
+ * the process lifetime. A NULL output is galley_error_null_argument; an
+ * index at or past galley_hooks_count is galley_error_out_of_range. */
+long long galley_hooks_name(size_t index,
+                            const char **out_data, size_t *out_len);
 
 /* Replaces the session's host hook state in one step. enabled holds one
  * byte per hook, galley_hooks_count bytes in all (NULL with a zero count
  * enables none); a nonzero byte routes that hook to dispatch with handle.
  * Unenabled hooks return before any call. Takes the exclusive lease:
  * galley_error_session_in_use while a parse is in flight, so the set a parse
- * runs with is fixed for that parse. NULL enabled with a nonzero count, or a
- * count other than galley_hooks_count, returns galley_error_null_argument.
+ * runs with is fixed for that parse. A count other than galley_hooks_count
+ * with a non-NULL enabled returns galley_error_invalid_argument; NULL
+ * enabled with a nonzero count returns galley_error_null_argument.
  * WebAssembly hosts pass a NULL dispatch and provide env.galley_host_dispatch
  * instead. */
 long long galley_session_set_hooks(GalleySession *session, GalleyHookDispatch dispatch,
@@ -293,8 +311,8 @@ long long galley_last_position(GalleySession *session,
  * galley_hook_generation (inside a hook) and pass the node's own thereafter.
  *
  * In a build without AST construction the generation check still comes first:
- * galley_node_count and galley_tree_snapshot answer 0 only for a live
- * generation.
+ * node reads then refuse with galley_error_invalid_node — there is no node
+ * storage to address, galley_node_count and galley_tree_snapshot included.
  *
  * Calls that answer with one value (galley_node_count, galley_node_capacity,
  * galley_node_child_count, the five links, galley_node_variable_index) return it directly: a value >= 0
@@ -302,13 +320,14 @@ long long galley_last_position(GalleySession *session,
  * GALLEY_INVALID_NODE and a node without a variable is GALLEY_NO_VARIABLE,
  * both real answers. Calls with several results keep out-parameters. */
 
-/* Returns the number of AST nodes of the published tree (0 for a parser built
- * without AST construction), or a negative status. */
+/* Returns the number of AST nodes of the published tree, or a negative status
+ * (galley_error_invalid_node in a parser built without AST construction). */
 long long galley_node_count(GalleySession *session, unsigned long long generation);
 
 /* Preallocates node storage for at least capacity nodes, avoiding growth
  * during subsequent parses. Returns galley_error_ast_capacity_exceeded when
- * the request exceeds the build's node limit. */
+ * the request exceeds the build's node limit. Without AST construction there
+ * is no node storage: a no-op answering galley_ok. */
 long long galley_reserve_nodes(GalleySession *session, unsigned long long capacity);
 
 /* Returns the current node storage capacity in nodes (0 for a parser built
@@ -329,8 +348,8 @@ long long galley_node_capacity(GalleySession *session);
  *     GALLEY_INVALID_NODE and 0 written. Real generations start at 1, so 0
  *     never matches a live tree.
  *   - published in a parser built without AST construction: galley_ok with
- *     GALLEY_INVALID_NODE (there is no root) and the live generation, so
- *     galley_node_count answers 0 for it after the generation check.
+ *     GALLEY_INVALID_NODE (there is no root) and the live generation; node
+ *     reads then refuse with galley_error_invalid_node.
  *   - a parse in flight: galley_error_session_in_use, nothing meaningful
  *     written.
  *   - a null session or output: galley_error_null_argument.
@@ -471,8 +490,8 @@ long long galley_node_variable_index(GalleySession *session, unsigned long long 
 /* Bulk read of the published tree in a single crossing.
  * Writes up to capacity entries of each non-null out array, one entry per
  * node address (address i fills slot i), and returns the total node count
- * (the same value galley_node_count reports for `generation`; 0 without AST
- * construction).
+ * (the same value galley_node_count reports for `generation`; in a parser
+ * built without AST construction it refuses with galley_error_invalid_node).
  * A null array skips that column. When capacity is smaller than the count,
  * only the address prefix [0, capacity) is written; call again with larger
  * buffers to get the whole tree. Returns galley_error_null_argument for a
@@ -522,8 +541,11 @@ long long galley_node_text(GalleySession *session, unsigned long long generation
 long long galley_last_input(GalleySession *session,
                             const char **out_data, size_t *out_len);
 
-/* Returns nonzero when the previous parse produced a diagnostic. */
-int galley_has_diagnostic(GalleySession *session);
+/* Writes 1 into *out_has when the previous parse produced a diagnostic, 0
+ * when it did not. A NULL session or out_has is
+ * galley_error_null_argument; a parse in flight is
+ * galley_error_session_in_use. */
+long long galley_has_diagnostic(GalleySession *session, int *out_has);
 
 /* Writes the rendered diagnostic message (plain text) into *out. The
  * string is NUL-terminated and remains valid until the next parse or
@@ -716,9 +738,11 @@ long long galley_diagnostic_indentation(GalleySession *session,
                                         unsigned int *out_indentation_width);
 
 /* Recovery information attached to the current syntax diagnostic (when the
- * parser was built with error recovery). All accessors return
+ * parser was built with error recovery). The accessors return
  * galley_error_no_diagnostic when there is no diagnostic, it is not a
- * syntax error, or the field does not apply to the target kind. */
+ * syntax error, or the field does not apply to the target kind, except
+ * galley_diagnostic_recovery_kind: no recovery target is
+ * galley_recovery_target_none with galley_ok, its real value. */
 long long galley_diagnostic_recovery_kind(GalleySession *session);
 long long galley_diagnostic_recovery_terminal(GalleySession *session,
                                               const char **out_data, size_t *out_len);
@@ -739,9 +763,8 @@ long long galley_diagnostic_recovery_occurrence(GalleySession *session,
  * accessors above remain available for the most recent diagnostic.
  *
  * galley_recorded_diagnostic_count returns how many diagnostics were
- * retained; out-of-range indexes return galley_error_no_diagnostic (kind
- * accessors return galley_diagnostic_kind_none /
- * galley_recovery_target_none). */
+ * retained; every diag_index at or past it returns
+ * galley_error_no_diagnostic, the kind accessors included. */
 long long galley_recorded_diagnostic_count(GalleySession *session);
 
 /* Kind, position, unexpected token, and rendered message of a recorded
@@ -926,8 +949,10 @@ long long galley_hook_tree_snapshot(GalleyHookDoor *door, unsigned long long gen
                                     unsigned long long capacity);
 
 /* Current-diagnostic reads of the in-flight parse (recorded-*
- * accessors are post-parse only and have no hook twin). */
-int galley_hook_has_diagnostic(GalleyHookDoor *door);
+ * accessors are post-parse only and have no hook twin). Writes 1 into
+ * *out_has when the in-flight parse has produced a diagnostic, 0 when it
+ * has not; a NULL door or out_has is galley_error_null_argument. */
+long long galley_hook_has_diagnostic(GalleyHookDoor *door, int *out_has);
 long long galley_hook_diagnostic_message(GalleyHookDoor *door, const char **out);
 long long galley_hook_diagnostic_message_ansi(GalleyHookDoor *door, const char **out);
 long long galley_hook_diagnostic_position(GalleyHookDoor *door, unsigned long long *out_offset,

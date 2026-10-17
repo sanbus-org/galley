@@ -22,6 +22,7 @@
 import type {
   FfiPort,
   NodeFamily,
+  CurrentDiagnosticFamily,
   Handle,
   StagedHandle,
   HookTicket,
@@ -72,6 +73,52 @@ type DoorNames<Door extends "" | "hook_"> = {
   [Name in keyof DoorCalls as `galley_${Door}${Name & string}`]: DoorCalls[Name];
 };
 
+/**
+ * The current-diagnostic exports both doors expose, keyed by the C name after
+ * `galley_`. The guest exports each twice; every status is i64.
+ */
+interface DiagCalls {
+  has_diagnostic(handle: number, outHas: number): bigint;
+  diagnostic_kind(handle: number): bigint;
+  diagnostic_message(handle: number, out: number): bigint;
+  diagnostic_message_ansi(handle: number, out: number): bigint;
+  diagnostic_position(handle: number, outOffset: number, outLine: number, outCol: number): bigint;
+  diagnostic_unexpected_token(handle: number, outData: number, outLen: number): bigint;
+  diagnostic_expected_count(handle: number): bigint;
+  diagnostic_expected_at(handle: number, index: bigint, outData: number, outLen: number): bigint;
+  diagnostic_context_count(handle: number): bigint;
+  diagnostic_context_at(handle: number, index: bigint, outData: number, outLen: number): bigint;
+  syntax_error_count(handle: number): bigint;
+  semantic_error_count(handle: number): bigint;
+  diagnostic_semantic(
+    handle: number,
+    outVariable: number,
+    outVariableLen: number,
+    outMessage: number,
+    outMessageLen: number,
+  ): bigint;
+  diagnostic_indentation(handle: number, outSpaces: number, outWidth: number): bigint;
+  diagnostic_recovery_kind(handle: number): bigint;
+  diagnostic_recovery_terminal(handle: number, outData: number, outLen: number): bigint;
+  diagnostic_recovery_resume(handle: number, out: number): bigint;
+  diagnostic_recovery_lhs_variable(handle: number, outData: number, outLen: number): bigint;
+  diagnostic_recovery_production(
+    handle: number,
+    outVar: number,
+    outLen: number,
+    outIndex: number,
+  ): bigint;
+  diagnostic_recovery_occurrence(
+    handle: number,
+    outParent: number,
+    outParentLen: number,
+    outRhs: number,
+    outSym: number,
+    outVar: number,
+    outVarLen: number,
+  ): bigint;
+}
+
 interface GalleyWasmExports extends DoorNames<"">, DoorNames<"hook_"> {
   memory: WebAssembly.Memory;
   _initialize?: unknown;
@@ -91,10 +138,9 @@ interface GalleyWasmExports extends DoorNames<"">, DoorNames<"hook_"> {
   galley_variable_count(): bigint;
   galley_status_string(status: bigint): number;
   galley_symbol_name(session: number, index: bigint, outData: number, outLen: number): bigint;
-  galley_symbol_is_terminal(session: number, index: bigint): number;
+  galley_symbol_is_terminal(session: number, index: bigint, outIsTerminal: number): bigint;
   galley_variable_name(session: number, index: bigint, outData: number, outLen: number): bigint;
-  galley_session_create(): number;
-  galley_session_create_ex(options: number): number;
+  galley_session_create(options: number, outSession: number): bigint;
   galley_session_destroy(session: number): bigint;
   galley_session_set_message_override(
     session: number,
@@ -124,7 +170,7 @@ interface GalleyWasmExports extends DoorNames<"">, DoorNames<"hook_"> {
   ): bigint;
   galley_last_position(session: number, outLine: number, outCol: number): bigint;
   galley_last_input(session: number, outData: number, outLen: number): bigint;
-  galley_has_diagnostic(session: number): number;
+  galley_has_diagnostic(session: number, outHas: number): bigint;
   galley_diagnostic_kind(session: number): bigint;
   galley_diagnostic_message(session: number, out: number): bigint;
   galley_diagnostic_message_ansi(session: number, out: number): bigint;
@@ -251,10 +297,49 @@ interface GalleyWasmExports extends DoorNames<"">, DoorNames<"hook_"> {
   galley_procedure_context_column(session: number, hook: bigint): bigint;
   galley_procedure_report_semantic_error(session: number, hook: bigint, message: number, messageLen: number): bigint;
   galley_hook_generation(door: number, outGeneration: number): bigint;
+  // The current-diagnostic family's hook-door twins (identical signatures).
+  galley_hook_has_diagnostic(door: number, outHas: number): bigint;
+  galley_hook_diagnostic_kind(door: number): bigint;
+  galley_hook_diagnostic_message(door: number, out: number): bigint;
+  galley_hook_diagnostic_message_ansi(door: number, out: number): bigint;
+  galley_hook_diagnostic_position(door: number, outOffset: number, outLine: number, outCol: number): bigint;
+  galley_hook_diagnostic_unexpected_token(door: number, outData: number, outLen: number): bigint;
+  galley_hook_diagnostic_expected_count(door: number): bigint;
+  galley_hook_diagnostic_expected_at(door: number, index: bigint, outData: number, outLen: number): bigint;
+  galley_hook_diagnostic_context_count(door: number): bigint;
+  galley_hook_diagnostic_context_at(door: number, index: bigint, outData: number, outLen: number): bigint;
+  galley_hook_diagnostic_indentation(door: number, outSpaces: number, outWidth: number): bigint;
+  galley_hook_syntax_error_count(door: number): bigint;
+  galley_hook_semantic_error_count(door: number): bigint;
+  galley_hook_diagnostic_semantic(
+    door: number,
+    outVariable: number,
+    outVariableLen: number,
+    outMessage: number,
+    outMessageLen: number,
+  ): bigint;
+  galley_hook_diagnostic_recovery_kind(door: number): bigint;
+  galley_hook_diagnostic_recovery_terminal(door: number, outData: number, outLen: number): bigint;
+  galley_hook_diagnostic_recovery_resume(door: number, out: number): bigint;
+  galley_hook_diagnostic_recovery_lhs_variable(door: number, outData: number, outLen: number): bigint;
+  galley_hook_diagnostic_recovery_production(
+    door: number,
+    outVar: number,
+    outLen: number,
+    outIndex: number,
+  ): bigint;
+  galley_hook_diagnostic_recovery_occurrence(
+    door: number,
+    outParent: number,
+    outParentLen: number,
+    outRhs: number,
+    outSym: number,
+    outVar: number,
+    outVarLen: number,
+  ): bigint;
   // host hooks (see galley_session_set_hooks in galley.h)
   galley_hooks_count(): number;
-  galley_hooks_name_data(index: number): number;
-  galley_hooks_name_length(index: number): number;
+  galley_hooks_name(index: number, outData: number, outLen: number): bigint;
   galley_session_set_hooks(session: number, dispatch: number, hookHandle: number, enabled: number, enabledCount: number): bigint;
 }
 
@@ -573,6 +658,8 @@ const WALK_CURSOR_BYTES = 40;
 export class WasmPort implements FfiPort {
   readonly wasm: GalleyWasmExports;
   readonly libraryPath: string;
+  readonly diagnostics: CurrentDiagnosticFamily;
+  readonly hookDiagnostics: CurrentDiagnosticFamily;
   hookDispatch: DispatchHandler | null = null;
 
   constructor(wasm: GalleyWasmExports, libraryPath: string) {
@@ -580,6 +667,8 @@ export class WasmPort implements FfiPort {
     this.libraryPath = libraryPath;
     this.session = this.#family("");
     this.hook = this.#family("hook_");
+    this.diagnostics = this.#diagFamily("");
+    this.hookDiagnostics = this.#diagFamily("hook_");
   }
 
   #hookNameTable: string[] | null = null;
@@ -607,9 +696,21 @@ export class WasmPort implements FfiPort {
     const table: string[] = [];
     const total = this.wasm.galley_hooks_count();
     for (let index = 0; index < total; index++) {
-      const address = this.wasm.galley_hooks_name_data(index);
-      if (address === 0) break;
-      table.push(textDecoder.decode(this.readBytes(address, this.wasm.galley_hooks_name_length(index))));
+      const out = this.malloc(8);
+      try {
+        const status = toNumber(this.wasm.galley_hooks_name(index, out, out + 4));
+        if (status < 0) {
+          // Cannot happen below galley_hooks_count; raising beats silently
+          // shortening the table.
+          throw new GalleyError(this.statusString(status) ?? `status ${status}`, status as Status);
+        }
+        const view = this.dataView();
+        table.push(
+          textDecoder.decode(this.readBytes(view.getUint32(out, true), view.getUint32(out + 4, true))),
+        );
+      } finally {
+        this.free(out, 8);
+      }
     }
     this.#hookNameTable = table;
     return table;
@@ -721,28 +822,30 @@ export class WasmPort implements FfiPort {
 
   // -- sessions ------------------------------------------------------------
 
-  createSession(options: SessionCOptions | null): Handle {
-    if (options === null) {
-      const handle = this.wasm.galley_session_create();
-      if (handle === 0) return null;
-      return handle;
-    }
-    // GalleyCOptions layout (wasm32, little-endian): 5x i32/u32, pad, f64, u64.
-    const ptr = this.malloc(40);
-    try {
+  createSession(options: SessionCOptions | null): { status: number; handle: Handle | null } {
+    // Null options crosses as a NULL pointer (the library's defaults), never
+    // as a zeroed struct.
+    let optionsPtr = 0;
+    if (options !== null) {
+      // GalleyCOptions layout (wasm32, little-endian): 5x i32/u32, pad, f64, u64.
+      optionsPtr = this.malloc(40);
       const view = this.dataView();
-      view.setInt32(ptr, options.maxErrors, true);
-      view.setInt32(ptr + 4, options.recoveryWindow, true);
-      view.setInt32(ptr + 8, options.stackOverflowRecovery, true);
-      view.setUint32(ptr + 12, options.syntaxErrorStackDepth, true);
-      view.setInt32(ptr + 16, options.verbosity, true);
-      view.setFloat64(ptr + 24, options.astPreallocationRatio, true);
-      view.setBigUint64(ptr + 32, options.astPreallocationCap, true);
-      const handle = this.wasm.galley_session_create_ex(ptr);
-      if (handle === 0) return null;
-      return handle;
+      view.setInt32(optionsPtr, options.maxErrors, true);
+      view.setInt32(optionsPtr + 4, options.recoveryWindow, true);
+      view.setInt32(optionsPtr + 8, options.stackOverflowRecovery, true);
+      view.setUint32(optionsPtr + 12, options.syntaxErrorStackDepth, true);
+      view.setInt32(optionsPtr + 16, options.verbosity, true);
+      view.setFloat64(optionsPtr + 24, options.astPreallocationRatio, true);
+      view.setBigUint64(optionsPtr + 32, options.astPreallocationCap, true);
+    }
+    const out = this.malloc(4);
+    try {
+      const status = toNumber(this.wasm.galley_session_create(optionsPtr, out));
+      const session = this.dataView().getUint32(out, true);
+      return { status, handle: status < 0 || session === 0 ? null : session };
     } finally {
-      this.free(ptr, 40);
+      this.free(out, 4);
+      if (optionsPtr !== 0) this.free(optionsPtr, 40);
     }
   }
 
@@ -964,243 +1067,233 @@ export class WasmPort implements FfiPort {
 
   // -- node accessors ------------------------------------------------------------
 
-  /** Read a guest `(data, len)` byte pair; null on negative status. */
-  private tryCopyBytes(
+  /** Read a guest `(data, len)` byte pair: the bytes, or the refusal as a negative Number. */
+  private copyBytesResult(
     call: (outData: number, outLen: number) => bigint,
-  ): Uint8Array | null {
+  ): Uint8Array | number {
     const out = this.malloc(8);
     try {
       const status = call(out, out + 4);
-      if (isNegative(status)) return null;
+      if (isNegative(status)) return Number(status);
       const view = this.dataView();
-      const ptr = view.getUint32(out, true);
-      const len = view.getUint32(out + 4, true);
-      if (ptr === 0) return null;
-      return this.readBytes(ptr, len);
+      return this.readBytes(view.getUint32(out, true), view.getUint32(out + 4, true));
     } finally {
       this.free(out, 8);
     }
   }
 
-  private readSemanticPair(
+  /** Read a guest semantic `(variable, message)` pair, or the refusal as a negative Number. */
+  private semanticResult(
     call: (
       outVariable: number,
       outVariableLen: number,
       outMessage: number,
       outMessageLen: number,
     ) => bigint,
-  ): [string, string] | null {
+  ): [string, string] | number {
     const out = this.malloc(16);
     try {
       const status = call(out, out + 4, out + 8, out + 12);
-      if (isNegative(status)) return null;
+      if (isNegative(status)) return Number(status);
       const view = this.dataView();
-      const variablePtr = view.getUint32(out, true);
-      const variableLen = view.getUint32(out + 4, true);
-      const messagePtr = view.getUint32(out + 8, true);
-      const messageLen = view.getUint32(out + 12, true);
-      if (variablePtr === 0 || messagePtr === 0) return null;
       return [
-        textDecoder.decode(this.readBytes(variablePtr, variableLen)),
-        textDecoder.decode(this.readBytes(messagePtr, messageLen)),
+        textDecoder.decode(this.readBytes(view.getUint32(out, true), view.getUint32(out + 4, true))),
+        textDecoder.decode(this.readBytes(view.getUint32(out + 8, true), view.getUint32(out + 12, true))),
       ];
     } finally {
       this.free(out, 16);
     }
   }
 
-  symbolNameAt(handle: Handle, index: number): Uint8Array | null {
+  symbolNameAt(handle: Handle, index: number): Uint8Array | number {
     const session = handle as number;
-    return this.tryCopyBytes((data, len) => this.wasm.galley_symbol_name(session, BigInt(index), data, len));
+    return this.copyBytesResult((data, len) => this.wasm.galley_symbol_name(session, BigInt(index), data, len));
   }
 
-  symbolIsTerminal(handle: Handle, index: number): boolean {
-    return this.wasm.galley_symbol_is_terminal(handle as number, BigInt(index)) !== 0;
+  symbolIsTerminal(handle: Handle, index: number): boolean | number {
+    const out = this.malloc(4);
+    try {
+      const status = this.wasm.galley_symbol_is_terminal(handle as number, BigInt(index), out);
+      if (isNegative(status)) return Number(status);
+      return this.dataView().getUint32(out, true) !== 0;
+    } finally {
+      this.free(out, 4);
+    }
   }
 
-  variableNameAt(handle: Handle, index: number): Uint8Array | null {
+  variableNameAt(handle: Handle, index: number): Uint8Array | number {
     const session = handle as number;
-    return this.tryCopyBytes((data, len) => this.wasm.galley_variable_name(session, BigInt(index), data, len));
+    return this.copyBytesResult((data, len) => this.wasm.galley_variable_name(session, BigInt(index), data, len));
   }
 
   // -- diagnostics ------------------------------------------------------------------
+  //
+  // The current-diagnostic family is instantiated per door by #diagFamily
+  // below; the flat recorded family follows, post-parse only.
 
-  hasDiagnostic(handle: Handle): boolean {
-    return this.wasm.galley_has_diagnostic(handle as number) !== 0;
-  }
-
-  diagnosticKind(handle: Handle): number {
-    return toNumber(this.wasm.galley_diagnostic_kind(handle as number));
-  }
-
-  diagnosticMessage(handle: Handle): string | null {
-    const out = this.malloc(4);
-    try {
-      if (this.wasm.galley_diagnostic_message(handle as number, out) !== 0n) return null;
-      return this.readCString(this.dataView().getUint32(out, true));
-    } finally {
-      this.free(out, 4);
-    }
-  }
-
-  diagnosticMessageAnsi(handle: Handle): string | null {
-    const out = this.malloc(4);
-    try {
-      if (this.wasm.galley_diagnostic_message_ansi(handle as number, out) !== 0n) return null;
-      return this.readCString(this.dataView().getUint32(out, true));
-    } finally {
-      this.free(out, 4);
-    }
-  }
-
-  diagnosticPosition(handle: Handle): [number, number, number] | null {
-    const out = this.malloc(16);
-    try {
-      if (isNegative(this.wasm.galley_diagnostic_position(handle as number, out, out + 8, out + 12)))
-        return null;
-      const view = this.dataView();
-      return [Number(view.getBigUint64(out, true)), view.getUint32(out + 8, true), view.getUint32(out + 12, true)];
-    } finally {
-      this.free(out, 16);
-    }
-  }
-
-  diagnosticUnexpectedToken(handle: Handle): Uint8Array | null {
-    const session = handle as number;
-    return this.tryCopyBytes((data, len) => this.wasm.galley_diagnostic_unexpected_token(session, data, len));
-  }
-
-  diagnosticExpectedCount(handle: Handle): number {
-    return toNumber(this.wasm.galley_diagnostic_expected_count(handle as number));
-  }
-
-  diagnosticExpectedAt(handle: Handle, index: number): Uint8Array | null {
-    const session = handle as number;
-    return this.tryCopyBytes((data, len) =>
-      this.wasm.galley_diagnostic_expected_at(session, BigInt(index), data, len),
-    );
-  }
-
-  diagnosticContextCount(handle: Handle): number {
-    return toNumber(this.wasm.galley_diagnostic_context_count(handle as number));
-  }
-
-  diagnosticContextAt(handle: Handle, index: number): Uint8Array | null {
-    const session = handle as number;
-    return this.tryCopyBytes((data, len) =>
-      this.wasm.galley_diagnostic_context_at(session, BigInt(index), data, len),
-    );
-  }
-
-  syntaxErrorCount(handle: Handle): number {
-    return toNumber(this.wasm.galley_syntax_error_count(handle as number));
-  }
-
-  semanticErrorCount(handle: Handle): number {
-    return toNumber(this.wasm.galley_semantic_error_count(handle as number));
-  }
-
-  diagnosticSemantic(handle: Handle): [string, string] | null {
-    const session = handle as number;
-    return this.readSemanticPair((variable, variableLen, message, messageLen) =>
-      this.wasm.galley_diagnostic_semantic(session, variable, variableLen, message, messageLen),
-    );
-  }
-
-  diagnosticIndentation(handle: Handle): [number, number] | null {
-    const out = this.malloc(8);
-    try {
-      if (toNumber(this.wasm.galley_diagnostic_indentation(handle as number, out, out + 4)) !== 0)
-        return null;
-      const view = this.dataView();
-      return [view.getUint32(out, true), view.getUint32(out + 4, true)];
-    } finally {
-      this.free(out, 8);
-    }
-  }
-
-  diagnosticRecoveryKind(handle: Handle): number {
-    return toNumber(this.wasm.galley_diagnostic_recovery_kind(handle as number));
-  }
-
-  diagnosticRecoveryTerminal(handle: Handle): Uint8Array | null {
-    const session = handle as number;
-    return this.tryCopyBytes((data, len) =>
-      this.wasm.galley_diagnostic_recovery_terminal(session, data, len),
-    );
-  }
-
-  diagnosticRecoveryResume(handle: Handle): number | null {
-    const out = this.malloc(8);
-    try {
-      if (toNumber(this.wasm.galley_diagnostic_recovery_resume(handle as number, out)) !== 0)
-        return null;
-      return toNumber(this.dataView().getBigInt64(out, true));
-    } finally {
-      this.free(out, 8);
-    }
-  }
-
-  diagnosticRecoveryLhsVariable(handle: Handle): string | null {
-    const session = handle as number;
-    const out = this.malloc(8);
-    try {
-      const status = this.wasm.galley_diagnostic_recovery_lhs_variable(session, out, out + 4);
-      if (isNegative(status)) return null;
-      const view = this.dataView();
-      const ptr = view.getUint32(out, true);
-      if (ptr === 0) return null;
-      return textDecoder.decode(this.readBytes(ptr, view.getUint32(out + 4, true)));
-    } finally {
-      this.free(out, 8);
-    }
-  }
-
-  diagnosticRecoveryProduction(handle: Handle): [string, number] | null {
-    const out = this.malloc(12);
-    try {
-      if (
-        toNumber(this.wasm.galley_diagnostic_recovery_production(handle as number, out, out + 4, out + 8)) !==
-        0
-      )
-        return null;
-      const view = this.dataView();
-      return [
-        textDecoder.decode(this.readBytes(view.getUint32(out, true), view.getUint32(out + 4, true))),
-        view.getUint32(out + 8, true),
-      ];
-    } finally {
-      this.free(out, 12);
-    }
-  }
-
-  diagnosticRecoveryOccurrence(handle: Handle): [string, number, number, string] | null {
-    const out = this.malloc(24);
-    try {
-      if (
-        toNumber(
-          this.wasm.galley_diagnostic_recovery_occurrence(
-            handle as number,
-            out,
-            out + 4,
-            out + 8,
-            out + 12,
-            out + 16,
-            out + 20,
-          ),
-        ) !== 0
-      )
-        return null;
-      const view = this.dataView();
-      return [
-        textDecoder.decode(this.readBytes(view.getUint32(out, true), view.getUint32(out + 4, true))),
-        view.getUint32(out + 8, true),
-        view.getUint32(out + 12, true),
-        textDecoder.decode(this.readBytes(view.getUint32(out + 16, true), view.getUint32(out + 20, true))),
-      ];
-    } finally {
-      this.free(out, 24);
-    }
+  /**
+   * One door's current-diagnostic family: `galley_<name>` for the session
+   * door, `galley_hook_<name>` for the hook door, each read copied out of the
+   * guest's out-parameters. A refusal is a negative Number for the core; a
+   * conditional field's `galley_error_no_diagnostic` travels the same way and
+   * the core maps it to the field's absence.
+   */
+  #diagFamily(door: "" | "hook_"): CurrentDiagnosticFamily {
+    const calls = this.wasm as unknown as Record<string, unknown>;
+    const bound = <Name extends keyof DiagCalls>(name: Name): DiagCalls[Name] =>
+      calls[`galley_${door}${name}`] as DiagCalls[Name];
+    const num = (value: bigint | number): number => Number(value);
+    const hasDiagnostic = bound("has_diagnostic");
+    const kind = bound("diagnostic_kind");
+    const message = bound("diagnostic_message");
+    const messageAnsi = bound("diagnostic_message_ansi");
+    const position = bound("diagnostic_position");
+    const unexpectedToken = bound("diagnostic_unexpected_token");
+    const expectedCount = bound("diagnostic_expected_count");
+    const expectedAt = bound("diagnostic_expected_at");
+    const contextCount = bound("diagnostic_context_count");
+    const contextAt = bound("diagnostic_context_at");
+    const syntaxErrorCount = bound("syntax_error_count");
+    const semanticErrorCount = bound("semantic_error_count");
+    const semantic = bound("diagnostic_semantic");
+    const indentation = bound("diagnostic_indentation");
+    const recoveryKind = bound("diagnostic_recovery_kind");
+    const recoveryTerminal = bound("diagnostic_recovery_terminal");
+    const recoveryResume = bound("diagnostic_recovery_resume");
+    const recoveryLhsVariable = bound("diagnostic_recovery_lhs_variable");
+    const recoveryProduction = bound("diagnostic_recovery_production");
+    const recoveryOccurrence = bound("diagnostic_recovery_occurrence");
+    return {
+      hasDiagnostic: (handle) => {
+        const out = this.malloc(4);
+        try {
+          const result = num(hasDiagnostic(handle as number, out));
+          if (result < 0) return result;
+          return this.dataView().getUint32(out, true) !== 0;
+        } finally {
+          this.free(out, 4);
+        }
+      },
+      diagnosticKind: (handle) => num(kind(handle as number)),
+      diagnosticMessage: (handle) => {
+        const out = this.malloc(4);
+        try {
+          const result = num(message(handle as number, out));
+          if (result < 0) return result;
+          return this.readCString(this.dataView().getUint32(out, true));
+        } finally {
+          this.free(out, 4);
+        }
+      },
+      diagnosticMessageAnsi: (handle) => {
+        const out = this.malloc(4);
+        try {
+          const result = num(messageAnsi(handle as number, out));
+          if (result < 0) return result;
+          return this.readCString(this.dataView().getUint32(out, true));
+        } finally {
+          this.free(out, 4);
+        }
+      },
+      diagnosticPosition: (handle) => {
+        const out = this.malloc(16);
+        try {
+          const result = num(position(handle as number, out, out + 8, out + 12));
+          if (result < 0) return result;
+          const view = this.dataView();
+          return [
+            Number(view.getBigUint64(out, true)),
+            view.getUint32(out + 8, true),
+            view.getUint32(out + 12, true),
+          ];
+        } finally {
+          this.free(out, 16);
+        }
+      },
+      diagnosticUnexpectedToken: (handle) =>
+        this.copyBytesResult((data, len) => unexpectedToken(handle as number, data, len)),
+      diagnosticExpectedCount: (handle) => num(expectedCount(handle as number)),
+      diagnosticExpectedAt: (handle, index) =>
+        this.copyBytesResult((data, len) => expectedAt(handle as number, BigInt(index), data, len)),
+      diagnosticContextCount: (handle) => num(contextCount(handle as number)),
+      diagnosticContextAt: (handle, index) =>
+        this.copyBytesResult((data, len) => contextAt(handle as number, BigInt(index), data, len)),
+      syntaxErrorCount: (handle) => num(syntaxErrorCount(handle as number)),
+      semanticErrorCount: (handle) => num(semanticErrorCount(handle as number)),
+      diagnosticSemantic: (handle) =>
+        this.semanticResult((variable, variableLen, text, textLen) =>
+          semantic(handle as number, variable, variableLen, text, textLen),
+        ),
+      diagnosticIndentation: (handle) => {
+        const out = this.malloc(8);
+        try {
+          const result = num(indentation(handle as number, out, out + 4));
+          if (result < 0) return result;
+          const view = this.dataView();
+          return [view.getUint32(out, true), view.getUint32(out + 4, true)];
+        } finally {
+          this.free(out, 8);
+        }
+      },
+      diagnosticRecoveryKind: (handle) => num(recoveryKind(handle as number)),
+      diagnosticRecoveryTerminal: (handle) =>
+        this.copyBytesResult((data, len) => recoveryTerminal(handle as number, data, len)),
+      diagnosticRecoveryResume: (handle) => {
+        const out = this.malloc(8);
+        try {
+          const result = num(recoveryResume(handle as number, out));
+          if (result < 0) return result;
+          return num(this.dataView().getBigInt64(out, true));
+        } finally {
+          this.free(out, 8);
+        }
+      },
+      diagnosticRecoveryLhsVariable: (handle) => {
+        const out = this.malloc(8);
+        try {
+          const result = num(recoveryLhsVariable(handle as number, out, out + 4));
+          if (result < 0) return result;
+          const view = this.dataView();
+          return textDecoder.decode(
+            this.readBytes(view.getUint32(out, true), view.getUint32(out + 4, true)),
+          );
+        } finally {
+          this.free(out, 8);
+        }
+      },
+      diagnosticRecoveryProduction: (handle) => {
+        const out = this.malloc(12);
+        try {
+          const result = num(recoveryProduction(handle as number, out, out + 4, out + 8));
+          if (result < 0) return result;
+          const view = this.dataView();
+          return [
+            textDecoder.decode(this.readBytes(view.getUint32(out, true), view.getUint32(out + 4, true))),
+            view.getUint32(out + 8, true),
+          ];
+        } finally {
+          this.free(out, 12);
+        }
+      },
+      diagnosticRecoveryOccurrence: (handle) => {
+        const out = this.malloc(24);
+        try {
+          const result = num(
+            recoveryOccurrence(handle as number, out, out + 4, out + 8, out + 12, out + 16, out + 20),
+          );
+          if (result < 0) return result;
+          const view = this.dataView();
+          return [
+            textDecoder.decode(this.readBytes(view.getUint32(out, true), view.getUint32(out + 4, true))),
+            view.getUint32(out + 8, true),
+            view.getUint32(out + 12, true),
+            textDecoder.decode(this.readBytes(view.getUint32(out + 16, true), view.getUint32(out + 20, true))),
+          ];
+        } finally {
+          this.free(out, 24);
+        }
+      },
+    };
   }
 
   recordedDiagnosticCount(handle: Handle): number {
@@ -1211,15 +1304,11 @@ export class WasmPort implements FfiPort {
     return toNumber(this.wasm.galley_recorded_diagnostic_kind(handle as number, BigInt(diagIndex)));
   }
 
-  recordedDiagnosticPosition(handle: Handle, diagIndex: number): [number, number, number] | null {
+  recordedDiagnosticPosition(handle: Handle, diagIndex: number): [number, number, number] | number {
     const out = this.malloc(16);
     try {
-      if (
-        isNegative(
-          this.wasm.galley_recorded_diagnostic_position(handle as number, BigInt(diagIndex), out, out + 8, out + 12),
-        )
-      )
-        return null;
+      const status = this.wasm.galley_recorded_diagnostic_position(handle as number, BigInt(diagIndex), out, out + 8, out + 12);
+      if (isNegative(status)) return Number(status);
       const view = this.dataView();
       return [Number(view.getBigUint64(out, true)), view.getUint32(out + 8, true), view.getUint32(out + 12, true)];
     } finally {
@@ -1227,42 +1316,40 @@ export class WasmPort implements FfiPort {
     }
   }
 
-  recordedUnexpectedToken(handle: Handle, diagIndex: number): Uint8Array | null {
+  recordedUnexpectedToken(handle: Handle, diagIndex: number): Uint8Array | number {
     const session = handle as number;
-    return this.tryCopyBytes((data, len) =>
+    return this.copyBytesResult((data, len) =>
       this.wasm.galley_recorded_unexpected_token(session, BigInt(diagIndex), data, len),
     );
   }
 
-  recordedDiagnosticMessage(handle: Handle, diagIndex: number): string | null {
+  recordedDiagnosticMessage(handle: Handle, diagIndex: number): string | number {
     const out = this.malloc(4);
     try {
-      if (toNumber(this.wasm.galley_recorded_diagnostic_message(handle as number, BigInt(diagIndex), out)) !== 0)
-        return null;
+      const status = toNumber(this.wasm.galley_recorded_diagnostic_message(handle as number, BigInt(diagIndex), out));
+      if (status < 0) return status;
       return this.readCString(this.dataView().getUint32(out, true));
     } finally {
       this.free(out, 4);
     }
   }
 
-  recordedDiagnosticMessageAnsi(handle: Handle, diagIndex: number): string | null {
+  recordedDiagnosticMessageAnsi(handle: Handle, diagIndex: number): string | number {
     const out = this.malloc(4);
     try {
-      if (toNumber(this.wasm.galley_recorded_diagnostic_message_ansi(handle as number, BigInt(diagIndex), out)) !== 0)
-        return null;
+      const status = toNumber(this.wasm.galley_recorded_diagnostic_message_ansi(handle as number, BigInt(diagIndex), out));
+      if (status < 0) return status;
       return this.readCString(this.dataView().getUint32(out, true));
     } finally {
       this.free(out, 4);
     }
   }
 
-  recordedIndentation(handle: Handle, diagIndex: number): [number, number] | null {
+  recordedIndentation(handle: Handle, diagIndex: number): [number, number] | number {
     const out = this.malloc(8);
     try {
-      if (
-        toNumber(this.wasm.galley_recorded_indentation(handle as number, BigInt(diagIndex), out, out + 4)) !== 0
-      )
-        return null;
+      const status = toNumber(this.wasm.galley_recorded_indentation(handle as number, BigInt(diagIndex), out, out + 4));
+      if (status < 0) return status;
       const view = this.dataView();
       return [view.getUint32(out, true), view.getUint32(out + 4, true)];
     } finally {
@@ -1270,9 +1357,9 @@ export class WasmPort implements FfiPort {
     }
   }
 
-  recordedSemantic(handle: Handle, diagIndex: number): [string, string] | null {
+  recordedSemantic(handle: Handle, diagIndex: number): [string, string] | number {
     const session = handle as number;
-    return this.readSemanticPair((variable, variableLen, message, messageLen) =>
+    return this.semanticResult((variable, variableLen, message, messageLen) =>
       this.wasm.galley_recorded_semantic(session, BigInt(diagIndex), variable, variableLen, message, messageLen),
     );
   }
@@ -1281,9 +1368,9 @@ export class WasmPort implements FfiPort {
     return toNumber(this.wasm.galley_recorded_expected_count(handle as number, BigInt(diagIndex)));
   }
 
-  recordedExpectedToken(handle: Handle, diagIndex: number, tokenIndex: number): Uint8Array | null {
+  recordedExpectedToken(handle: Handle, diagIndex: number, tokenIndex: number): Uint8Array | number {
     const session = handle as number;
-    return this.tryCopyBytes((data, len) =>
+    return this.copyBytesResult((data, len) =>
       this.wasm.galley_recorded_expected_token(session, BigInt(diagIndex), BigInt(tokenIndex), data, len),
     );
   }
@@ -1292,9 +1379,9 @@ export class WasmPort implements FfiPort {
     return toNumber(this.wasm.galley_recorded_context_count(handle as number, BigInt(diagIndex)));
   }
 
-  recordedContextName(handle: Handle, diagIndex: number, contextIndex: number): Uint8Array | null {
+  recordedContextName(handle: Handle, diagIndex: number, contextIndex: number): Uint8Array | number {
     const session = handle as number;
-    return this.tryCopyBytes((data, len) =>
+    return this.copyBytesResult((data, len) =>
       this.wasm.galley_recorded_context_name(session, BigInt(diagIndex), BigInt(contextIndex), data, len),
     );
   }
@@ -1303,48 +1390,44 @@ export class WasmPort implements FfiPort {
     return toNumber(this.wasm.galley_recorded_diagnostic_recovery_kind(handle as number, BigInt(diagIndex)));
   }
 
-  recordedRecoveryTerminal(handle: Handle, diagIndex: number): Uint8Array | null {
+  recordedRecoveryTerminal(handle: Handle, diagIndex: number): Uint8Array | number {
     const session = handle as number;
-    return this.tryCopyBytes((data, len) =>
+    return this.copyBytesResult((data, len) =>
       this.wasm.galley_recorded_recovery_terminal(session, BigInt(diagIndex), data, len),
     );
   }
 
-  recordedRecoveryResume(handle: Handle, diagIndex: number): number | null {
+  recordedRecoveryResume(handle: Handle, diagIndex: number): number {
     const out = this.malloc(8);
     try {
-      if (toNumber(this.wasm.galley_recorded_recovery_resume(handle as number, BigInt(diagIndex), out)) !== 0)
-        return null;
+      const status = toNumber(this.wasm.galley_recorded_recovery_resume(handle as number, BigInt(diagIndex), out));
+      if (status < 0) return status;
       return toNumber(this.dataView().getBigInt64(out, true));
     } finally {
       this.free(out, 8);
     }
   }
 
-  recordedRecoveryLhsVariable(handle: Handle, diagIndex: number): string | null {
+  recordedRecoveryLhsVariable(handle: Handle, diagIndex: number): string | number {
     const session = handle as number;
     const out = this.malloc(8);
     try {
       const status = this.wasm.galley_recorded_recovery_lhs_variable(session, BigInt(diagIndex), out, out + 4);
-      if (isNegative(status)) return null;
+      if (isNegative(status)) return Number(status);
       const view = this.dataView();
-      const ptr = view.getUint32(out, true);
-      if (ptr === 0) return null;
-      return textDecoder.decode(this.readBytes(ptr, view.getUint32(out + 4, true)));
+      return textDecoder.decode(this.readBytes(view.getUint32(out, true), view.getUint32(out + 4, true)));
     } finally {
       this.free(out, 8);
     }
   }
 
-  recordedRecoveryProduction(handle: Handle, diagIndex: number): [string, number] | null {
+  recordedRecoveryProduction(handle: Handle, diagIndex: number): [string, number] | number {
     const out = this.malloc(12);
     try {
-      if (
-        toNumber(
-          this.wasm.galley_recorded_recovery_production(handle as number, BigInt(diagIndex), out, out + 4, out + 8),
-        ) !== 0
-      )
-        return null;
+      const status = toNumber(
+        this.wasm.galley_recorded_recovery_production(handle as number, BigInt(diagIndex), out, out + 4, out + 8),
+      );
+      if (status < 0) return status;
       const view = this.dataView();
       return [
         textDecoder.decode(this.readBytes(view.getUint32(out, true), view.getUint32(out + 4, true))),
@@ -1358,24 +1441,22 @@ export class WasmPort implements FfiPort {
   recordedRecoveryOccurrence(
     handle: Handle,
     diagIndex: number,
-  ): [string, number, number, string] | null {
+  ): [string, number, number, string] | number {
     const out = this.malloc(24);
     try {
-      if (
-        toNumber(
-          this.wasm.galley_recorded_recovery_occurrence(
-            handle as number,
-            BigInt(diagIndex),
-            out,
-            out + 4,
-            out + 8,
-            out + 12,
-            out + 16,
-            out + 20,
-          ),
-        ) !== 0
-      )
-        return null;
+      const status = toNumber(
+        this.wasm.galley_recorded_recovery_occurrence(
+          handle as number,
+          BigInt(diagIndex),
+          out,
+          out + 4,
+          out + 8,
+          out + 12,
+          out + 16,
+          out + 20,
+        ),
+      );
+      if (status < 0) return status;
       const view = this.dataView();
       return [
         textDecoder.decode(this.readBytes(view.getUint32(out, true), view.getUint32(out + 4, true))),

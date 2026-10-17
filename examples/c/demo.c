@@ -43,8 +43,8 @@ int main(int argc, char **argv) {
     const GalleyCOptions options = {
         .max_errors = 10, /* explicit; zero selects the same default */
     };
-    GalleySession *session = galley_session_create_ex(&options);
-    if (session == NULL) {
+    GalleySession *session = NULL;
+    if (galley_session_create(&options, &session) != galley_ok) {
         fprintf(stderr, "failed to create a parser session\n");
         return 1;
     }

@@ -368,6 +368,7 @@ void fixture_stash_session(GalleySession *session) {
     hook_generation = 0;
     hook_generation_status = galley_ok;
     stashed_root = GALLEY_INVALID_NODE;
+    /* Sentinel: a refused read must leave it, a successful one overwrites it. */
     stashed_published_generation = 1;
     stashed_published_status = galley_ok;
     hook_walk_root = GALLEY_INVALID_NODE;

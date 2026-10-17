@@ -96,6 +96,16 @@ pub const galley_error_stale_hook: i64 = -15;
 /// stopped where the hook ran and published nothing. The diagnostic of the
 /// failed parse is of kind `galley_diagnostic_kind_hook`.
 pub const galley_error_hook_failed: i64 = -16;
+/// An index addresses a position outside the table it was read from: a hook
+/// name, grammar symbol or variable name, or an expected-token or
+/// context-name index past its table. An address outside the live node
+/// storage is `galley_error_invalid_node` instead.
+pub const galley_error_out_of_range: i64 = -17;
+/// A value in `GalleyCOptions` is outside its domain (a negative
+/// `max_errors`, `recovery_window`, or `verbosity`, or a non-finite
+/// `ast_preallocation_ratio`), or the enable-flag count passed to
+/// `galley_session_set_hooks` does not match `galley_hooks_count()`.
+pub const galley_error_invalid_argument: i64 = -18;
 
 /// Diagnostic kinds returned by `galley_diagnostic_kind`.
 pub const galley_diagnostic_kind_none: i64 = 0;
@@ -170,10 +180,11 @@ const Embedded = struct {
     /// to an earlier parse, and fills the slot, re-checking under that
     /// door because another caller may have filled it in between.
     fn renderedDiagnostic(self: *Embedded, comptime kind: root.DiagnosticStyle, out: *[*:0]const u8) i64 {
+        const handle: *GalleySession = @ptrCast(self);
         {
-            var guard = self.session.readLatest() catch |err| return statusForError(err);
-            defer guard.deinit();
-            if (self.session.runtime_context.lastDiagnostic() == null) return galley_error_no_diagnostic;
+            var entry = enterSession(.read_latest, handle) catch |err| return statusForError(err);
+            defer entry.deinit();
+            if (entry.door.runtime_context.lastDiagnostic() == null) return galley_error_no_diagnostic;
             if (self.rendered_generation == self.session.generation) {
                 if (self.renderingSlot(kind).*) |cached| {
                     out.* = cached.ptr;
@@ -181,14 +192,13 @@ const Embedded = struct {
                 }
             }
         }
-        var guard = self.session.edit() catch |err| return statusForError(err);
-        defer guard.deinit();
+        var entry = enterSession(.edit_latest, handle) catch |err| return statusForError(err);
+        defer entry.deinit();
         if (self.rendered_generation != self.session.generation) {
             self.clearRenderedDiagnostic();
             self.rendered_generation = self.session.generation;
         }
-        const door = sessionDoor(self);
-        const diagnostic = door.runtime_context.lastDiagnostic() orelse return galley_error_no_diagnostic;
+        const diagnostic = entry.door.runtime_context.lastDiagnostic() orelse return galley_error_no_diagnostic;
         const slot = self.renderingSlot(kind);
         if (slot.*) |cached| {
             out.* = cached.ptr;
@@ -260,8 +270,10 @@ const Embedded = struct {
 // every hook of it. Per-hook state (current node, rule, drop/replace
 // channel) stays on the arguments, which die with their hook. The post-parse
 // door (`sessionDoor`) resolves session state of the published parse
-// under the matching guard. Calls that read or edit nodes enter either door
-// through `gate`, which compares the caller's generation once.
+// under the matching guard. Every export enters a session through
+// `enterSession` (handle plus guard) or a hook door through `enterHookDoor`
+// (the shared refusal for a null door), and calls that read or edit nodes
+// continue through `gate`, which compares the caller's generation once.
 // ---------------------------------------------------------------------------
 
 const Door = struct {
@@ -349,14 +361,18 @@ fn DoorHandle(comptime kind: DoorKind) type {
     };
 }
 
-/// Which guard a session-door call needs: a node read takes the shared
-/// door, a tree edit the exclusive one. The hook door takes none.
-const Tier = enum { read, edit };
+/// Which guard a session-door call needs. `read_latest` takes the shared
+/// diagnostics door, which does not validate a published result
+/// (diagnostics outlive their parse); `read_current` adds the
+/// published-tree check; `edit_latest` and `edit_current` take the
+/// exclusive door with the same split. The hook door takes none.
+const Tier = enum { read_latest, read_current, edit_latest, edit_current };
 
 fn guardType(comptime tier: Tier) type {
     return switch (tier) {
-        .read => root.SessionReadGuard,
-        .edit => root.SessionEditGuard,
+        .read_latest => root.SessionDiagnosticsGuard,
+        .read_current => root.SessionReadGuard,
+        .edit_latest, .edit_current => root.SessionEditGuard,
     };
 }
 
@@ -381,15 +397,46 @@ fn Entry(comptime kind: DoorKind, comptime tier: Tier) type {
 /// null session or hook door.
 const GateError = root.SessionError || error{ StaleTree, NullArgument };
 
+/// The one session-handle unwrap: a null handle refuses with `NullArgument`;
+/// any other pointer narrows to the embedded session. Every session enters
+/// here or through `enterSession` / `gate`.
+fn resolveSession(session_ptr: ?*GalleySession) error{NullArgument}!*Embedded {
+    return @ptrCast(@alignCast(session_ptr orelse return error.NullArgument));
+}
+
+/// The one way into a session: resolves the handle, takes the guard the tier
+/// names (see `Tier`) and pairs it with the post-parse door. The guard is
+/// released by `deinit`.
+fn enterSession(comptime tier: Tier, session_ptr: ?*GalleySession) GateError!Entry(.session, tier) {
+    const embedded = try resolveSession(session_ptr);
+    var entry: Entry(.session, tier) = undefined;
+    entry.guard = switch (tier) {
+        .read_latest => embedded.session.readLatest() catch |err| return gateStatusError(err),
+        .read_current => embedded.session.readCurrent() catch |err| return gateStatusError(err),
+        .edit_latest => embedded.session.edit() catch |err| return gateStatusError(err),
+        .edit_current => embedded.session.editCurrent() catch |err| return gateStatusError(err),
+    };
+    entry.door = sessionDoor(embedded);
+    return entry;
+}
+
+/// The one way into a hook door: the live context of one in-flight parse, or
+/// the shared refusal for a null door. The door is unshared by construction,
+/// so entering takes no guard.
+fn enterHookDoor(hook_door: ?*anyopaque) GateError!Door {
+    return hookDoor(hook_door) orelse error.NullArgument;
+}
+
 /// The single generation gate: the one place the core compares a caller's
-/// generation against the tree a door serves, for both doors. The session
-/// door's tree is the published one (`readCurrent` / `editCurrent` already
-/// refuse a session a parse holds and a published result no longer live);
-/// the hook door's is the parse that owns the door. A missing published
-/// result and a mismatch are one failure — the tree the caller addressed is
-/// gone — reported as `galley_error_stale_tree`, so an address from a dead
-/// parse is refused here instead of aliasing whichever node holds that index
-/// in the current storage. Generation 0 is never live.
+/// generation against the tree a door serves, for both doors, over the
+/// entries `enterSession` and `enterHookDoor` build. The session door's tree
+/// is the published one (`read_current` / `edit_current` already refuse a
+/// session a parse holds and a published result no longer live); the hook
+/// door's is the parse that owns the door. A missing published result and a
+/// mismatch are one failure — the tree the caller addressed is gone —
+/// reported as `galley_error_stale_tree`, so an address from a dead parse is
+/// refused here instead of aliasing whichever node holds that index in the
+/// current storage. Generation 0 is never live.
 ///
 /// This runs in every build: it is the lifetime contract memory-safe hosts
 /// rely on, not a misuse check, and it costs one integer comparison on a
@@ -398,16 +445,11 @@ fn gate(comptime kind: DoorKind, comptime tier: Tier, handle: DoorHandle(kind), 
     var entry: Entry(kind, tier) = undefined;
     const live: u64 = switch (kind) {
         .session => live: {
-            const embedded: *Embedded = @ptrCast(@alignCast(handle orelse return error.NullArgument));
-            entry.guard = switch (tier) {
-                .read => embedded.session.readCurrent() catch |err| return gateStatusError(err),
-                .edit => embedded.session.editCurrent() catch |err| return gateStatusError(err),
-            };
-            entry.door = sessionDoor(embedded);
+            entry = try enterSession(tier, handle);
             break :live entry.guard.generation();
         },
         .hook => live: {
-            entry.door = hookDoor(handle) orelse return error.NullArgument;
+            entry.door = try enterHookDoor(handle);
             break :live entry.door.input.context.generation;
         },
     };
@@ -428,6 +470,23 @@ fn gateStatusError(err: root.SessionError) GateError {
     };
 }
 
+/// The core's three lookup refusals, one per kind of miss — a tree position
+/// outside the door's live storage, a recorded-diagnostic index past the
+/// retained records, and an index outside a static or diagnostic table —
+/// each mapped by `statusForError`. Every core that can miss returns one of
+/// these instead of spelling a status itself.
+fn treePositionRefusal() i64 {
+    return statusForError(error.InvalidNode);
+}
+
+fn recordedDiagnosticRefusal() i64 {
+    return statusForError(error.NoDiagnostic);
+}
+
+fn tableIndexRefusal() i64 {
+    return statusForError(error.OutOfRange);
+}
+
 /// The value shape behind the five links and the variable index, on either
 /// door: the gate (also in a build without AST construction, which then has
 /// no node to address), then a core that answers null for an
@@ -442,18 +501,18 @@ fn nodeValue(
     comptime core: anytype,
     extra: anytype,
 ) i64 {
-    var entry = gate(kind, .read, handle, generation) catch |err| return statusForError(err);
+    var entry = gate(kind, .read_current, handle, generation) catch |err| return statusForError(err);
     defer entry.deinit();
-    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
-    const value = @call(.auto, core, .{ &entry.door, address } ++ extra) orelse return galley_error_invalid_node;
+    if (comptime !parser.is_ast_enabled) return treePositionRefusal();
+    const value = @call(.auto, core, .{ &entry.door, address } ++ extra) orelse return treePositionRefusal();
     return @intCast(value);
 }
 
 /// The read shape behind the byte reads (symbol name, text), the pair reads
 /// (span, line and column) and the snapshot, on either door. In order: the
 /// out-parameters the call requires (`required`: indexes into `arguments`,
-/// null is `galley_error_null_argument`), the gate, the answer of a build
-/// without AST construction (`no_ast`, so a refusal still comes first there),
+/// null is `galley_error_null_argument`), the gate, the shared refusal of a
+/// build without AST construction (there is no node storage to address),
 /// then a core that takes the door and `arguments` (the address and the
 /// out-parameters, or the snapshot's columns) and returns a status or count.
 /// Argument errors come before the gate, so a stale or contended call with a
@@ -462,7 +521,6 @@ fn nodeRead(
     comptime kind: DoorKind,
     handle: DoorHandle(kind),
     generation: u64,
-    comptime no_ast: i64,
     comptime required: []const usize,
     comptime core: anytype,
     arguments: anytype,
@@ -470,9 +528,9 @@ fn nodeRead(
     inline for (required) |index| {
         if (arguments[index] == null) return galley_error_null_argument;
     }
-    var entry = gate(kind, .read, handle, generation) catch |err| return statusForError(err);
+    var entry = gate(kind, .read_current, handle, generation) catch |err| return statusForError(err);
     defer entry.deinit();
-    if (comptime !parser.is_ast_enabled) return no_ast;
+    if (comptime !parser.is_ast_enabled) return treePositionRefusal();
     return @call(.auto, core, .{&entry.door} ++ arguments);
 }
 
@@ -519,7 +577,7 @@ fn treeEditOf(
     inline for (required) |index| {
         if (arguments[index] == null) return galley_error_null_argument;
     }
-    var entry = gate(kind, .edit, handle, generation) catch |err| return statusForError(err);
+    var entry = gate(kind, .edit_current, handle, generation) catch |err| return statusForError(err);
     defer entry.deinit();
     if (other_generation) |other| {
         if (other != generation) return galley_error_stale_tree;
@@ -566,8 +624,8 @@ fn nodeSymbolNameCore(
     out_data: ?*[*]const u8,
     out_len: ?*usize,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
-    const node = door.nodeAt(address) orelse return galley_error_invalid_node;
+    if (comptime !parser.is_ast_enabled) return treePositionRefusal();
+    const node = door.nodeAt(address) orelse return treePositionRefusal();
     if (node.variable == root.data_structures.Node.invalid_variable) {
         out_data.?.* = @ptrCast("");
         out_len.?.* = 0;
@@ -585,8 +643,8 @@ fn nodeTextCore(
     out_data: ?*[*]const u8,
     out_len: ?*usize,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
-    const node = door.nodeAt(address) orelse return galley_error_invalid_node;
+    if (comptime !parser.is_ast_enabled) return treePositionRefusal();
+    const node = door.nodeAt(address) orelse return treePositionRefusal();
     const slice = door.nodeText(node) orelse return galley_error_internal;
     out_data.?.* = slice.ptr;
     out_len.?.* = slice.len;
@@ -599,8 +657,8 @@ fn nodeSpanCore(
     out_start: ?*u64,
     out_len: ?*u64,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
-    const node = door.nodeAt(address) orelse return galley_error_invalid_node;
+    if (comptime !parser.is_ast_enabled) return treePositionRefusal();
+    const node = door.nodeAt(address) orelse return treePositionRefusal();
     out_start.?.* = node.text_start;
     out_len.?.* = node.text_length;
     return galley_ok;
@@ -612,8 +670,8 @@ fn nodeLineColumnCore(
     out_line: ?*u32,
     out_column: ?*u32,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
-    const node = door.nodeAt(address) orelse return galley_error_invalid_node;
+    if (comptime !parser.is_ast_enabled) return treePositionRefusal();
+    const node = door.nodeAt(address) orelse return treePositionRefusal();
     const position = root.lineColumnAt(door.inputBytes(), node.text_start) catch return galley_error_internal;
     const line = std.math.cast(u32, position.line) orelse return galley_error_internal;
     const column = std.math.cast(u32, position.column) orelse return galley_error_internal;
@@ -648,33 +706,33 @@ fn lastInputCore(door: *const Door, out_data: ?*[*]const u8, out_len: ?*usize) i
 
 fn treeAppendChildrenCore(door: *const Door, parent: GalleyNodeAddress, first_node: GalleyNodeAddress) i64 {
     if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    const parent_ptr = door.livePointer(parent) orelse return galley_error_invalid_node;
-    const first_ptr = door.livePointer(first_node) orelse return galley_error_invalid_node;
+    const parent_ptr = door.livePointer(parent) orelse return treePositionRefusal();
+    const first_ptr = door.livePointer(first_node) orelse return treePositionRefusal();
     root.data_structures.Node.appendChildren(parent_ptr, door.node_allocator, first_ptr);
     return galley_ok;
 }
 
 fn treeInsertBeforeCore(door: *const Door, target: GalleyNodeAddress, first_node: GalleyNodeAddress) i64 {
     if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    const target_ptr = door.livePointer(target) orelse return galley_error_invalid_node;
-    const first_ptr = door.livePointer(first_node) orelse return galley_error_invalid_node;
+    const target_ptr = door.livePointer(target) orelse return treePositionRefusal();
+    const first_ptr = door.livePointer(first_node) orelse return treePositionRefusal();
     root.data_structures.Node.insertBefore(target_ptr, door.node_allocator, first_ptr);
     return galley_ok;
 }
 
 fn treeInsertAfterCore(door: *const Door, target: GalleyNodeAddress, first_node: GalleyNodeAddress) i64 {
     if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    const target_ptr = door.livePointer(target) orelse return galley_error_invalid_node;
-    const first_ptr = door.livePointer(first_node) orelse return galley_error_invalid_node;
+    const target_ptr = door.livePointer(target) orelse return treePositionRefusal();
+    const first_ptr = door.livePointer(first_node) orelse return treePositionRefusal();
     root.data_structures.Node.insertAfter(target_ptr, door.node_allocator, first_ptr);
     return galley_ok;
 }
 
 fn treeRemoveSiblingsCore(door: *const Door, node: GalleyNodeAddress, count: usize, out_head: ?*GalleyNodeAddress) i64 {
     if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    const node_ptr = door.livePointer(node) orelse return galley_error_invalid_node;
+    const node_ptr = door.livePointer(node) orelse return treePositionRefusal();
     // Host-supplied counts must never read out of bounds: this range check runs in every build.
-    if (root.data_structures.Node.removalFault(door.node_allocator, node_ptr, null, count) != null) return galley_error_invalid_node;
+    if (root.data_structures.Node.removalFault(door.node_allocator, node_ptr, null, count) != null) return treePositionRefusal();
     const head = root.data_structures.Node.remove(node_ptr, door.node_allocator, count);
     if (head == root.data_structures.Node.invalid_pointer) {
         out_head.?.* = galley_invalid_node;
@@ -686,7 +744,7 @@ fn treeRemoveSiblingsCore(door: *const Door, node: GalleyNodeAddress, count: usi
 
 fn treeCleanChildrenCore(door: *const Door, node: GalleyNodeAddress, out_head: ?*GalleyNodeAddress) i64 {
     if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    const node_ptr = door.livePointer(node) orelse return galley_error_invalid_node;
+    const node_ptr = door.livePointer(node) orelse return treePositionRefusal();
     const head = root.data_structures.Node.cleanChildren(node_ptr, door.node_allocator);
     if (head == root.data_structures.Node.invalid_pointer) {
         out_head.?.* = galley_invalid_node;
@@ -703,10 +761,10 @@ fn treeInsertChildrenAtCore(
     first_node: GalleyNodeAddress,
 ) i64 {
     if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    const parent_ptr = door.livePointer(parent) orelse return galley_error_invalid_node;
-    const first_ptr = door.livePointer(first_node) orelse return galley_error_invalid_node;
+    const parent_ptr = door.livePointer(parent) orelse return treePositionRefusal();
+    const first_ptr = door.livePointer(first_node) orelse return treePositionRefusal();
     // Host-supplied indexes must never read out of bounds: this range check runs in every build.
-    if (root.data_structures.Node.insertionRangeFault(door.node_allocator, parent_ptr, index) != null) return galley_error_invalid_node;
+    if (root.data_structures.Node.insertionRangeFault(door.node_allocator, parent_ptr, index) != null) return treePositionRefusal();
     root.data_structures.Node.insertChildren(parent_ptr, door.node_allocator, index, first_ptr);
     return galley_ok;
 }
@@ -719,9 +777,9 @@ fn treeRemoveChildrenAtCore(
     out_head: ?*GalleyNodeAddress,
 ) i64 {
     if (comptime !parser.is_ast_enabled) return galley_error_internal;
-    const parent_ptr = door.livePointer(parent) orelse return galley_error_invalid_node;
+    const parent_ptr = door.livePointer(parent) orelse return treePositionRefusal();
     // Host-supplied indexes and counts must never read out of bounds: this range check runs in every build.
-    if (root.data_structures.Node.removalFault(door.node_allocator, parent_ptr, index, count) != null) return galley_error_invalid_node;
+    if (root.data_structures.Node.removalFault(door.node_allocator, parent_ptr, index, count) != null) return treePositionRefusal();
     const head = root.data_structures.Node.removeChildren(parent_ptr, door.node_allocator, index, count);
     if (head == root.data_structures.Node.invalid_pointer) {
         out_head.?.* = galley_invalid_node;
@@ -776,7 +834,7 @@ fn currentSyntaxDiagnostic(door: *const Door) ?root.SyntaxDiagnostic {
     };
 }
 
-fn hasDiagnosticCore(door: *const Door) i32 {
+fn hasDiagnosticCore(door: *const Door) c_int {
     return if (door.runtime_context.lastDiagnostic() != null) 1 else 0;
 }
 
@@ -915,39 +973,41 @@ fn recordedSyntaxDiagnostic(door: *const Door, diag_index: u64) ?root.SyntaxDiag
     };
 }
 
-/// Creates a parsing session. Returns null when initialization fails, most
-/// commonly on allocation failure. Destroy it with `galley_session_destroy`.
-export fn galley_session_create() ?*GalleySession {
-    return galley_session_create_ex(null);
-}
-
-/// Creates a parsing session with explicit options. Passing null options is
-/// equivalent to `galley_session_create`. Zero/negative option fields select
-/// the runtime defaults.
-export fn galley_session_create_ex(options: ?*const GalleyCOptions) ?*GalleySession {
+/// Creates a parsing session with explicit options and writes it to
+/// `out_session`. Passing null options selects the runtime defaults, as do
+/// zero fields of a non-null options struct. Fails with
+/// `galley_error_null_argument` for a null `out_session`,
+/// `galley_error_invalid_argument` for an option value outside its domain (a
+/// negative `max_errors`, `recovery_window`, or `verbosity`, or a non-finite
+/// `ast_preallocation_ratio`), and `galley_error_out_of_memory` when
+/// initialization fails; `*out_session` is written only on success. Destroy
+/// the session with `galley_session_destroy`.
+export fn galley_session_create(options: ?*const GalleyCOptions, out_session: ?*?*GalleySession) i64 {
+    const out = out_session orelse return galley_error_null_argument;
     var parse_options: root.ParseOptions = .{};
     if (options) |o| {
+        if (o.max_errors < 0 or o.recovery_window < 0 or o.verbosity < 0) return galley_error_invalid_argument;
+        if (!std.math.isFinite(o.ast_preallocation_ratio)) return galley_error_invalid_argument;
         if (o.max_errors > 0) parse_options.max_errors = @intCast(o.max_errors);
         if (o.recovery_window > 0) parse_options.recovery_window = @intCast(o.recovery_window);
         parse_options.stack_overflow_recovery = o.stack_overflow_recovery != 0;
         if (o.syntax_error_stack_depth > 0) parse_options.syntax_error_stack_depth = o.syntax_error_stack_depth;
         if (o.verbosity > 0) parse_options.verbosity = @intCast(o.verbosity);
-        if (o.ast_preallocation_ratio >= 0.0 and std.math.isFinite(o.ast_preallocation_ratio)) {
-            parse_options.ast_preallocation_ratio = o.ast_preallocation_ratio;
-        }
+        if (o.ast_preallocation_ratio >= 0.0) parse_options.ast_preallocation_ratio = o.ast_preallocation_ratio;
         if (o.ast_preallocation_cap > 0) parse_options.ast_preallocation_cap = @intCast(o.ast_preallocation_cap);
     }
 
-    const embedded = std.heap.c_allocator.create(Embedded) catch return null;
+    const embedded = std.heap.c_allocator.create(Embedded) catch return galley_error_out_of_memory;
     embedded.* = .{ .threaded = undefined, .session = undefined };
     embedded.threaded = std.Io.Threaded.init(std.heap.c_allocator, .{});
-    embedded.session = root.Session.init(embedded.threaded.io(), std.heap.c_allocator, parse_options) catch {
+    embedded.session = root.Session.init(embedded.threaded.io(), std.heap.c_allocator, parse_options) catch |err| {
         embedded.threaded.deinit();
         std.heap.c_allocator.destroy(embedded);
-        return null;
+        return statusForError(err);
     };
     embedded.session.runtime_context.owner = embedded;
-    return @ptrCast(embedded);
+    out.* = @ptrCast(embedded);
+    return galley_ok;
 }
 
 /// Destroys a session created by `galley_session_create`. Null is ignored
@@ -961,7 +1021,7 @@ export fn galley_session_create_ex(options: ?*const GalleyCOptions) ?*GalleySess
 /// buffers and the session itself, so a refused close cannot free state the
 /// running parse still reads.
 export fn galley_session_destroy(session_ptr: ?*GalleySession) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_ok));
+    const embedded = resolveSession(session_ptr) catch return galley_ok;
     embedded.session.tryDeinit() catch return galley_error_session_in_use;
     embedded.clearRenderedDiagnostic();
     if (embedded.retained_input.len != 0) std.heap.c_allocator.free(embedded.retained_input);
@@ -1002,7 +1062,7 @@ export fn galley_session_set_message_override(
     message_ptr: ?[*]const u8,
     message_len: usize,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    const embedded = resolveSession(session_ptr) catch |err| return statusForError(err);
     if (name_ptr == null or message_ptr == null) return galley_error_null_argument;
     embedded.session.setMessageOverride(name_ptr.?[0..name_len], message_ptr.?[0..message_len]) catch |err| return statusForError(err);
     return galley_ok;
@@ -1019,30 +1079,30 @@ export fn galley_hooks_count() usize {
 
 /// Name of hook `index` (`reduction`, `reduction_<Variable>`,
 /// `reduction_<terminal stem>`, `reduction_<Variable>_<RhsIndex>` or
-/// `hook_<name>`; always an identifier): static storage valid for the process lifetime. A null
-/// pointer and a zero length for an out-of-range index. The pointer and the
-/// length are two calls so every host, wasm included, reads them as plain
-/// scalars.
-export fn galley_hooks_name_data(index: usize) ?[*]const u8 {
-    if (index >= host_hooks.hook_count) return null;
-    return host_hooks.hook_names[index].ptr;
-}
-
-export fn galley_hooks_name_length(index: usize) usize {
-    if (index >= host_hooks.hook_count) return 0;
-    return host_hooks.hook_names[index].len;
+/// `hook_<name>`; always an identifier): static storage valid for the
+/// process lifetime. Writes the name's pointer into `out_data` and its
+/// length into `out_len`; a null output is `galley_error_null_argument`,
+/// and an index at or past `galley_hooks_count()` is
+/// `galley_error_out_of_range`.
+export fn galley_hooks_name(index: usize, out_data: ?*[*]const u8, out_len: ?*usize) i64 {
+    if (out_data == null or out_len == null) return galley_error_null_argument;
+    if (index >= host_hooks.hook_count) return tableIndexRefusal();
+    out_data.?.* = host_hooks.hook_names[index].ptr;
+    out_len.?.* = host_hooks.hook_names[index].len;
+    return galley_ok;
 }
 
 /// Replaces the session's host hook state in one step. `enabled` holds one
-/// byte per hook, `galley_hooks_count()` bytes in all (null with count zero
-/// enables none); a nonzero byte routes that hook to `dispatch`, which gets
-/// `handle`, the hook's index and its arguments on the parsing thread.
+/// byte per hook, exactly `galley_hooks_count()` bytes (null with a zero
+/// count enables none); a nonzero byte routes that hook to `dispatch`, which
+/// gets `handle`, the hook's index and its arguments on the parsing thread.
 /// Unenabled hooks return before any call. Takes the exclusive lease, so it
 /// returns `galley_error_session_in_use` while a parse is in flight and the
-/// set a parse runs with is fixed for that parse. A null `enabled` with a
-/// nonzero count, or a count other than `galley_hooks_count()`, returns
-/// `galley_error_null_argument`. WebAssembly hosts pass a null `dispatch`
-/// and provide `env.galley_host_dispatch` instead.
+/// set a parse runs with is fixed for that parse. A non-null `enabled` with
+/// a count other than `galley_hooks_count()` returns
+/// `galley_error_invalid_argument`; a null `enabled` with a nonzero count
+/// returns `galley_error_null_argument`. WebAssembly hosts pass a null
+/// `dispatch` and provide `env.galley_host_dispatch` instead.
 export fn galley_session_set_hooks(
     session_ptr: ?*GalleySession,
     dispatch: ?host_hooks.Dispatch,
@@ -1050,12 +1110,13 @@ export fn galley_session_set_hooks(
     enabled: ?[*]const u8,
     enabled_count: usize,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    const embedded = resolveSession(session_ptr) catch |err| return statusForError(err);
     var hooks: root.data_structures.HostHooks = .{ .dispatch = dispatch };
-    if (enabled_count != 0) {
-        const flags = enabled orelse return galley_error_null_argument;
-        if (enabled_count != host_hooks.hook_count) return galley_error_null_argument;
+    if (enabled) |flags| {
+        if (enabled_count != host_hooks.hook_count) return galley_error_invalid_argument;
         for (&hooks.enabled, flags[0..enabled_count]) |*slot, flag| slot.* = flag != 0;
+    } else if (enabled_count != 0) {
+        return galley_error_null_argument;
     }
     embedded.session.setHostHooks(hooks, handle) catch |err| return statusForError(err);
     return galley_ok;
@@ -1077,6 +1138,9 @@ fn statusForError(err: anyerror) i64 {
         error.NullArgument => galley_error_null_argument,
         error.StaleHook => galley_error_stale_hook,
         error.HookFailed => galley_error_hook_failed,
+        error.InvalidNode => galley_error_invalid_node,
+        error.NoDiagnostic => galley_error_no_diagnostic,
+        error.OutOfRange => galley_error_out_of_range,
         // A live hook's arguments live on the dispatching thread's stack: any
         // other thread is a concurrent use of a session mid-parse.
         error.OtherThread => galley_error_session_in_use,
@@ -1133,7 +1197,7 @@ fn finishParse(embedded: *Embedded, lease: *const root.ParseLease) i64 {
 /// Parses one NUL-terminated input string. Returns the number of bytes
 /// parsed on success, or a negative status code.
 export fn galley_parse_sentinel(session_ptr: ?*GalleySession, input: ?[*:0]const u8) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    const embedded = resolveSession(session_ptr) catch |err| return statusForError(err);
     const text = std.mem.sliceTo(input orelse return galley_error_null_argument, 0);
     var lease = embedded.session.parseSentinelBytesLeased(text, null) catch |err| return statusForError(err);
     defer lease.deinit();
@@ -1143,7 +1207,7 @@ export fn galley_parse_sentinel(session_ptr: ?*GalleySession, input: ?[*:0]const
 /// Parses a byte buffer that may contain NUL bytes. Same return contract as
 /// `galley_parse_sentinel`.
 export fn galley_parse(session_ptr: ?*GalleySession, data: ?[*]const u8, len: usize) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    const embedded = resolveSession(session_ptr) catch |err| return statusForError(err);
     const bytes = if (data) |d|
         d[0..len]
     else if (len == 0)
@@ -1159,8 +1223,9 @@ fn nodeCountCore(door: *const Door) i64 {
     return @intCast(door.node_allocator.counter);
 }
 
-/// Returns the number of AST nodes allocated by the published parse (0 for a
-/// parser built without AST construction), or a negative status.
+/// Returns the number of AST nodes allocated by the published parse, or a
+/// negative status (`galley_error_invalid_node` in a parser built without
+/// AST construction).
 /// `generation` must be the generation `galley_root_node` reported for that
 /// tree; a caller addressing another parse's tree is refused with
 /// `galley_error_stale_tree`.
@@ -1168,7 +1233,7 @@ export fn galley_node_count(
     session_ptr: ?*GalleySession,
     generation: u64,
 ) i64 {
-    return nodeRead(.session, session_ptr, generation, 0, &.{}, nodeCountCore, .{});
+    return nodeRead(.session, session_ptr, generation, &.{}, nodeCountCore, .{});
 }
 
 /// Writes the root node of the published tree and the parse generation every
@@ -1178,9 +1243,9 @@ export fn galley_node_count(
 /// Returns `galley_ok` with `GALLEY_INVALID_NODE` and 0 when nothing is
 /// published (no parse has published yet, or a later parse has begun), and
 /// `galley_error_session_in_use` while a parse holds the session. A parser
-/// built without AST construction publishes a generation too, with no root:
-/// `galley_node_count` answers 0 for it, a real answer, after the same
-/// generation check. Real generations start at 1, so a 0 never matches a
+/// built without AST construction publishes a generation too, with no root;
+/// node reads then refuse `galley_error_invalid_node`. Real generations start
+/// at 1, so a 0 never matches a
 /// live tree.
 export fn galley_root_node(
     session_ptr: ?*GalleySession,
@@ -1189,17 +1254,19 @@ export fn galley_root_node(
 ) i64 {
     const out_root_value = out_root orelse return galley_error_null_argument;
     const out_generation_value = out_generation orelse return galley_error_null_argument;
-    out_root_value.* = galley_invalid_node;
-    out_generation_value.* = 0;
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    var guard = embedded.session.readCurrent() catch |err| switch (err) {
-        error.StaleParseResult, error.NoParseResult => return galley_ok,
+    var entry = enterSession(.read_current, session_ptr) catch |err| switch (err) {
+        error.StaleTree => {
+            out_root_value.* = galley_invalid_node;
+            out_generation_value.* = 0;
+            return galley_ok;
+        },
         else => return statusForError(err),
     };
-    defer guard.deinit();
-    out_generation_value.* = guard.generation();
+    defer entry.deinit();
+    out_root_value.* = galley_invalid_node;
+    out_generation_value.* = entry.guard.generation();
     if (comptime parser.is_ast_enabled) {
-        if (guard.result.ast_root) |ast_root| out_root_value.* = @intCast(ast_root);
+        if (entry.guard.result.ast_root) |ast_root| out_root_value.* = @intCast(ast_root);
     }
     return galley_ok;
 }
@@ -1308,7 +1375,7 @@ export fn galley_node_symbol_name(
     out_data: ?*[*]const u8,
     out_len: ?*usize,
 ) i64 {
-    return nodeRead(.session, session_ptr, generation, galley_error_invalid_node, &.{ 1, 2 }, nodeSymbolNameCore, .{ address, out_data, out_len });
+    return nodeRead(.session, session_ptr, generation, &.{ 1, 2 }, nodeSymbolNameCore, .{ address, out_data, out_len });
 }
 
 /// Hook-time twin of `galley_node_symbol_name`: same out-parameters and refusals, over the
@@ -1320,7 +1387,7 @@ export fn galley_hook_node_symbol_name(
     out_data: ?*[*]const u8,
     out_len: ?*usize,
 ) i64 {
-    return nodeRead(.hook, hook_door, generation, galley_error_invalid_node, &.{ 1, 2 }, nodeSymbolNameCore, .{ address, out_data, out_len });
+    return nodeRead(.hook, hook_door, generation, &.{ 1, 2 }, nodeSymbolNameCore, .{ address, out_data, out_len });
 }
 
 /// Writes the source text matched by a node into `out_data`/`out_len`. The
@@ -1335,7 +1402,7 @@ export fn galley_node_text(
     out_data: ?*[*]const u8,
     out_len: ?*usize,
 ) i64 {
-    return nodeRead(.session, session_ptr, generation, galley_error_invalid_node, &.{ 1, 2 }, nodeTextCore, .{ address, out_data, out_len });
+    return nodeRead(.session, session_ptr, generation, &.{ 1, 2 }, nodeTextCore, .{ address, out_data, out_len });
 }
 
 /// Hook-time twin of `galley_node_text`: same out-parameters and refusals,
@@ -1349,7 +1416,7 @@ export fn galley_hook_node_text(
     out_data: ?*[*]const u8,
     out_len: ?*usize,
 ) i64 {
-    return nodeRead(.hook, hook_door, generation, galley_error_invalid_node, &.{ 1, 2 }, nodeTextCore, .{ address, out_data, out_len });
+    return nodeRead(.hook, hook_door, generation, &.{ 1, 2 }, nodeTextCore, .{ address, out_data, out_len });
 }
 
 /// Writes the retained input of the published parse into `out_data`/`out_len`:
@@ -1364,11 +1431,10 @@ export fn galley_last_input(
     out_data: ?*[*]const u8,
     out_len: ?*usize,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_data == null or out_len == null) return galley_error_null_argument;
-    var guard = embedded.session.readCurrent() catch |err| return statusForError(gateStatusError(err));
-    defer guard.deinit();
-    return lastInputCore(&sessionDoor(embedded), out_data, out_len);
+    var entry = enterSession(.read_current, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return lastInputCore(&entry.door, out_data, out_len);
 }
 
 /// Hook-time door: `galley_last_input` over the live input of the in-flight
@@ -1379,7 +1445,7 @@ export fn galley_hook_last_input(
     out_data: ?*[*]const u8,
     out_len: ?*usize,
 ) i64 {
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
+    const door = enterHookDoor(hook_door) catch |err| return statusForError(err);
     if (out_data == null or out_len == null) return galley_error_null_argument;
     return lastInputCore(&door, out_data, out_len);
 }
@@ -1395,9 +1461,9 @@ pub const GalleyWalkCursor = root.data_structures.tree_walker.Cursor;
 /// it was created over even after it ended.
 fn walkNext(comptime kind: DoorKind, handle: DoorHandle(kind), cursor_ptr: ?*GalleyWalkCursor) i64 {
     const cursor = cursor_ptr orelse return galley_error_null_argument;
-    var entry = gate(kind, .read, handle, cursor.generation) catch |err| return statusForError(err);
+    var entry = gate(kind, .read_current, handle, cursor.generation) catch |err| return statusForError(err);
     defer entry.deinit();
-    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
+    if (comptime !parser.is_ast_enabled) return treePositionRefusal();
     if (cursor.state == tree_walker.state_done) return 0;
     const yielded = tree_walker.walkNext(entry.door.node_allocator, cursor) catch |err| return statusForError(err);
     return if (yielded) 1 else 0;
@@ -1446,21 +1512,26 @@ export fn galley_hook_walk_next(hook_door: ?*anyopaque, cursor_ptr: ?*GalleyWalk
     return walkNext(.hook, hook_door, cursor_ptr);
 }
 
-/// Returns nonzero when the previous parse produced a diagnostic. Refuses
-/// with 0 while a parse is in flight.
-export fn galley_has_diagnostic(session_ptr: ?*GalleySession) i32 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return 0));
-    var guard = embedded.session.readLatest() catch return 0;
-    defer guard.deinit();
-    return hasDiagnosticCore(&sessionDoor(embedded));
+/// Writes 1 into `out_has` when the previous parse produced a diagnostic, 0
+/// when it did not, and returns `galley_ok`; a null `out_has` is
+/// `galley_error_null_argument` and a parse in flight
+/// `galley_error_session_in_use`.
+export fn galley_has_diagnostic(session_ptr: ?*GalleySession, out_has: ?*c_int) i64 {
+    if (out_has == null) return galley_error_null_argument;
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    out_has.?.* = hasDiagnosticCore(&entry.door);
+    return galley_ok;
 }
 
 /// Hook-time door: `galley_has_diagnostic` over the in-flight parse's runtime
 /// context, reached through the parse's hook door. No lock; valid until the
 /// parse that produced the door ends.
-export fn galley_hook_has_diagnostic(hook_door: ?*anyopaque) i32 {
-    const door = hookDoor(hook_door) orelse return 0;
-    return hasDiagnosticCore(&door);
+export fn galley_hook_has_diagnostic(hook_door: ?*anyopaque, out_has: ?*c_int) i64 {
+    if (out_has == null) return galley_error_null_argument;
+    const door = enterHookDoor(hook_door) catch |err| return statusForError(err);
+    out_has.?.* = hasDiagnosticCore(&door);
+    return galley_ok;
 }
 
 /// Writes the rendered diagnostic message (plain text, no trailing newline)
@@ -1472,8 +1543,8 @@ export fn galley_hook_has_diagnostic(hook_door: ?*anyopaque) i32 {
 /// `galley_error_session_in_use` while a parse is in flight or another
 /// caller holds the door.
 export fn galley_diagnostic_message(session_ptr: ?*GalleySession, out: ?*[*:0]const u8) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out == null) return galley_error_null_argument;
+    const embedded = resolveSession(session_ptr) catch |err| return statusForError(err);
     return embedded.renderedDiagnostic(.plain, out.?);
 }
 
@@ -1482,7 +1553,7 @@ export fn galley_diagnostic_message(session_ptr: ?*GalleySession, out: ?*[*:0]co
 /// the parse arena and never touches the session cache; the string is valid
 /// until the next parse.
 export fn galley_hook_diagnostic_message(hook_door: ?*anyopaque, out: ?*[*:0]const u8) i64 {
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
+    const door = enterHookDoor(hook_door) catch |err| return statusForError(err);
     if (out == null) return galley_error_null_argument;
     const diagnostic = door.runtime_context.lastDiagnostic() orelse return galley_error_no_diagnostic;
     const z = diagnosticMessageCore(diagnostic, door.runtime_context.arena_allocator, .plain) catch return galley_error_out_of_memory;
@@ -1518,12 +1589,11 @@ fn recordedDiagnosticMessage(
     out: ?*[*:0]const u8,
     style: root.DiagnosticStyle,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out == null) return galley_error_null_argument;
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    const diagnostic = recordedDiagnostic(&sessionDoor(embedded), diag_index) orelse return galley_error_no_diagnostic;
-    const z = diagnosticMessageCore(diagnostic, embedded.session.arena.allocator(), style) catch return galley_error_out_of_memory;
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    const diagnostic = recordedDiagnostic(&entry.door, diag_index) orelse return recordedDiagnosticRefusal();
+    const z = diagnosticMessageCore(diagnostic, entry.door.runtime_context.arena_allocator, style) catch return galley_error_out_of_memory;
     out.?.* = z.ptr;
     return galley_ok;
 }
@@ -1556,11 +1626,10 @@ export fn galley_diagnostic_position(
     out_line: ?*u32,
     out_column: ?*u32,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_offset == null or out_line == null or out_column == null) return galley_error_null_argument;
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return diagnosticPositionCore(&sessionDoor(embedded), out_offset, out_line, out_column);
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return diagnosticPositionCore(&entry.door, out_offset, out_line, out_column);
 }
 
 /// Hook-time door: `galley_diagnostic_position` over the in-flight parse's
@@ -1572,7 +1641,7 @@ export fn galley_hook_diagnostic_position(
     out_line: ?*u32,
     out_column: ?*u32,
 ) i64 {
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
+    const door = enterHookDoor(hook_door) catch |err| return statusForError(err);
     return diagnosticPositionCore(&door, out_offset, out_line, out_column);
 }
 
@@ -1586,11 +1655,10 @@ export fn galley_recorded_diagnostic_position(
     out_line: ?*u32,
     out_column: ?*u32,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_offset == null or out_line == null or out_column == null) return galley_error_null_argument;
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return writeDiagnosticPosition(recordedDiagnostic(&sessionDoor(embedded), diag_index), out_offset, out_line, out_column);
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return writeDiagnosticPosition(recordedDiagnostic(&entry.door, diag_index), out_offset, out_line, out_column);
 }
 
 /// Writes the unexpected token bytes of a syntax diagnostic into
@@ -1616,11 +1684,10 @@ export fn galley_diagnostic_unexpected_token(
     out_data: ?*[*]const u8,
     out_len: ?*usize,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_data == null or out_len == null) return galley_error_null_argument;
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return diagnosticUnexpectedTokenCore(&sessionDoor(embedded), out_data, out_len);
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return diagnosticUnexpectedTokenCore(&entry.door, out_data, out_len);
 }
 
 /// Hook-time door: `galley_diagnostic_unexpected_token` over the in-flight
@@ -1631,7 +1698,7 @@ export fn galley_hook_diagnostic_unexpected_token(
     out_data: ?*[*]const u8,
     out_len: ?*usize,
 ) i64 {
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
+    const door = enterHookDoor(hook_door) catch |err| return statusForError(err);
     if (out_data == null or out_len == null) return galley_error_null_argument;
     return diagnosticUnexpectedTokenCore(&door, out_data, out_len);
 }
@@ -1646,11 +1713,10 @@ export fn galley_recorded_unexpected_token(
     out_data: ?*[*]const u8,
     out_len: ?*usize,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_data == null or out_len == null) return galley_error_null_argument;
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return writeUnexpectedToken(recordedDiagnostic(&sessionDoor(embedded), diag_index), out_data, out_len);
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return writeUnexpectedToken(recordedDiagnostic(&entry.door, diag_index), out_data, out_len);
 }
 
 /// Renders a status code as a static, NUL-terminated description, or null
@@ -1675,6 +1741,8 @@ export fn galley_status_string(status: i64) ?[*:0]const u8 {
         galley_error_stale_tree => "stale tree",
         galley_error_stale_hook => "stale hook",
         galley_error_hook_failed => "hook failed",
+        galley_error_out_of_range => "out of range",
+        galley_error_invalid_argument => "invalid argument",
         else => null,
     };
 }
@@ -1692,17 +1760,16 @@ fn countExpectedTokens(diagnostic: ?root.ParseDiagnostic) i64 {
 /// or a negative status when there is no diagnostic or it is not a syntax
 /// error.
 export fn galley_diagnostic_expected_count(session_ptr: ?*GalleySession) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return diagnosticExpectedCountCore(&sessionDoor(embedded));
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return diagnosticExpectedCountCore(&entry.door);
 }
 
 /// Hook-time door: `galley_diagnostic_expected_count` over the in-flight
 /// parse's runtime context, reached through the parse's hook door. No lock;
 /// valid until the parse that produced the door ends.
 export fn galley_hook_diagnostic_expected_count(hook_door: ?*anyopaque) i64 {
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
+    const door = enterHookDoor(hook_door) catch |err| return statusForError(err);
     return diagnosticExpectedCountCore(&door);
 }
 
@@ -1710,10 +1777,9 @@ export fn galley_hook_diagnostic_expected_count(hook_door: ?*anyopaque) i64 {
 /// `diag_index`, or a negative status when the index is out of range or the
 /// record is not a syntax error.
 export fn galley_recorded_expected_count(session_ptr: ?*GalleySession, diag_index: u64) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return countExpectedTokens(recordedDiagnostic(&sessionDoor(embedded), diag_index));
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return countExpectedTokens(recordedDiagnostic(&entry.door, diag_index));
 }
 
 /// Writes the expected token at `index` (see
@@ -1725,11 +1791,10 @@ export fn galley_diagnostic_expected_at(
     out_data: ?*[*]const u8,
     out_len: ?*usize,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_data == null or out_len == null) return galley_error_null_argument;
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return diagnosticExpectedAtCore(&sessionDoor(embedded), index, out_data, out_len);
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return diagnosticExpectedAtCore(&entry.door, index, out_data, out_len);
 }
 
 /// Hook-time door: `galley_diagnostic_expected_at` over the in-flight parse's
@@ -1741,7 +1806,7 @@ export fn galley_hook_diagnostic_expected_at(
     out_data: ?*[*]const u8,
     out_len: ?*usize,
 ) i64 {
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
+    const door = enterHookDoor(hook_door) catch |err| return statusForError(err);
     if (out_data == null or out_len == null) return galley_error_null_argument;
     return diagnosticExpectedAtCore(&door, index, out_data, out_len);
 }
@@ -1755,11 +1820,10 @@ export fn galley_recorded_expected_token(
     out_data: ?*[*]const u8,
     out_len: ?*usize,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_data == null or out_len == null) return galley_error_null_argument;
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    const diagnostic = recordedDiagnostic(&sessionDoor(embedded), diag_index) orelse return galley_error_no_diagnostic;
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    const diagnostic = recordedDiagnostic(&entry.door, diag_index) orelse return recordedDiagnosticRefusal();
     return writeExpectedToken(diagnostic, token_index, out_data, out_len);
 }
 
@@ -1771,7 +1835,7 @@ fn writeExpectedToken(
 ) i64 {
     switch (diagnostic) {
         .syntax => |syntax| {
-            if (index >= syntax.expected_tokens.len) return galley_error_invalid_node;
+            if (index >= syntax.expected_tokens.len) return tableIndexRefusal();
             const token = syntax.expected_tokens[@intCast(index)];
             out_data.?.* = token.ptr;
             out_len.?.* = token.len;
@@ -1799,17 +1863,16 @@ fn countContextNames(diagnostic: ?root.ParseDiagnostic) i64 {
 /// context chain of the current syntax diagnostic, or a negative status when
 /// there is no diagnostic or it is not a syntax error.
 export fn galley_diagnostic_context_count(session_ptr: ?*GalleySession) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return diagnosticContextCountCore(&sessionDoor(embedded));
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return diagnosticContextCountCore(&entry.door);
 }
 
 /// Hook-time door: `galley_diagnostic_context_count` over the in-flight
 /// parse's runtime context, reached through the parse's hook door. No lock;
 /// valid until the parse that produced the door ends.
 export fn galley_hook_diagnostic_context_count(hook_door: ?*anyopaque) i64 {
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
+    const door = enterHookDoor(hook_door) catch |err| return statusForError(err);
     return diagnosticContextCountCore(&door);
 }
 
@@ -1817,10 +1880,9 @@ export fn galley_hook_diagnostic_context_count(hook_door: ?*anyopaque) i64 {
 /// recorded at `diag_index`, or a negative status when the index is out of
 /// range or the record is not a syntax error.
 export fn galley_recorded_context_count(session_ptr: ?*GalleySession, diag_index: u64) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return countContextNames(recordedDiagnostic(&sessionDoor(embedded), diag_index));
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return countContextNames(recordedDiagnostic(&entry.door, diag_index));
 }
 
 /// Writes the variable name at `index` of the context chain (0 is
@@ -1832,11 +1894,10 @@ export fn galley_diagnostic_context_at(
     out_data: ?*[*]const u8,
     out_len: ?*usize,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_data == null or out_len == null) return galley_error_null_argument;
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return diagnosticContextAtCore(&sessionDoor(embedded), index, out_data, out_len);
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return diagnosticContextAtCore(&entry.door, index, out_data, out_len);
 }
 
 /// Hook-time door: `galley_diagnostic_context_at` over the in-flight parse's
@@ -1848,7 +1909,7 @@ export fn galley_hook_diagnostic_context_at(
     out_data: ?*[*]const u8,
     out_len: ?*usize,
 ) i64 {
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
+    const door = enterHookDoor(hook_door) catch |err| return statusForError(err);
     if (out_data == null or out_len == null) return galley_error_null_argument;
     return diagnosticContextAtCore(&door, index, out_data, out_len);
 }
@@ -1862,11 +1923,10 @@ export fn galley_recorded_context_name(
     out_data: ?*[*]const u8,
     out_len: ?*usize,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_data == null or out_len == null) return galley_error_null_argument;
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    const diagnostic = recordedDiagnostic(&sessionDoor(embedded), diag_index) orelse return galley_error_no_diagnostic;
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    const diagnostic = recordedDiagnostic(&entry.door, diag_index) orelse return recordedDiagnosticRefusal();
     return writeContextName(diagnostic, context_index, out_data, out_len);
 }
 
@@ -1879,7 +1939,7 @@ fn writeContextName(
     switch (diagnostic) {
         .syntax => |syntax| switch (syntax.context) {
             .while_parsing => |names| {
-                if (index >= names.len) return galley_error_invalid_node;
+                if (index >= names.len) return tableIndexRefusal();
                 out_data.?.* = names[@intCast(index)].ptr;
                 out_len.?.* = names[@intCast(index)].len;
                 return galley_ok;
@@ -1887,7 +1947,7 @@ fn writeContextName(
             else => return galley_error_no_diagnostic,
         },
         .semantic => |semantic| {
-            if (index != 0) return galley_error_invalid_node;
+            if (index != 0) return tableIndexRefusal();
             out_data.?.* = semantic.variable.ptr;
             out_len.?.* = semantic.variable.len;
             return galley_ok;
@@ -1908,7 +1968,7 @@ export fn galley_node_line_column(
     out_line: ?*u32,
     out_column: ?*u32,
 ) i64 {
-    return nodeRead(.session, session_ptr, generation, galley_error_invalid_node, &.{ 1, 2 }, nodeLineColumnCore, .{ address, out_line, out_column });
+    return nodeRead(.session, session_ptr, generation, &.{ 1, 2 }, nodeLineColumnCore, .{ address, out_line, out_column });
 }
 
 /// Hook-time twin of `galley_node_line_column`: same out-parameters and refusals, over the
@@ -1920,14 +1980,14 @@ export fn galley_hook_node_line_column(
     out_line: ?*u32,
     out_column: ?*u32,
 ) i64 {
-    return nodeRead(.hook, hook_door, generation, galley_error_invalid_node, &.{ 1, 2 }, nodeLineColumnCore, .{ address, out_line, out_column });
+    return nodeRead(.hook, hook_door, generation, &.{ 1, 2 }, nodeLineColumnCore, .{ address, out_line, out_column });
 }
 
 /// Parses the file at `path`. Returns the number of bytes parsed on success
 /// or a negative status code; file access failures report
 /// `galley_error_io`.
 export fn galley_parse_file(session_ptr: ?*GalleySession, path: ?[*:0]const u8) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
+    const embedded = resolveSession(session_ptr) catch |err| return statusForError(err);
     const path_slice = std.mem.sliceTo(path orelse return galley_error_null_argument, 0);
 
     var file = std.Io.Dir.cwd().openFile(embedded.threaded.io(), path_slice, .{ .mode = .read_only }) catch |err| switch (err) {
@@ -1952,25 +2012,24 @@ export fn galley_last_position(
     out_line: ?*u32,
     out_column: ?*u32,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_line == null or out_column == null) return galley_error_null_argument;
-    var guard = embedded.session.readCurrent() catch |err| return statusForError(gateStatusError(err));
-    defer guard.deinit();
+    var entry = enterSession(.read_current, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
     if (comptime !parser.is_position_tracking_enabled) {
         out_line.?.* = 0;
         out_column.?.* = 0;
         return galley_ok;
     }
-    out_line.?.* = guard.result.line;
-    out_column.?.* = guard.result.column;
+    out_line.?.* = entry.guard.result.line;
+    out_column.?.* = entry.guard.result.column;
     return galley_ok;
 }
 
 /// Writes the rendered diagnostic message with ANSI color escapes into
 /// `out`. Lifetime and locking match `galley_diagnostic_message`.
 export fn galley_diagnostic_message_ansi(session_ptr: ?*GalleySession, out: ?*[*:0]const u8) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out == null) return galley_error_null_argument;
+    const embedded = resolveSession(session_ptr) catch |err| return statusForError(err);
     return embedded.renderedDiagnostic(.ansi, out.?);
 }
 
@@ -1979,7 +2038,7 @@ export fn galley_diagnostic_message_ansi(session_ptr: ?*GalleySession, out: ?*[*
 /// fresh into the parse arena and never touches the session cache; the string
 /// is valid until the next parse.
 export fn galley_hook_diagnostic_message_ansi(hook_door: ?*anyopaque, out: ?*[*:0]const u8) i64 {
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
+    const door = enterHookDoor(hook_door) catch |err| return statusForError(err);
     if (out == null) return galley_error_null_argument;
     const diagnostic = door.runtime_context.lastDiagnostic() orelse return galley_error_no_diagnostic;
     const z = diagnosticMessageCore(diagnostic, door.runtime_context.arena_allocator, .ansi) catch return galley_error_out_of_memory;
@@ -1999,7 +2058,7 @@ export fn galley_node_span(
     out_start: ?*u64,
     out_len: ?*u64,
 ) i64 {
-    return nodeRead(.session, session_ptr, generation, galley_error_invalid_node, &.{ 1, 2 }, nodeSpanCore, .{ address, out_start, out_len });
+    return nodeRead(.session, session_ptr, generation, &.{ 1, 2 }, nodeSpanCore, .{ address, out_start, out_len });
 }
 
 /// Hook-time twin of `galley_node_span`: same out-parameters and refusals, over the
@@ -2011,7 +2070,7 @@ export fn galley_hook_node_span(
     out_start: ?*u64,
     out_len: ?*u64,
 ) i64 {
-    return nodeRead(.hook, hook_door, generation, galley_error_invalid_node, &.{ 1, 2 }, nodeSpanCore, .{ address, out_start, out_len });
+    return nodeRead(.hook, hook_door, generation, &.{ 1, 2 }, nodeSpanCore, .{ address, out_start, out_len });
 }
 
 /// Returns the last child's address, or `GALLEY_INVALID_NODE` when there is none.
@@ -2202,8 +2261,7 @@ export fn galley_hook_tree_remove_self(
 }
 
 /// Detaches all children of `node`, writing the detached chain head to
-/// `out_head`. Returns `galley_error_no_diagnostic` when the node has no
-/// children.
+/// `out_head`; `GALLEY_INVALID_NODE` when there are none.
 export fn galley_tree_clean_children(
     session_ptr: ?*GalleySession,
     generation: u64,
@@ -2243,54 +2301,51 @@ fn diagnosticKindValue(diagnostic: ?root.ParseDiagnostic) i64 {
 /// `galley_diagnostic_kind_syntax`, or `galley_diagnostic_kind_indentation`.
 /// Returns `galley_error_session_in_use` while a parse is in flight.
 export fn galley_diagnostic_kind(session_ptr: ?*GalleySession) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_diagnostic_kind_none));
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return diagnosticKindCore(&sessionDoor(embedded));
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return diagnosticKindCore(&entry.door);
 }
 
 /// Hook-time door: `galley_diagnostic_kind` over the in-flight parse's
 /// runtime context, reached through the parse's hook door. No lock; valid
 /// until the parse that produced the door ends.
 export fn galley_hook_diagnostic_kind(hook_door: ?*anyopaque) i64 {
-    const door = hookDoor(hook_door) orelse return galley_diagnostic_kind_none;
+    const door = enterHookDoor(hook_door) catch |err| return statusForError(err);
     return diagnosticKindCore(&door);
 }
 
-/// Returns the kind of the diagnostic recorded at `diag_index`, or
-/// `galley_diagnostic_kind_none` when the index is out of range.
+/// Returns the kind of the diagnostic recorded at `diag_index`. Fails with
+/// `galley_error_no_diagnostic` when the index is out of range.
 export fn galley_recorded_diagnostic_kind(session_ptr: ?*GalleySession, diag_index: u64) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_diagnostic_kind_none));
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return diagnosticKindValue(recordedDiagnostic(&sessionDoor(embedded), diag_index));
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    const diagnostic = recordedDiagnostic(&entry.door, diag_index) orelse return recordedDiagnosticRefusal();
+    return diagnosticKindValue(diagnostic);
 }
 
 /// Returns how many syntax errors the most recent recovery-enabled parse
 /// recorded. Fail-fast parses report at most one. Returns
 /// `galley_error_session_in_use` while a parse is in flight.
 export fn galley_syntax_error_count(session_ptr: ?*GalleySession) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return 0));
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return syntaxErrorCountCore(&sessionDoor(embedded));
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return syntaxErrorCountCore(&entry.door);
 }
 
 /// Hook-time door: `galley_syntax_error_count` over the in-flight parse's
 /// runtime context, reached through the parse's hook door. No lock; valid
 /// until the parse that produced the door ends.
 export fn galley_hook_syntax_error_count(hook_door: ?*anyopaque) i64 {
-    const door = hookDoor(hook_door) orelse return 0;
+    const door = enterHookDoor(hook_door) catch |err| return statusForError(err);
     return syntaxErrorCountCore(&door);
 }
 
 /// Returns how many diagnostics the most recent parse retained, in recording
 /// order. Valid until the next parse begins.
 export fn galley_recorded_diagnostic_count(session_ptr: ?*GalleySession) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return 0));
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return recordedDiagnosticCountCore(&sessionDoor(embedded));
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return recordedDiagnosticCountCore(&entry.door);
 }
 
 fn writeSemanticFields(
@@ -2300,12 +2355,14 @@ fn writeSemanticFields(
     out_message: ?*[*]const u8,
     out_message_len: ?*usize,
 ) i64 {
+    if (out_variable == null or out_variable_len == null or
+        out_message == null or out_message_len == null) return galley_error_null_argument;
     switch (diagnostic orelse return galley_error_no_diagnostic) {
         .semantic => |semantic| {
-            if (out_variable) |ptr| ptr.* = semantic.variable.ptr;
-            if (out_variable_len) |len| len.* = semantic.variable.len;
-            if (out_message) |ptr| ptr.* = semantic.message.ptr;
-            if (out_message_len) |len| len.* = semantic.message.len;
+            out_variable.?.* = semantic.variable.ptr;
+            out_variable_len.?.* = semantic.variable.len;
+            out_message.?.* = semantic.message.ptr;
+            out_message_len.?.* = semantic.message.len;
             return galley_ok;
         },
         .syntax, .indentation, .hook => return galley_error_no_diagnostic,
@@ -2321,10 +2378,9 @@ export fn galley_diagnostic_semantic(
     out_message: ?*[*]const u8,
     out_message_len: ?*usize,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return diagnosticSemanticCore(&sessionDoor(embedded), out_variable, out_variable_len, out_message, out_message_len);
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return diagnosticSemanticCore(&entry.door, out_variable, out_variable_len, out_message, out_message_len);
 }
 
 /// Hook-time door: `galley_diagnostic_semantic` over the in-flight parse's
@@ -2337,7 +2393,7 @@ export fn galley_hook_diagnostic_semantic(
     out_message: ?*[*]const u8,
     out_message_len: ?*usize,
 ) i64 {
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
+    const door = enterHookDoor(hook_door) catch |err| return statusForError(err);
     return diagnosticSemanticCore(&door, out_variable, out_variable_len, out_message, out_message_len);
 }
 
@@ -2352,10 +2408,9 @@ export fn galley_recorded_semantic(
     out_message: ?*[*]const u8,
     out_message_len: ?*usize,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return writeSemanticFields(recordedDiagnostic(&sessionDoor(embedded), diag_index), out_variable, out_variable_len, out_message, out_message_len);
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return writeSemanticFields(recordedDiagnostic(&entry.door, diag_index), out_variable, out_variable_len, out_message, out_message_len);
 }
 
 /// Writes the indentation width and emitted spaces of an indentation
@@ -2381,11 +2436,10 @@ export fn galley_diagnostic_indentation(
     out_spaces: ?*u32,
     out_indentation_width: ?*u32,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_spaces == null or out_indentation_width == null) return galley_error_null_argument;
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return diagnosticIndentationCore(&sessionDoor(embedded), out_spaces, out_indentation_width);
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return diagnosticIndentationCore(&entry.door, out_spaces, out_indentation_width);
 }
 
 /// Hook-time door: `galley_diagnostic_indentation` over the in-flight parse's
@@ -2396,7 +2450,7 @@ export fn galley_hook_diagnostic_indentation(
     out_spaces: ?*u32,
     out_indentation_width: ?*u32,
 ) i64 {
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
+    const door = enterHookDoor(hook_door) catch |err| return statusForError(err);
     if (out_spaces == null or out_indentation_width == null) return galley_error_null_argument;
     return diagnosticIndentationCore(&door, out_spaces, out_indentation_width);
 }
@@ -2410,11 +2464,10 @@ export fn galley_recorded_indentation(
     out_spaces: ?*u32,
     out_indentation_width: ?*u32,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_spaces == null or out_indentation_width == null) return galley_error_null_argument;
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return writeIndentationFields(recordedDiagnostic(&sessionDoor(embedded), diag_index), out_spaces, out_indentation_width);
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return writeIndentationFields(recordedDiagnostic(&entry.door, diag_index), out_spaces, out_indentation_width);
 }
 
 // ---------------------------------------------------------------------------
@@ -2440,27 +2493,31 @@ fn recoveryKindValue(syntax: ?root.SyntaxDiagnostic) i64 {
 /// `galley_recovery_target_production`, or
 /// `galley_recovery_target_occurrence`.
 export fn galley_diagnostic_recovery_kind(session_ptr: ?*GalleySession) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_recovery_target_none));
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return diagnosticRecoveryKindCore(&sessionDoor(embedded));
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return diagnosticRecoveryKindCore(&entry.door);
 }
 
 /// Hook-time door: `galley_diagnostic_recovery_kind` over the in-flight
 /// parse's runtime context, reached through the parse's hook door. No lock;
 /// valid until the parse that produced the door ends.
 export fn galley_hook_diagnostic_recovery_kind(hook_door: ?*anyopaque) i64 {
-    const door = hookDoor(hook_door) orelse return galley_recovery_target_none;
+    const door = enterHookDoor(hook_door) catch |err| return statusForError(err);
     return diagnosticRecoveryKindCore(&door);
 }
 
 /// Returns the recovery target kind of the diagnostic recorded at
-/// `diag_index`.
+/// `diag_index`. Fails with `galley_error_no_diagnostic` when the index is
+/// out of range.
 export fn galley_recorded_diagnostic_recovery_kind(session_ptr: ?*GalleySession, diag_index: u64) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_recovery_target_none));
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return recoveryKindValue(recordedSyntaxDiagnostic(&sessionDoor(embedded), diag_index));
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    const diagnostic = recordedDiagnostic(&entry.door, diag_index) orelse return recordedDiagnosticRefusal();
+    const syntax = switch (diagnostic) {
+        .syntax => |syntax| syntax,
+        else => return galley_recovery_target_none,
+    };
+    return recoveryKindValue(syntax);
 }
 
 /// Writes the recovery terminal bytes of a syntax diagnostic into
@@ -2478,11 +2535,10 @@ export fn galley_diagnostic_recovery_terminal(
     out_data: ?*[*]const u8,
     out_len: ?*usize,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_data == null or out_len == null) return galley_error_null_argument;
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return diagnosticRecoveryTerminalCore(&sessionDoor(embedded), out_data, out_len);
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return diagnosticRecoveryTerminalCore(&entry.door, out_data, out_len);
 }
 
 /// Hook-time door: `galley_diagnostic_recovery_terminal` over the in-flight
@@ -2493,7 +2549,7 @@ export fn galley_hook_diagnostic_recovery_terminal(
     out_data: ?*[*]const u8,
     out_len: ?*usize,
 ) i64 {
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
+    const door = enterHookDoor(hook_door) catch |err| return statusForError(err);
     if (out_data == null or out_len == null) return galley_error_null_argument;
     return diagnosticRecoveryTerminalCore(&door, out_data, out_len);
 }
@@ -2506,11 +2562,10 @@ export fn galley_recorded_recovery_terminal(
     out_data: ?*[*]const u8,
     out_len: ?*usize,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_data == null or out_len == null) return galley_error_null_argument;
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return writeRecoveryTerminal(recordedSyntaxDiagnostic(&sessionDoor(embedded), diag_index), out_data, out_len);
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return writeRecoveryTerminal(recordedSyntaxDiagnostic(&entry.door, diag_index), out_data, out_len);
 }
 
 /// Writes the resume side of a syntax diagnostic's recovery into `out`:
@@ -2526,18 +2581,17 @@ fn writeRecoveryResume(syntax: ?root.SyntaxDiagnostic, out: ?*i64) i64 {
 }
 
 export fn galley_diagnostic_recovery_resume(session_ptr: ?*GalleySession, out: ?*i64) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out == null) return galley_error_null_argument;
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return diagnosticRecoveryResumeCore(&sessionDoor(embedded), out);
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return diagnosticRecoveryResumeCore(&entry.door, out);
 }
 
 /// Hook-time door: `galley_diagnostic_recovery_resume` over the in-flight
 /// parse's runtime context, reached through the parse's hook door. No lock;
 /// valid until the parse that produced the door ends.
 export fn galley_hook_diagnostic_recovery_resume(hook_door: ?*anyopaque, out: ?*i64) i64 {
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
+    const door = enterHookDoor(hook_door) catch |err| return statusForError(err);
     if (out == null) return galley_error_null_argument;
     return diagnosticRecoveryResumeCore(&door, out);
 }
@@ -2545,11 +2599,10 @@ export fn galley_hook_diagnostic_recovery_resume(hook_door: ?*anyopaque, out: ?*
 /// Writes the resume side of the recovery of the diagnostic recorded at
 /// `diag_index`.
 export fn galley_recorded_recovery_resume(session_ptr: ?*GalleySession, diag_index: u64, out: ?*i64) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out == null) return galley_error_null_argument;
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return writeRecoveryResume(recordedSyntaxDiagnostic(&sessionDoor(embedded), diag_index), out);
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return writeRecoveryResume(recordedSyntaxDiagnostic(&entry.door, diag_index), out);
 }
 
 /// Writes the LHS variable name of a `lhs_variable` recovery target into
@@ -2571,11 +2624,10 @@ export fn galley_diagnostic_recovery_lhs_variable(
     out_data: ?*[*]const u8,
     out_len: ?*usize,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_data == null or out_len == null) return galley_error_null_argument;
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return diagnosticRecoveryLhsVariableCore(&sessionDoor(embedded), out_data, out_len);
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return diagnosticRecoveryLhsVariableCore(&entry.door, out_data, out_len);
 }
 
 /// Hook-time door: `galley_diagnostic_recovery_lhs_variable` over the in-
@@ -2586,7 +2638,7 @@ export fn galley_hook_diagnostic_recovery_lhs_variable(
     out_data: ?*[*]const u8,
     out_len: ?*usize,
 ) i64 {
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
+    const door = enterHookDoor(hook_door) catch |err| return statusForError(err);
     if (out_data == null or out_len == null) return galley_error_null_argument;
     return diagnosticRecoveryLhsVariableCore(&door, out_data, out_len);
 }
@@ -2599,11 +2651,10 @@ export fn galley_recorded_recovery_lhs_variable(
     out_data: ?*[*]const u8,
     out_len: ?*usize,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_data == null or out_len == null) return galley_error_null_argument;
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return writeRecoveryLhsVariable(recordedSyntaxDiagnostic(&sessionDoor(embedded), diag_index), out_data, out_len);
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return writeRecoveryLhsVariable(recordedSyntaxDiagnostic(&entry.door, diag_index), out_data, out_len);
 }
 
 /// Writes the variable name and production index of a `production` recovery
@@ -2632,11 +2683,10 @@ export fn galley_diagnostic_recovery_production(
     out_variable_len: ?*usize,
     out_rhs_index: ?*u32,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_variable == null or out_variable_len == null or out_rhs_index == null) return galley_error_null_argument;
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return diagnosticRecoveryProductionCore(&sessionDoor(embedded), out_variable, out_variable_len, out_rhs_index);
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return diagnosticRecoveryProductionCore(&entry.door, out_variable, out_variable_len, out_rhs_index);
 }
 
 /// Hook-time door: `galley_diagnostic_recovery_production` over the in-flight
@@ -2648,7 +2698,7 @@ export fn galley_hook_diagnostic_recovery_production(
     out_variable_len: ?*usize,
     out_rhs_index: ?*u32,
 ) i64 {
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
+    const door = enterHookDoor(hook_door) catch |err| return statusForError(err);
     if (out_variable == null or out_variable_len == null or out_rhs_index == null) return galley_error_null_argument;
     return diagnosticRecoveryProductionCore(&door, out_variable, out_variable_len, out_rhs_index);
 }
@@ -2662,11 +2712,10 @@ export fn galley_recorded_recovery_production(
     out_variable_len: ?*usize,
     out_rhs_index: ?*u32,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_variable == null or out_variable_len == null or out_rhs_index == null) return galley_error_null_argument;
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return writeRecoveryProduction(recordedSyntaxDiagnostic(&sessionDoor(embedded), diag_index), out_variable, out_variable_len, out_rhs_index);
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return writeRecoveryProduction(recordedSyntaxDiagnostic(&entry.door, diag_index), out_variable, out_variable_len, out_rhs_index);
 }
 
 /// Writes the occurrence coordinates of an `occurrence` recovery target:
@@ -2705,13 +2754,12 @@ export fn galley_diagnostic_recovery_occurrence(
     out_variable: ?*[*]const u8,
     out_variable_len: ?*usize,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_parent_variable == null or out_parent_variable_len == null or
         out_rhs_index == null or out_symbol_index == null or
         out_variable == null or out_variable_len == null) return galley_error_null_argument;
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return diagnosticRecoveryOccurrenceCore(&sessionDoor(embedded), out_parent_variable, out_parent_variable_len, out_rhs_index, out_symbol_index, out_variable, out_variable_len);
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return diagnosticRecoveryOccurrenceCore(&entry.door, out_parent_variable, out_parent_variable_len, out_rhs_index, out_symbol_index, out_variable, out_variable_len);
 }
 
 /// Hook-time door: `galley_diagnostic_recovery_occurrence` over the in-flight
@@ -2726,7 +2774,7 @@ export fn galley_hook_diagnostic_recovery_occurrence(
     out_variable: ?*[*]const u8,
     out_variable_len: ?*usize,
 ) i64 {
-    const door = hookDoor(hook_door) orelse return galley_error_null_argument;
+    const door = enterHookDoor(hook_door) catch |err| return statusForError(err);
     if (out_parent_variable == null or out_parent_variable_len == null or
         out_rhs_index == null or out_symbol_index == null or
         out_variable == null or out_variable_len == null) return galley_error_null_argument;
@@ -2745,13 +2793,12 @@ export fn galley_recorded_recovery_occurrence(
     out_variable: ?*[*]const u8,
     out_variable_len: ?*usize,
 ) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
     if (out_parent_variable == null or out_parent_variable_len == null or
         out_rhs_index == null or out_symbol_index == null or
         out_variable == null or out_variable_len == null) return galley_error_null_argument;
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return writeRecoveryOccurrence(recordedSyntaxDiagnostic(&sessionDoor(embedded), diag_index), out_parent_variable, out_parent_variable_len, out_rhs_index, out_symbol_index, out_variable, out_variable_len);
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return writeRecoveryOccurrence(recordedSyntaxDiagnostic(&entry.door, diag_index), out_parent_variable, out_parent_variable_len, out_rhs_index, out_symbol_index, out_variable, out_variable_len);
 }
 
 // ---------------------------------------------------------------------------
@@ -2784,7 +2831,8 @@ export fn galley_hook_node_variable_index(
 /// Bulk-reads the published tree into caller-owned flat arrays in a single
 /// crossing: address `i` fills slot `i` of each non-null out array. Returns
 /// the total node count (the value `galley_node_count` reports for the same
-/// `generation`; 0 without AST construction) or a negative status. When
+/// `generation`) or a negative status (`galley_error_invalid_node` in a
+/// parser built without AST construction). When
 /// `capacity` is smaller than the count only the `[0, capacity)` prefix is
 /// written. Null arrays skip that column. `generation` must be the one
 /// `galley_root_node` reported: a caller whose parse ran in between gets
@@ -2808,7 +2856,7 @@ export fn galley_tree_snapshot(
     capacity: u64,
 ) i64 {
     if (session_ptr == null) return galley_error_null_argument;
-    return nodeRead(.session, session_ptr, generation, 0, &.{}, treeSnapshotCore, .{ out_parent, out_first_child, out_next, out_child_count, out_variable, out_span_start, out_span_len, out_is_semantic_error, out_is_recovered, capacity });
+    return nodeRead(.session, session_ptr, generation, &.{}, treeSnapshotCore, .{ out_parent, out_first_child, out_next, out_child_count, out_variable, out_span_start, out_span_len, out_is_semantic_error, out_is_recovered, capacity });
 }
 
 /// Hook-time twin of `galley_tree_snapshot`: same columns and refusals, over
@@ -2827,7 +2875,7 @@ export fn galley_hook_tree_snapshot(
     out_is_recovered: ?[*]i32,
     capacity: u64,
 ) i64 {
-    return nodeRead(.hook, hook_door, generation, 0, &.{}, treeSnapshotCore, .{ out_parent, out_first_child, out_next, out_child_count, out_variable, out_span_start, out_span_len, out_is_semantic_error, out_is_recovered, capacity });
+    return nodeRead(.hook, hook_door, generation, &.{}, treeSnapshotCore, .{ out_parent, out_first_child, out_next, out_child_count, out_variable, out_span_start, out_span_len, out_is_semantic_error, out_is_recovered, capacity });
 }
 
 /// Inserts `first_node` (and its chain) into the children of `parent` at
@@ -2893,14 +2941,14 @@ export fn galley_hook_tree_remove_children_at(
 /// growth during subsequent parses. Fails with
 /// `galley_error_ast_capacity_exceeded` when the request exceeds the
 /// build's node limit. Takes the exclusive door: returns
-/// `galley_error_session_in_use` while a parse is in flight.
+/// `galley_error_session_in_use` while a parse is in flight. Without AST
+/// construction there is no node storage: a no-op answering `galley_ok`.
 export fn galley_reserve_nodes(session_ptr: ?*GalleySession, capacity: u64) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    var guard = embedded.session.edit() catch |err| return statusForError(err);
-    defer guard.deinit();
+    var entry = enterSession(.edit_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
     if (comptime !parser.is_ast_enabled) return galley_ok;
     if (capacity > std.math.maxInt(usize)) return galley_error_ast_capacity_exceeded;
-    guard.mutableAstAllocator().ensureCapacity(@intCast(capacity)) catch |err| switch (err) {
+    entry.guard.mutableAstAllocator().ensureCapacity(@intCast(capacity)) catch |err| switch (err) {
         error.OutOfMemory => return galley_error_out_of_memory,
         error.ASTCapacityTooLarge => return galley_error_ast_capacity_exceeded,
     };
@@ -2912,11 +2960,10 @@ export fn galley_reserve_nodes(session_ptr: ?*GalleySession, capacity: u64) i64 
 /// `galley_error_session_in_use` while a parse is in flight,
 /// `galley_error_null_argument` for a null session.
 export fn galley_node_capacity(session_ptr: ?*GalleySession) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return galley_error_null_argument));
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
     if (comptime !parser.is_ast_enabled) return 0;
-    return @intCast(embedded.session.node_allocator.totalNodeCapacity());
+    return @intCast(entry.door.node_allocator.totalNodeCapacity());
 }
 
 // ---------------------------------------------------------------------------
@@ -2986,22 +3033,30 @@ export fn galley_symbol_count() u64 {
 }
 
 /// Writes the name of the symbol at `index` into `out_data`/`out_len`. The
-/// pointer references static grammar storage.
+/// pointer references static grammar storage. Fails with
+/// `galley_error_null_argument` for a null session or output, and
+/// `galley_error_out_of_range` for an index at or past
+/// `galley_symbol_count()`.
 export fn galley_symbol_name(session_ptr: ?*GalleySession, index: u64, out_data: ?*[*]const u8, out_len: ?*usize) i64 {
-    _ = session_ptr;
     if (out_data == null or out_len == null) return galley_error_null_argument;
-    if (index >= parser.symbols.len) return galley_error_invalid_node;
+    _ = resolveSession(session_ptr) catch |err| return statusForError(err);
+    if (index >= parser.symbols.len) return tableIndexRefusal();
     out_data.?.* = parser.symbols[@intCast(index)].ptr;
     out_len.?.* = parser.symbols[@intCast(index)].len;
     return galley_ok;
 }
 
-/// Returns nonzero when the symbol at `index` is a terminal (or generative
-/// terminal) rather than a variable.
-export fn galley_symbol_is_terminal(session_ptr: ?*GalleySession, index: u64) i32 {
-    _ = session_ptr;
-    if (index >= parser.is_terminal.len) return 0;
-    return if (parser.is_terminal[@intCast(index)]) 1 else 0;
+/// Writes 1 into `out_is_terminal` when the symbol at `index` is a terminal
+/// (or generative terminal), 0 when it is a variable, and returns
+/// `galley_ok`. Fails with `galley_error_null_argument` for a null session
+/// or output, and `galley_error_out_of_range` for an index at or past
+/// `galley_symbol_count()`.
+export fn galley_symbol_is_terminal(session_ptr: ?*GalleySession, index: u64, out_is_terminal: ?*c_int) i64 {
+    if (out_is_terminal == null) return galley_error_null_argument;
+    _ = resolveSession(session_ptr) catch |err| return statusForError(err);
+    if (index >= parser.is_terminal.len) return tableIndexRefusal();
+    out_is_terminal.?.* = if (parser.is_terminal[@intCast(index)]) 1 else 0;
+    return galley_ok;
 }
 
 /// Returns the number of grammar variables.
@@ -3010,10 +3065,13 @@ export fn galley_variable_count() u64 {
 }
 
 /// Writes the name of the variable at `index` into `out_data`/`out_len`.
+/// Fails with `galley_error_null_argument` for a null session or output, and
+/// `galley_error_out_of_range` for an index at or past
+/// `galley_variable_count()`.
 export fn galley_variable_name(session_ptr: ?*GalleySession, index: u64, out_data: ?*[*]const u8, out_len: ?*usize) i64 {
-    _ = session_ptr;
     if (out_data == null or out_len == null) return galley_error_null_argument;
-    if (index >= parser.variables.len) return galley_error_invalid_node;
+    _ = resolveSession(session_ptr) catch |err| return statusForError(err);
+    if (index >= parser.variables.len) return tableIndexRefusal();
     out_data.?.* = parser.variables[@intCast(index)].ptr;
     out_len.?.* = parser.variables[@intCast(index)].len;
     return galley_ok;
@@ -3040,7 +3098,7 @@ export fn galley_variable_name(session_ptr: ?*GalleySession, index: u64, out_dat
 /// hook has returned (a ticket is never reused, so a later hook cannot revive
 /// it).
 fn hookArguments(session_ptr: ?*GalleySession, hook: u64) (root.data_structures.HookError || error{NullArgument})!*root.data_structures.ProcedureArguments {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return error.NullArgument));
+    const embedded = try resolveSession(session_ptr);
     return embedded.session.runtime_context.hookArguments(hook);
 }
 
@@ -3071,8 +3129,8 @@ export fn galley_procedure_door(session_ptr: ?*GalleySession, hook: u64, out_doo
 /// per hook. Returns `galley_error_null_argument` for a null door or output.
 export fn galley_hook_generation(hook_door: ?*anyopaque, out_generation: ?*u64) i64 {
     const out = out_generation orelse return galley_error_null_argument;
-    const context: *root.data_structures.Context = @ptrCast(@alignCast(hook_door orelse return galley_error_null_argument));
-    out.* = context.generation;
+    const door = enterHookDoor(hook_door) catch |err| return statusForError(err);
+    out.* = door.input.context.generation;
     return galley_ok;
 }
 
@@ -3092,8 +3150,8 @@ fn setCurrentNodeCore(
     procedure_arguments: *root.data_structures.ProcedureArguments,
     node: GalleyNodeAddress,
 ) i64 {
-    if (comptime !parser.is_ast_enabled) return galley_error_invalid_node;
-    procedure_arguments.node_address = door.livePointer(node) orelse return galley_error_invalid_node;
+    if (comptime !parser.is_ast_enabled) return treePositionRefusal();
+    procedure_arguments.node_address = door.livePointer(node) orelse return treePositionRefusal();
     return galley_ok;
 }
 
@@ -3110,7 +3168,7 @@ export fn galley_procedure_set_current_node(session_ptr: ?*GalleySession, hook: 
         if (comptime parser.is_ast_enabled) procedure_arguments.node_address = null;
         return galley_ok;
     }
-    return nodeRead(.hook, procedure_arguments.context, generation, galley_error_invalid_node, &.{}, setCurrentNodeCore, .{ procedure_arguments, node });
+    return nodeRead(.hook, procedure_arguments.context, generation, &.{}, setCurrentNodeCore, .{ procedure_arguments, node });
 }
 
 /// Returns 1 when the hook runs for a grammar rule, 0 when it does not, or a
@@ -3197,16 +3255,15 @@ export fn galley_procedure_report_semantic_error(session_ptr: ?*GalleySession, h
 /// Returns how many semantic errors the most recent parse recorded.
 /// Returns `galley_error_session_in_use` while a parse is in flight.
 export fn galley_semantic_error_count(session_ptr: ?*GalleySession) i64 {
-    const embedded: *Embedded = @ptrCast(@alignCast(session_ptr orelse return 0));
-    var guard = embedded.session.readLatest() catch |err| return statusForError(err);
-    defer guard.deinit();
-    return semanticErrorCountCore(&sessionDoor(embedded));
+    var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
+    defer entry.deinit();
+    return semanticErrorCountCore(&entry.door);
 }
 
 /// Hook-time door: `galley_semantic_error_count` over the in-flight parse's
 /// runtime context, reached through the parse's hook door. No lock; valid
 /// until the parse that produced the door ends.
 export fn galley_hook_semantic_error_count(hook_door: ?*anyopaque) i64 {
-    const door = hookDoor(hook_door) orelse return 0;
+    const door = enterHookDoor(hook_door) catch |err| return statusForError(err);
     return semanticErrorCountCore(&door);
 }

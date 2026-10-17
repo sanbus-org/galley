@@ -248,6 +248,12 @@ func resetDoorRecording() {
 	previousSeen = false
 	keptWalker, keptDoor, keptNode = nil, galley.HookDoor{}, galley.Node{}
 	keptInHookWalkErr, keptInHookCountErr = nil, nil
+	keptInHookDiagErr = nil
+	hookDiagnosticProbe = false
+	hookHasDiagnostic, hookHasDiagnosticErr = false, nil
+	hookDiagnostic, hookDiagnosticOK, hookDiagnosticErr = galley.Diagnostic{}, false, nil
+	sessionDiagnosticErr, sessionDiagnosticsErr, sessionHasDiagnosticErr = nil, nil, nil
+	reentrantProbe, reentrantParseErr, reentrantDoorErr = nil, nil, nil
 	siblingParseErr, doorAfterSiblingErr = nil, nil
 }
 
@@ -310,6 +316,19 @@ func reduction_Document(session unsafe.Pointer, hook C.ulonglong) {
 	if sessionProbe != nil {
 		_, _, hookRootErr = sessionProbe.RootNode()
 		_, capacityInHook = sessionProbe.NodeCapacity()
+		_, _, sessionDiagnosticErr = sessionProbe.Diagnostic()
+		_, sessionDiagnosticsErr = sessionProbe.Diagnostics()
+		_, sessionHasDiagnosticErr = sessionProbe.HasDiagnostic()
+	}
+	if reentrantProbe != nil {
+		// The parse in flight owns the session: this call must be refused
+		// without ending this parse's door lifetime.
+		_, reentrantParseErr = reentrantProbe.Parse([]byte("omega:9"))
+		_, reentrantDoorErr = door.ChildCount(node)
+	}
+	if hookDiagnosticProbe {
+		hookHasDiagnostic, hookHasDiagnosticErr = door.HasDiagnostic()
+		hookDiagnostic, hookDiagnosticOK, hookDiagnosticErr = door.Diagnostic()
 	}
 	if firstPairArgsSeen {
 		staleHookDuring = staleHookCalls(firstPairArgs, node)
@@ -331,6 +350,7 @@ func reduction_Document(session unsafe.Pointer, hook C.ulonglong) {
 	keptWalker, keptDoor, keptNode = door.Walk(node, false), door, node
 	_, _, keptInHookWalkErr = door.Walk(node, false).Next()
 	_, keptInHookCountErr = keptDoor.ChildCount(node)
+	_, keptInHookDiagErr = keptDoor.HasDiagnostic()
 	// door_test.go's sibling parse: another session parses to the end inside
 	// this hook, and this parse's door must still work afterwards. The
 	// sibling is cleared first, so its own hooks do not parse again.
@@ -363,6 +383,29 @@ var (
 	keptNode           galley.Node
 	keptInHookWalkErr  error
 	keptInHookCountErr error
+	// keptInHookDiagErr records the kept door's HasDiagnostic/Diagnostic
+	// errors inside the hook, when diagnostics_test.go asks for them.
+	keptInHookDiagErr error
+	// hookDiagnosticProbe makes the Document hook read the in-flight parse's
+	// diagnostic through its door (diagnostics_test.go).
+	hookDiagnosticProbe  bool
+	hookHasDiagnostic    bool
+	hookHasDiagnosticErr error
+	hookDiagnostic       galley.Diagnostic
+	hookDiagnosticOK     bool
+	hookDiagnosticErr    error
+)
+
+// diagnostics_test.go: while a parse runs, the session's post-parse diagnostic
+// reads are refused by the core, and a session told to parse again from inside
+// its own hook is refused without its running parse losing its door.
+var (
+	sessionDiagnosticErr    error
+	sessionDiagnosticsErr   error
+	sessionHasDiagnosticErr error
+	reentrantProbe          *galley.Session
+	reentrantParseErr       error
+	reentrantDoorErr        error
 )
 
 // door_test.go's sibling parse: the session parsed inside a hook, and what

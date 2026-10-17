@@ -42,14 +42,13 @@ static int ran = 0;
 
 typedef struct Library {
     void *image;
-    GalleySession *(*session_create)(void);
+    long long (*session_create)(const GalleyCOptions *, GalleySession **);
     long long (*session_destroy)(GalleySession *);
     long long (*parse)(GalleySession *, const char *, size_t);
     long long (*root_node)(GalleySession *, GalleyNodeAddress *, unsigned long long *);
     long long (*set_hooks)(GalleySession *, GalleyHookDispatch, void *, const unsigned char *, size_t);
     size_t (*hooks_count)(void);
-    const char *(*hook_name_data)(size_t);
-    size_t (*hook_name_length)(size_t);
+    long long (*hooks_name)(size_t, const char **, size_t *);
     size_t count;
 } Library;
 
@@ -71,11 +70,10 @@ static int load_library(Library *library, const char *path) {
     *(void **)&library->root_node = load_symbol(library->image, "galley_root_node");
     *(void **)&library->set_hooks = load_symbol(library->image, "galley_session_set_hooks");
     *(void **)&library->hooks_count = load_symbol(library->image, "galley_hooks_count");
-    *(void **)&library->hook_name_data = load_symbol(library->image, "galley_hooks_name_data");
-    *(void **)&library->hook_name_length = load_symbol(library->image, "galley_hooks_name_length");
+    *(void **)&library->hooks_name = load_symbol(library->image, "galley_hooks_name");
     if (library->session_create == NULL || library->session_destroy == NULL || library->parse == NULL ||
-        library->root_node == NULL || library->set_hooks == NULL || library->hooks_count == NULL || library->hook_name_data == NULL ||
-        library->hook_name_length == NULL) {
+        library->root_node == NULL || library->set_hooks == NULL || library->hooks_count == NULL ||
+        library->hooks_name == NULL) {
         return 0;
     }
     library->count = library->hooks_count();
@@ -86,10 +84,10 @@ static int load_library(Library *library, const char *path) {
 static size_t hook_index(const Library *library, const char *name) {
     size_t length = strlen(name);
     for (size_t index = 0; index < library->count; ++index) {
-        if (library->hook_name_length(index) == length &&
-            memcmp(library->hook_name_data(index), name, length) == 0) {
-            return index;
-        }
+        const char *hook_name = NULL;
+        size_t hook_name_length = 0;
+        if (library->hooks_name(index, &hook_name, &hook_name_length) != galley_ok) continue;
+        if (hook_name_length == length && memcmp(hook_name, name, length) == 0) return index;
     }
     return library->count;
 }
@@ -194,7 +192,8 @@ static void set_enabled_only(Worker *worker, const char *name) {
 }
 
 static int configure(Worker *worker) {
-    worker->session = worker->library->session_create();
+    worker->session = NULL;
+    if (worker->library->session_create(NULL, &worker->session) != galley_ok) return 0;
     if (worker->session == NULL) return 0;
     return worker->library->set_hooks(worker->session, dispatch, worker, worker->enabled, worker->library->count) == galley_ok;
 }
@@ -221,7 +220,10 @@ int main(int argc, char **argv) {
     CHECK(hook_index(&second, "hook_tally") < second.count);
     CHECK(hook_index(&first, "hook_tally") == first.count);
     CHECK(hook_index(&second, "hook_print") == second.count);
-    CHECK(first.hook_name_data(first.count) == NULL && first.hook_name_length(first.count) == 0);
+    const char *missing_name = NULL;
+    size_t missing_length = 0;
+    CHECK(first.hooks_name(first.count, &missing_name, &missing_length) == galley_error_out_of_range);
+    CHECK(missing_name == NULL && missing_length == 0);
 
     size_t first_length = 0;
     size_t second_length = 0;
@@ -305,7 +307,9 @@ int main(int argc, char **argv) {
         CHECK(library->root_node(idle->session, &same_root, &same_generation) == galley_ok);
         CHECK(same_root == root && same_generation == generation);
         CHECK(library->set_hooks(NULL, dispatch, idle, idle->enabled, library->count) == galley_error_null_argument);
-        CHECK(library->set_hooks(idle->session, dispatch, idle, idle->enabled, library->count - 1) == galley_error_null_argument);
+        /* A count other than galley_hooks_count is an invalid argument, not a
+         * null one; a NULL flag array with a nonzero count is the null. */
+        CHECK(library->set_hooks(idle->session, dispatch, idle, idle->enabled, library->count - 1) == galley_error_invalid_argument);
         CHECK(library->set_hooks(idle->session, dispatch, idle, NULL, library->count) == galley_error_null_argument);
         CHECK(library->set_hooks(idle->session, dispatch, idle, NULL, 0) == galley_ok);
         idle->barrier = NULL;

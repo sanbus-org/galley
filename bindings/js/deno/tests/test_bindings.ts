@@ -57,6 +57,7 @@ const {
   SessionClosedError,
   StaleTreeError,
   GalleyError,
+  getDenoPort,
 } = await import("../src/index.ts");
 
 const { galley, openLanguageDirectory } = await import("../../universal/src/index.ts");
@@ -187,6 +188,8 @@ await test("status_string renders known codes", async () => {
   const rendered = parser.statusString(-2);
   assert.equal(typeof rendered, "string");
   assert.ok(rendered.toLowerCase().includes("syntax"));
+  assert.equal(parser.statusString(-17), "out of range");
+  assert.equal(parser.statusString(-18), "invalid argument");
   assert.equal(parser.statusString(999999), null);
 });
 
@@ -1065,8 +1068,15 @@ await test("symbol and variable tables", async () => {
     assert.equal(typeof s.symbolIsTerminal(0), "boolean");
     const varName = s.variableNameAt(0);
     assert.ok(varName instanceof Uint8Array);
-    assert.equal(s.symbolNameAt(1_000_000_000), null);
-    assert.equal(s.variableNameAt(1_000_000_000), null);
+    // An index at or past the count is `out of range`, never null.
+    const outOfRange = (error) => {
+      assert.ok(error instanceof GalleyError);
+      assert.equal(error.code, Status.ErrorOutOfRange);
+      return true;
+    };
+    assert.throws(() => s.symbolNameAt(1_000_000_000), outOfRange);
+    assert.throws(() => s.symbolIsTerminal(1_000_000_000), outOfRange);
+    assert.throws(() => s.variableNameAt(1_000_000_000), outOfRange);
   } finally {
     s.close();
   }
@@ -1602,6 +1612,36 @@ async function newDisabledParser() {
 
 await runHookNameScenarios({ test, assert, newParser, newDisabledParser });
 await runRefusalScenarios({ test, assert, newParser, StaleTreeError, GalleyError, Status });
+
+await test("raw port refuses hook-table misuse", async () => {
+  // The raw Deno.dlopen symbols: a flags count that misses the hook count is
+  // `invalid argument`, NULL flags with a nonzero count is `null argument`,
+  // an index at the hook count is `out of range`.
+  const port = getDenoPort(languageDir);
+  const created = port.createSession(null);
+  assert.equal(created.status, 0);
+  assert.ok(created.handle !== null);
+  const handle = created.handle;
+  try {
+    const count = Number(port.native.galley_hooks_count());
+    assert.ok(count > 0);
+    assert.equal(port.setSessionHooks(handle, 0, new Uint8Array(count + 1)), Status.ErrorInvalidArgument);
+    assert.equal(
+      Number(port.native.galley_session_set_hooks(handle, null, 0n, null, BigInt(count))),
+      Status.ErrorNullArgument,
+    );
+    const out = new BigUint64Array(1);
+    const outLen = new BigUint64Array(1);
+    assert.equal(
+      Number(port.native.galley_hooks_name(BigInt(count), out, outLen)),
+      Status.ErrorOutOfRange,
+    );
+    // A well-sized flags array still commits.
+    assert.equal(port.setSessionHooks(handle, 0, new Uint8Array(count)), 0);
+  } finally {
+    port.destroySession(handle);
+  }
+});
 
 await test("two parsers, two sessions each, four threads at once", async () => {
   const secondDirectory = ensureTestLibrary({

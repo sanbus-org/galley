@@ -57,11 +57,12 @@ int main(int argc, char *argv[]) {
     const GalleyCOptions options = {
         .max_errors = 10, /* explicit; zero selects the same default */
     };
-    SessionGuard guard(galley_session_create_ex(&options));
-    if (guard.session == nullptr) {
+    GalleySession *created = nullptr;
+    if (galley_session_create(&options, &created) != galley_ok) {
         std::fprintf(stderr, "failed to create a parser session\n");
         return 1;
     }
+    SessionGuard guard(created);
     GalleySession &session = *guard.session;
     if (galley_session_set_message_override(
             &session,

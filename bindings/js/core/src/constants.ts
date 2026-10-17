@@ -30,6 +30,10 @@ export enum Status {
   ErrorStaleHook = -15,
   /** A hook threw: the parse stopped there and published nothing; the failure's `cause` is the thrown value. */
   ErrorHookFailed = -16,
+  /** An index outside the table it was read from: a hook name, a grammar symbol or variable name, or an expected-token or context-name index past its diagnostic's table. */
+  ErrorOutOfRange = -17,
+  /** A value outside its domain (a negative option field) or a hook enable-flag count that does not match `galley_hooks_count()`. */
+  ErrorInvalidArgument = -18,
 }
 
 /** Parser families. */

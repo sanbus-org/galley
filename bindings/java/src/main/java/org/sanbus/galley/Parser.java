@@ -2,8 +2,10 @@ package org.sanbus.galley;
 
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandles;
 import java.lang.ref.WeakReference;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -49,7 +51,19 @@ public final class Parser {
         this.lib = lib;
         Map<String, Integer> indexes = new HashMap<>();
         long count = lib.galley_hooks_count();
-        for (int index = 0; index < count; index++) indexes.put(lib.galley_hooks_name(index), index);
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
+            MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
+            for (int index = 0; index < count; index++) {
+                checkStatus(lib.galley_hooks_name(index, outData, outLen));
+                MemorySegment pointer = outData.get(ValueLayout.ADDRESS, 0);
+                long length = outLen.get(ValueLayout.JAVA_LONG, 0);
+                String name = pointer.equals(MemorySegment.NULL) || length == 0
+                        ? ""
+                        : new String(pointer.reinterpret(length).toArray(ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
+                indexes.put(name, index);
+            }
+        }
         this.hookIndexes = Map.copyOf(indexes);
         try {
             var handle = MethodHandles.lookup().findVirtual(Router.class, "dispatch",
@@ -62,6 +76,11 @@ public final class Parser {
 
     static Parser create(String canonicalPath, GalleyLibrary lib) {
         return new Parser(canonicalPath, lib);
+    }
+
+    /** The one read-or-raise path of this parser's own native reads. */
+    private void checkStatus(long status) {
+        if (status < 0) throw Session.statusFailure(lib, status, null);
     }
 
     /** Canonical artifact path this parser was loaded from. */

@@ -182,7 +182,10 @@ public final class Node implements Iterable<Node> {
     @Override
     public String toString() {
         String name = null;
-        try { name = symbolName(); } catch (Exception ignored) {}
+        // The deliberate exception to read-or-raise: toString never throws, so
+        // it swallows only the binding refusals (stale, session, closed); the
+        // refusing read is still available through the accessors.
+        try { name = symbolName(); } catch (GalleyException | GalleyClosedException ignored) {}
         return "Node@" + Long.toHexString(address) + "(" + (name != null ? name : "?") + ")";
     }
 }

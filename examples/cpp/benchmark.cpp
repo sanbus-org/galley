@@ -79,8 +79,8 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    GalleySession *session = galley_session_create();
-    if (session == nullptr) {
+    GalleySession *session = nullptr;
+    if (galley_session_create(NULL, &session) != galley_ok || session == nullptr) {
         std::fprintf(stderr, "failed to create a parser session\n");
         std::free(input);
         return 1;

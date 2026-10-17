@@ -9,7 +9,7 @@
  * and `--allow-read` (library discovery, `parseFile`).
  */
 
-import type { FfiPort, NodeFamily, Handle, StagedHandle, HookTicket, DispatchHandler, SessionCOptions, SnapshotColumns } from "@sanbus/galley-core";
+import type { FfiPort, NodeFamily, CurrentDiagnosticFamily, Handle, StagedHandle, HookTicket, DispatchHandler, SessionCOptions, SnapshotColumns } from "@sanbus/galley-core";
 import { GalleyError, INVALID_NODE, NATIVE_LITTLE_ENDIAN, NO_VARIABLE, Status } from "@sanbus/galley-core";
 import { GenerationBigInt, resolveArtifactFile, resolveAdapterArtifact, artifactFileName, canonicalResolvePath, SHARED_NATIVE_LIBRARY_BASE } from "@sanbus/galley-core/internal";
 import { installDispatch } from "./dispatch.ts";
@@ -54,7 +54,40 @@ type DoorNames<Door extends "" | "hook_"> = {
   [Name in keyof DoorCalls as `galley_${Door}${Name & string}`]: DoorCalls[Name];
 };
 
-interface GalleySymbols extends DoorNames<"">, DoorNames<"hook_"> {
+/**
+ * The current-diagnostic calls both doors expose, keyed by the C name after
+ * `galley_`: the session door's `galley_<name>` over a session handle, the
+ * hook door's `galley_hook_<name>` over a parse's door. Every status is i64.
+ */
+interface DiagCalls {
+  has_diagnostic(handle: Deno.PointerValue, outHas: FfiOut): bigint;
+  diagnostic_kind(handle: Deno.PointerValue): bigint;
+  diagnostic_message(handle: Deno.PointerValue, out: FfiOut): bigint;
+  diagnostic_message_ansi(handle: Deno.PointerValue, out: FfiOut): bigint;
+  diagnostic_position(handle: Deno.PointerValue, outOffset: FfiOut, outLine: FfiOut, outCol: FfiOut): bigint;
+  diagnostic_unexpected_token(handle: Deno.PointerValue, outData: FfiOut, outLen: FfiOut): bigint;
+  diagnostic_expected_count(handle: Deno.PointerValue): bigint;
+  diagnostic_expected_at(handle: Deno.PointerValue, index: bigint, outData: FfiOut, outLen: FfiOut): bigint;
+  diagnostic_context_count(handle: Deno.PointerValue): bigint;
+  diagnostic_context_at(handle: Deno.PointerValue, index: bigint, outData: FfiOut, outLen: FfiOut): bigint;
+  syntax_error_count(handle: Deno.PointerValue): bigint;
+  semantic_error_count(handle: Deno.PointerValue): bigint;
+  diagnostic_semantic(handle: Deno.PointerValue, outVariable: FfiOut, outVariableLen: FfiOut, outMessage: FfiOut, outMessageLen: FfiOut): bigint;
+  diagnostic_indentation(handle: Deno.PointerValue, outSpaces: FfiOut, outWidth: FfiOut): bigint;
+  diagnostic_recovery_kind(handle: Deno.PointerValue): bigint;
+  diagnostic_recovery_terminal(handle: Deno.PointerValue, outData: FfiOut, outLen: FfiOut): bigint;
+  diagnostic_recovery_resume(handle: Deno.PointerValue, out: FfiOut): bigint;
+  diagnostic_recovery_lhs_variable(handle: Deno.PointerValue, outData: FfiOut, outLen: FfiOut): bigint;
+  diagnostic_recovery_production(handle: Deno.PointerValue, outVar: FfiOut, outLen: FfiOut, outIdx: FfiOut): bigint;
+  diagnostic_recovery_occurrence(handle: Deno.PointerValue, outParent: FfiOut, outParentLen: FfiOut, outRhs: FfiOut, outSym: FfiOut, outVar: FfiOut, outVarLen: FfiOut): bigint;
+}
+
+/** `DiagCalls` under one door's C names. */
+type DiagNames<Door extends "" | "hook_"> = {
+  [Name in keyof DiagCalls as `galley_${Door}${Name & string}`]: DiagCalls[Name];
+};
+
+interface GalleySymbols extends DoorNames<"">, DoorNames<"hook_">, DiagNames<"">, DiagNames<"hook_"> {
   galley_version(): Deno.PointerValue;
   galley_parser_type(): bigint;
   galley_error_recovery_mode(): bigint;
@@ -69,10 +102,9 @@ interface GalleySymbols extends DoorNames<"">, DoorNames<"hook_"> {
   galley_variable_count(): bigint;
   galley_status_string(status: bigint): Deno.PointerValue;
   galley_symbol_name(session: Deno.PointerValue, index: bigint, outData: FfiOut, outLen: FfiOut): bigint;
-  galley_symbol_is_terminal(session: Deno.PointerValue, index: bigint): number;
+  galley_symbol_is_terminal(session: Deno.PointerValue, index: bigint, outIsTerminal: FfiOut): bigint;
   galley_variable_name(session: Deno.PointerValue, index: bigint, outData: FfiOut, outLen: FfiOut): bigint;
-  galley_session_create(): Deno.PointerValue;
-  galley_session_create_ex(options: FfiOut): Deno.PointerValue;
+  galley_session_create(options: FfiOut | null, outSession: FfiOut): bigint;
   galley_session_destroy(session: Deno.PointerValue): bigint;
   galley_session_set_message_override(session: Deno.PointerValue, name: FfiOut, nameLen: number, message: FfiOut, messageLen: number): bigint;
   galley_parse(session: Deno.PointerValue, data: FfiOut, len: number): bigint;
@@ -97,26 +129,6 @@ interface GalleySymbols extends DoorNames<"">, DoorNames<"hook_"> {
     outIsRecovered: FfiOut,
     capacity: bigint,
   ): bigint;
-  galley_has_diagnostic(session: Deno.PointerValue): number;
-  galley_diagnostic_kind(session: Deno.PointerValue): bigint;
-  galley_diagnostic_message(session: Deno.PointerValue, out: FfiOut): bigint;
-  galley_diagnostic_message_ansi(session: Deno.PointerValue, out: FfiOut): bigint;
-  galley_diagnostic_position(session: Deno.PointerValue, outOffset: FfiOut, outLine: FfiOut, outCol: FfiOut): bigint;
-  galley_diagnostic_unexpected_token(session: Deno.PointerValue, outData: FfiOut, outLen: FfiOut): bigint;
-  galley_diagnostic_expected_count(session: Deno.PointerValue): bigint;
-  galley_diagnostic_expected_at(session: Deno.PointerValue, index: bigint, outData: FfiOut, outLen: FfiOut): bigint;
-  galley_diagnostic_context_count(session: Deno.PointerValue): bigint;
-  galley_diagnostic_context_at(session: Deno.PointerValue, index: bigint, outData: FfiOut, outLen: FfiOut): bigint;
-  galley_diagnostic_indentation(session: Deno.PointerValue, outSpaces: FfiOut, outWidth: FfiOut): bigint;
-  galley_syntax_error_count(session: Deno.PointerValue): bigint;
-  galley_semantic_error_count(session: Deno.PointerValue): bigint;
-  galley_diagnostic_semantic(session: Deno.PointerValue, outVariable: FfiOut, outVariableLen: FfiOut, outMessage: FfiOut, outMessageLen: FfiOut): bigint;
-  galley_diagnostic_recovery_kind(session: Deno.PointerValue): bigint;
-  galley_diagnostic_recovery_terminal(session: Deno.PointerValue, outData: FfiOut, outLen: FfiOut): bigint;
-  galley_diagnostic_recovery_resume(session: Deno.PointerValue, out: FfiOut): bigint;
-  galley_diagnostic_recovery_lhs_variable(session: Deno.PointerValue, outData: FfiOut, outLen: FfiOut): bigint;
-  galley_diagnostic_recovery_production(session: Deno.PointerValue, outVar: FfiOut, outLen: FfiOut, outIdx: FfiOut): bigint;
-  galley_diagnostic_recovery_occurrence(session: Deno.PointerValue, outParent: FfiOut, outParentLen: FfiOut, outRhs: FfiOut, outSym: FfiOut, outVar: FfiOut, outVarLen: FfiOut): bigint;
   galley_recorded_diagnostic_count(session: Deno.PointerValue): bigint;
   galley_recorded_diagnostic_kind(session: Deno.PointerValue, diagIndex: bigint): bigint;
   galley_recorded_diagnostic_position(session: Deno.PointerValue, diagIndex: bigint, outOffset: FfiOut, outLine: FfiOut, outCol: FfiOut): bigint;
@@ -129,7 +141,7 @@ interface GalleySymbols extends DoorNames<"">, DoorNames<"hook_"> {
   galley_recorded_expected_token(session: Deno.PointerValue, diagIndex: bigint, tokenIndex: bigint, outData: FfiOut, outLen: FfiOut): bigint;
   galley_recorded_context_count(session: Deno.PointerValue, diagIndex: bigint): bigint;
   galley_recorded_context_name(session: Deno.PointerValue, diagIndex: bigint, ctxIndex: bigint, outData: FfiOut, outLen: FfiOut): bigint;
-  galley_recorded_recovery_kind(session: Deno.PointerValue, diagIndex: bigint): bigint;
+  galley_recorded_diagnostic_recovery_kind(session: Deno.PointerValue, diagIndex: bigint): bigint;
   galley_recorded_recovery_terminal(session: Deno.PointerValue, diagIndex: bigint, outData: FfiOut, outLen: FfiOut): bigint;
   galley_recorded_recovery_resume(session: Deno.PointerValue, diagIndex: bigint, out: FfiOut): bigint;
   galley_recorded_recovery_lhs_variable(session: Deno.PointerValue, diagIndex: bigint, outData: FfiOut, outLen: FfiOut): bigint;
@@ -147,9 +159,8 @@ interface GalleySymbols extends DoorNames<"">, DoorNames<"hook_"> {
   galley_hook_generation(door: Deno.PointerValue, outGeneration: FfiOut): bigint;
   // host hooks (see galley_session_set_hooks in galley.h)
   galley_hooks_count(): bigint;
-  galley_hooks_name_data(index: bigint): bigint;
-  galley_hooks_name_length(index: bigint): bigint;
-  galley_session_set_hooks(session: Deno.PointerValue, dispatch: Deno.PointerValue, hookHandle: bigint, enabled: FfiOut, enabledCount: bigint): bigint;
+  galley_hooks_name(index: bigint, outData: FfiOut, outLen: FfiOut): bigint;
+  galley_session_set_hooks(session: Deno.PointerValue, dispatch: Deno.PointerValue, hookHandle: bigint, enabled: FfiOut | null, enabledCount: bigint): bigint;
 }
 
 // --- library discovery -------------------------------------------------
@@ -225,10 +236,9 @@ const BASE_SYMBOLS = {
   galley_variable_count: { parameters: [], result: "u64" },
   galley_status_string: { parameters: ["i64"], result: "pointer" },
   galley_symbol_name: { parameters: ["pointer", "u64", "buffer", "buffer"], result: "i64" },
-  galley_symbol_is_terminal: { parameters: ["pointer", "u64"], result: "i32" },
+  galley_symbol_is_terminal: { parameters: ["pointer", "u64", "buffer"], result: "i64" },
   galley_variable_name: { parameters: ["pointer", "u64", "buffer", "buffer"], result: "i64" },
-  galley_session_create: { parameters: [], result: "pointer" },
-  galley_session_create_ex: { parameters: ["buffer"], result: "pointer" },
+  galley_session_create: { parameters: ["buffer", "buffer"], result: "i64" },
   galley_session_destroy: { parameters: ["pointer"], result: "i64" },
   galley_session_set_message_override: { parameters: ["pointer", "buffer", "usize", "buffer", "usize"], result: "i64" },
   galley_parse: { parameters: ["pointer", "buffer", "usize"], result: "i64" },
@@ -243,26 +253,7 @@ const BASE_SYMBOLS = {
     parameters: ["pointer", "u64", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer", "u64"],
     result: "i64",
   },
-  galley_has_diagnostic: { parameters: ["pointer"], result: "i32" },
-  galley_diagnostic_kind: { parameters: ["pointer"], result: "i64" },
-  galley_diagnostic_message: { parameters: ["pointer", "buffer"], result: "i64" },
-  galley_diagnostic_message_ansi: { parameters: ["pointer", "buffer"], result: "i64" },
-  galley_diagnostic_position: { parameters: ["pointer", "buffer", "buffer", "buffer"], result: "i64" },
-  galley_diagnostic_unexpected_token: { parameters: ["pointer", "buffer", "buffer"], result: "i64" },
-  galley_diagnostic_expected_count: { parameters: ["pointer"], result: "i64" },
-  galley_diagnostic_expected_at: { parameters: ["pointer", "u64", "buffer", "buffer"], result: "i64" },
-  galley_diagnostic_context_count: { parameters: ["pointer"], result: "i64" },
-  galley_diagnostic_context_at: { parameters: ["pointer", "u64", "buffer", "buffer"], result: "i64" },
-  galley_diagnostic_indentation: { parameters: ["pointer", "buffer", "buffer"], result: "i64" },
-  galley_syntax_error_count: { parameters: ["pointer"], result: "i64" },
-  galley_semantic_error_count: { parameters: ["pointer"], result: "i64" },
-  galley_diagnostic_semantic: { parameters: ["pointer", "buffer", "buffer", "buffer", "buffer"], result: "i64" },
-  galley_diagnostic_recovery_kind: { parameters: ["pointer"], result: "i64" },
-  galley_diagnostic_recovery_terminal: { parameters: ["pointer", "buffer", "buffer"], result: "i64" },
-  galley_diagnostic_recovery_resume: { parameters: ["pointer", "buffer"], result: "i64" },
-  galley_diagnostic_recovery_lhs_variable: { parameters: ["pointer", "buffer", "buffer"], result: "i64" },
-  galley_diagnostic_recovery_production: { parameters: ["pointer", "buffer", "buffer", "buffer"], result: "i64" },
-  galley_diagnostic_recovery_occurrence: { parameters: ["pointer", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer"], result: "i64" },
+  galley_has_diagnostic: { parameters: ["pointer", "buffer"], result: "i64" },
   galley_recorded_diagnostic_count: { parameters: ["pointer"], result: "i64" },
   galley_recorded_diagnostic_kind: { parameters: ["pointer", "u64"], result: "i64" },
   galley_recorded_diagnostic_position: { parameters: ["pointer", "u64", "buffer", "buffer", "buffer"], result: "i64" },
@@ -275,9 +266,8 @@ const BASE_SYMBOLS = {
   galley_recorded_expected_token: { parameters: ["pointer", "u64", "u64", "buffer", "buffer"], result: "i64" },
   galley_recorded_context_count: { parameters: ["pointer", "u64"], result: "i64" },
   galley_recorded_context_name: { parameters: ["pointer", "u64", "u64", "buffer", "buffer"], result: "i64" },
-  // NB: the implementation exports galley_recorded_diagnostic_recovery_kind
-  // (the header's shorter name is stale); `name` maps to the true symbol.
-  galley_recorded_recovery_kind: { name: "galley_recorded_diagnostic_recovery_kind", parameters: ["pointer", "u64"], result: "i64" },
+  // The header, its implementation, and the C exports all use the long name.
+  galley_recorded_diagnostic_recovery_kind: { parameters: ["pointer", "u64"], result: "i64" },
   galley_recorded_recovery_terminal: { parameters: ["pointer", "u64", "buffer", "buffer"], result: "i64" },
   galley_recorded_recovery_resume: { parameters: ["pointer", "u64", "buffer"], result: "i64" },
   galley_recorded_recovery_lhs_variable: { parameters: ["pointer", "u64", "buffer", "buffer"], result: "i64" },
@@ -331,15 +321,51 @@ function doorSymbols(door: "" | "hook_") {
   };
 }
 
+/**
+ * The current-diagnostic symbols, declared once and opened under both door
+ * prefixes (see `diagSymbols`). Every one answers i64; the door-pair
+ * `has_diagnostic` entries are declared next to the host hooks below.
+ */
+const DIAG_SYMBOLS = {
+  diagnostic_kind: { parameters: ["pointer"], result: "i64" },
+  diagnostic_message: { parameters: ["pointer", "buffer"], result: "i64" },
+  diagnostic_message_ansi: { parameters: ["pointer", "buffer"], result: "i64" },
+  diagnostic_position: { parameters: ["pointer", "buffer", "buffer", "buffer"], result: "i64" },
+  diagnostic_unexpected_token: { parameters: ["pointer", "buffer", "buffer"], result: "i64" },
+  diagnostic_expected_count: { parameters: ["pointer"], result: "i64" },
+  diagnostic_expected_at: { parameters: ["pointer", "u64", "buffer", "buffer"], result: "i64" },
+  diagnostic_context_count: { parameters: ["pointer"], result: "i64" },
+  diagnostic_context_at: { parameters: ["pointer", "u64", "buffer", "buffer"], result: "i64" },
+  diagnostic_indentation: { parameters: ["pointer", "buffer", "buffer"], result: "i64" },
+  syntax_error_count: { parameters: ["pointer"], result: "i64" },
+  semantic_error_count: { parameters: ["pointer"], result: "i64" },
+  diagnostic_semantic: { parameters: ["pointer", "buffer", "buffer", "buffer", "buffer"], result: "i64" },
+  diagnostic_recovery_kind: { parameters: ["pointer"], result: "i64" },
+  diagnostic_recovery_terminal: { parameters: ["pointer", "buffer", "buffer"], result: "i64" },
+  diagnostic_recovery_resume: { parameters: ["pointer", "buffer"], result: "i64" },
+  diagnostic_recovery_lhs_variable: { parameters: ["pointer", "buffer", "buffer"], result: "i64" },
+  diagnostic_recovery_production: { parameters: ["pointer", "buffer", "buffer", "buffer"], result: "i64" },
+  diagnostic_recovery_occurrence: { parameters: ["pointer", "buffer", "buffer", "buffer", "buffer", "buffer", "buffer"], result: "i64" },
+} as const satisfies Record<Exclude<keyof DiagCalls, "has_diagnostic">, unknown>;
+
+/** `DIAG_SYMBOLS` under one door's C names: `galley_<name>` or `galley_hook_<name>`. */
+function diagSymbols(door: "" | "hook_") {
+  return Object.fromEntries(
+    Object.entries(DIAG_SYMBOLS).map(([name, symbol]) => [`galley_${door}${name}`, symbol]),
+  ) as {
+    [Name in keyof typeof DIAG_SYMBOLS as `galley_${typeof door}${Name}`]: (typeof DIAG_SYMBOLS)[Name];
+  };
+}
+
 const HOOK_SYMBOLS = {
   galley_hooks_count: { parameters: [], result: "u64" },
-  galley_hooks_name_data: { parameters: ["u64"], result: "u64" },
-  galley_hooks_name_length: { parameters: ["u64"], result: "u64" },
+  galley_hooks_name: { parameters: ["u64", "buffer", "buffer"], result: "i64" },
+  galley_hook_has_diagnostic: { parameters: ["pointer", "buffer"], result: "i64" },
   galley_session_set_hooks: { parameters: ["pointer", "pointer", "u64", "buffer", "u64"], result: "i64" },
 } as const;
 
 function openNative(libPath: string) {
-  return Deno.dlopen(libPath, { ...BASE_SYMBOLS, ...doorSymbols(""), ...doorSymbols("hook_"), ...HOOK_SYMBOLS });
+  return Deno.dlopen(libPath, { ...BASE_SYMBOLS, ...doorSymbols(""), ...doorSymbols("hook_"), ...diagSymbols(""), ...diagSymbols("hook_"), ...HOOK_SYMBOLS });
 }
 
 // --- read helpers ----------------------------------------------------------
@@ -372,6 +398,44 @@ function u32Out(): Uint32Array {
 
 function i64Out(): BigInt64Array {
   return new BigInt64Array(1);
+}
+
+/** Read a native `(data, len)` byte pair: the bytes, or the refusal as a negative Number. */
+function copyBytesResult(
+  call: (outData: BigUint64Array, outLen: BigUint64Array) => bigint,
+): Uint8Array | number {
+  const outData = ptrOut();
+  const outLen = lenOut();
+  const status = call(outData, outLen);
+  if (status < 0n) return Number(status);
+  return readBytes(outData[0], outLen[0]);
+}
+
+/** Read a native `(data, len)` string: the text, or the refusal as a negative Number. */
+function stringResult(
+  call: (outData: BigUint64Array, outLen: BigUint64Array) => bigint,
+): string | number {
+  const outData = ptrOut();
+  const outLen = lenOut();
+  const status = call(outData, outLen);
+  if (status < 0n) return Number(status);
+  return textDecoder.decode(readBytes(outData[0], outLen[0]));
+}
+
+/** Read a native semantic `(variable, message)` pair, or the refusal as a negative Number. */
+function semanticResult(
+  call: (outVariable: BigUint64Array, outVariableLen: BigUint64Array, outMessage: BigUint64Array, outMessageLen: BigUint64Array) => bigint,
+): [string, string] | number {
+  const outVariable = ptrOut();
+  const outVariableLen = lenOut();
+  const outMessage = ptrOut();
+  const outMessageLen = lenOut();
+  const status = call(outVariable, outVariableLen, outMessage, outMessageLen);
+  if (status < 0n) return Number(status);
+  return [
+    textDecoder.decode(readBytes(outVariable[0], outVariableLen[0])),
+    textDecoder.decode(readBytes(outMessage[0], outMessageLen[0])),
+  ];
 }
 
 // --- FfiPort implementation ----------------------------------------------
@@ -470,6 +534,126 @@ function denoFamily(
   };
 }
 
+/**
+ * One door's current-diagnostic family, bound from the twin registrations:
+ * `galley_<name>` for the session door, `galley_hook_<name>` for the hook
+ * door. Counts and kinds normalize to Numbers; a refusal stays a negative
+ * Number for the core, which is the one place it becomes a host failure.
+ */
+function denoDiagFamily(native: GalleySymbols, door: "" | "hook_"): CurrentDiagnosticFamily {
+  const calls = native as unknown as Record<string, unknown>;
+  const bound = <Name extends keyof DiagCalls>(name: Name): DiagCalls[Name] =>
+    calls[`galley_${door}${name}`] as DiagCalls[Name];
+  const hasDiagnostic = bound("has_diagnostic");
+  const kind = bound("diagnostic_kind");
+  const message = bound("diagnostic_message");
+  const messageAnsi = bound("diagnostic_message_ansi");
+  const position = bound("diagnostic_position");
+  const unexpectedToken = bound("diagnostic_unexpected_token");
+  const expectedCount = bound("diagnostic_expected_count");
+  const expectedAt = bound("diagnostic_expected_at");
+  const contextCount = bound("diagnostic_context_count");
+  const contextAt = bound("diagnostic_context_at");
+  const syntaxErrorCount = bound("syntax_error_count");
+  const semanticErrorCount = bound("semantic_error_count");
+  const semantic = bound("diagnostic_semantic");
+  const indentation = bound("diagnostic_indentation");
+  const recoveryKind = bound("diagnostic_recovery_kind");
+  const recoveryTerminal = bound("diagnostic_recovery_terminal");
+  const recoveryResume = bound("diagnostic_recovery_resume");
+  const recoveryLhsVariable = bound("diagnostic_recovery_lhs_variable");
+  const recoveryProduction = bound("diagnostic_recovery_production");
+  const recoveryOccurrence = bound("diagnostic_recovery_occurrence");
+  const pointer = (handle: Handle) => handle as Deno.PointerValue;
+  // Every current-diagnostic status is i64; Number() normalizes it.
+  const num = (value: bigint | number): number => Number(value);
+  return {
+    hasDiagnostic: (handle) => {
+      const out = u32Out();
+      const status = num(hasDiagnostic(pointer(handle), out));
+      if (status < 0) return status;
+      return out[0] !== 0;
+    },
+    diagnosticKind: (handle) => num(kind(pointer(handle))),
+    diagnosticMessage: (handle) => {
+      const out = ptrOut();
+      const status = num(message(pointer(handle), out));
+      if (status < 0) return status;
+      return readCString(Deno.UnsafePointer.create(out[0])) ?? "";
+    },
+    diagnosticMessageAnsi: (handle) => {
+      const out = ptrOut();
+      const status = num(messageAnsi(pointer(handle), out));
+      if (status < 0) return status;
+      return readCString(Deno.UnsafePointer.create(out[0])) ?? "";
+    },
+    diagnosticPosition: (handle) => {
+      const outOffset = ptrOut();
+      const outLine = u32Out();
+      const outCol = u32Out();
+      const status = num(position(pointer(handle), outOffset, outLine, outCol));
+      if (status < 0) return status;
+      return [Number(outOffset[0]), outLine[0], outCol[0]];
+    },
+    diagnosticUnexpectedToken: (handle) =>
+      copyBytesResult((od, ol) => unexpectedToken(pointer(handle), od, ol)),
+    diagnosticExpectedCount: (handle) => num(expectedCount(pointer(handle))),
+    diagnosticExpectedAt: (handle, index) =>
+      copyBytesResult((od, ol) => expectedAt(pointer(handle), BigInt(index), od, ol)),
+    diagnosticContextCount: (handle) => num(contextCount(pointer(handle))),
+    diagnosticContextAt: (handle, index) =>
+      copyBytesResult((od, ol) => contextAt(pointer(handle), BigInt(index), od, ol)),
+    syntaxErrorCount: (handle) => num(syntaxErrorCount(pointer(handle))),
+    semanticErrorCount: (handle) => num(semanticErrorCount(pointer(handle))),
+    diagnosticSemantic: (handle) =>
+      semanticResult((ov, ovl, om, oml) => semantic(pointer(handle), ov, ovl, om, oml)),
+    diagnosticIndentation: (handle) => {
+      const outSpaces = u32Out();
+      const outWidth = u32Out();
+      const status = num(indentation(pointer(handle), outSpaces, outWidth));
+      if (status < 0) return status;
+      return [outSpaces[0], outWidth[0]];
+    },
+    diagnosticRecoveryKind: (handle) => num(recoveryKind(pointer(handle))),
+    diagnosticRecoveryTerminal: (handle) =>
+      copyBytesResult((od, ol) => recoveryTerminal(pointer(handle), od, ol)),
+    diagnosticRecoveryResume: (handle) => {
+      const out = i64Out();
+      const status = num(recoveryResume(pointer(handle), out));
+      if (status < 0) return status;
+      return Number(out[0]);
+    },
+    diagnosticRecoveryLhsVariable: (handle) =>
+      stringResult((od, ol) => recoveryLhsVariable(pointer(handle), od, ol)),
+    diagnosticRecoveryProduction: (handle) => {
+      const outVar = ptrOut();
+      const outLen = lenOut();
+      const outIdx = u32Out();
+      const status = num(recoveryProduction(pointer(handle), outVar, outLen, outIdx));
+      if (status < 0) return status;
+      return [textDecoder.decode(readBytes(outVar[0], outLen[0])), outIdx[0]];
+    },
+    diagnosticRecoveryOccurrence: (handle) => {
+      const outParent = ptrOut();
+      const outParentLen = lenOut();
+      const outRhs = u32Out();
+      const outSym = u32Out();
+      const outVar = ptrOut();
+      const outVarLen = lenOut();
+      const status = num(
+        recoveryOccurrence(pointer(handle), outParent, outParentLen, outRhs, outSym, outVar, outVarLen),
+      );
+      if (status < 0) return status;
+      return [
+        textDecoder.decode(readBytes(outParent[0], outParentLen[0])),
+        outRhs[0],
+        outSym[0],
+        textDecoder.decode(readBytes(outVar[0], outVarLen[0])),
+      ];
+    },
+  };
+}
+
 
 export class DenoPort implements FfiPort {
   hookDispatch: DispatchHandler | null = null;
@@ -497,6 +681,8 @@ export class DenoPort implements FfiPort {
 
   readonly session: NodeFamily;
   readonly hook: NodeFamily;
+  readonly diagnostics: CurrentDiagnosticFamily;
+  readonly hookDiagnostics: CurrentDiagnosticFamily;
 
   constructor(native: GalleySymbols, libraryPath: string) {
     this.native = native;
@@ -509,6 +695,8 @@ export class DenoPort implements FfiPort {
     };
     this.session = denoFamily(native, "", this.#generation, words);
     this.hook = denoFamily(native, "hook_", this.#generation, words);
+    this.diagnostics = denoDiagFamily(native, "");
+    this.hookDiagnostics = denoDiagFamily(native, "hook_");
   }
 
   setSessionHooks(session: Handle, hookHandle: number, enabled: Uint8Array): number {
@@ -529,10 +717,19 @@ export class DenoPort implements FfiPort {
     if (this.#hookNameTable !== null) return this.#hookNameTable;
     const table: string[] = [];
     const total = this.native.galley_hooks_count();
+    const out = ptrOut();
+    const outLen = lenOut();
     for (let index = 0n; index < total; index++) {
-      const address = this.native.galley_hooks_name_data(index);
-      if (address === 0n) break;
-      table.push(textDecoder.decode(readBytes(address, this.native.galley_hooks_name_length(index))));
+      const status = this.native.galley_hooks_name(index, out, outLen);
+      if (status < 0n) {
+        // Cannot happen below galley_hooks_count; raising beats silently
+        // shortening the table.
+        throw new GalleyError(
+          this.statusString(Number(status)) ?? `status ${status}`,
+          Number(status) as Status,
+        );
+      }
+      table.push(textDecoder.decode(readBytes(out[0], outLen[0])));
     }
     this.#hookNameTable = table;
     return table;
@@ -594,11 +791,11 @@ export class DenoPort implements FfiPort {
 
   // -- sessions ---------------------------------------------------------
 
-  createSession(options: SessionCOptions | null): Handle {
-    let handle: Deno.PointerValue;
-    if (options === null) {
-      handle = this.native.galley_session_create();
-    } else {
+  createSession(options: SessionCOptions | null): { status: number; handle: Handle | null } {
+    // Null options crosses as a NULL pointer (the library's defaults), never
+    // as a zeroed struct.
+    let optionsBytes: Uint8Array | null = null;
+    if (options !== null) {
       // GalleyCOptions layout: int32 x5, double, uint64 (40 bytes, LE).
       const buf = new ArrayBuffer(40);
       const view = new DataView(buf);
@@ -609,10 +806,12 @@ export class DenoPort implements FfiPort {
       view.setInt32(16, options.verbosity, true);
       view.setFloat64(24, options.astPreallocationRatio, true);
       view.setBigUint64(32, options.astPreallocationCap, true);
-      handle = this.native.galley_session_create_ex(new Uint8Array(buf));
+      optionsBytes = new Uint8Array(buf);
     }
-    if (handle === null) return null;
-    return handle;
+    const out = ptrOut();
+    const status = Number(this.native.galley_session_create(optionsBytes, out));
+    if (status < 0) return { status, handle: null };
+    return { status, handle: Deno.UnsafePointer.create(out[0]) };
   }
 
   destroySession(handle: Handle): number {
@@ -722,170 +921,28 @@ export class DenoPort implements FfiPort {
 
   // -- node accessors -----------------------------------------------------
 
-  #tryCopyBytes(fn: (outData: BigUint64Array, outLen: BigUint64Array) => bigint): Uint8Array | null {
-    const outData = ptrOut();
-    const outLen = lenOut();
-    if (fn(outData, outLen) < 0n) return null;
-    if (outData[0] === 0n) return null;
-    return readBytes(outData[0], outLen[0]);
-  }
-
-  #readSemanticPair(
-    fn: (outVariable: BigUint64Array, outVariableLen: BigUint64Array, outMessage: BigUint64Array, outMessageLen: BigUint64Array) => bigint,
-  ): [string, string] | null {
-    const outVariable = ptrOut();
-    const outVariableLen = lenOut();
-    const outMessage = ptrOut();
-    const outMessageLen = lenOut();
-    if (fn(outVariable, outVariableLen, outMessage, outMessageLen) < 0n) return null;
-    if (outVariable[0] === 0n || outMessage[0] === 0n) return null;
-    return [
-      textDecoder.decode(readBytes(outVariable[0], outVariableLen[0])),
-      textDecoder.decode(readBytes(outMessage[0], outMessageLen[0])),
-    ];
-  }
-
-  symbolNameAt(handle: Handle, index: number): Uint8Array | null {
+  symbolNameAt(handle: Handle, index: number): Uint8Array | number {
     const h = handle as Deno.PointerValue;
-    const outData = ptrOut();
-    const outLen = lenOut();
-    if (this.native.galley_symbol_name(h, BigInt(index), outData, outLen) < 0n) return null;
-    return readBytes(outData[0], outLen[0]);
+    return copyBytesResult((od, ol) => this.native.galley_symbol_name(h, BigInt(index), od, ol));
   }
 
-  symbolIsTerminal(handle: Handle, index: number): boolean {
-    return this.native.galley_symbol_is_terminal(handle as Deno.PointerValue, BigInt(index)) !== 0;
+  symbolIsTerminal(handle: Handle, index: number): boolean | number {
+    const out = u32Out();
+    const status = this.native.galley_symbol_is_terminal(handle as Deno.PointerValue, BigInt(index), out);
+    if (status < 0n) return Number(status);
+    return out[0] !== 0;
   }
 
-  variableNameAt(handle: Handle, index: number): Uint8Array | null {
+  variableNameAt(handle: Handle, index: number): Uint8Array | number {
     const h = handle as Deno.PointerValue;
-    const outData = ptrOut();
-    const outLen = lenOut();
-    if (this.native.galley_variable_name(h, BigInt(index), outData, outLen) < 0n) return null;
-    return readBytes(outData[0], outLen[0]);
+    return copyBytesResult((od, ol) => this.native.galley_variable_name(h, BigInt(index), od, ol));
   }
 
   // -- diagnostics ---------------------------------------------------------
-
-  hasDiagnostic(handle: Handle): boolean {
-    return this.native.galley_has_diagnostic(handle as Deno.PointerValue) !== 0;
-  }
-
-  diagnosticKind(handle: Handle): number {
-    return Number(this.native.galley_diagnostic_kind(handle as Deno.PointerValue));
-  }
-
-  diagnosticMessage(handle: Handle): string | null {
-    const out = ptrOut();
-    if (this.native.galley_diagnostic_message(handle as Deno.PointerValue, out) !== 0n) return null;
-    return readCString(Deno.UnsafePointer.create(out[0]));
-  }
-
-  diagnosticMessageAnsi(handle: Handle): string | null {
-    const out = ptrOut();
-    if (this.native.galley_diagnostic_message_ansi(handle as Deno.PointerValue, out) !== 0n) return null;
-    return readCString(Deno.UnsafePointer.create(out[0]));
-  }
-
-  diagnosticPosition(handle: Handle): [number, number, number] | null {
-    const outOffset = lenOut();
-    const outLine = u32Out();
-    const outCol = u32Out();
-    if (this.native.galley_diagnostic_position(handle as Deno.PointerValue, outOffset, outLine, outCol) < 0n) return null;
-    return [Number(outOffset[0]), outLine[0], outCol[0]];
-  }
-
-  diagnosticUnexpectedToken(handle: Handle): Uint8Array | null {
-    const h = handle as Deno.PointerValue;
-    return this.#tryCopyBytes((od, ol) => this.native.galley_diagnostic_unexpected_token(h, od, ol));
-  }
-
-  diagnosticExpectedCount(handle: Handle): number {
-    return Number(this.native.galley_diagnostic_expected_count(handle as Deno.PointerValue));
-  }
-
-  diagnosticExpectedAt(handle: Handle, index: number): Uint8Array | null {
-    const h = handle as Deno.PointerValue;
-    return this.#tryCopyBytes((od, ol) => this.native.galley_diagnostic_expected_at(h, BigInt(index), od, ol));
-  }
-
-  diagnosticContextCount(handle: Handle): number {
-    return Number(this.native.galley_diagnostic_context_count(handle as Deno.PointerValue));
-  }
-
-  diagnosticContextAt(handle: Handle, index: number): Uint8Array | null {
-    const h = handle as Deno.PointerValue;
-    return this.#tryCopyBytes((od, ol) => this.native.galley_diagnostic_context_at(h, BigInt(index), od, ol));
-  }
-
-  syntaxErrorCount(handle: Handle): number {
-    return Number(this.native.galley_syntax_error_count(handle as Deno.PointerValue));
-  }
-
-  semanticErrorCount(handle: Handle): number {
-    return Number(this.native.galley_semantic_error_count(handle as Deno.PointerValue));
-  }
-
-  diagnosticSemantic(handle: Handle): [string, string] | null {
-    const h = handle as Deno.PointerValue;
-    return this.#readSemanticPair((ov, ovl, om, oml) => this.native.galley_diagnostic_semantic(h, ov, ovl, om, oml));
-  }
-
-  diagnosticIndentation(handle: Handle): [number, number] | null {
-    const outSpaces = u32Out();
-    const outWidth = u32Out();
-    if (this.native.galley_diagnostic_indentation(handle as Deno.PointerValue, outSpaces, outWidth) !== 0n) return null;
-    return [outSpaces[0], outWidth[0]];
-  }
-
-  diagnosticRecoveryKind(handle: Handle): number {
-    return Number(this.native.galley_diagnostic_recovery_kind(handle as Deno.PointerValue));
-  }
-
-  diagnosticRecoveryTerminal(handle: Handle): Uint8Array | null {
-    const h = handle as Deno.PointerValue;
-    return this.#tryCopyBytes((od, ol) => this.native.galley_diagnostic_recovery_terminal(h, od, ol));
-  }
-
-  diagnosticRecoveryResume(handle: Handle): number | null {
-    const out = i64Out();
-    if (this.native.galley_diagnostic_recovery_resume(handle as Deno.PointerValue, out) !== 0n) return null;
-    return Number(out[0]);
-  }
-
-  diagnosticRecoveryLhsVariable(handle: Handle): string | null {
-    const h = handle as Deno.PointerValue;
-    const outData = ptrOut();
-    const outLen = lenOut();
-    if (this.native.galley_diagnostic_recovery_lhs_variable(h, outData, outLen) < 0n || outData[0] === 0n) return null;
-    return textDecoder.decode(readBytes(outData[0], outLen[0]));
-  }
-
-  diagnosticRecoveryProduction(handle: Handle): [string, number] | null {
-    const h = handle as Deno.PointerValue;
-    const outVar = ptrOut();
-    const outLen = lenOut();
-    const outIdx = u32Out();
-    if (this.native.galley_diagnostic_recovery_production(h, outVar, outLen, outIdx) !== 0n) return null;
-    return [textDecoder.decode(readBytes(outVar[0], outLen[0])), outIdx[0]];
-  }
-
-  diagnosticRecoveryOccurrence(handle: Handle): [string, number, number, string] | null {
-    const h = handle as Deno.PointerValue;
-    const outParent = ptrOut();
-    const outParentLen = lenOut();
-    const outRhs = u32Out();
-    const outSym = u32Out();
-    const outVar = ptrOut();
-    const outVarLen = lenOut();
-    if (this.native.galley_diagnostic_recovery_occurrence(h, outParent, outParentLen, outRhs, outSym, outVar, outVarLen) !== 0n) return null;
-    return [
-      textDecoder.decode(readBytes(outParent[0], outParentLen[0])),
-      outRhs[0],
-      outSym[0],
-      textDecoder.decode(readBytes(outVar[0], outVarLen[0])),
-    ];
-  }
+  //
+  // The current-diagnostic family lives on `diagnostics` (session door) and
+  // `hookDiagnostics` (hook door), built once in the constructor; the flat
+  // recorded family below is post-parse only.
 
   recordedDiagnosticCount(handle: Handle): number {
     return Number(this.native.galley_recorded_diagnostic_count(handle as Deno.PointerValue));
@@ -895,103 +952,106 @@ export class DenoPort implements FfiPort {
     return Number(this.native.galley_recorded_diagnostic_kind(handle as Deno.PointerValue, BigInt(diagIndex)));
   }
 
-  recordedDiagnosticPosition(handle: Handle, diagIndex: number): [number, number, number] | null {
+  recordedDiagnosticPosition(handle: Handle, diagIndex: number): [number, number, number] | number {
     const outOffset = lenOut();
     const outLine = u32Out();
     const outCol = u32Out();
-    if (this.native.galley_recorded_diagnostic_position(handle as Deno.PointerValue, BigInt(diagIndex), outOffset, outLine, outCol) < 0n) return null;
+    const status = this.native.galley_recorded_diagnostic_position(handle as Deno.PointerValue, BigInt(diagIndex), outOffset, outLine, outCol);
+    if (status < 0n) return Number(status);
     return [Number(outOffset[0]), outLine[0], outCol[0]];
   }
 
-  recordedUnexpectedToken(handle: Handle, diagIndex: number): Uint8Array | null {
+  recordedUnexpectedToken(handle: Handle, diagIndex: number): Uint8Array | number {
     const h = handle as Deno.PointerValue;
     const d = BigInt(diagIndex);
-    return this.#tryCopyBytes((od, ol) => this.native.galley_recorded_unexpected_token(h, d, od, ol));
+    return copyBytesResult((od, ol) => this.native.galley_recorded_unexpected_token(h, d, od, ol));
   }
 
-  recordedDiagnosticMessage(handle: Handle, diagIndex: number): string | null {
+  recordedDiagnosticMessage(handle: Handle, diagIndex: number): string | number {
     const out = ptrOut();
-    if (this.native.galley_recorded_diagnostic_message(handle as Deno.PointerValue, BigInt(diagIndex), out) !== 0n) return null;
-    return readCString(Deno.UnsafePointer.create(out[0]));
+    const status = this.native.galley_recorded_diagnostic_message(handle as Deno.PointerValue, BigInt(diagIndex), out);
+    if (status < 0n) return Number(status);
+    return readCString(Deno.UnsafePointer.create(out[0])) ?? "";
   }
 
-  recordedDiagnosticMessageAnsi(handle: Handle, diagIndex: number): string | null {
+  recordedDiagnosticMessageAnsi(handle: Handle, diagIndex: number): string | number {
     const out = ptrOut();
-    if (this.native.galley_recorded_diagnostic_message_ansi(handle as Deno.PointerValue, BigInt(diagIndex), out) !== 0n) return null;
-    return readCString(Deno.UnsafePointer.create(out[0]));
+    const status = this.native.galley_recorded_diagnostic_message_ansi(handle as Deno.PointerValue, BigInt(diagIndex), out);
+    if (status < 0n) return Number(status);
+    return readCString(Deno.UnsafePointer.create(out[0])) ?? "";
   }
 
-  recordedIndentation(handle: Handle, diagIndex: number): [number, number] | null {
+  recordedIndentation(handle: Handle, diagIndex: number): [number, number] | number {
     const outSpaces = u32Out();
     const outWidth = u32Out();
-    if (this.native.galley_recorded_indentation(handle as Deno.PointerValue, BigInt(diagIndex), outSpaces, outWidth) !== 0n) return null;
+    const status = this.native.galley_recorded_indentation(handle as Deno.PointerValue, BigInt(diagIndex), outSpaces, outWidth);
+    if (status < 0n) return Number(status);
     return [outSpaces[0], outWidth[0]];
   }
 
-  recordedSemantic(handle: Handle, diagIndex: number): [string, string] | null {
+  recordedSemantic(handle: Handle, diagIndex: number): [string, string] | number {
     const h = handle as Deno.PointerValue;
     const d = BigInt(diagIndex);
-    return this.#readSemanticPair((ov, ovl, om, oml) => this.native.galley_recorded_semantic(h, d, ov, ovl, om, oml));
+    return semanticResult((ov, ovl, om, oml) => this.native.galley_recorded_semantic(h, d, ov, ovl, om, oml));
   }
 
   recordedExpectedCount(handle: Handle, diagIndex: number): number {
     return Number(this.native.galley_recorded_expected_count(handle as Deno.PointerValue, BigInt(diagIndex)));
   }
 
-  recordedExpectedToken(handle: Handle, diagIndex: number, tokenIndex: number): Uint8Array | null {
+  recordedExpectedToken(handle: Handle, diagIndex: number, tokenIndex: number): Uint8Array | number {
     const h = handle as Deno.PointerValue;
     const d = BigInt(diagIndex);
     const t = BigInt(tokenIndex);
-    return this.#tryCopyBytes((od, ol) => this.native.galley_recorded_expected_token(h, d, t, od, ol));
+    return copyBytesResult((od, ol) => this.native.galley_recorded_expected_token(h, d, t, od, ol));
   }
 
   recordedContextCount(handle: Handle, diagIndex: number): number {
     return Number(this.native.galley_recorded_context_count(handle as Deno.PointerValue, BigInt(diagIndex)));
   }
 
-  recordedContextName(handle: Handle, diagIndex: number, contextIndex: number): Uint8Array | null {
+  recordedContextName(handle: Handle, diagIndex: number, contextIndex: number): Uint8Array | number {
     const h = handle as Deno.PointerValue;
     const d = BigInt(diagIndex);
     const c = BigInt(contextIndex);
-    return this.#tryCopyBytes((od, ol) => this.native.galley_recorded_context_name(h, d, c, od, ol));
+    return copyBytesResult((od, ol) => this.native.galley_recorded_context_name(h, d, c, od, ol));
   }
 
   recordedRecoveryKind(handle: Handle, diagIndex: number): number {
-    return Number(this.native.galley_recorded_recovery_kind(handle as Deno.PointerValue, BigInt(diagIndex)));
+    return Number(this.native.galley_recorded_diagnostic_recovery_kind(handle as Deno.PointerValue, BigInt(diagIndex)));
   }
 
-  recordedRecoveryTerminal(handle: Handle, diagIndex: number): Uint8Array | null {
+  recordedRecoveryTerminal(handle: Handle, diagIndex: number): Uint8Array | number {
     const h = handle as Deno.PointerValue;
     const d = BigInt(diagIndex);
-    return this.#tryCopyBytes((od, ol) => this.native.galley_recorded_recovery_terminal(h, d, od, ol));
+    return copyBytesResult((od, ol) => this.native.galley_recorded_recovery_terminal(h, d, od, ol));
   }
 
-  recordedRecoveryResume(handle: Handle, diagIndex: number): number | null {
+  recordedRecoveryResume(handle: Handle, diagIndex: number): number {
     const out = i64Out();
-    if (this.native.galley_recorded_recovery_resume(handle as Deno.PointerValue, BigInt(diagIndex), out) !== 0n) return null;
+    const status = this.native.galley_recorded_recovery_resume(handle as Deno.PointerValue, BigInt(diagIndex), out);
+    if (status < 0n) return Number(status);
     return Number(out[0]);
   }
 
-  recordedRecoveryLhsVariable(handle: Handle, diagIndex: number): string | null {
+  recordedRecoveryLhsVariable(handle: Handle, diagIndex: number): string | number {
     const h = handle as Deno.PointerValue;
     const d = BigInt(diagIndex);
-    const outData = ptrOut();
-    const outLen = lenOut();
-    if (this.native.galley_recorded_recovery_lhs_variable(h, d, outData, outLen) < 0n || outData[0] === 0n) return null;
-    return textDecoder.decode(readBytes(outData[0], outLen[0]));
+    return stringResult((od, ol) => this.native.galley_recorded_recovery_lhs_variable(h, d, od, ol));
   }
 
-  recordedRecoveryProduction(handle: Handle, diagIndex: number): [string, number] | null {
+  recordedRecoveryProduction(handle: Handle, diagIndex: number): [string, number] | number {
     const h = handle as Deno.PointerValue;
     const d = BigInt(diagIndex);
     const outVar = ptrOut();
     const outLen = lenOut();
     const outIdx = u32Out();
-    if (this.native.galley_recorded_recovery_production(h, d, outVar, outLen, outIdx) !== 0n) return null;
+    const status = this.native.galley_recorded_recovery_production(h, d, outVar, outLen, outIdx);
+    if (status < 0n) return Number(status);
     return [textDecoder.decode(readBytes(outVar[0], outLen[0])), outIdx[0]];
   }
 
-  recordedRecoveryOccurrence(handle: Handle, diagIndex: number): [string, number, number, string] | null {
+  recordedRecoveryOccurrence(handle: Handle, diagIndex: number): [string, number, number, string] | number {
     const h = handle as Deno.PointerValue;
     const d = BigInt(diagIndex);
     const outParent = ptrOut();
@@ -1000,7 +1060,8 @@ export class DenoPort implements FfiPort {
     const outSym = u32Out();
     const outVar = ptrOut();
     const outVarLen = lenOut();
-    if (this.native.galley_recorded_recovery_occurrence(h, d, outParent, outParentLen, outRhs, outSym, outVar, outVarLen) !== 0n) return null;
+    const status = this.native.galley_recorded_recovery_occurrence(h, d, outParent, outParentLen, outRhs, outSym, outVar, outVarLen);
+    if (status < 0n) return Number(status);
     return [
       textDecoder.decode(readBytes(outParent[0], outParentLen[0])),
       outRhs[0],

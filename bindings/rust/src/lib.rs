@@ -26,8 +26,10 @@ enum GalleySessionRaw {}
 
 extern "C" {
     fn galley_version() -> *const c_char;
-    fn galley_session_create() -> *mut GalleySessionRaw;
-    fn galley_session_create_ex(options: *const RawOptions) -> *mut GalleySessionRaw;
+    fn galley_session_create(
+        options: *const RawOptions,
+        out_session: *mut *mut GalleySessionRaw,
+    ) -> i64;
     fn galley_session_destroy(session: *mut GalleySessionRaw) -> i64;
     fn galley_parse_sentinel(session: *mut GalleySessionRaw, input: *const c_char) -> i64;
     fn galley_parse(session: *mut GalleySessionRaw, data: *const c_char, len: usize) -> i64;
@@ -104,7 +106,7 @@ extern "C" {
         out_line: *mut u32,
         out_column: *mut u32,
     ) -> i64;
-    fn galley_has_diagnostic(session: *mut GalleySessionRaw) -> i32;
+    fn galley_has_diagnostic(session: *mut GalleySessionRaw, out_has: *mut i32) -> i64;
     fn galley_diagnostic_kind(session: *mut GalleySessionRaw) -> i64;
     fn galley_diagnostic_message(session: *mut GalleySessionRaw, out: *mut *const c_char) -> i64;
     fn galley_diagnostic_position(
@@ -194,6 +196,7 @@ extern "C" {
         out_message: *mut *const c_char,
         out_message_len: *mut usize,
     ) -> i64;
+    fn galley_syntax_error_count(session: *mut GalleySessionRaw) -> i64;
     fn galley_semantic_error_count(session: *mut GalleySessionRaw) -> i64;
     fn galley_session_set_message_override(
         session: *mut GalleySessionRaw,
@@ -201,6 +204,27 @@ extern "C" {
         name_len: usize,
         message: *const c_char,
         message_len: usize,
+    ) -> i64;
+    fn galley_hooks_count() -> usize;
+    fn galley_hooks_name(index: usize, out_data: *mut *const c_char, out_len: *mut usize) -> i64;
+    fn galley_symbol_count() -> u64;
+    fn galley_symbol_name(
+        session: *mut GalleySessionRaw,
+        index: u64,
+        out_data: *mut *const c_char,
+        out_len: *mut usize,
+    ) -> i64;
+    fn galley_symbol_is_terminal(
+        session: *mut GalleySessionRaw,
+        index: u64,
+        out_is_terminal: *mut i32,
+    ) -> i64;
+    fn galley_variable_count() -> u64;
+    fn galley_variable_name(
+        session: *mut GalleySessionRaw,
+        index: u64,
+        out_data: *mut *const c_char,
+        out_len: *mut usize,
     ) -> i64;
     fn galley_status_string(status: i64) -> *const c_char;
 }
@@ -216,8 +240,10 @@ struct RawOptions {
     ast_preallocation_cap: u64,
 }
 
-/// Runtime options for [`Session::with_options`]. Zero/negative fields select
-/// library defaults.
+/// Runtime options for [`Session::with_options`]. Zero fields select the
+/// library defaults. The core owns option validation: a negative
+/// `max_errors` or `recovery_window` fails session creation with
+/// [`Error::InvalidArgument`] instead of being clamped here.
 #[derive(Debug, Clone)]
 pub struct SessionOptions {
     pub max_errors: i32,
@@ -269,6 +295,13 @@ pub enum Error {
     /// A host hook's dispatch reported failure and the parse stopped. Only a
     /// library built with a host shim returns it; Rust hooks cannot fail yet.
     HookFailed,
+    /// An index outside the table it was read from: a hook name, a grammar
+    /// symbol or variable name, or an expected-token or context-name index
+    /// past its diagnostic's table.
+    OutOfRange,
+    /// A value in [`SessionOptions`] outside its domain. The core owns the
+    /// check; the refused call carries the status.
+    InvalidArgument,
 }
 
 impl Error {
@@ -290,6 +323,8 @@ impl Error {
             -14 => Error::StaleTree,
             -15 => Error::StaleHook,
             -16 => Error::HookFailed,
+            -17 => Error::OutOfRange,
+            -18 => Error::InvalidArgument,
             _ => Error::Internal,
         }
     }
@@ -312,6 +347,8 @@ impl Error {
             Error::StaleTree => -14,
             Error::StaleHook => -15,
             Error::HookFailed => -16,
+            Error::OutOfRange => -17,
+            Error::InvalidArgument => -18,
         }
     }
 
@@ -359,6 +396,31 @@ pub fn version() -> &'static str {
 /// all node and tree-editing methods return `None` / errors.
 pub fn has_ast() -> bool {
     unsafe { galley_has_ast() != 0 }
+}
+
+/// Number of hooks the linked library forwards to a host shim. A library
+/// built with compiled hooks — Rust hooks included — reports zero.
+pub fn hooks_count() -> usize {
+    unsafe { galley_hooks_count() }
+}
+
+/// Name of the hook at `index` of the library's fixed hook table. Fails with
+/// [`Error::OutOfRange`] at or past [`hooks_count`].
+pub fn hooks_name(index: usize) -> Result<&'static [u8], Error> {
+    let mut data: *const c_char = std::ptr::null();
+    let mut len = 0usize;
+    map_status(unsafe { galley_hooks_name(index, &mut data, &mut len) })?;
+    Ok(bytes(data, len))
+}
+
+/// Number of grammar symbols (variables and terminals).
+pub fn symbol_count() -> u64 {
+    unsafe { galley_symbol_count() }
+}
+
+/// Number of grammar variables.
+pub fn variable_count() -> u64 {
+    unsafe { galley_variable_count() }
 }
 
 /// Handle to a node of one parse's AST: the core's parse generation the node
@@ -544,9 +606,21 @@ pub struct Diagnostic {
     pub line: u32,
     pub column: u32,
     pub message: String,
+    /// The parse's total syntax errors — the session door's
+    /// `galley_syntax_error_count` — the same value on the current and every
+    /// recorded snapshot of that parse.
+    pub syntax_error_count: u64,
+    /// The parse's total semantic errors — the session door's
+    /// `galley_semantic_error_count` — the same value on the current and
+    /// every recorded snapshot of that parse.
+    pub semantic_error_count: u64,
+    /// Byte token that was unexpected (syntax diagnostics only).
     pub unexpected_token: Vec<u8>,
+    /// Tokens that would have been accepted (syntax diagnostics only).
     pub expected_tokens: Vec<Vec<u8>>,
-    /// Innermost-first "while parsing" chain (syntax only).
+    /// Innermost-first "while parsing" chain of a syntax diagnostic; a
+    /// semantic diagnostic carries its single variable name. Empty for
+    /// other kinds.
     pub context: Vec<String>,
     /// Indentation diagnostics only.
     pub indentation: Option<IndentationInfo>,
@@ -564,6 +638,17 @@ pub enum DiagnosticKind {
     Hook,
 }
 
+/// The diagnostic a [`Session::diagnostic_snapshot`] read names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagnosticSource {
+    /// The most recent diagnostic of the last parse — the one a failed parse
+    /// stopped on, with its message rendered through grammar hooks and
+    /// overrides.
+    Current,
+    /// The diagnostic recorded at this 0-based index, in recording order.
+    Recorded(u64),
+}
+
 #[derive(Debug)]
 pub struct IndentationInfo {
     pub spaces: u32,
@@ -576,7 +661,9 @@ impl Session {
         Self::with_options(SessionOptions::default())
     }
 
-    /// Creates a session with explicit runtime options.
+    /// Creates a session with explicit runtime options. The core owns option
+    /// validation: an out-of-domain value fails with
+    /// [`Error::InvalidArgument`].
     pub fn with_options(options: SessionOptions) -> Result<Self, Error> {
         let raw = RawOptions {
             max_errors: options.max_errors,
@@ -587,23 +674,33 @@ impl Session {
             ast_preallocation_ratio: -1.0,
             ast_preallocation_cap: 0,
         };
-        let inner = unsafe { galley_session_create_ex(&raw) };
+        let mut inner: *mut GalleySessionRaw = std::ptr::null_mut();
+        map_status(unsafe { galley_session_create(&raw, &mut inner) })?;
         if inner.is_null() {
-            return Err(Error::OutOfMemory);
+            return Err(Error::Internal);
         }
         let session = Session {
             inner,
             _not_send: PhantomData,
         };
+        // Overrides are fixed while a parse runs; each install either takes
+        // or is refused, and a refusal fails session creation instead of
+        // being dropped.
         for (name, message) in &options.message_overrides {
-            unsafe {
+            let status = unsafe {
                 galley_session_set_message_override(
                     session.inner,
                     name.as_ptr().cast(),
                     name.len(),
                     message.as_ptr().cast(),
                     message.len(),
-                );
+                )
+            };
+            if status != 0 {
+                // A just-created session cannot hold a parse, so destroy
+                // cannot be refused; the override status is the failure.
+                unsafe { galley_session_destroy(session.inner) };
+                return Err(Error::from_status(status));
             }
         }
         Ok(session)
@@ -636,20 +733,21 @@ impl Session {
 
     /// Summary of the published parse: `Ok(None)` when the parser was built
     /// without AST construction, an error when the session refuses a read —
-    /// [`Error::SessionInUse`] while a parse runs, [`Error::StaleTree`] when
-    /// nothing is published (before the first parse, or after one that
-    /// published nothing).
+    /// [`Error::SessionInUse`] while a parse runs, and, with AST
+    /// construction, [`Error::StaleTree`] when nothing is published (before
+    /// the first parse, or after one that published nothing).
     pub fn info(&self) -> Result<Option<ParseInfo>, Error> {
+        // The published state is read even without AST construction, so a
+        // root-tier refusal is never skipped in favor of an empty answer.
+        // The info surface describes the published tree, which a no-AST
+        // build does not have, so the answer is `Ok(None)`.
+        let root = self.published()?.0;
         if !has_ast() {
             return Ok(None);
         }
-        let root = self.published()?.0;
         let mut line = 0u32;
         let mut column = 0u32;
-        let status = unsafe { galley_last_position(self.inner, &mut line, &mut column) };
-        if status < 0 {
-            return Err(Error::from_status(status));
-        }
+        map_status(unsafe { galley_last_position(self.inner, &mut line, &mut column) })?;
         Ok(Some(ParseInfo {
             root,
             end_position: Some((line, column)),
@@ -700,11 +798,9 @@ impl Session {
     /// Root node of the published tree: `Ok(Some)` is the root, `Ok(None)`
     /// means nothing is published (or the parser has no AST), and an error is
     /// the core's refusal, such as [`Error::SessionInUse`] while a parse runs.
-    /// The one "is there a tree here" probe.
+    /// The one "is there a tree here" probe: the published state is read
+    /// first, so a refusal is never skipped in favor of an empty answer.
     pub fn root_node(&self) -> Result<Option<NodeHandle>, Error> {
-        if !has_ast() {
-            return Ok(None);
-        }
         Ok(self.published()?.0)
     }
 
@@ -957,118 +1053,277 @@ impl Session {
         Ok((l, c))
     }
 
-    /// Builds an owned snapshot of the diagnostic recorded at `diag_index`
-    /// (0-based, in recording order) of the most recent parse.
-    fn recorded_diagnostic_at(&self, diag_index: u64) -> Option<Diagnostic> {
-        let mut d = Diagnostic::default();
-        unsafe {
-            if galley_recorded_diagnostic_position(
-                self.inner,
-                diag_index,
-                &mut d.offset,
-                &mut d.line,
-                &mut d.column,
-            ) != 0
-            {
-                return None;
+    // ---- Grammar tables ------------------------------------------------
+
+    /// Name of the grammar symbol at `index` (a variable or a terminal).
+    /// Fails with [`Error::OutOfRange`] at or past [`symbol_count`].
+    pub fn symbol_name_at(&self, index: u64) -> Result<&[u8], Error> {
+        let mut data: *const c_char = std::ptr::null();
+        let mut len = 0usize;
+        map_status(unsafe { galley_symbol_name(self.inner, index, &mut data, &mut len) })?;
+        Ok(bytes(data, len))
+    }
+
+    /// Whether the symbol at `index` is a terminal, false for a variable.
+    /// Fails with [`Error::OutOfRange`] at or past [`symbol_count`].
+    pub fn symbol_is_terminal(&self, index: u64) -> Result<bool, Error> {
+        let mut is_terminal = 0i32;
+        map_status(unsafe { galley_symbol_is_terminal(self.inner, index, &mut is_terminal) })?;
+        Ok(is_terminal != 0)
+    }
+
+    /// Name of the grammar variable at `index`. Fails with
+    /// [`Error::OutOfRange`] at or past [`variable_count`].
+    pub fn variable_name_at(&self, index: u64) -> Result<&[u8], Error> {
+        let mut data: *const c_char = std::ptr::null();
+        let mut len = 0usize;
+        map_status(unsafe { galley_variable_name(self.inner, index, &mut data, &mut len) })?;
+        Ok(bytes(data, len))
+    }
+
+    // ---- Diagnostics ---------------------------------------------------
+
+    /// Whether the last parse recorded a diagnostic. `Ok(false)` means it
+    /// recorded none; a refusal — a parse in flight, say — is an error, never
+    /// `Ok(false)`.
+    pub fn has_diagnostic(&self) -> Result<bool, Error> {
+        let mut has = 0i32;
+        map_status(unsafe { galley_has_diagnostic(self.inner, &mut has) })?;
+        Ok(has != 0)
+    }
+
+    /// Reads one diagnostic through the one path: the kind first, then
+    /// exactly the fields that kind carries, every refusal raised.
+    /// `Current` names the most recent one — the diagnostic a failed parse
+    /// stopped on — and `Recorded(index)` the diagnostic at that 0-based
+    /// position, in recording order. Both messages are the rendered text
+    /// with grammar hooks and overrides applied. Fails with
+    /// [`Error::NoDiagnostic`] when the source names nothing: a clean parse
+    /// for `Current`, an index at or past the recorded diagnostics for
+    /// `Recorded`. Never answers an empty snapshot for a refusal. Every
+    /// snapshot also carries the parse's `syntax_error_count` and
+    /// `semantic_error_count` totals.
+    pub fn diagnostic_snapshot(&self, source: DiagnosticSource) -> Result<Diagnostic, Error> {
+        let kind = match source {
+            DiagnosticSource::Current => {
+                diagnostic_kind(unsafe { galley_diagnostic_kind(self.inner) })?
             }
-
-            d.kind = match galley_recorded_diagnostic_kind(self.inner, diag_index) {
-                1 => DiagnosticKind::Syntax,
-                2 => DiagnosticKind::Indentation,
-                3 => DiagnosticKind::Semantic,
-                4 => DiagnosticKind::Hook,
-                _ => DiagnosticKind::None,
-            };
-
-            let mut msg: *const c_char = std::ptr::null();
-            if galley_recorded_diagnostic_message(self.inner, diag_index, &mut msg) == 0 {
-                d.message = cstr(msg).unwrap_or("").to_owned();
+            DiagnosticSource::Recorded(index) => {
+                diagnostic_kind(unsafe { galley_recorded_diagnostic_kind(self.inner, index) })?
             }
+        };
+        if kind == DiagnosticKind::None {
+            return Err(Error::NoDiagnostic);
+        }
+        let mut snapshot = Diagnostic {
+            kind,
+            ..Diagnostic::default()
+        };
 
-            let mut tok: *const c_char = std::ptr::null();
-            let mut tl = 0usize;
-            if galley_recorded_unexpected_token(self.inner, diag_index, &mut tok, &mut tl) == 0 {
-                d.unexpected_token = bytes(tok, tl).to_vec();
+        // Position and message: every kind carries both.
+        match source {
+            DiagnosticSource::Current => map_status(unsafe {
+                galley_diagnostic_position(
+                    self.inner,
+                    &mut snapshot.offset,
+                    &mut snapshot.line,
+                    &mut snapshot.column,
+                )
+            })?,
+            DiagnosticSource::Recorded(index) => map_status(unsafe {
+                galley_recorded_diagnostic_position(
+                    self.inner,
+                    index,
+                    &mut snapshot.offset,
+                    &mut snapshot.line,
+                    &mut snapshot.column,
+                )
+            })?,
+        }
+        let mut message: *const c_char = std::ptr::null();
+        match source {
+            DiagnosticSource::Current => {
+                map_status(unsafe { galley_diagnostic_message(self.inner, &mut message) })?
             }
+            DiagnosticSource::Recorded(index) => map_status(unsafe {
+                galley_recorded_diagnostic_message(self.inner, index, &mut message)
+            })?,
+        }
+        snapshot.message = unsafe { cstr(message) }.unwrap_or("").to_owned();
 
-            for i in 0..galley_recorded_expected_count(self.inner, diag_index).max(0) as u64 {
-                let mut td: *const c_char = std::ptr::null();
-                let mut tdl = 0usize;
-                if galley_recorded_expected_token(self.inner, diag_index, i, &mut td, &mut tdl) == 0
-                {
-                    d.expected_tokens.push(bytes(td, tdl).to_vec());
+        // The parse's totals, not the record's: read from the session for
+        // either source, so every snapshot of a parse carries the same two.
+        snapshot.syntax_error_count = value(unsafe { galley_syntax_error_count(self.inner) })?;
+        snapshot.semantic_error_count = value(unsafe { galley_semantic_error_count(self.inner) })?;
+
+        // The kind's own fields; an accessor refuses a record it does not
+        // fit, so each is read only for the kind whose fields it is.
+        match snapshot.kind {
+            DiagnosticKind::Syntax => {
+                let mut data: *const c_char = std::ptr::null();
+                let mut len = 0usize;
+                match source {
+                    DiagnosticSource::Current => map_status(unsafe {
+                        galley_diagnostic_unexpected_token(self.inner, &mut data, &mut len)
+                    })?,
+                    DiagnosticSource::Recorded(index) => map_status(unsafe {
+                        galley_recorded_unexpected_token(self.inner, index, &mut data, &mut len)
+                    })?,
                 }
-            }
+                snapshot.unexpected_token = bytes(data, len).to_vec();
 
-            for i in 0..galley_recorded_context_count(self.inner, diag_index).max(0) as u64 {
-                let mut cd: *const c_char = std::ptr::null();
-                let mut cdl = 0usize;
-                if galley_recorded_context_name(self.inner, diag_index, i, &mut cd, &mut cdl) == 0 {
-                    d.context.push(cstr(cd).unwrap_or("").to_owned());
+                let count = match source {
+                    DiagnosticSource::Current => {
+                        value(unsafe { galley_diagnostic_expected_count(self.inner) })?
+                    }
+                    DiagnosticSource::Recorded(index) => {
+                        value(unsafe { galley_recorded_expected_count(self.inner, index) })?
+                    }
+                };
+                for token_index in 0..count {
+                    let mut data: *const c_char = std::ptr::null();
+                    let mut len = 0usize;
+                    match source {
+                        DiagnosticSource::Current => map_status(unsafe {
+                            galley_diagnostic_expected_at(
+                                self.inner,
+                                token_index,
+                                &mut data,
+                                &mut len,
+                            )
+                        })?,
+                        DiagnosticSource::Recorded(index) => map_status(unsafe {
+                            galley_recorded_expected_token(
+                                self.inner,
+                                index,
+                                token_index,
+                                &mut data,
+                                &mut len,
+                            )
+                        })?,
+                    }
+                    snapshot.expected_tokens.push(bytes(data, len).to_vec());
                 }
+                snapshot.context = self.context_names(source)?;
             }
-
-            let mut sp = 0u32;
-            let mut iw = 0u32;
-            if galley_recorded_indentation(self.inner, diag_index, &mut sp, &mut iw) == 0 {
-                d.indentation = Some(IndentationInfo {
-                    spaces: sp,
-                    indentation_width: iw,
+            DiagnosticKind::Semantic => {
+                let mut variable: *const c_char = std::ptr::null();
+                let mut variable_len = 0usize;
+                let mut semantic_message: *const c_char = std::ptr::null();
+                let mut semantic_message_len = 0usize;
+                match source {
+                    DiagnosticSource::Current => map_status(unsafe {
+                        galley_diagnostic_semantic(
+                            self.inner,
+                            &mut variable,
+                            &mut variable_len,
+                            &mut semantic_message,
+                            &mut semantic_message_len,
+                        )
+                    })?,
+                    DiagnosticSource::Recorded(index) => map_status(unsafe {
+                        galley_recorded_semantic(
+                            self.inner,
+                            index,
+                            &mut variable,
+                            &mut variable_len,
+                            &mut semantic_message,
+                            &mut semantic_message_len,
+                        )
+                    })?,
+                }
+                snapshot.semantic = Some((
+                    String::from_utf8_lossy(bytes(variable, variable_len)).into_owned(),
+                    String::from_utf8_lossy(bytes(semantic_message, semantic_message_len))
+                        .into_owned(),
+                ));
+                snapshot.context = self.context_names(source)?;
+            }
+            DiagnosticKind::Indentation => {
+                let mut spaces = 0u32;
+                let mut width = 0u32;
+                match source {
+                    DiagnosticSource::Current => map_status(unsafe {
+                        galley_diagnostic_indentation(self.inner, &mut spaces, &mut width)
+                    })?,
+                    DiagnosticSource::Recorded(index) => map_status(unsafe {
+                        galley_recorded_indentation(self.inner, index, &mut spaces, &mut width)
+                    })?,
+                }
+                snapshot.indentation = Some(IndentationInfo {
+                    spaces,
+                    indentation_width: width,
                 });
             }
-
-            let mut variable: *const c_char = std::ptr::null();
-            let mut variable_len = 0usize;
-            let mut message: *const c_char = std::ptr::null();
-            let mut message_len = 0usize;
-            if galley_recorded_semantic(
-                self.inner,
-                diag_index,
-                &mut variable,
-                &mut variable_len,
-                &mut message,
-                &mut message_len,
-            ) == 0
-            {
-                d.semantic = Some((
-                    String::from_utf8_lossy(bytes(variable, variable_len)).into_owned(),
-                    String::from_utf8_lossy(bytes(message, message_len)).into_owned(),
-                ));
-            }
+            DiagnosticKind::Hook | DiagnosticKind::None => {}
         }
-        Some(d)
+        Ok(snapshot)
     }
 
-    /// Structured diagnostics of the failed parse, in recording order. Owned
-    /// copies; empty when the parse succeeded.
-    pub fn diagnostics(&self) -> Vec<Diagnostic> {
-        let count = unsafe { galley_recorded_diagnostic_count(self.inner) }.max(0) as u64;
+    /// The context chain of the diagnostic `source` names: innermost-first
+    /// variable names for a syntax diagnostic, the single variable for a
+    /// semantic one.
+    fn context_names(&self, source: DiagnosticSource) -> Result<Vec<String>, Error> {
+        let count = match source {
+            DiagnosticSource::Current => {
+                value(unsafe { galley_diagnostic_context_count(self.inner) })?
+            }
+            DiagnosticSource::Recorded(index) => {
+                value(unsafe { galley_recorded_context_count(self.inner, index) })?
+            }
+        };
+        let mut names = Vec::with_capacity(count as usize);
+        for context_index in 0..count {
+            let mut data: *const c_char = std::ptr::null();
+            let mut len = 0usize;
+            match source {
+                DiagnosticSource::Current => map_status(unsafe {
+                    galley_diagnostic_context_at(self.inner, context_index, &mut data, &mut len)
+                })?,
+                DiagnosticSource::Recorded(index) => map_status(unsafe {
+                    galley_recorded_context_name(
+                        self.inner,
+                        index,
+                        context_index,
+                        &mut data,
+                        &mut len,
+                    )
+                })?,
+            }
+            names.push(unsafe { cstr(data) }.unwrap_or("").to_owned());
+        }
+        Ok(names)
+    }
+
+    /// Structured diagnostic of the failed parse, if any: the one the parse
+    /// stopped on (the most recently recorded), with its message rendered
+    /// through the grammar's error-message hooks and overrides. `Ok(None)`
+    /// when the last parse recorded none; a refusal is an error, never
+    /// `Ok(None)`.
+    pub fn diagnostic(&self) -> Result<Option<Diagnostic>, Error> {
+        if !self.has_diagnostic()? {
+            return Ok(None);
+        }
+        Ok(Some(self.diagnostic_snapshot(DiagnosticSource::Current)?))
+    }
+
+    /// Structured diagnostic recorded at `index` (0-based, in recording
+    /// order) during the last parse. Fails with [`Error::NoDiagnostic`] at
+    /// or past the recorded count, never with an empty snapshot.
+    pub fn diagnostic_at(&self, index: u64) -> Result<Diagnostic, Error> {
+        self.diagnostic_snapshot(DiagnosticSource::Recorded(index))
+    }
+
+    /// Structured diagnostics of the last parse, in recording order. Owned
+    /// copies; empty when the parse recorded none. A refusal — a parse in
+    /// flight, say — is an error, never an empty list.
+    pub fn diagnostics(&self) -> Result<Vec<Diagnostic>, Error> {
+        let count = value(unsafe { galley_recorded_diagnostic_count(self.inner) })?;
         let mut out = Vec::with_capacity(count as usize);
-        for i in 0..count {
-            if let Some(d) = self.recorded_diagnostic_at(i) {
-                out.push(d);
-            }
+        for index in 0..count {
+            out.push(self.diagnostic_at(index)?);
         }
-        out
-    }
-
-    /// Structured diagnostic of the failed parse, if any (the most recently
-    /// recorded one). Owned copy. Its message prefers the text rendered by
-    /// the grammar's error-message hooks during the parse.
-    pub fn diagnostic(&self) -> Option<Diagnostic> {
-        let count = unsafe { galley_recorded_diagnostic_count(self.inner) };
-        if count <= 0 {
-            return None;
-        }
-        let mut d = self.recorded_diagnostic_at((count - 1) as u64)?;
-        unsafe {
-            let mut msg: *const c_char = std::ptr::null();
-            if galley_diagnostic_message(self.inner, &mut msg) == 0 {
-                d.message = cstr(msg).unwrap_or("").to_owned();
-            }
-        }
-        Some(d)
+        Ok(out)
     }
 
     // ---- Tree editing -------------------------------------------------
@@ -1280,6 +1535,20 @@ fn opt_handle(generation: u64, address: u64) -> Option<NodeHandle> {
     }
 }
 
+/// One diagnostic kind code — the C enum value — as an enum, or the status
+/// that refused the read. Only a status is negative; the none kind is a real
+/// value.
+fn diagnostic_kind(status: i64) -> Result<DiagnosticKind, Error> {
+    match status {
+        0 => Ok(DiagnosticKind::None),
+        1 => Ok(DiagnosticKind::Syntax),
+        2 => Ok(DiagnosticKind::Indentation),
+        3 => Ok(DiagnosticKind::Semantic),
+        4 => Ok(DiagnosticKind::Hook),
+        refused => Err(Error::from_status(refused)),
+    }
+}
+
 fn map_status(status: i64) -> Result<(), Error> {
     if status == 0 {
         Ok(())
@@ -1291,4 +1560,53 @@ fn map_status(status: i64) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_error_status_round_trips() {
+        for error in [
+            Error::NullArgument,
+            Error::Syntax,
+            Error::Semantic,
+            Error::Indentation,
+            Error::StackOverflow,
+            Error::AstCapacityExceeded,
+            Error::UnterminatedRawString,
+            Error::OutOfMemory,
+            Error::Internal,
+            Error::NoDiagnostic,
+            Error::InvalidNode,
+            Error::Io,
+            Error::SessionInUse,
+            Error::StaleTree,
+            Error::StaleHook,
+            Error::HookFailed,
+            Error::OutOfRange,
+            Error::InvalidArgument,
+        ] {
+            assert_eq!(Error::from_status(error.status()), error);
+        }
+    }
+
+    #[test]
+    fn the_new_statuses_carry_their_codes() {
+        assert_eq!(Error::OutOfRange.status(), -17);
+        assert_eq!(Error::InvalidArgument.status(), -18);
+    }
+
+    #[test]
+    fn an_unknown_status_is_internal() {
+        assert_eq!(Error::from_status(-999), Error::Internal);
+        assert_eq!(Error::from_status(7), Error::Internal);
+    }
+
+    #[test]
+    fn only_negative_values_are_statuses() {
+        assert_eq!(diagnostic_kind(0), Ok(DiagnosticKind::None));
+        assert_eq!(diagnostic_kind(1), Ok(DiagnosticKind::Syntax));
+        assert_eq!(diagnostic_kind(2), Ok(DiagnosticKind::Indentation));
+        assert_eq!(diagnostic_kind(3), Ok(DiagnosticKind::Semantic));
+        assert_eq!(diagnostic_kind(4), Ok(DiagnosticKind::Hook));
+        assert_eq!(diagnostic_kind(-9), Err(Error::NoDiagnostic));
+        assert_eq!(diagnostic_kind(-17), Err(Error::OutOfRange));
+    }
 }

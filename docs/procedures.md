@@ -199,7 +199,7 @@ Rules that follow:
 
 ### Hook Names Outside Zig
 
-Python, Java and JavaScript install hooks by name at runtime, and a built library lists the names it accepts (`galley_hooks_count`, `galley_hooks_name_data`). The list is the generated parser's own hook table: every hook the parser binds, each under one name that is a valid identifier in every language:
+Python, Java and JavaScript install hooks by name at runtime, and a built library lists the names it accepts (`galley_hooks_count`, `galley_hooks_name`). The list is the generated parser's own hook table: every hook the parser binds, each under one name that is a valid identifier in every language:
 
 - `reduction`, `reduction_<Variable>` and `reduction_<Variable>_<RhsIndex>`, as in Zig.
 - `reduction_<stem>` for a terminal: the identifier-safe name from [Terminal Hooks](#terminal-hooks) (`reduction_terminal__x123` for `"{"`, `reduction_generative_terminal_digit` for `digit`). The readable spellings, `reduction_"<spelling>"` and a generative terminal's `reduction_<id>`, are Zig-only.

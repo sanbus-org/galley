@@ -2,6 +2,7 @@ package testfixture
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	galley "github.com/sanbus-org/galley/bindings/go/testfixture/galley"
@@ -203,4 +204,41 @@ func TestSnapshotNodesGoStaleWithTheNextParse(t *testing.T) {
 	if _, _, err := session.TreeCleanChildren(node); err != galley.ErrStaleTree {
 		t.Fatalf("edit after re-parse = %v, want ErrStaleTree", err)
 	}
+}
+
+// Snapshot.Node is the one conversion from a stored address back to a node:
+// the invalid-node constant answers the empty Node (really empty — no parse
+// has generation 0, so every use is refused) and an address at or past Count
+// panics at the call with the host's index error, like any Go index out of
+// range.
+func TestSnapshotNodeMapsTheInvalidConstantAndPanicsOutOfRange(t *testing.T) {
+	session, _ := walkSession(t, "alpha:12")
+	snap, err := session.Snapshot()
+	if err != nil {
+		t.Fatalf("snapshot: %v", err)
+	}
+	if snap.Count == 0 {
+		t.Fatal("expected nodes")
+	}
+	empty := snap.Node(galley.InvalidNode.Index())
+	if empty != (galley.Node{}) {
+		t.Fatalf("invalid-node constant answers %+v, want the empty Node", empty)
+	}
+	if _, err := session.Text(empty); err != galley.ErrStaleTree {
+		t.Fatalf("a read of the empty Node = %v, want ErrStaleTree", err)
+	}
+	if last := snap.Node(snap.Count - 1); last == (galley.Node{}) {
+		t.Fatal("the last address answered the empty Node")
+	}
+	defer func() {
+		recovered := recover()
+		if recovered == nil {
+			t.Fatal("snap.Node(snap.Count) did not panic")
+		}
+		message, ok := recovered.(string)
+		if !ok || !strings.Contains(message, "out of range for a snapshot") {
+			t.Fatalf("panic = %#v, want the index error message", recovered)
+		}
+	}()
+	snap.Node(snap.Count)
 }

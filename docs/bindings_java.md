@@ -240,6 +240,9 @@ snapshot carries `getKind() == DiagnosticKind.SEMANTIC` and
 the failure is created: later parses cannot mutate the `Diagnostic` carried
 by a `GalleyException`.
 
+The hook-door diagnostic family is intentionally unbound in Java: a host hook
+cannot read diagnostics live, and nothing fabricates one.
+
 ## Tree Walking
 
 `node.walk(skipSemanticErrors, skipRecovered)` returns a pre-order `Walker`
@@ -327,7 +330,7 @@ try (Session session = parser.openSession(SessionOptions.builder()
 A parse failure's `getDiagnostic()` is the frozen `Diagnostic` of where the
 parse stopped; every other failure's is `null`.
 
-Parsing entry points: `parse(byte[])`, `parse(ByteBuffer)`, `parse(String)`, `parseSentinel(String|byte[]|ByteBuffer)`, and `parseFile(String|File)`. `ByteBuffer` honors `position`/`remaining`/`arrayOffset`; direct buffers are passed by pointer with `Reference.reachabilityFence`.
+Parsing entry points: `parse(byte[])`, `parse(ByteBuffer)`, `parse(String)`, `parseSentinel(String|byte[]|ByteBuffer)`, and `parseFile(String|File)`. `ByteBuffer` honors `position`/`remaining`/`arrayOffset`; direct buffers are passed by pointer, and no reachability fence is needed because the segment `MemorySegment.ofBuffer` returns keeps the buffer — and its backing memory — reachable for the call.
 
 Sessions own their IO backend and allocator and are not safe for concurrent
 use — keep one per thread or guard it externally. Node handles, text slices,
@@ -358,10 +361,11 @@ parser.errorRecoveryMode();                  // RecoveryMode (DISABLED / AUTOMAT
 parser.symbolCount();                        // long
 parser.variableCount();
 parser.statusString(StatusCode.ERROR_SYNTAX); // "syntax error" / null
-session.symbolNameAt(0);                     // String / null
-session.symbolNameAtBytes(0);                // byte[] / null
-session.symbolIsTerminal(0);
-session.variableNameAt(0);                   // String / null
+session.symbolNameAt(0);                     // String; an out-of-range index throws ERROR_OUT_OF_RANGE
+session.symbolNameAtBytes(0);                // byte[]; an out-of-range index throws ERROR_OUT_OF_RANGE
+session.symbolIsTerminal(0);                 // boolean; an out-of-range index throws ERROR_OUT_OF_RANGE
+session.variableNameAt(0);                   // String; an out-of-range index throws ERROR_OUT_OF_RANGE
+session.variableNameAtBytes(0);              // byte[]; an out-of-range index throws ERROR_OUT_OF_RANGE
 ```
 
 ## Development builds

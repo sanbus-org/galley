@@ -1,11 +1,11 @@
 /* Refusals in a parser built without AST construction (`bindings/c/galley.h`).
  *
  * The same rule as with an AST: every call that reads or edits nodes checks
- * the generation first, and only a live generation gets an answer. In a build
- * without AST construction that answer is "there are no nodes": 0 for the
- * count and the snapshot, no node to address for the rest. A generation that
- * is not live, one before the first parse included, is the stale-tree
- * refusal, never a 0.
+ * the generation first, and only a live generation gets past the check. In a
+ * build without AST construction there is no node storage: with a live
+ * generation the node operations refuse with galley_error_invalid_node — the
+ * count and the snapshot included. A generation that is not live, one before
+ * the first parse included, is the stale-tree refusal, never a 0 answer.
  *
  * Linked against the no-AST fixture library built by the fixture's
  * CMakeLists.txt; run with ctest from the fixture build directory.
@@ -72,7 +72,8 @@ static int probe_dispatch(void *handle, unsigned int index, unsigned long long h
 }
 
 static void test_reserve_is_refused_mid_parse(void) {
-    GalleySession *session = galley_session_create();
+    GalleySession *session = NULL;
+    CHECK(galley_session_create(NULL, &session) == galley_ok);
     size_t count = galley_hooks_count();
     unsigned char enabled[256];
     CHECK(session != NULL && count > 0 && count <= sizeof enabled);
@@ -102,7 +103,8 @@ static int failing_dispatch(void *handle, unsigned int index, unsigned long long
 }
 
 static void test_failing_hook_aborts_the_parse(void) {
-    GalleySession *session = galley_session_create();
+    GalleySession *session = NULL;
+    CHECK(galley_session_create(NULL, &session) == galley_ok);
     size_t count = galley_hooks_count();
     unsigned char enabled[256];
     GalleyNodeAddress root = 0;
@@ -138,8 +140,8 @@ static void test_failing_hook_aborts_the_parse(void) {
 
 int main(void) {
     CHECK(galley_has_ast() == 0);
-    GalleySession *session = galley_session_create();
-    CHECK(session != NULL);
+    GalleySession *session = NULL;
+    CHECK(galley_session_create(NULL, &session) == galley_ok);
     GalleyNodeAddress root = 0;
     unsigned long long generation = 99;
     const char *input = NULL;
@@ -160,9 +162,9 @@ int main(void) {
     /* A published parse has a generation and no root. */
     CHECK(galley_root_node(session, &root, &generation) == galley_ok);
     CHECK(root == GALLEY_INVALID_NODE && generation >= 1);
-    CHECK(galley_node_count(session, generation) == 0);
+    CHECK(galley_node_count(session, generation) == galley_error_invalid_node);
     CHECK(galley_tree_snapshot(session, generation, NULL, NULL, NULL, NULL, NULL, NULL,
-                               NULL, NULL, NULL, 0) == 0);
+                               NULL, NULL, NULL, 0) == galley_error_invalid_node);
     CHECK(galley_node_child_count(session, generation, 0) == galley_error_invalid_node);
     CHECK(galley_last_input(session, &input, &input_length) == galley_ok);
     CHECK(input_length == strlen(valid_sample) && memcmp(input, valid_sample, input_length) == 0);
@@ -177,7 +179,7 @@ int main(void) {
     CHECK(galley_root_node(session, &root, &generation) == galley_ok);
     CHECK(generation > first);
     check_every_call(session, first, galley_error_stale_tree);
-    CHECK(galley_node_count(session, generation) == 0);
+    CHECK(galley_node_count(session, generation) == galley_error_invalid_node);
 
     galley_session_destroy(session);
     test_reserve_is_refused_mid_parse();
