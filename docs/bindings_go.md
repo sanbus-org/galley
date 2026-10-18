@@ -211,13 +211,9 @@ negative status (`errors.Is(err, galley.ErrSyntax)` holds), and
 `Diagnostic` is a snapshot of the diagnostic the parse stopped at, frozen
 into Go when the failure is created.
 
-A failure carries a snapshot exactly when its status is one of the statuses
-that ended a parse that ran: `ErrSyntax`, `ErrSemantic`, `ErrIndentation`,
-`ErrStackOverflow`, `ErrASTCapacityExceeded`, `ErrUnterminatedRawString`,
-`ErrOutOfMemory`, and `ErrHookFailed`. A failure built from any other
-status carries none, `ErrIO` included — a file-read failure carries no
-snapshot whether it happened before the parse began or, in a streaming
-build, during it.
+A failure carries a snapshot when its parse recorded a diagnostic, and none
+when it recorded none: a parse call that fails before its parse runs (a
+missing file), or is refused with `ErrSessionInUse`, carries none.
 
 ```go
 parsed, err := session.Parse(input)
@@ -234,9 +230,6 @@ answers present=false), `Diagnostics()` (all recorded diagnostics, in
 recording order; nil after a success), `HasDiagnostic()`,
 `SyntaxErrorCount()`, and `SemanticErrorCount()`. A read while a parse is
 in flight is `ErrSessionInUse`; after `Close` it is `ErrNullArgument`.
-Attaching the snapshot runs only for the statuses above: a refused read
-there returns the failure without a snapshot on `ErrSessionInUse` and
-replaces the failure otherwise.
 
 Every `Diagnostic` — the failure's snapshot, `Diagnostic()`'s, each of
 `Diagnostics()`'s, and a hook door's twin — carries the parse's error

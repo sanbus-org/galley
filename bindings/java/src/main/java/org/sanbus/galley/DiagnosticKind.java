@@ -7,7 +7,8 @@ package org.sanbus.galley;
  */
 public enum DiagnosticKind {
     /**
-     * No diagnostic: the previous parse succeeded, or no parse has run.
+     * No diagnostic: the most recent parse call recorded none (it succeeded,
+     * or failed before its parse ran), or no parse has run.
      */
     NONE(0),
     /**

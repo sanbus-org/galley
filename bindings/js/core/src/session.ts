@@ -7,7 +7,7 @@
  * this constructor.
  */
 
-import { INVALID_NODE, NO_VARIABLE, Status, statusCarriesDiagnostic } from "./constants.ts";
+import { INVALID_NODE, NO_VARIABLE, Status } from "./constants.ts";
 import type { DiagnosticKind, RecoveryTarget, ResumeSide } from "./constants.ts";
 import type { Diagnostic } from "./diagnostic.ts";
 import { GalleyError, SessionClosedError, StaleTreeError } from "./errors.ts";
@@ -606,16 +606,18 @@ export class Session implements HookOwner {
   }
 
   /**
-   * The failure of a parse, with that parse's diagnostic snapshot: exactly
-   * the statuses that ended a parse that ran (`statusCarriesDiagnostic`)
-   * carry one; a failure built from any other status carries none. While
-   * attaching the snapshot the one skippable status is `session in use`
-   * (another thread's parse can hold the session between this parse's
-   * failure and the read): the failure then carries no snapshot; every
-   * other refusal raises.
+   * The failure of a parse, with the session's diagnostic snapshot whenever
+   * the session has one: a parse call clears the previous call's diagnostic
+   * when it starts, so the one the session holds is this parse's own. A
+   * parse refused with `session in use` started nothing, and the session's
+   * diagnostic belongs to the parse that holds it, so that failure carries
+   * none. While attaching the snapshot the one skippable status is
+   * `session in use` (another thread's parse can take the session between
+   * this parse's failure and the read): the failure then carries no
+   * snapshot; every other refusal raises.
    */
   #parseFailure(status: number, options?: ErrorOptions): GalleyError {
-    if (!statusCarriesDiagnostic(status)) return this.errorFromStatus(status, undefined, options);
+    if (status === Status.ErrorSessionInUse) return this.errorFromStatus(status, undefined, options);
     let diag: Diagnostic | null = null;
     if (this.#handle !== null) {
       try {
@@ -1090,8 +1092,8 @@ export class Session implements HookOwner {
 
   /**
    * Whether the calling context has a diagnostic at all: the in-flight
-   * parse's inside a hook (through the hook door), the previous parse's
-   * elsewhere (through the session door). A refusal raises, never false.
+   * parse's inside a hook (through the hook door), the most recent parse
+   * call's elsewhere (through the session door). A refusal raises, never false.
    */
   hasDiagnostic(): boolean {
     return this.#diagnosticReads().hasDiagnostic();
@@ -1267,8 +1269,8 @@ export class Session implements HookOwner {
   }
 
   /**
-   * The previous parse's current diagnostic, or null when it produced
-   * none. Inside a hook it answers the in-flight parse's diagnostic
+   * The most recent parse call's current diagnostic, or null when it
+   * recorded none (it succeeded, or failed before its parse ran). Inside a hook it answers the in-flight parse's diagnostic
    * through the hook door; a refusal raises, never null.
    */
   diagnostic(): Diagnostic | null {
@@ -1278,9 +1280,9 @@ export class Session implements HookOwner {
   }
 
   /**
-   * The diagnostics the most recent parse recorded, in recording order
+   * The diagnostics the most recent parse call recorded, in recording order
    * (post-parse only: inside a hook the recorded family is refused with
-   * `session in use`). An empty list means the parse recorded none.
+   * `session in use`). An empty list means the call recorded none.
    */
   diagnostics(): Diagnostic[] {
     const h = this.#requireHandle();

@@ -875,9 +875,9 @@ class SessionTests(unittest.TestCase):
         self.assertIsInstance(diagnostic.syntax_error_count, int)
 
     def test_a_refused_parse_file_carries_no_diagnostic(self):
-        # A file that cannot be opened is refused before any parse runs: the
-        # failure carries no diagnostic, never a snapshot, while the session
-        # keeps the previous parse's diagnostic untouched.
+        # A parse call clears the previous call's diagnostic when it starts,
+        # so a file that cannot be opened is refused with no diagnostic: the
+        # failure carries none, and neither does the session afterwards.
         with self.assertRaises(grammar.GalleyError):
             self.session.parse("alpha:")
         previous = self.session.diagnostic()
@@ -890,7 +890,7 @@ class SessionTests(unittest.TestCase):
             self.session.parse_file(missing)
         self.assertEqual(raised.exception.code, grammar.Status.ERROR_IO)
         self.assertIsNone(raised.exception.diagnostic)
-        self.assertIsNotNone(self.session.diagnostic())
+        self.assertIsNone(self.session.diagnostic())
 
     def test_diagnostic_resets_after_successful_parse(self):
         session = grammar.Session()

@@ -502,36 +502,59 @@ static void test_snapshot(void) {
     galley_session_destroy(session);
 }
 
-/* A read failure is io whether the path cannot be opened or opens and
- * cannot be read (a directory): a refusal that ran no parse, so the
- * previous parse's diagnostic survives untouched. */
-static void test_parse_file_read_failure_is_io(void) {
-    GalleySession *session = make_session();
-    CHECK(galley_parse_sentinel(session, broken_sample) == galley_error_syntax);
-    int has = 0;
+/* A parse call clears the previous call's diagnostics and error counts when
+ * it starts, so a call that fails before its parse runs leaves none: a read
+ * failure is io whether the path cannot be opened or opens and cannot be
+ * read (a directory), a missing argument is null_argument, and none of them
+ * carries the earlier parse's diagnostic. Text read from that diagnostic
+ * stays valid until the next parse. */
+static void check_refusal_leaves_no_diagnostic(GalleySession *session,
+                                               const char *message,
+                                               const char *message_copy) {
+    int has = 1;
     CHECK(galley_has_diagnostic(session, &has) == galley_ok);
-    CHECK(has == 1);
-    const char *message = NULL;
-    CHECK(galley_diagnostic_message(session, &message) == galley_ok);
-    CHECK(message != NULL && message[0] != '\0');
+    CHECK(has == 0);
+    CHECK(galley_diagnostic_kind(session) == galley_diagnostic_kind_none);
+    CHECK(galley_recorded_diagnostic_count(session) == 0);
+    CHECK(galley_syntax_error_count(session) == 0);
+    CHECK(galley_semantic_error_count(session) == 0);
+    const char *after = (const char *)"sentinel";
+    CHECK(galley_diagnostic_message(session, &after) == galley_error_no_diagnostic);
+    CHECK(after == (const char *)"sentinel");
+    CHECK(strcmp(message, message_copy) == 0);
+}
 
-    /* The open fails: io, before any parse. */
-    CHECK(galley_parse_file(session, "no-such-file-here.kv") == galley_error_io);
-    CHECK(galley_has_diagnostic(session, &has) == galley_ok);
-    CHECK(has == 1);
-    const char *after = NULL;
-    CHECK(galley_diagnostic_message(session, &after) == galley_ok);
-    CHECK(after != NULL && strcmp(after, message) == 0);
+static void test_parse_refusals_clear_the_diagnostic(void) {
+    static const char *const refusals[] = {"missing file", "directory", "null path", "null input"};
+    for (size_t i = 0; i < sizeof refusals / sizeof refusals[0]; i++) {
+        GalleySession *session = make_session();
+        CHECK(galley_parse_sentinel(session, broken_sample) == galley_error_syntax);
+        int has = 0;
+        CHECK(galley_has_diagnostic(session, &has) == galley_ok);
+        CHECK(has == 1);
+        const char *message = NULL;
+        CHECK(galley_diagnostic_message(session, &message) == galley_ok);
+        CHECK(message != NULL && message[0] != '\0');
+        CHECK(galley_syntax_error_count(session) == 1);
+        char message_copy[512];
+        snprintf(message_copy, sizeof message_copy, "%s", message);
 
-    /* The open succeeds and the read fails: io too, and still no parse. */
-    CHECK(galley_parse_file(session, ".") == galley_error_io);
-    CHECK(galley_has_diagnostic(session, &has) == galley_ok);
-    CHECK(has == 1);
-    after = NULL;
-    CHECK(galley_diagnostic_message(session, &after) == galley_ok);
-    CHECK(after != NULL && strcmp(after, message) == 0);
+        long long status = 0;
+        switch (i) {
+        case 0: status = galley_parse_file(session, "no-such-file-here.kv"); break;
+        case 1: status = galley_parse_file(session, "."); break;
+        case 2: status = galley_parse_file(session, NULL); break;
+        default: status = galley_parse(session, NULL, 1); break;
+        }
+        CHECK(status == (i < 2 ? galley_error_io : galley_error_null_argument));
+        check_refusal_leaves_no_diagnostic(session, message, message_copy);
 
-    galley_session_destroy(session);
+        /* The next attempt records its own diagnostic again. */
+        CHECK(galley_parse_sentinel(session, broken_sample) == galley_error_syntax);
+        CHECK(galley_has_diagnostic(session, &has) == galley_ok);
+        CHECK(has == 1);
+        galley_session_destroy(session);
+    }
 }
 
 /* The (root, generation) pair, the retained input, and a node of the tree
@@ -555,11 +578,10 @@ static void check_published_parse_untouched(GalleySession *session,
     CHECK(after_input == input && after_length == input_length);
 }
 
-/* Every parse call refused with a status outside the eight that end a
- * parse that ran changes nothing in the session: the previous tree keeps
- * its root and generation, its input, and the node reads that address it.
- * (The diagnostic and its rendered strings are covered by
- * test_parse_file_read_failure_is_io.) */
+/* A refused parse call changes nothing but the diagnostic: the previous
+ * tree keeps its root and generation, its input, and the node reads that
+ * address it. (The diagnostic is covered by
+ * test_parse_refusals_clear_the_diagnostic.) */
 static void test_parse_refusals_change_nothing(void) {
     GalleySession *session = make_session();
     CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
@@ -1582,6 +1604,10 @@ static void test_walk_in_use(void) {
               galley_error_session_in_use);
         /* The refusal writes nothing. */
         CHECK(mid_root == 0 && mid_generation == 99);
+        /* Another parse call is refused before it checks its arguments, and
+         * starts nothing: the running parse keeps the session. */
+        CHECK(galley_parse_sentinel(session, valid_sample) == galley_error_session_in_use);
+        CHECK(galley_parse_file(session, NULL) == galley_error_session_in_use);
     }
     fixture_release_gate();
     CHECK(pthread_join(parser, NULL) == 0);
@@ -2077,7 +2103,7 @@ int main(void) {
     test_walker();
     test_snapshot();
     test_syntax_diagnostic();
-    test_parse_file_read_failure_is_io();
+    test_parse_refusals_clear_the_diagnostic();
     test_parse_refusals_change_nothing();
     test_message_override();
     test_recorded_diagnostics();

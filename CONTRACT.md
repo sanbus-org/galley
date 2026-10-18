@@ -102,7 +102,7 @@ The user can attach code to points in the grammar ([hooks](docs/procedures.md)).
 Every problem found during a parse, whether a syntax error or an error reported by a hook, is recorded with its location and a readable message. What the parser does after a syntax error is [defined](docs/syntax_error_recovery.md#syntax-error-recovery).
 
 1. Each recorded error carries the byte offset in the input where it was found, and its line and column, except in two parsers without [line and column tracking](#3-parser-options): one that reads in a [bounded window](docs/configuration.md#the-configzig-contract), and an indentation-syntax parser streaming a file.
-2. After a parse, the session holds the errors of that parse in the order they were recorded.
+2. After a parse call, the session holds the errors that call recorded, in the order they were recorded, and none when the call failed before its parse ran. A parse call refused because another use holds the session leaves the errors as they were.
 3. The user can [customize error messages](docs/syntax_error_recovery.md#syntax-error-messages) with [per-session overrides](docs/configuration.md#syntax-error-message-overrides), with compile-time templates, and with message functions written with the hooks.
 4. The precedence among these customizations is defined and documented.
 5. An error that none of these customizations covers has the built-in message, which names what was found and what was expected.
@@ -155,7 +155,7 @@ Galley aims for [bare-metal parsing speed](docs/benchmarks.md) and a small footp
 No input can make a parser corrupt memory or use resources without limit. Every misuse of the interface is detected, except that ReleaseFast and ReleaseSmall builds do not check tree edits. The correctness of hooks, and of tree edits in those builds, is the user's responsibility.
 
 1. A use of the interface that breaks a rule of [section 9](#9-sessions-lifetimes-and-concurrency) is refused with an error.
-2. A refused use changes nothing: the session, its published tree and its recorded errors stay as they were.
+2. A refused use leaves the session and its published tree as they were. A refused parse call clears the recorded errors like every parse call (see [section 7](#7-errors-and-recovery)), unless it was refused because another use holds the session; that refusal leaves them as they were too.
 3. A refused use is reported as a refusal, distinct from the failure of a parse.
 4. Except in ReleaseFast and ReleaseSmall builds, a tree edit that would corrupt the tree is detected and stops the program.
 5. Through the C ABI, a tree edit with an index or count outside the tree is refused with an error in every build.

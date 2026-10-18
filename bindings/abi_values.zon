@@ -11,9 +11,7 @@
 // name (the C name is `prefix ++ name`), `value` is the ABI number, and `doc`
 // is one documentation paragraph every copy prints (backtick spans are
 // inline code). Statuses additionally carry the static `text` that
-// `galley_status_string` answers and `carries_diagnostic`: whether a failure
-// with this status keeps the session's diagnostic of the parse that ended
-// with it. Sentinels set `unsigned` when the C spelling is unsigned (`ULL`)
+// `galley_status_string` answers. Sentinels set `unsigned` when the C spelling is unsigned (`ULL`)
 // and the host type is an address rather than a signed index.
 //
 // The declaration holds ABI facts only. Which core error maps to which
@@ -43,42 +41,36 @@
                 .name = "error_syntax",
                 .value = -2,
                 .text = "syntax error",
-                .carries_diagnostic = true,
                 .doc = "The parse recorded syntax errors. A parse that recovered and ran to its end still publishes its tree, with the damaged regions flagged as recovered nodes; a parse that could not recover publishes nothing.",
             },
             .{
                 .name = "error_indentation",
                 .value = -3,
                 .text = "indentation error",
-                .carries_diagnostic = true,
                 .doc = "The parse failed on indentation, which has no recovery; nothing is published.",
             },
             .{
                 .name = "error_stack_overflow",
                 .value = -4,
                 .text = "parser stack overflow",
-                .carries_diagnostic = true,
                 .doc = "The parser stack exceeded its configured limit; nothing is published.",
             },
             .{
                 .name = "error_ast_capacity_exceeded",
                 .value = -5,
                 .text = "AST capacity exceeded",
-                .carries_diagnostic = true,
                 .doc = "AST storage ran out of its planned capacity; nothing is published.",
             },
             .{
                 .name = "error_unterminated_raw_string",
                 .value = -6,
                 .text = "unterminated raw string",
-                .carries_diagnostic = true,
                 .doc = "Input ended inside a raw string; nothing is published.",
             },
             .{
                 .name = "error_out_of_memory",
                 .value = -7,
                 .text = "out of memory",
-                .carries_diagnostic = true,
                 .doc = "An allocation failed; nothing is published.",
             },
             .{
@@ -109,7 +101,6 @@
                 .name = "error_semantic",
                 .value = -12,
                 .text = "semantic error",
-                .carries_diagnostic = true,
                 .doc = "The parse recorded semantic errors; the tree is still published, with the erroring nodes marked.",
             },
             .{
@@ -134,7 +125,6 @@
                 .name = "error_hook_failed",
                 .value = -16,
                 .text = "hook failed",
-                .carries_diagnostic = true,
                 .doc = "A hook's dispatch returned nonzero: the parse stopped where the hook ran and published nothing. The diagnostic is of kind `galley_diagnostic_kind_hook`; the host keeps the cause of the failure.",
             },
             .{
@@ -160,7 +150,7 @@
             .{
                 .name = "none",
                 .value = 0,
-                .doc = "No diagnostic: the previous parse succeeded, or no parse has run.",
+                .doc = "No diagnostic: the most recent parse call recorded none (it succeeded, or failed before its parse ran), or no parse has run.",
             },
             .{
                 .name = "syntax",

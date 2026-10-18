@@ -130,23 +130,6 @@ const (
 )
 // <<< generated: statuses
 
-// statusCarriesDiagnostic reports whether a failure with this code carries
-// the session's diagnostic: exactly the statuses that ended a parse that
-// ran, whose diagnostic then belongs to that attempt. A *ParseError built
-// from any other status carries none — a file-read failure included,
-// whether it happened before the parse began or, in a streaming build,
-// during it.
-// >>> generated: status flags (bindings/abi_values.zon; regenerate: zig build abi-values)
-func statusCarriesDiagnostic(code Error) bool {
-	switch code {
-	case ErrSyntax, ErrIndentation, ErrStackOverflow, ErrASTCapacityExceeded,
-		ErrUnterminatedRawString, ErrOutOfMemory, ErrSemantic, ErrHookFailed:
-		return true
-	}
-	return false
-}
-// <<< generated: status flags
-
 func (e Error) Error() string {
 	if e == 0 {
 		// 0 is not a failure; the core renders it "ok".
@@ -359,11 +342,13 @@ func (e *ParseError) Unwrap() error { return e.Status }
 // result — the byte count, or a *ParseError carrying the diagnostic the
 // parse stopped at. Every leg that entered the parse ends its lifetime
 // whatever it returns; only the call the core refused with ErrSessionInUse
-// entered nothing, so the running parse keeps its hooks and doors. A failure
-// carries a diagnostic exactly when its status is one that ended a parse
-// that ran (statusCarriesDiagnostic); a failure built from any other status
-// carries none. Any other refused diagnostic read replaces the parse failure
-// rather than being folded into "no snapshot".
+// entered nothing, so the running parse keeps its hooks and doors, and its
+// failure carries no diagnostic, since the session's belongs to that parse.
+// Every other failure carries the session's diagnostic when it has one: a
+// parse call clears the previous call's diagnostic when it starts, so the
+// one the session holds is this parse's own. Any other refused diagnostic
+// read replaces the parse failure rather than being folded into "no
+// snapshot".
 func (s *Session) parseOutcome(status C.longlong) (int, error) {
 	if status >= 0 {
 		s.parseEnded()
@@ -374,9 +359,6 @@ func (s *Session) parseOutcome(status C.longlong) (int, error) {
 		return 0, failure
 	}
 	s.parseEnded()
-	if !statusCarriesDiagnostic(failure.Status) {
-		return 0, failure
-	}
 	diagnostic, present, err := s.Diagnostic()
 	if err != nil {
 		if err == ErrSessionInUse {
@@ -933,7 +915,8 @@ func (s *Session) LineColumn(node Node) (line uint32, column uint32, err error) 
 type DiagnosticKind int32
 
 const (
-	// DiagnosticKindNone: No diagnostic: the previous parse succeeded, or no parse has run.
+	// DiagnosticKindNone: No diagnostic: the most recent parse call recorded none (it succeeded, or
+	// failed before its parse ran), or no parse has run.
 	DiagnosticKindNone        DiagnosticKind = 0
 	// DiagnosticKindSyntax: A syntax error. A parse that recovered from its syntax errors still
 	// publishes its tree, with the damaged regions flagged as recovered nodes.
@@ -974,8 +957,8 @@ type SemanticInfo struct {
 	Variable, Message string
 }
 
-// Diagnostic describes the failure of the most recent parse, mirroring the
-// structured diagnostic of the C API.
+// Diagnostic describes the failure of the most recent parse call, mirroring
+// the structured diagnostic of the C API.
 type Diagnostic struct {
 	Kind DiagnosticKind
 	// SyntaxErrorCount and SemanticErrorCount are the totals of the parse
@@ -1024,7 +1007,7 @@ type diagnosticReads struct {
 }
 
 // currentDiagnosticReads binds the session's current diagnostic, the most
-// recent one the most recent parse recorded.
+// recent one the most recent parse call recorded.
 func currentDiagnosticReads(session *Session) diagnosticReads {
 	return diagnosticReads{
 		kind: func() C.longlong { return C.galley_diagnostic_kind(session.ptr) },
@@ -1053,7 +1036,7 @@ func currentDiagnosticReads(session *Session) diagnosticReads {
 }
 
 // recordedDiagnosticReads binds the session's record at index (0-based, in
-// recording order) of the most recent parse.
+// recording order) of the most recent parse call.
 func recordedDiagnosticReads(session *Session, index C.ulonglong) diagnosticReads {
 	return diagnosticReads{
 		kind: func() C.longlong { return C.galley_recorded_diagnostic_kind(session.ptr, index) },
@@ -1262,9 +1245,10 @@ func buildDiagnostic(reads diagnosticReads) (Diagnostic, bool, error) {
 	return diagnostic, true, nil
 }
 
-// HasDiagnostic reports whether the previous parse produced a diagnostic. A
-// parse in flight is refused with ErrSessionInUse, never answered false;
-// hook code reads the running parse through HookDoor.HasDiagnostic.
+// HasDiagnostic reports whether the most recent parse call recorded a
+// diagnostic. A parse in flight is refused with ErrSessionInUse, never
+// answered false; hook code reads the running parse through
+// HookDoor.HasDiagnostic.
 func (s *Session) HasDiagnostic() (bool, error) {
 	var has C.int
 	if status := C.galley_has_diagnostic(s.ptr, &has); status < 0 {
@@ -1273,17 +1257,18 @@ func (s *Session) HasDiagnostic() (bool, error) {
 	return has != 0, nil
 }
 
-// Diagnostic inspects the failure of the most recent parse (its most
-// recently recorded diagnostic). The second result is false when the parse
-// succeeded (or nothing was parsed yet). Its message is the text rendered
+// Diagnostic inspects the failure of the most recent parse call (its most
+// recently recorded diagnostic). The second result is false when the call
+// recorded none: it succeeded, failed before its parse ran, or nothing was
+// parsed yet. Its message is the text rendered
 // for that diagnostic, grammar hooks and message overrides included. A
 // refused read is the core's error, never a false.
 func (s *Session) Diagnostic() (Diagnostic, bool, error) {
 	return buildDiagnostic(currentDiagnosticReads(s))
 }
 
-// Diagnostics returns every diagnostic recorded during the most recent
-// parse, in recording order. Nil when the parse succeeded. A refused read is
+// Diagnostics returns every diagnostic the most recent parse call recorded,
+// in recording order. Nil when it recorded none. A refused read is
 // the core's error, never an empty or short list.
 func (s *Session) Diagnostics() ([]Diagnostic, error) {
 	count := C.galley_recorded_diagnostic_count(s.ptr)
@@ -1309,9 +1294,10 @@ func (s *Session) Diagnostics() ([]Diagnostic, error) {
 	return diagnostics, nil
 }
 
-// SyntaxErrorCount returns how many syntax errors the most recent
-// recovery-enabled parse recorded; a fail-fast parse reports at most one.
-// Zero before any parse and after a syntax-clean one. A refused read is the
+// SyntaxErrorCount returns how many syntax errors the most recent parse call
+// recorded; a fail-fast parse reports at most one. Zero before any parse,
+// after a syntax-clean one, and after a call that failed before its parse
+// ran. A refused read is the
 // core's error, never a zero.
 func (s *Session) SyntaxErrorCount() (uint64, error) {
 	count := C.galley_syntax_error_count(s.ptr)
@@ -1322,7 +1308,8 @@ func (s *Session) SyntaxErrorCount() (uint64, error) {
 }
 
 // SemanticErrorCount returns how many semantic errors the most recent parse
-// recorded. Zero before any parse and after one without semantic errors. A
+// call recorded. Zero before any parse, after one without semantic errors,
+// and after a call that failed before its parse ran. A
 // refused read is the core's error, never a zero.
 func (s *Session) SemanticErrorCount() (uint64, error) {
 	count := C.galley_semantic_error_count(s.ptr)

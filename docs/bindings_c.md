@@ -453,7 +453,7 @@ galley_tree_remove_children_at(session, generation, parent, index, count, &head)
 ### Diagnostics
 
 When a parse fails, structured information is available until the next
-parse:
+parse call starts; the text it returns stays valid until the next parse:
 
 ```c
 int has = 0;
@@ -479,11 +479,12 @@ if (galley_has_diagnostic(session, &has) == galley_ok && has) {
 }
 ```
 
-`galley_syntax_error_count` reports how many errors a recovery-enabled
-parse recorded.
+`galley_syntax_error_count` reports how many syntax errors the most recent
+parse call recorded, and `galley_semantic_error_count` how many semantic
+errors.
 
 Recovery-enabled parses retain every diagnostic they record, addressable by
-index (0-based, in recording order) until the next parse:
+index (0-based, in recording order) until the next parse call starts:
 
 ```c
 long long recorded = galley_recorded_diagnostic_count(session);

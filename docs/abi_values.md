@@ -68,7 +68,7 @@ Diagnostic kinds returned by `galley_diagnostic_kind`.
 | `galley_diagnostic_kind_semantic` | 3 | `DiagnosticKind.SEMANTIC` | `DiagnosticKind.Semantic` | `DiagnosticKind.SEMANTIC` | `DiagnosticKind::Semantic` | `DiagnosticKindSemantic` |
 | `galley_diagnostic_kind_hook` | 4 | `DiagnosticKind.HOOK` | `DiagnosticKind.Hook` | `DiagnosticKind.HOOK` | `DiagnosticKind::Hook` | `DiagnosticKindHook` |
 
-- **`galley_diagnostic_kind_none`** — No diagnostic: the previous parse succeeded, or no parse has run.
+- **`galley_diagnostic_kind_none`** — No diagnostic: the most recent parse call recorded none (it succeeded, or failed before its parse ran), or no parse has run.
 - **`galley_diagnostic_kind_syntax`** — A syntax error. A parse that recovered from its syntax errors still publishes its tree, with the damaged regions flagged as recovered nodes.
 - **`galley_diagnostic_kind_indentation`** — An indentation error, reported where the input's indentation does not fit the grammar.
 - **`galley_diagnostic_kind_semantic`** — A semantic error recorded by a reduction or a hook; the parse continues and the node is marked.

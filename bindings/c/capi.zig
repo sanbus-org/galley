@@ -933,15 +933,15 @@ fn diagnosticRecoveryOccurrenceCore(
 }
 
 fn syntaxErrorCountCore(door: *const Door) i64 {
-    return @intCast(door.runtime_context.syntax_error_count);
+    return @intCast(door.runtime_context.recorded.syntax_error_count);
 }
 
 fn semanticErrorCountCore(door: *const Door) i64 {
-    return @intCast(door.runtime_context.semantic_error_count);
+    return @intCast(door.runtime_context.recorded.semantic_error_count);
 }
 
 fn recordedDiagnosticCountCore(door: *const Door) i64 {
-    return @intCast(door.runtime_context.recorded_diagnostics.items.len);
+    return @intCast(door.runtime_context.recorded.diagnostics.items.len);
 }
 
 /// One diagnostic's message in `style`, as users read it: every message
@@ -962,7 +962,7 @@ fn diagnosticMessageCore(
 // recorded battery through the post-parse door after it completes.
 
 fn recordedDiagnostic(door: *const Door, diag_index: u64) ?root.ParseDiagnostic {
-    const records = door.runtime_context.recorded_diagnostics.items;
+    const records = door.runtime_context.recorded.diagnostics.items;
     if (diag_index >= records.len) return null;
     return records[@intCast(diag_index)];
 }
@@ -1206,8 +1206,12 @@ fn finishParse(embedded: *Embedded, lease: *const root.ParseLease) i64 {
 /// parsed on success, or a negative status code.
 export fn galley_parse_sentinel(session_ptr: ?*GalleySession, input: ?[*:0]const u8) i64 {
     const embedded = resolveSession(session_ptr) catch |err| return statusForError(err);
-    const text = std.mem.sliceTo(input orelse return galley_error_null_argument, 0);
-    var lease = embedded.session.parseSentinelBytesLeased(text, null) catch |err| return statusForError(err);
+    var call = embedded.session.startParseCall() catch |err| return statusForError(err);
+    const text = std.mem.sliceTo(input orelse {
+        call.abandon();
+        return galley_error_null_argument;
+    }, 0);
+    var lease = call.parseSentinelBytes(text, null) catch |err| return statusForError(err);
     defer lease.deinit();
     return finishParse(embedded, &lease);
 }
@@ -1216,13 +1220,16 @@ export fn galley_parse_sentinel(session_ptr: ?*GalleySession, input: ?[*:0]const
 /// `galley_parse_sentinel`.
 export fn galley_parse(session_ptr: ?*GalleySession, data: ?[*]const u8, len: usize) i64 {
     const embedded = resolveSession(session_ptr) catch |err| return statusForError(err);
+    var call = embedded.session.startParseCall() catch |err| return statusForError(err);
     const bytes = if (data) |d|
         d[0..len]
     else if (len == 0)
         @as([]const u8, &.{})
-    else
+    else {
+        call.abandon();
         return galley_error_null_argument;
-    var lease = embedded.session.parseBytesLeased(bytes, null) catch |err| return statusForError(err);
+    };
+    var lease = call.parseBytes(bytes, null) catch |err| return statusForError(err);
     defer lease.deinit();
     return finishParse(embedded, &lease);
 }
@@ -1524,8 +1531,8 @@ export fn galley_hook_walk_next(hook_door: ?*anyopaque, cursor_ptr: ?*GalleyWalk
     return walkNext(.hook, hook_door, cursor_ptr);
 }
 
-/// Writes 1 into `out_has` when the previous parse produced a diagnostic, 0
-/// when it did not, and returns `galley_ok`; a null `out_has` is
+/// Writes 1 into `out_has` when the most recent parse call recorded a
+/// diagnostic, 0 when it did not, and returns `galley_ok`; a null `out_has` is
 /// `galley_error_null_argument` and a parse in flight
 /// `galley_error_session_in_use`.
 export fn galley_has_diagnostic(session_ptr: ?*GalleySession, out_has: ?*c_int) i64 {
@@ -1549,11 +1556,11 @@ export fn galley_hook_has_diagnostic(hook_door: ?*anyopaque, out_has: ?*c_int) i
 /// Writes the rendered diagnostic message (plain text, no trailing newline)
 /// into `out`. The string is NUL-terminated and remains valid until the next
 /// parse or session destruction. Fails with `galley_error_no_diagnostic`
-/// when the previous parse succeeded. A cached message is served under the
-/// shared door, so concurrent readers do not collide; only the first call
-/// after a parse takes the exclusive door to fill the cache. Returns
-/// `galley_error_session_in_use` while a parse is in flight or another
-/// caller holds the door.
+/// when the most recent parse call recorded none. A cached message is served
+/// under the shared door, so concurrent readers do not collide; only the
+/// first call after a parse takes the exclusive door to fill the cache.
+/// Returns `galley_error_session_in_use` while a parse is in flight or
+/// another caller holds the door.
 export fn galley_diagnostic_message(session_ptr: ?*GalleySession, out: ?*[*:0]const u8) i64 {
     if (out == null) return galley_error_null_argument;
     const embedded = resolveSession(session_ptr) catch |err| return statusForError(err);
@@ -1630,8 +1637,9 @@ fn writeDiagnosticPosition(
 }
 
 /// Writes a diagnostic's byte offset and its 1-based line and column. Fails
-/// with `galley_error_no_diagnostic` when the previous parse succeeded, and
-/// `galley_error_session_in_use` while a parse is in flight.
+/// with `galley_error_no_diagnostic` when the most recent parse call
+/// recorded none, and `galley_error_session_in_use` while a parse is in
+/// flight.
 export fn galley_diagnostic_position(
     session_ptr: ?*GalleySession,
     out_offset: ?*u64,
@@ -1658,7 +1666,7 @@ export fn galley_hook_diagnostic_position(
 }
 
 /// Writes the byte offset and the 1-based line and column of the diagnostic
-/// recorded at `diag_index` during the most recent parse. Fails with
+/// recorded at `diag_index` by the most recent parse call. Fails with
 /// `galley_error_no_diagnostic` when the index is out of range.
 export fn galley_recorded_diagnostic_position(
     session_ptr: ?*GalleySession,
@@ -1984,16 +1992,19 @@ export fn galley_hook_node_line_column(
 /// `galley_error_io`.
 export fn galley_parse_file(session_ptr: ?*GalleySession, path: ?[*:0]const u8) i64 {
     const embedded = resolveSession(session_ptr) catch |err| return statusForError(err);
-    const path_slice = std.mem.sliceTo(path orelse return galley_error_null_argument, 0);
+    var call = embedded.session.startParseCall() catch |err| return statusForError(err);
+    const path_slice = std.mem.sliceTo(path orelse {
+        call.abandon();
+        return galley_error_null_argument;
+    }, 0);
 
-    var file = std.Io.Dir.cwd().openFile(embedded.threaded.io(), path_slice, .{ .mode = .read_only }) catch |err| switch (err) {
-        error.FileNotFound => return galley_error_io,
-        error.AccessDenied => return galley_error_io,
-        else => return galley_error_io,
+    var file = std.Io.Dir.cwd().openFile(embedded.threaded.io(), path_slice, .{ .mode = .read_only }) catch {
+        call.abandon();
+        return galley_error_io;
     };
     defer file.close(embedded.threaded.io());
 
-    var lease = embedded.session.parseFileLeased(file, path_slice) catch |err| return statusForError(err);
+    var lease = call.parseFile(file, path_slice) catch |err| return statusForError(err);
     defer lease.deinit();
     return finishParse(embedded, &lease);
 }
@@ -2319,8 +2330,8 @@ export fn galley_recorded_diagnostic_kind(session_ptr: ?*GalleySession, diag_ind
     return diagnosticKindValue(diagnostic);
 }
 
-/// Returns how many syntax errors the most recent recovery-enabled parse
-/// recorded. Fail-fast parses report at most one. Returns
+/// Returns how many syntax errors the most recent parse call recorded.
+/// Fail-fast parses report at most one. Returns
 /// `galley_error_session_in_use` while a parse is in flight.
 export fn galley_syntax_error_count(session_ptr: ?*GalleySession) i64 {
     var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
@@ -2336,8 +2347,8 @@ export fn galley_hook_syntax_error_count(hook_door: ?*anyopaque) i64 {
     return syntaxErrorCountCore(&door);
 }
 
-/// Returns how many diagnostics the most recent parse retained, in recording
-/// order. Valid until the next parse begins.
+/// Returns how many diagnostics the most recent parse call retained, in
+/// recording order. Valid until the next parse call starts.
 export fn galley_recorded_diagnostic_count(session_ptr: ?*GalleySession) i64 {
     var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);
     defer entry.deinit();
@@ -2469,7 +2480,7 @@ export fn galley_recorded_indentation(
 // ---------------------------------------------------------------------------
 // Recovery information of a syntax diagnostic. Each field is exposed for
 // the current diagnostic and, with a leading `diag_index`, for any
-// diagnostic recorded during the most recent parse.
+// diagnostic recorded by the most recent parse call.
 // ---------------------------------------------------------------------------
 
 /// Returns the recovery target kind of a syntax diagnostic:
@@ -3252,7 +3263,7 @@ export fn galley_procedure_report_semantic_error(session_ptr: ?*GalleySession, h
     return @intCast(count);
 }
 
-/// Returns how many semantic errors the most recent parse recorded.
+/// Returns how many semantic errors the most recent parse call recorded.
 /// Returns `galley_error_session_in_use` while a parse is in flight.
 export fn galley_semantic_error_count(session_ptr: ?*GalleySession) i64 {
     var entry = enterSession(.read_latest, session_ptr) catch |err| return statusForError(err);

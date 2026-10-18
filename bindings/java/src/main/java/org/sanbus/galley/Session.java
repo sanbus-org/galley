@@ -253,21 +253,21 @@ public final class Session implements AutoCloseable {
     }
 
     /**
-     * The failure of a parse, with that parse's diagnostic snapshot attached
-     * exactly when its status carries one
-     * ({@link Status#carriesDiagnostic}): the statuses that end a parse
-     * that ran, whose diagnostic then belongs to that attempt. A failure
-     * built from any other status carries none. {@code ERROR_SESSION_IN_USE}
-     * is also the one refusal the attach may skip, because another thread's
-     * parse took the session in the window between this parse and the
-     * attach. A {@link GalleyClosedException} from the attach is that same
+     * The failure of a parse, with the session's diagnostic snapshot attached
+     * whenever the session has one: a parse call clears the previous call's
+     * diagnostic when it starts, so the one the session holds is this
+     * parse's own. A parse refused with {@code ERROR_SESSION_IN_USE} started
+     * nothing, and the session's diagnostic belongs to the parse that holds
+     * it, so that failure carries none. {@code ERROR_SESSION_IN_USE} is also
+     * the one refusal the attach may skip, because another thread's parse
+     * took the session in the window between this parse and the attach. A {@link GalleyClosedException} from the attach is that same
      * race with a concurrent {@code close()} winning it: the attach is
      * skipped too, so the parse's own failure stands — never the close's.
      * Every other refusal from the attach path is the failure.
      */
     private GalleyException parseFailure(long status) {
         Diagnostic diagnostic = null;
-        if (Status.fromCode(status).carriesDiagnostic()) {
+        if (status != Status.ERROR_SESSION_IN_USE.getCode()) {
             try {
                 if (gate(this::hasDiagnosticWith)) {
                     diagnostic = buildDiagnosticSingular();
@@ -1256,7 +1256,8 @@ public final class Session implements AutoCloseable {
     }
 
     /**
-     * The most recent parse's diagnostic, or null when none was recorded.
+     * The most recent parse call's diagnostic, or null when it recorded none
+     * (it succeeded, or failed before its parse ran).
      * The error counts are the parse's totals, read from the session door
      * ({@code galley_syntax_error_count} / {@code galley_semantic_error_count}),
      * never a per-diagnostic tally.
@@ -1268,7 +1269,7 @@ public final class Session implements AutoCloseable {
     }
 
     /**
-     * Every diagnostic the most recent parse recorded, in recording order.
+     * Every diagnostic the most recent parse call recorded, in recording order.
      * Each snapshot carries the parse's totals in
      * {@link Diagnostic#getSyntaxErrorCount()} / {@link Diagnostic#getSemanticErrorCount()}:
      * the session-door values, identical to the current snapshot's.

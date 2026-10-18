@@ -334,11 +334,10 @@ try (Session session = parser.openSession(SessionOptions.builder()
 // if (session.hasDiagnostic()) { Diagnostic d = session.diagnostic(); }
 ```
 
-A parse failure's `getDiagnostic()` is the frozen `Diagnostic` of where the
-parse stopped, carried exactly on the statuses that end a parse that ran:
-syntax, semantic, indentation, stack overflow, AST capacity, unterminated
-raw string, out of memory, and hook failure. A failure built from any other
-status carries none.
+A parse failure's `getDiagnostic()` is the frozen `Diagnostic` its parse
+recorded, and `null` when it recorded none: a parse call that fails
+before its parse runs (a missing file), or is refused with
+`ERROR_SESSION_IN_USE`, carries none.
 
 Parsing entry points: `parse(byte[])`, `parse(ByteBuffer)`, `parse(String)`, `parseSentinel(String|byte[]|ByteBuffer)`, and `parseFile(String|File)`. `ByteBuffer` honors `position`/`remaining`/`arrayOffset`; direct buffers are passed by pointer, and no reachability fence is needed because the segment `MemorySegment.ofBuffer` returns keeps the buffer — and its backing memory — reachable for the call.
 

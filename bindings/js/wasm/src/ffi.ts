@@ -150,6 +150,7 @@ interface GalleyWasmExports extends DoorNames<"">, DoorNames<"hook_"> {
     messageLen: number,
   ): bigint;
   galley_parse(session: number, data: number, len: number): bigint;
+  galley_parse_file(session: number, path: number): bigint;
   galley_node_count(session: number, generation: bigint): bigint;
   galley_reserve_nodes(session: number, capacity: bigint): bigint;
   galley_node_capacity(session: number): bigint;
@@ -900,14 +901,30 @@ export class WasmPort implements FfiPort {
   }
 
   parseFile(handle: Handle, filePath: string): number {
-    // No guest filesystem: the host reads the file, then parses bytes.
-    // Without file IO (browsers) every file read is unavailable.
-    if (!fileIo) return -11;
-    let data: Uint8Array;
-    try {
-      data = new Uint8Array(fileIo.readFile(filePath));
-    } catch {
-      return -11;
+    // The guest has no filesystem, so the host reads the file and parses its
+    // bytes. When the host cannot read it (no file IO in browsers, or a read
+    // that fails), the call still goes to the core: the guest's own
+    // galley_parse_file starts the parse call like every parse entry,
+    // clearing the session's diagnostic, and refuses it with
+    // galley_error_io because the guest cannot open the file either.
+    let data: Uint8Array | null = null;
+    if (fileIo) {
+      try {
+        data = new Uint8Array(fileIo.readFile(filePath));
+      } catch {
+        data = null;
+      }
+    }
+    if (data === null) {
+      const path = textEncoder.encode(filePath);
+      const terminated = new Uint8Array(path.length + 1);
+      terminated.set(path);
+      const slot = this.writeBytes(terminated);
+      try {
+        return toNumber(this.wasm.galley_parse_file(handle as number, slot.ptr));
+      } finally {
+        this.free(slot.ptr, Math.max(slot.len, 1));
+      }
     }
     // A successful host read consumes the seed like port resolution does.
     fileIoUsed = true;

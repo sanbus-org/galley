@@ -49,7 +49,7 @@ pub const ProcedureArguments = struct {
     pub fn recordHookFailure(self: *const @This(), hook_name: []const u8) void {
         const runtime_context = self.context.runtime();
         const position = self.context.diagnosticPosition();
-        runtime_context.recorded_diagnostics.append(runtime_context.arena_allocator, .{ .hook = .{
+        runtime_context.recorded.append(runtime_context.arena_allocator, .{ .hook = .{
             .offset = position.offset,
             .line = position.line,
             .column = position.column,

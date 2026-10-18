@@ -95,9 +95,9 @@ func TestParseFileFailureWithoutADiagnosticCarriesNoSnapshot(t *testing.T) {
 	}
 }
 
-// A refusal runs no parse: an IO failure after a failed parse hands its
-// *ParseError no snapshot, and the session's diagnostic still belongs to the
-// parse that failed.
+// A parse call clears the previous call's diagnostic when it starts: an IO
+// refusal after a failed parse runs no parse, so neither its *ParseError nor
+// the session holds a diagnostic afterwards.
 func TestParseFileRefusalAfterAFailureCarriesNoSnapshot(t *testing.T) {
 	session, err := galley.New()
 	if err != nil {
@@ -108,8 +108,7 @@ func TestParseFileRefusalAfterAFailureCarriesNoSnapshot(t *testing.T) {
 	if _, err := session.Parse([]byte("alpha:x")); !errors.Is(err, galley.ErrSyntax) {
 		t.Fatalf("expected ErrSyntax, got %v", err)
 	}
-	previous, ok, err := session.Diagnostic()
-	if err != nil || !ok {
+	if _, ok, err := session.Diagnostic(); err != nil || !ok {
 		t.Fatalf("diagnostic after the failed parse = (ok %v, %v), want one", ok, err)
 	}
 
@@ -125,12 +124,8 @@ func TestParseFileRefusalAfterAFailureCarriesNoSnapshot(t *testing.T) {
 	if failure.Diagnostic != nil {
 		t.Fatalf("a refusal carried the previous parse's diagnostic: %+v", failure.Diagnostic)
 	}
-	current, ok, err := session.Diagnostic()
-	if err != nil || !ok {
-		t.Fatalf("diagnostic after the refused file parse = (ok %v, %v), want the previous parse's", ok, err)
-	}
-	if current.Offset != previous.Offset || current.Message != previous.Message {
-		t.Fatalf("diagnostic changed across the refusal:\n got %+v\nwant %+v", current, previous)
+	if _, ok, err := session.Diagnostic(); err != nil || ok {
+		t.Fatalf("diagnostic after the refused file parse = (ok %v, %v), want none", ok, err)
 	}
 }
 

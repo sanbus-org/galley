@@ -54,7 +54,8 @@ export enum RecoveryMode {
  */
 export enum DiagnosticKind {
   /**
-   * No diagnostic: the previous parse succeeded, or no parse has run.
+   * No diagnostic: the most recent parse call recorded none (it succeeded, or
+   * failed before its parse ran), or no parse has run.
    */
   None = 0,
   /**
@@ -230,26 +231,3 @@ export enum Status {
   ErrorInvalidArgument = -18,
 }
 
-/**
- * The statuses that end a parse that ran: a failure with one of them carries
- * the session's diagnostic of that attempt. Every other status carries none.
- */
-const CARRIES_DIAGNOSTIC: ReadonlySet<number> = new Set([
-  Status.ErrorSyntax,
-  Status.ErrorIndentation,
-  Status.ErrorStackOverflow,
-  Status.ErrorAstCapacityExceeded,
-  Status.ErrorUnterminatedRawString,
-  Status.ErrorOutOfMemory,
-  Status.ErrorSemantic,
-  Status.ErrorHookFailed,
-]);
-
-/**
- * True when a failure with `status` carries the session's diagnostic: exactly
- * the statuses that ended a parse that ran, whose diagnostic then belongs to
- * that attempt. Every other status carries none.
- */
-export function statusCarriesDiagnostic(status: number): boolean {
-  return CARRIES_DIAGNOSTIC.has(status);
-}

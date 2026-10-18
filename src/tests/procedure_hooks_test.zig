@@ -586,9 +586,10 @@ test "procedure-hooks protected parse rejects an unprotected nested parse" {
     try std.testing.expectEqual(@as(usize, 1), result.parsed_bytes);
     try std.testing.expect(protected_nested_called);
 
-    // The rejected nested parse ran before any session mutation: the inner
-    // session's generation, node storage, and owned input are untouched, so
-    // it reuses cleanly. The input path is not session state at all — it
+    // The rejected nested parse was refused before its attempt began: like
+    // every parse call it replaced the inner session's recorded diagnostics,
+    // and the inner session's generation, node storage, and owned input are
+    // untouched, so it reuses cleanly. The input path is not session state at all — it
     // lives on the parse's own `Context`, which a rejected parse never
     // builds.
     try std.testing.expectEqual(@as(usize, 0), inner_session.generation);

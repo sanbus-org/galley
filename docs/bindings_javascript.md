@@ -432,16 +432,12 @@ method:
 session.setMessageOverride("Number", "expected a number at {line}:{column}");
 ```
 
-Failures throw `GalleyError`, whose `code` is the raw status code. A
-failure carries the frozen `Diagnostic` of where the parse stopped exactly
-when its status is one of `Status.ErrorSyntax`, `Status.ErrorSemantic`,
-`Status.ErrorIndentation`, `Status.ErrorStackOverflow`,
-`Status.ErrorAstCapacityExceeded`, `Status.ErrorUnterminatedRawString`,
-`Status.ErrorOutOfMemory` and `Status.ErrorHookFailed` — the statuses that
-end a parse that ran, whose diagnostic then belongs to that attempt. A
-failure built from any other status carries none.
-`session.diagnostic()` returns the last
-diagnostic. Use after close throws `SessionClosedError` instead.
+Failures throw `GalleyError`, whose `code` is the raw status code. A parse
+failure carries the frozen `Diagnostic` its parse recorded, and none when it
+recorded none: a parse call that fails before its parse runs (a missing
+file), or is refused with `Status.ErrorSessionInUse`, carries none.
+`session.diagnostic()` returns the last diagnostic. Use after close throws
+`SessionClosedError` instead.
 
 `Session` implements `Symbol.dispose` so `using`/`await using` closes on
 exit, and `close()` is idempotent. Every session method that takes a node
@@ -474,7 +470,7 @@ conversion from a stored address back to a node.
 `offset` (byte offset in the input), `line`, `column` (0, 0 when it has none), `message`, `messageAnsi`,
 `unexpectedToken`, `expectedTokens`, `context`, `syntaxErrorCount`,
 indentation details, and the full structured recovery information — or
-`null` when the last parse succeeded. A symbol or variable read with an index
+`null` when the most recent parse call recorded none. A symbol or variable read with an index
 at or past its table — `symbolNameAt`, `symbolIsTerminal`, `variableNameAt` —
 throws a `GalleyError` with `Status.ErrorOutOfRange` (-17), never `null` or
 `false`; a closed session throws `SessionClosedError` first.

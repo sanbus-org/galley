@@ -85,32 +85,59 @@ pub const HookError = error{
     OtherThread,
 };
 
-pub const RuntimeContext = struct {
-    io: std.Io,
-    arena_allocator: std.mem.Allocator,
-    /// Every diagnostic recorded during the current parse, in recording
-    /// order. Syntax records are bounded by the generated parsers' limit
-    /// checks against `max_errors` (indentation records at most once per
-    /// parse); semantic records are unbounded and hooks limit themselves
-    /// through `Context.semanticErrorCount`.
-    /// Arena-backed: valid until the next parse begins.
-    recorded_diagnostics: std.ArrayList(root.ParseDiagnostic) = .empty,
-    max_errors: usize = 10,
-    recovery_window: usize = 500,
-    syntax_error_stack_depth: usize = 0,
+/// What one parse call recorded: its diagnostics in recording order, and
+/// how many of them are syntax and semantic errors. It is one value so a
+/// parse call resets all of it with one assignment (`Session.startParseCall`),
+/// and `append` is the only way to add a record, so the counts always match
+/// the list. Syntax records are bounded by the generated parsers' limit
+/// checks against `max_errors` (indentation records at most once per
+/// parse); semantic records are unbounded and hooks limit themselves through
+/// `Context.semanticErrorCount`. Arena-backed: the records' memory stays
+/// valid until the next parse begins.
+pub const CallRecord = struct {
+    diagnostics: std.ArrayList(root.ParseDiagnostic) = .empty,
     syntax_error_count: usize = 0,
-    /// Aggregated semantic errors reported by procedure hooks through the
-    /// single `reportSemanticError` gate. Unbounded by design; hooks read
-    /// `Context.semanticErrorCount` to limit themselves.
     semantic_error_count: usize = 0,
+
+    /// Adds `diagnostic` and counts it by its kind.
+    pub fn append(self: *CallRecord, allocator: std.mem.Allocator, diagnostic: root.ParseDiagnostic) !void {
+        try self.diagnostics.append(allocator, diagnostic);
+        switch (diagnostic) {
+            .syntax => self.syntax_error_count += 1,
+            .semantic => self.semantic_error_count += 1,
+            .indentation, .hook => {},
+        }
+    }
+
+    /// The diagnostic recorded last, if any.
+    pub fn last(self: *const CallRecord) ?root.ParseDiagnostic {
+        if (self.diagnostics.items.len == 0) return null;
+        return self.diagnostics.items[self.diagnostics.items.len - 1];
+    }
+};
+
+/// The running attempt's recovery bookkeeping. It is one value so an attempt
+/// resets all of it with one assignment (`Session.beginParseLocked`).
+pub const AttemptState = struct {
     syntax_recovery_position: ?usize = null,
     explicit_recovery_position: ?usize = null,
     explicit_recovery_target_id: ?usize = null,
     pending_syntax_error_site: ?usize = null,
     /// Automatic LR recovery's placeholders (`pendRecoveredNode`) that no
-    /// node has adopted yet, ordered by source position. Arena-backed:
-    /// reset at parse start.
+    /// node has adopted yet, ordered by source position. Arena-backed.
     recovered_pending: std.ArrayList(usize) = .empty,
+};
+
+pub const RuntimeContext = struct {
+    io: std.Io,
+    arena_allocator: std.mem.Allocator,
+    /// What the current parse call recorded; see `CallRecord`.
+    recorded: CallRecord = .{},
+    /// The running attempt's recovery bookkeeping; see `AttemptState`.
+    attempt: AttemptState = .{},
+    max_errors: usize = 10,
+    recovery_window: usize = 500,
+    syntax_error_stack_depth: usize = 0,
     /// Session-owned message override table, wired at parse start. Lookup
     /// happens only inside cold syntax-error paths.
     message_overrides: ?*const std.StringHashMapUnmanaged([]const u8) = null,
@@ -187,8 +214,7 @@ pub const RuntimeContext = struct {
     /// Returns the most recently recorded diagnostic of the current (or
     /// previous) parse, if any.
     pub fn lastDiagnostic(self: *const RuntimeContext) ?root.ParseDiagnostic {
-        if (self.recorded_diagnostics.items.len == 0) return null;
-        return self.recorded_diagnostics.items[self.recorded_diagnostics.items.len - 1];
+        return self.recorded.last();
     }
     /// Resolves a rendered message for `diagnostic` through the template
     /// tables in chain order: session-owned overrides first, then the
@@ -572,7 +598,7 @@ pub const Context = struct {
     /// arena allocation keeps every record valid until the next parse begins.
     fn retainDiagnostic(self: *Self, diagnostic: root.ParseDiagnostic) !void {
         const runtime_context = self.runtime();
-        try runtime_context.recorded_diagnostics.append(runtime_context.arena_allocator, diagnostic);
+        try runtime_context.recorded.append(runtime_context.arena_allocator, diagnostic);
     }
 
     /// The one place a semantic error is recorded: retains `diagnostic`
@@ -583,9 +609,7 @@ pub const Context = struct {
         // line, so the hot paths that call one pay nothing for it.
         @branchHint(.cold);
         try self.retainDiagnostic(.{ .semantic = diagnostic });
-        const runtime_context = self.runtime();
-        runtime_context.semantic_error_count += 1;
-        return runtime_context.semantic_error_count;
+        return self.runtime().recorded.semantic_error_count;
     }
 
     pub fn recordSyntaxDiagnostic(
@@ -622,7 +646,6 @@ pub const Context = struct {
                 .context = effective_diagnostic_context,
             },
         });
-        self.runtime().syntax_error_count += 1;
     }
 
     /// The unexpected text at an error. Without indentation syntax: the
@@ -657,19 +680,19 @@ pub const Context = struct {
     }
 
     pub inline fn syntaxErrorLimitReached(self: *const Self) bool {
-        return self.runtimeConst().syntax_error_count >= self.runtimeConst().max_errors;
+        return self.runtimeConst().recorded.syntax_error_count >= self.runtimeConst().max_errors;
     }
 
     pub inline fn hasSyntaxErrors(self: *const Self) bool {
-        return self.runtimeConst().syntax_error_count != 0;
+        return self.runtimeConst().recorded.syntax_error_count != 0;
     }
 
     pub inline fn semanticErrorCount(self: *const Self) usize {
-        return self.runtimeConst().semantic_error_count;
+        return self.runtimeConst().recorded.semantic_error_count;
     }
 
     pub inline fn hasSemanticErrors(self: *const Self) bool {
-        return self.runtimeConst().semantic_error_count != 0;
+        return self.runtimeConst().recorded.semantic_error_count != 0;
     }
 
     pub inline fn recoveryWindow(self: *const Self) usize {
@@ -680,13 +703,13 @@ pub const Context = struct {
         const runtime_context = self.runtime();
         // Where the parser stands; the indentation lexer may have read ahead.
         const position: usize = self.currentTokenSourceOffset();
-        if (runtime_context.syntax_recovery_position == position) return false;
-        runtime_context.syntax_recovery_position = position;
+        if (runtime_context.attempt.syntax_recovery_position == position) return false;
+        runtime_context.attempt.syntax_recovery_position = position;
         return true;
     }
 
     pub inline fn finishSyntaxRecovery(self: *Self) void {
-        self.runtime().syntax_recovery_position = null;
+        self.runtime().attempt.syntax_recovery_position = null;
     }
 
     pub fn tryExplicitRecovery(
@@ -700,8 +723,8 @@ pub const Context = struct {
         const runtime_context = self.runtime();
         // Where the parser stands; the indentation lexer may have read ahead.
         const position: usize = self.currentTokenSourceOffset();
-        if (runtime_context.explicit_recovery_position == position and
-            runtime_context.explicit_recovery_target_id == target_id)
+        if (runtime_context.attempt.explicit_recovery_position == position and
+            runtime_context.attempt.explicit_recovery_target_id == target_id)
         {
             return false;
         }
@@ -727,8 +750,8 @@ pub const Context = struct {
         }
 
         const point = if (winning_point) |index| points[index] else return false;
-        runtime_context.explicit_recovery_position = position;
-        runtime_context.explicit_recovery_target_id = target_id;
+        runtime_context.attempt.explicit_recovery_position = position;
+        runtime_context.attempt.explicit_recovery_target_id = target_id;
         const skip_amount = winning_offset + if (point.@"resume" == .after) point.terminal.len else 0;
         self.skipRecoveryInput(skip_amount);
         try self.attachSyntaxRecovery(.{
@@ -740,7 +763,7 @@ pub const Context = struct {
     }
 
     pub fn attachSyntaxRecovery(self: *Self, recovery: root.SyntaxRecovery) !void {
-        const records = &self.runtime().recorded_diagnostics;
+        const records = &self.runtime().recorded.diagnostics;
         if (records.items.len == 0) return error.MissingSyntaxDiagnostic;
         const diagnostic = &records.items[records.items.len - 1];
         switch (diagnostic.*) {
@@ -754,7 +777,7 @@ pub const Context = struct {
     /// diagnostic. A style the chain fails on, or renders empty, is left to
     /// the built-in rendering on read.
     pub fn recordSyntaxMessages(self: *Self, render: root.SyntaxMessageRenderer) void {
-        const records = &self.runtime().recorded_diagnostics;
+        const records = &self.runtime().recorded.diagnostics;
         if (records.items.len == 0) return;
         const index = records.items.len - 1;
         const diagnostic = records.items[index];
@@ -779,15 +802,15 @@ pub const Context = struct {
     }
 
     pub inline fn setPendingSyntaxErrorSite(self: *Self, site: usize) void {
-        self.runtime().pending_syntax_error_site = site;
+        self.runtime().attempt.pending_syntax_error_site = site;
     }
 
     pub inline fn pendingSyntaxErrorSite(self: *const Self) ?usize {
-        return self.runtimeConst().pending_syntax_error_site;
+        return self.runtimeConst().attempt.pending_syntax_error_site;
     }
 
     pub inline fn clearPendingSyntaxErrorSite(self: *Self) void {
-        self.runtime().pending_syntax_error_site = null;
+        self.runtime().attempt.pending_syntax_error_site = null;
     }
 
     pub fn skipRecoveryInput(self: *Self, amount: usize) void {
@@ -822,7 +845,7 @@ pub const Context = struct {
     pub fn pendRecoveredNode(self: *Self, start: usize) !void {
         if (comptime !root.parser.is_ast_enabled) @compileError("pendRecoveredNode requires AST construction");
         const runtime_context = self.runtime();
-        const pending = &runtime_context.recovered_pending;
+        const pending = &runtime_context.attempt.recovered_pending;
         while (pending.items.len != 0 and self.node_allocator.at(pending.items[pending.items.len - 1]).text_start >= start) {
             _ = pending.pop();
         }
@@ -834,7 +857,7 @@ pub const Context = struct {
     }
 
     pub inline fn hasPendingRecovered(self: *const Self) bool {
-        return self.runtimeConst().recovered_pending.items.len != 0;
+        return self.runtimeConst().attempt.recovered_pending.items.len != 0;
     }
 
     /// Links the pending placeholders that start at or after `start` — the
@@ -847,7 +870,7 @@ pub const Context = struct {
     pub fn adoptRecoveredNodes(self: *Self, parent: data_structures.Node.Pointer, start: usize) void {
         if (comptime !root.parser.is_ast_enabled) @compileError("adoptRecoveredNodes requires AST construction");
         const Node = data_structures.Node;
-        const pending = &self.runtime().recovered_pending;
+        const pending = &self.runtime().attempt.recovered_pending;
         var first_adopted = pending.items.len;
         while (first_adopted > 0 and self.node_allocator.at(pending.items[first_adopted - 1]).text_start >= start) first_adopted -= 1;
         for (pending.items[first_adopted..]) |address| {
@@ -1231,7 +1254,6 @@ pub const Context = struct {
                 .context = .none,
             },
         });
-        self.runtime().syntax_error_count += 1;
     }
 
     fn advanceVerbatimPositions(line: *u32, column: *u32, captured: []const u8) void {
@@ -1987,7 +2009,7 @@ test "a message function that records diagnostics leaves its messages on its own
     defer arena.deinit();
     var runtime_context: RuntimeContext = .{ .io = std.testing.io, .arena_allocator = arena.allocator() };
     var context: Context = .{ .runtime_context = &runtime_context };
-    try runtime_context.recorded_diagnostics.append(arena.allocator(), .{ .syntax = .{
+    try runtime_context.recorded.append(arena.allocator(), .{ .syntax = .{
         .offset = 0,
         .line = 1,
         .column = 1,
@@ -1995,7 +2017,7 @@ test "a message function that records diagnostics leaves its messages on its own
         .expected_tokens = &.{},
     } });
     context.recordSyntaxMessages(&renderAndRecord);
-    const records = runtime_context.recorded_diagnostics.items;
+    const records = runtime_context.recorded.diagnostics.items;
     try std.testing.expectEqual(@as(usize, 3), records.len);
     try std.testing.expectEqualStrings("plain", records[0].syntax.rendered_message.?);
     try std.testing.expectEqualStrings("ansi", records[0].syntax.rendered_message_ansi.?);

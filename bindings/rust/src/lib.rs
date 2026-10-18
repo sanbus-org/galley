@@ -698,7 +698,7 @@ pub enum DiagnosticKind {
 /// The diagnostic a [`Session::diagnostic_snapshot`] read names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiagnosticSource {
-    /// The most recent diagnostic of the last parse — the one a failed parse
+    /// The most recent diagnostic of the last parse call — the one a failed parse
     /// stopped on, with its message rendered through grammar hooks and
     /// overrides.
     Current,
@@ -1135,7 +1135,7 @@ impl Session {
 
     // ---- Diagnostics ---------------------------------------------------
 
-    /// Whether the last parse recorded a diagnostic. `Ok(false)` means it
+    /// Whether the last parse call recorded a diagnostic. `Ok(false)` means it
     /// recorded none; a refusal — a parse in flight, say — is an error, never
     /// `Ok(false)`.
     pub fn has_diagnostic(&self) -> Result<bool, Error> {
@@ -1350,7 +1350,7 @@ impl Session {
     /// Structured diagnostic of the failed parse, if any: the one the parse
     /// stopped on (the most recently recorded), with its message rendered
     /// through the grammar's error-message hooks and overrides. `Ok(None)`
-    /// when the last parse recorded none; a refusal is an error, never
+    /// when the last parse call recorded none; a refusal is an error, never
     /// `Ok(None)`.
     pub fn diagnostic(&self) -> Result<Option<Diagnostic>, Error> {
         if !self.has_diagnostic()? {
@@ -1360,14 +1360,14 @@ impl Session {
     }
 
     /// Structured diagnostic recorded at `index` (0-based, in recording
-    /// order) during the last parse. Fails with [`Error::NoDiagnostic`] at
+    /// order) by the last parse call. Fails with [`Error::NoDiagnostic`] at
     /// or past the recorded count, never with an empty snapshot.
     pub fn diagnostic_at(&self, index: u64) -> Result<Diagnostic, Error> {
         self.diagnostic_snapshot(DiagnosticSource::Recorded(index))
     }
 
-    /// Structured diagnostics of the last parse, in recording order. Owned
-    /// copies; empty when the parse recorded none. A refusal — a parse in
+    /// Structured diagnostics of the last parse call, in recording order.
+    /// Owned copies; empty when the call recorded none. A refusal — a parse in
     /// flight, say — is an error, never an empty list.
     pub fn diagnostics(&self) -> Result<Vec<Diagnostic>, Error> {
         let count = value(unsafe { galley_recorded_diagnostic_count(self.inner) })?;

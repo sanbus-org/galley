@@ -74,9 +74,10 @@ pub const ParseError = error{
 /// Named contention set for session access. Parse failures arrive through
 /// `ParseError` (or generated-parser errors); session misuse and pre-lock
 /// parse rejections arrive here. The two channels are distinct:
-/// `SessionError` is never a parse failure. `SessionInUse` and
-/// `NestedParseDuringStackOverflowRecovery` both run before the lock and
-/// consume no session state.
+/// `SessionError` is never a parse failure. `SessionInUse` refuses a parse
+/// call before it changes anything; `NestedParseDuringStackOverflowRecovery`
+/// refuses a started call, which has cleared the previous call's
+/// diagnostics like every parse call.
 pub const SessionError = error{
     SessionInUse,
     StaleParseResult,
@@ -299,15 +300,15 @@ fn guardLastRenderedMessage(session: *const Session) ?[]const u8 {
 }
 
 fn guardRecordedDiagnostics(session: *const Session) []const ParseDiagnostic {
-    return session.runtime_context.recorded_diagnostics.items;
+    return session.runtime_context.recorded.diagnostics.items;
 }
 
 fn guardSyntaxErrorCount(session: *const Session) usize {
-    return session.runtime_context.syntax_error_count;
+    return session.runtime_context.recorded.syntax_error_count;
 }
 
 fn guardSemanticErrorCount(session: *const Session) usize {
-    return session.runtime_context.semantic_error_count;
+    return session.runtime_context.recorded.semantic_error_count;
 }
 
 pub const SessionReadGuard = struct {
@@ -728,10 +729,9 @@ pub const ParseFailure = error{ SyntaxError, SemanticError };
 
 /// The parse lease: the exclusive door held from parse acquisition until
 /// the caller has finished whatever must land together with the result.
-/// Every leased parse entry takes the lease with
-/// `Session.acquireParseLock` — which changes nothing — settles whatever
-/// can be refused, and only then stamps the generation with
-/// `Session.beginParseLocked`, and the session publishes the result itself
+/// Every leased parse entry starts its call with `Session.startParseCall`,
+/// settles whatever can be refused, and only then stamps the generation
+/// with `Session.beginParseLocked`, and the session publishes the result itself
 /// (`Session.published_result`) inside that same exclusive hold. A host that
 /// pairs the result with state of its own — the C ABI retains the parsed
 /// input — writes that state before `deinit`, so no reader observes the
@@ -751,6 +751,63 @@ pub const ParseLease = struct {
     pub fn deinit(self: *ParseLease) void {
         self.session.releaseParse();
         self.* = undefined;
+    }
+};
+
+/// A started parse call (`Session.startParseCall`) whose attempt has not
+/// begun: the session's exclusive lock is held and the previous call's
+/// diagnostics are cleared; nothing else has changed. A caller that refuses
+/// the call before it parses (a missing argument, a file that does not
+/// open) ends it with `abandon`, so the session keeps its generation,
+/// published tree and retained input. Every other method consumes the call:
+/// it either refuses it the same way or begins the attempt and returns the
+/// parse's lease.
+pub const ParseCall = struct {
+    session: *Session,
+
+    /// Ends a call refused before its attempt began.
+    pub fn abandon(self: *ParseCall) void {
+        self.session.abandonParseLock();
+        self.* = undefined;
+    }
+
+    /// Parses bytes; see `Session.parseBytesLeased`.
+    pub fn parseBytes(self: *ParseCall, input: []const u8, input_path: ?[]const u8) !ParseLease {
+        const session = self.session;
+        self.* = undefined;
+        session.beginParseLocked();
+        errdefer session.releaseParse();
+        const completed = try session.parseBytesUnlocked(input, input_path);
+        return .{ .session = session, .result = completed.result, .failure = completed.failure };
+    }
+
+    /// Parses NUL-terminated input; see `Session.parseSentinelBytesLeased`.
+    pub fn parseSentinelBytes(self: *ParseCall, input: [:0]const u8, input_path: ?[]const u8) !ParseLease {
+        const session = self.session;
+        self.* = undefined;
+        session.beginParseLocked();
+        errdefer session.releaseParse();
+        const completed = try session.parseSentinelBytesUnlocked(input, input_path);
+        return .{ .session = session, .result = completed.result, .failure = completed.failure };
+    }
+
+    /// Parses an open file; see `Session.parseFileLeased`. Everything a file
+    /// parse can be refused for is settled before the attempt begins: the
+    /// input is acquired first, so a read failure (an unreadable file, a size
+    /// that does not fit, an allocation failure) abandons the call. Only
+    /// reads a streaming parse makes while it runs can still fail after its
+    /// attempt began.
+    pub fn parseFile(self: *ParseCall, file: std.Io.File, input_path: ?[]const u8) !ParseLease {
+        const session = self.session;
+        self.* = undefined;
+        const input = session.acquireFileInput(file) catch |err| {
+            session.abandonParseLock();
+            return err;
+        };
+        session.beginParseLocked();
+        errdefer session.releaseParse();
+        const completed = try session.parseFileUnlocked(file, input, input_path);
+        return .{ .session = session, .result = completed.result, .failure = completed.failure };
     }
 };
 
@@ -1030,32 +1087,41 @@ pub const Session = struct {
         try self.message_overrides.put(self.allocator, owned_name, owned_message);
     }
 
-    /// The single lease-taking site of a parse start: every parse entry
-    /// funnels through here so the lock and generation cannot disagree. It
-    /// changes nothing — the nested-recovery gate runs first, before the
-    /// lock, so a rejected nested parse leaves generation, node storage,
-    /// and `owned_input` untouched — and a caller that returns before
-    /// `beginParseLocked` releases with `abandonParseLock`, leaving no
-    /// trace of the call: not the generation, not the published tree, not
-    /// the diagnostic or its rendered strings.
-    fn acquireParseLock(self: *Session) SessionError!void {
+    /// The one start of every parse call, and the only place a call's state
+    /// is reset: takes the session's exclusive lock and replaces what the
+    /// previous call recorded (`RuntimeContext.recorded`) with an empty
+    /// record, before anything else is checked or read. Whatever the call
+    /// ends with, the session's record is then this call's: empty when it
+    /// fails before its attempt, what the attempt recorded when it ran. A
+    /// call refused with `SessionInUse` is the one exception: it takes
+    /// nothing and replaces nothing, because the session belongs to the use
+    /// that holds it. The records' memory stays in the parse arena, which
+    /// only an attempt resets (`beginParseLocked`), so text a caller read
+    /// from them stays valid until the next parse. Everything else stays as
+    /// it was until the attempt begins, so a call that fails before then
+    /// leaves the generation, the published tree and the retained input
+    /// untouched.
+    pub fn startParseCall(self: *Session) SessionError!ParseCall {
+        if (!self.session_lock.tryLock()) return error.SessionInUse;
+        self.runtime_context.recorded = .{};
         if (stack_overflow_utilities.isActive() and !self.stack_overflow_recovery) {
+            self.abandonParseLock();
             return error.NestedParseDuringStackOverflowRecovery;
         }
-        if (!self.session_lock.tryLock()) return error.SessionInUse;
+        return .{ .session = self };
     }
 
-    /// Releases a lease whose parse never began — the refusal half of a
-    /// parse start, between `acquireParseLock` and `beginParseLocked`. A
-    /// begun parse releases with `releaseParse` instead.
+    /// Releases the lock of a call whose attempt never began. A begun
+    /// attempt releases with `releaseParse` instead.
     fn abandonParseLock(self: *Session) void {
         self.session_lock.unlock();
     }
 
-    /// The session-changing half of a parse start. From here on the
-    /// previous tree is retired and only a parse attempt's failures remain,
-    /// so everything that can be refused — reading input, sizing buffers —
-    /// happens before this point.
+    /// The start of a parse attempt, and the only place an attempt's state
+    /// is reset: retires the previous tree and resets the parse arena and
+    /// the running parse's counters. Everything that can refuse the call —
+    /// arguments, reading input — is settled before this point; everything
+    /// after it is a failure of the attempt.
     fn beginParseLocked(self: *Session) void {
         // Plain safety-checked addition: a wrapped generation would make a
         // dead parse's nodes live again, and at 64 bits the overflow state is
@@ -1066,6 +1132,11 @@ pub const Session = struct {
         // retires the previous tree's generation), so a walker over the
         // previous tree is stale from the moment the new parse begins.
         if (comptime parser.is_ast_enabled) self.node_allocator.generation = self.generation;
+        // The arena holds what the previous tree's hooks attached to it and
+        // the previous call's diagnostic text, both dead from here on.
+        _ = self.arena.reset(.retain_capacity);
+        self.runtime_context.message_overrides = &self.message_overrides;
+        self.runtime_context.attempt = .{};
         self.runtime_context.beginParse();
     }
 
@@ -1148,11 +1219,8 @@ pub const Session = struct {
     /// C ABI) holds the lease while it writes that state; one that only
     /// needs the result uses `parseBytes`, which releases on return.
     pub fn parseBytesLeased(self: *Session, input: []const u8, input_path: ?[]const u8) !ParseLease {
-        try self.acquireParseLock();
-        self.beginParseLocked();
-        errdefer self.releaseParse();
-        const completed = try self.parseBytesUnlocked(input, input_path);
-        return .{ .session = self, .result = completed.result, .failure = completed.failure };
+        var call = try self.startParseCall();
+        return call.parseBytes(input, input_path);
     }
 
     pub fn parseBytes(self: *Session, input: []const u8, input_path: ?[]const u8) !ParseResult {
@@ -1176,11 +1244,8 @@ pub const Session = struct {
 
     /// The leased entry for NUL-terminated input; see `parseBytesLeased`.
     pub fn parseSentinelBytesLeased(self: *Session, input: [:0]const u8, input_path: ?[]const u8) !ParseLease {
-        try self.acquireParseLock();
-        self.beginParseLocked();
-        errdefer self.releaseParse();
-        const completed = try self.parseSentinelBytesUnlocked(input, input_path);
-        return .{ .session = self, .result = completed.result, .failure = completed.failure };
+        var call = try self.startParseCall();
+        return call.parseSentinelBytes(input, input_path);
     }
 
     pub fn parseSentinelBytes(self: *Session, input: [:0]const u8, input_path: ?[]const u8) !ParseResult {
@@ -1217,25 +1282,11 @@ pub const Session = struct {
         streamed: ?usize,
     };
 
-    /// The leased entry for file input; see `parseBytesLeased`.
-    ///
-    /// Everything a file parse can be refused for is settled under the
-    /// lease but before the session changes: the input is acquired between
-    /// `acquireParseLock` and `beginParseLocked`, so a read failure — an
-    /// unreadable path, a size that does not fit, an allocation failure —
-    /// leaves the generation, the published tree, the diagnostic, and the
-    /// retained input exactly as they were. Only reads a streaming parse
-    /// makes while it runs can still fail after its parse began.
+    /// The leased entry for file input; see `parseBytesLeased` and
+    /// `ParseCall.parseFile`.
     pub fn parseFileLeased(self: *Session, file: std.Io.File, input_path: ?[]const u8) !ParseLease {
-        try self.acquireParseLock();
-        const input = self.acquireFileInput(file) catch |err| {
-            self.abandonParseLock();
-            return err;
-        };
-        self.beginParseLocked();
-        errdefer self.releaseParse();
-        const completed = try self.parseFileUnlocked(file, input, input_path);
-        return .{ .session = self, .result = completed.result, .failure = completed.failure };
+        var call = try self.startParseCall();
+        return call.parseFile(file, input_path);
     }
 
     pub fn parseFile(self: *Session, file: std.Io.File, input_path: ?[]const u8) !ParseResult {
@@ -1353,7 +1404,7 @@ pub const Session = struct {
     }
 
     pub fn _parseContext(self: *Session, context_value: *data_structures.Context) !ParseResult {
-        try self.acquireParseLock();
+        _ = try self.startParseCall();
         self.beginParseLocked();
         defer self.releaseParse();
         const completed = try self._parseContextUnlocked(context_value);
@@ -1376,17 +1427,6 @@ pub const Session = struct {
     fn _parseContextUnlocked(self: *Session, context_value: *data_structures.Context) !Completed {
         context_value.runtime_context = &self.runtime_context;
         context_value.generation = self.generation;
-
-        _ = self.arena.reset(.retain_capacity);
-        self.runtime_context.message_overrides = &self.message_overrides;
-        self.runtime_context.recorded_diagnostics = .empty;
-        self.runtime_context.syntax_error_count = 0;
-        self.runtime_context.semantic_error_count = 0;
-        self.runtime_context.syntax_recovery_position = null;
-        self.runtime_context.explicit_recovery_position = null;
-        self.runtime_context.explicit_recovery_target_id = null;
-        self.runtime_context.pending_syntax_error_site = null;
-        self.runtime_context.recovered_pending = .empty;
 
         try context_value.reset();
         self.active_context = context_value;
@@ -1416,9 +1456,9 @@ pub const Session = struct {
         session_result._session_generation = self.generation;
         session_result._session_identity = @ptrCast(self.reader_buffer.ptr);
         self.published_result = session_result;
-        const failure: ?ParseFailure = if (self.runtime_context.syntax_error_count != 0)
+        const failure: ?ParseFailure = if (self.runtime_context.recorded.syntax_error_count != 0)
             error.SyntaxError
-        else if (self.runtime_context.semantic_error_count != 0)
+        else if (self.runtime_context.recorded.semantic_error_count != 0)
             error.SemanticError
         else
             null;
@@ -1928,6 +1968,68 @@ test "an allocation failure during a parse publishes nothing" {
     try std.testing.expectError(error.OutOfMemory, session.parseBytes(larger, null));
     failing.fail_index = std.math.maxInt(usize);
     try std.testing.expectError(error.StaleParseResult, session.readCurrent());
+}
+
+test "a parse that runs out of memory carries no diagnostic of an earlier call" {
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    var session = try Session.init(std.Io.failing, failing.allocator(), .{});
+    defer session.deinit();
+
+    try std.testing.expectError(error.SyntaxError, session.parseBytes("Start\n| (\n", null));
+    try std.testing.expect(session.runtime_context.lastDiagnostic() != null);
+
+    // The input copy fails after the attempt began: the attempt recorded
+    // nothing, and the diagnostic of the call before it is gone.
+    const larger = try std.testing.allocator.alloc(u8, 1 << 20);
+    defer std.testing.allocator.free(larger);
+    @memset(larger, '\n');
+    failing.fail_index = failing.alloc_index;
+    failing.has_induced_failure = false;
+    try std.testing.expectError(error.OutOfMemory, session.parseBytes(larger, null));
+    failing.fail_index = std.math.maxInt(usize);
+    try std.testing.expect(session.runtime_context.lastDiagnostic() == null);
+}
+
+test "a file parse refused for memory clears the diagnostic and keeps the published tree" {
+    if (comptime input_streaming_enabled) return error.SkipZigTest;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "input", .data = "Start\n| \"x\"\n" });
+    var file = try tmp.dir.openFile(std.testing.io, "input", .{ .mode = .read_only });
+    defer file.close(std.testing.io);
+
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    var session = try Session.init(std.testing.io, failing.allocator(), .{});
+    defer session.deinit();
+
+    // The published tree survives the refusal.
+    const published = try session.parseBytes("Start\n| \"x\"\n", null);
+    const generation = session.generation;
+    failing.fail_index = failing.alloc_index;
+    failing.has_induced_failure = false;
+    try std.testing.expectError(error.OutOfMemory, session.parseFile(file, null));
+    failing.fail_index = std.math.maxInt(usize);
+    try std.testing.expectEqual(generation, session.generation);
+    {
+        var guard = try session.readCurrent();
+        defer guard.deinit();
+        try std.testing.expectEqual(published.ast_root, guard.result.ast_root);
+        try std.testing.expectEqual(published.parsed_bytes, guard.result.parsed_bytes);
+    }
+
+    // The diagnostic of the call before it does not.
+    try std.testing.expectError(error.SyntaxError, session.parseBytes("Start\n| (\n", null));
+    const diagnostic = session.runtime_context.lastDiagnostic() orelse return error.MissingDiagnostic;
+    const token = diagnostic.syntax.unexpected_token;
+    const token_copy = try std.testing.allocator.dupe(u8, token);
+    defer std.testing.allocator.free(token_copy);
+    failing.fail_index = failing.alloc_index;
+    failing.has_induced_failure = false;
+    try std.testing.expectError(error.OutOfMemory, session.parseFile(file, null));
+    failing.fail_index = std.math.maxInt(usize);
+    try std.testing.expect(session.runtime_context.lastDiagnostic() == null);
+    // Text read from the cleared diagnostic stays valid until the next parse.
+    try std.testing.expectEqualStrings(token_copy, token);
 }
 
 test "the session generation parses across the 32-bit boundary" {

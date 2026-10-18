@@ -47,7 +47,6 @@ pub const schema = struct {
         name: []const u8,
         value: i64,
         text: []const u8 = "",
-        carries_diagnostic: bool = false,
         unsigned: bool = false,
         doc: []const u8,
     };
@@ -199,8 +198,8 @@ fn validate(arena: Allocator, decl: *const schema.Declaration) !void {
                     return error.InvalidDeclaration;
                 }
             } else {
-                if (e.text.len != 0 or e.carries_diagnostic) {
-                    std.debug.print("abi values: {s}.{s}.{s}: text and carries_diagnostic are status-only facts\n", .{ declaration_path, @tagName(family), e.name });
+                if (e.text.len != 0) {
+                    std.debug.print("abi values: {s}.{s}.{s}: text is a status-only fact\n", .{ declaration_path, @tagName(family), e.name });
                     return error.InvalidDeclaration;
                 }
             }
@@ -539,16 +538,6 @@ fn renderPythonEnumArrays(w: *std.Io.Writer, arena: Allocator, decl: *const sche
     try w.writeAll(")\n        return -1;\n");
 }
 
-fn renderPythonStatusFlags(w: *std.Io.Writer, arena: Allocator, decl: *const schema.Declaration) !void {
-    const t = table(decl, .statuses);
-    try w.writeAll("static int status_carries_diagnostic(long long status)\n{\n    switch (status) {\n");
-    for (t.entries) |e| {
-        if (!e.carries_diagnostic) continue;
-        try w.print("    case {s}:\n", .{try fullCName(arena, t, e, false)});
-    }
-    try w.writeAll("        return 1;\n    default:\n        return 0;\n    }\n}\n");
-}
-
 fn renderPyiEnums(w: *std.Io.Writer, arena: Allocator, decl: *const schema.Declaration) !void {
     for (typed_families) |family| {
         const t = table(decl, family);
@@ -582,7 +571,6 @@ fn renderJsConstants(w: *std.Io.Writer, arena: Allocator, decl: *const schema.De
         const value: u64 = @intCast(e.value);
         try w.print("export const {s} = 0x{x}n;\n\n", .{ try upperStem(arena, e.name), value });
     }
-    var carries: std.ArrayListUnmanaged([]const u8) = .empty;
     for (typed_families) |family| {
         const t = table(decl, family);
         try writeBraceDoc(w, arena, t.doc, "");
@@ -592,25 +580,7 @@ fn renderJsConstants(w: *std.Io.Writer, arena: Allocator, decl: *const schema.De
             try w.print("  {s} = {d},\n", .{ try pascalStem(arena, e.name, &.{}), e.value });
         }
         try w.writeAll("}\n\n");
-        if (isStatus(t)) {
-            const class = try hostTypeName(arena, t);
-            for (t.entries) |e| {
-                if (!e.carries_diagnostic) continue;
-                try carries.append(arena, try std.mem.concat(arena, u8, &.{ class, ".", try pascalStem(arena, e.name, &.{}) }));
-            }
-        }
     }
-    try writeBraceDoc(w, arena, "The statuses that end a parse that ran: a failure with one of them carries the session's diagnostic of that attempt. Every other status carries none.", "");
-    try w.writeAll("const CARRIES_DIAGNOSTIC: ReadonlySet<number> = new Set([\n");
-    for (carries.items) |name| try w.print("  {s},\n", .{name});
-    try w.writeAll("]);\n\n");
-    try writeBraceDoc(w, arena, "True when a failure with `status` carries the session's diagnostic: exactly the statuses that ended a parse that ran, whose diagnostic then belongs to that attempt. Every other status carries none.", "");
-    try w.writeAll(
-        \\export function statusCarriesDiagnostic(status: number): boolean {
-        \\  return CARRIES_DIAGNOSTIC.has(status);
-        \\}
-        \\
-    );
 }
 
 // ---------------------------------------------------------------------------
@@ -628,25 +598,21 @@ fn renderJavaStatuses(w: *std.Io.Writer, arena: Allocator, decl: *const schema.D
     try w.writeAll("public enum Status {\n");
     for (t.entries) |e| {
         try writeJavadoc(w, arena, e.doc, "    ");
-        try w.print("    {s}({d}, {s}),\n", .{ try upperStem(arena, e.name), e.value, if (e.carries_diagnostic) "true" else "false" });
+        try w.print("    {s}({d}),\n", .{ try upperStem(arena, e.name), e.value });
     }
     try writeJavadoc(w, arena, "Fallback for codes this binding does not know.", "    ");
     try w.writeAll(
-        \\    UNKNOWN(Integer.MIN_VALUE, false);
+        \\    UNKNOWN(Integer.MIN_VALUE);
         \\
         \\    private final int code;
-        \\    private final boolean carriesDiagnostic;
         \\
-        \\    Status(int code, boolean carriesDiagnostic) {
+        \\    Status(int code) {
         \\        this.code = code;
-        \\        this.carriesDiagnostic = carriesDiagnostic;
         \\    }
         \\
     );
     try writeJavadoc(w, arena, "Raw status code.", "    ");
     try w.writeAll("    public int getCode() { return code; }\n\n");
-    try writeJavadoc(w, arena, "Whether a failure with this status carries the session's diagnostic of the parse it ended: true for the statuses that end a parse that ran, false for every other status.", "    ");
-    try w.writeAll("    public boolean carriesDiagnostic() { return carriesDiagnostic; }\n\n");
     try writeJavadoc(w, arena, "Single converter for this category: known codes map to their member, anything else maps to `UNKNOWN`.", "    ");
     try w.writeAll(
         \\    public static Status fromCode(long code) {
@@ -845,30 +811,6 @@ fn renderGoStatuses(w: *std.Io.Writer, arena: Allocator, decl: *const schema.Dec
     try w.writeAll(")\n");
 }
 
-fn renderGoStatusFlags(w: *std.Io.Writer, arena: Allocator, decl: *const schema.Declaration) !void {
-    const t = table(decl, .statuses);
-    try w.writeAll("func statusCarriesDiagnostic(code Error) bool {\n\tswitch code {\n\tcase ");
-    var column: usize = 6;
-    var first = true;
-    for (t.entries) |e| {
-        if (!e.carries_diagnostic) continue;
-        const name = try goMember(arena, t, e);
-        if (!first) {
-            if (column + name.len + 3 > 80) {
-                try w.writeAll(",\n\t\t");
-                column = 2;
-            } else {
-                try w.writeAll(", ");
-                column += 2;
-            }
-        }
-        try w.writeAll(name);
-        column += name.len;
-        first = false;
-    }
-    try w.writeAll(":\n\t\treturn true\n\t}\n\treturn false\n}\n");
-}
-
 fn renderGoDiagnosticKinds(w: *std.Io.Writer, arena: Allocator, decl: *const schema.Declaration) !void {
     const t = table(decl, .diagnostic_kinds);
     var width: usize = 0;
@@ -1036,7 +978,6 @@ pub const artifacts = [_]Artifact{
         .{ .id = "kinds", .render = renderHeaderKinds },
     } },
     .{ .path = "bindings/python/_galley.c", .blocks = &.{
-        .{ .id = "status flags", .render = renderPythonStatusFlags },
         .{ .id = "enum arrays", .render = renderPythonEnumArrays },
     } },
     .{ .path = "bindings/python/galley.pyi", .blocks = &.{
@@ -1079,7 +1020,6 @@ pub const artifacts = [_]Artifact{
     .{ .path = "bindings/go/assets/wrapper.go.tmpl", .blocks = &.{
         .{ .id = "sentinels", .render = renderGoSentinels },
         .{ .id = "statuses", .render = renderGoStatuses },
-        .{ .id = "status flags", .render = renderGoStatusFlags },
         .{ .id = "diagnostic kinds", .render = renderGoDiagnosticKinds },
         .{ .id = "recovery targets", .render = renderGoRecoveryTargets },
     } },

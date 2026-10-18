@@ -1534,8 +1534,9 @@ public class GalleyTest {
 
         @Test
         void aRefusedParseCarriesNoDiagnostic() {
-            // An IO refusal runs no parse: the session's diagnostic is still
-            // the last parse's, and the failure carries none of it.
+            // A parse call clears the previous call's diagnostic when it
+            // starts: an IO refusal runs no parse, so neither the failure nor
+            // the session carries a diagnostic afterwards.
             assertThrows(GalleyException.class, () -> session.parse(RECOVERED));
             assertNotNull(session.diagnostic());
             Path missing = Paths.get(System.getProperty("java.io.tmpdir"),
@@ -1544,7 +1545,7 @@ public class GalleyTest {
                     () -> session.parseFile(missing.toString()));
             assertEquals(Status.ERROR_IO, refusal.getCode());
             assertNull(refusal.getDiagnostic());
-            assertNotNull(session.diagnostic());
+            assertNull(session.diagnostic());
         }
 
         @Test

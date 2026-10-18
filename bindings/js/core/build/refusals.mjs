@@ -357,7 +357,7 @@ export async function runRefusalScenarios({ test, assert, newParser, GalleyError
     }
   });
 
-  await test("only a failure that ended a parse carries a diagnostic", async () => {
+  await test("only a parse that recorded a diagnostic carries one", async () => {
     const parser = await newParser();
     const s = await parser.openSession();
     try {
@@ -366,12 +366,15 @@ export async function runRefusalScenarios({ test, assert, newParser, GalleyError
         () => s.parse("alpha:"),
         (error) => error instanceof GalleyError && error.diagnostic !== null,
       );
-      // ...which no later refusal borrows: an I/O refusal ran no parse, so
-      // it carries none, and neither does a stale-tree node read.
+      // ...which no later refusal borrows: a parse call clears the previous
+      // call's diagnostic when it starts, so an I/O refusal carries none and
+      // leaves the session with none, and a stale-tree node read carries
+      // none either.
       assert.throws(
         () => s.parseFile("/nonexistent/galley/refusal-test"),
         (error) => error instanceof GalleyError && error.code === Status.ErrorIo && error.diagnostic === null,
       );
+      assert.equal(s.hasDiagnostic(), false);
       s.parse(FIRST);
       const root = s.rootNode();
       s.parse(FIRST);

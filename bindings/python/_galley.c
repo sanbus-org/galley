@@ -74,7 +74,7 @@ static size_t hook_count = 0;
 static PyTypeObject ProcedureArgs_Type;
 
 /* Where a Diagnostic snapshot's fields come from: the session's current
- * diagnostic, or the record at `index` of the most recent parse. */
+ * diagnostic, or the record at `index` of the most recent parse call. */
 typedef struct {
     GalleySession *session;
     int recorded;
@@ -358,36 +358,15 @@ static int py_dispatch_impl(void *handle, unsigned int index, unsigned long long
     return failed ? 1 : 0;
 }
 
-/* Whether a failure carries the session's diagnostic is a property of the
- * status: a failure carries one exactly when the status is one of these
- * eight, the statuses that end a parse that ran. Any other status carries
- * none — a file read that failed included, whether before the parse began
- * or, in a streaming build, during it. */
-// >>> generated: status flags (bindings/abi_values.zon; regenerate: zig build abi-values)
-static int status_carries_diagnostic(long long status)
-{
-    switch (status) {
-    case galley_error_syntax:
-    case galley_error_indentation:
-    case galley_error_stack_overflow:
-    case galley_error_ast_capacity_exceeded:
-    case galley_error_unterminated_raw_string:
-    case galley_error_out_of_memory:
-    case galley_error_semantic:
-    case galley_error_hook_failed:
-        return 1;
-    default:
-        return 0;
-    }
-}
-// <<< generated: status flags
-
 /* Sets ErrorException from a negative galley status code. The instance
- * carries the raw code as its `code` attribute and, when a session is
- * supplied and the status carries a diagnostic, a snapshot of its current
- * diagnostic as `diagnostic`. The exception text is the rendered
- * diagnostic message when there is one, falling back to the status
- * string. */
+ * carries the raw code as its `code` attribute and, when a parse's session
+ * is supplied, a snapshot of the session's diagnostic as `diagnostic`
+ * whenever it has one: a parse call clears the previous call's diagnostic
+ * when it starts, so the one the session holds is this parse's own. A parse
+ * refused with session in use started nothing, and the diagnostic belongs
+ * to the parse that holds the session, so that failure carries none. The
+ * exception text is the rendered diagnostic message when there is one,
+ * falling back to the status string. */
 static void set_error_from_status_with_session(long long status, GalleySession *session)
 {
     const char *description = galley_status_string(status);
@@ -396,13 +375,13 @@ static void set_error_from_status_with_session(long long status, GalleySession *
     PyObject *code = NULL;
     PyObject *diagnostic = NULL;
 
-    if (session != NULL && status_carries_diagnostic(status)) {
+    if (session != NULL && status != galley_error_session_in_use) {
         int has = 0;
         long long probe = galley_has_diagnostic(session, &has);
         if (probe == galley_error_session_in_use) {
-            /* A hook that parses its own session is refused while the outer
-             * parse still holds the session, so no diagnostic can be read
-             * here; the failure carries the status string alone. */
+            /* Another thread's parse took the session between this parse's
+             * end and the read; the failure carries the status string
+             * alone. */
         } else if (probe != galley_ok) {
             set_error_from_status(probe);
             return;
@@ -1857,7 +1836,7 @@ static PyObject *Session_last_position(PyObject *self, PyObject *Py_UNUSED(ignor
 PyDoc_STRVAR(has_diagnostic_doc,
 "has_diagnostic()\n"
 "\n"
-"Returns whether the previous parse produced a diagnostic. Raises\n"
+"Returns whether the most recent parse call recorded a diagnostic. Raises\n"
 "GalleyError (session in use) while a parse runs.");
 
 static PyObject *Session_has_diagnostic(PyObject *self, PyObject *Py_UNUSED(ignored))
@@ -2471,7 +2450,8 @@ PyDoc_STRVAR(diagnostic_doc,
 "diagnostic()\n"
 "\n"
 "Returns a read-only Diagnostic snapshot describing the failure of the\n"
-"most recent parse, or None when it succeeded. The snapshot stays valid\n"
+"most recent parse call, or None when it recorded none (it succeeded, or\n"
+"failed before its parse ran). The snapshot stays valid\n"
 "forever; it does not track later parses. Raises GalleyError (session in\n"
 "use) while a parse runs.");
 

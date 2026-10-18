@@ -330,24 +330,19 @@ with parser.Session(max_errors=10, recovery_window=500) as session:
         print(f"{diagnostic.line}:{diagnostic.column}: {diagnostic.message}")
 ```
 
-Options mirror the runtime defaults: `max_errors=10`,
-`recovery_window=500`, `stack_overflow_recovery=False`,
-`syntax_error_stack_depth=0`, `verbosity=0`,
-`ast_preallocation_ratio=-1.0`, `ast_preallocation_cap=0`. A value outside
-its domain (a negative `max_errors`, `recovery_window`, or `verbosity`, or a
-non-finite `ast_preallocation_ratio`) raises `GalleyError` with
-`ERROR_INVALID_ARGUMENT` at construction.
-`syntax_error_stack_depth` and `ast_preallocation_cap` are unsigned counts:
-`0` selects the build default, and a negative value is reinterpreted as
-unsigned (wrapped modulo 2^32 / 2^64) rather than refused.
-Failures raise `parser.GalleyError`, whose `code` is the raw status code. A
-failure carries the session's diagnostic exactly when its status is one of
-`ERROR_SYNTAX`, `ERROR_SEMANTIC`, `ERROR_INDENTATION`,
-`ERROR_STACK_OVERFLOW`, `ERROR_AST_CAPACITY_EXCEEDED`,
-`ERROR_UNTERMINATED_RAW_STRING`, `ERROR_OUT_OF_MEMORY` and
-`ERROR_HOOK_FAILED` — the statuses that end a parse that ran, whose frozen
-`parser.Diagnostic` of where the parse stopped then belongs to the attempt.
-A failure built from any other status carries `diagnostic is None`.
+Options mirror the runtime defaults: `max_errors=10`, `recovery_window=500`,
+`stack_overflow_recovery=False`, `syntax_error_stack_depth=0`,
+`verbosity=0`, `ast_preallocation_ratio=-1.0`, `ast_preallocation_cap=0`. A
+value outside its domain (a negative `max_errors`, `recovery_window`, or
+`verbosity`, or a non-finite `ast_preallocation_ratio`) raises `GalleyError`
+with `ERROR_INVALID_ARGUMENT` at construction. `syntax_error_stack_depth`
+and `ast_preallocation_cap` are unsigned counts: `0` selects the build
+default, and a negative value is reinterpreted as unsigned (wrapped modulo
+2^32 / 2^64) rather than refused. Failures raise `parser.GalleyError`, whose
+`code` is the raw status code. A parse failure carries the frozen
+`parser.Diagnostic` its parse recorded, and `diagnostic is None` when it
+recorded none: a parse call that fails before its parse runs (a missing
+file), or is refused with `ERROR_SESSION_IN_USE`, carries none.
 `session.diagnostic()` returns the last diagnostic.
 
 `Session` is a context manager (`with parser.Session() as s:` closes on exit)
@@ -384,7 +379,7 @@ with `kind`, `offset` (byte offset in the input), `line`, `column` (0, 0 when it
 `semantic_error_count`, `semantic` (a `(variable bytes, message)` pair
 for semantic errors, else `None`),
 indentation details, and the full structured recovery information — or
-`None` when the last parse succeeded.
+`None` when the most recent parse call recorded none.
 
 A hook reports a semantic error through `args.report_semantic_error(message)`,
 which returns the running total so hooks can limit themselves. Parsing

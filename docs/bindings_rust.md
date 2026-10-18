@@ -109,7 +109,7 @@ if value > 999 {
 ```
 
 Read them through `Session::diagnostic` (`Ok(None)` when the last parse
-recorded none), `Session::diagnostics` / `Session::diagnostic_at(index)` for
+call recorded none), `Session::diagnostics` / `Session::diagnostic_at(index)` for
 every record in recording order, or `Session::has_diagnostic()` to ask
 whether any was recorded. The snapshot carries the parse's
 `syntax_error_count` / `semantic_error_count` totals, and for a semantic

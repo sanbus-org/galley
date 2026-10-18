@@ -52,7 +52,8 @@ class RecoveryMode(enum.IntEnum):
 class DiagnosticKind(enum.IntEnum):
     """Diagnostic kinds returned by `galley_diagnostic_kind`."""
     NONE = 0
-    """No diagnostic: the previous parse succeeded, or no parse has run."""
+    """No diagnostic: the most recent parse call recorded none (it succeeded,
+    or failed before its parse ran), or no parse has run."""
     SYNTAX = 1
     """A syntax error. A parse that recovered from its syntax errors still
     publishes its tree, with the damaged regions flagged as recovered
@@ -176,9 +177,10 @@ class GalleyError(Exception):
         code: Raw ``galley_status`` value (negative on failure).
         diagnostic: Snapshot of the session diagnostic at failure, or ``None``.
 
-    A failure carries a diagnostic only when its status is one of the eight
-    that end a parse that ran (see :class:`Status`); a failure built from any
-    other status carries ``None``.
+    A parse failure carries the diagnostics its parse recorded, and ``None``
+    when it recorded none: a parse call that fails before its parse runs (a
+    missing file), or is refused with ``ERROR_SESSION_IN_USE``, carries
+    ``None``.
 
     A hook that raised aborts the parse: ``parse`` raises a ``GalleyError``
     with code ``ERROR_HOOK_FAILED``, a ``DiagnosticKind.HOOK`` diagnostic, and the
@@ -713,7 +715,7 @@ class Session:
         ...
 
     def has_diagnostic(self) -> bool:
-        """Whether the last parse produced a diagnostic.
+        """Whether the most recent parse call recorded a diagnostic.
 
         Raises ``GalleyError`` (``ERROR_SESSION_IN_USE``) while a parse
         runs.

@@ -89,15 +89,17 @@ typedef unsigned long long GalleyNodeAddress;
  * indentation or read error, stack overflow, out of memory — publishes
  * nothing. galley_root_node is the probe.
  *
- * A failure carries the session's diagnostic exactly when its status is one
- * of galley_error_syntax, galley_error_semantic, galley_error_indentation,
- * galley_error_stack_overflow, galley_error_ast_capacity_exceeded,
- * galley_error_unterminated_raw_string, galley_error_out_of_memory, and
- * galley_error_hook_failed; a failure built from any other status carries
- * none. A parse call refused with such a status is turned away before its
- * parse runs and changes nothing in the session: the generation, the
- * published tree, the diagnostic, and the strings it rendered are as they
- * were. */
+ * Every parse call starts by clearing the session's diagnostics and error
+ * counts, before it checks its arguments or reads any input, so after a
+ * failed parse call the session holds exactly what that call recorded:
+ * galley_has_diagnostic is the probe. A call that fails before its parse
+ * runs (a null input or path, a file that cannot be opened or read) holds
+ * none, and changes nothing else: the generation, the published tree, and
+ * the retained input are as they were. Text read from an earlier diagnostic
+ * stays valid until the next parse. A parse call refused with
+ * galley_error_session_in_use is the exception: it starts nothing and
+ * clears nothing, because the session and its diagnostics belong to the
+ * parse that holds it. */
 // >>> generated: statuses (bindings/abi_values.zon; regenerate: zig build abi-values)
 enum {
     /* Success: the call ran to its end (a parse answers the number of bytes
@@ -625,21 +627,21 @@ long long galley_node_text(GalleySession *session, unsigned long long generation
 long long galley_last_input(GalleySession *session,
                             const char **out_data, size_t *out_len);
 
-/* Writes 1 into *out_has when the previous parse produced a diagnostic, 0
- * when it did not. A NULL session or out_has is
+/* Writes 1 into *out_has when the most recent parse call recorded a
+ * diagnostic, 0 when it did not. A NULL session or out_has is
  * galley_error_null_argument; a parse in flight is
  * galley_error_session_in_use. */
 long long galley_has_diagnostic(GalleySession *session, int *out_has);
 
 /* Writes the rendered diagnostic message (plain text) into *out. The
  * string is NUL-terminated and remains valid until the next parse or
- * session destruction. Returns galley_error_no_diagnostic when the previous
- * parse succeeded. */
+ * session destruction. Returns galley_error_no_diagnostic when the most
+ * recent parse call recorded none. */
 long long galley_diagnostic_message(GalleySession *session, const char **out);
 
 /* Writes a diagnostic's byte offset in the input and its 1-based line and
  * column (0, 0 when it has none). Returns galley_error_no_diagnostic when the
- * previous parse succeeded. */
+ * most recent parse call recorded none. */
 long long galley_diagnostic_position(GalleySession *session, unsigned long long *out_offset,
                                      unsigned int *out_line, unsigned int *out_column);
 
@@ -778,7 +780,8 @@ const char *galley_status_string(long long status);
  * Kinds and enum values: */
 // >>> generated: kinds (bindings/abi_values.zon; regenerate: zig build abi-values)
 enum {
-    /* No diagnostic: the previous parse succeeded, or no parse has run.
+    /* No diagnostic: the most recent parse call recorded none (it succeeded,
+     * or failed before its parse ran), or no parse has run.
      */
     galley_diagnostic_kind_none        = 0,
     /* A syntax error. A parse that recovered from its syntax errors still
@@ -827,14 +830,17 @@ enum {
 // <<< generated: kinds
 
 /* Returns the kind of the current diagnostic (galley_diagnostic_kind_none
- * when the previous parse succeeded). */
+ * when the most recent parse call succeeded or failed before its parse
+ * ran). */
 long long galley_diagnostic_kind(GalleySession *session);
 
-/* Returns how many syntax errors the most recent recovery-enabled parse
- * recorded. Fail-fast parses report at most one. */
+/* Returns how many syntax errors the most recent parse call recorded (0
+ * after a call that failed before its parse ran). Fail-fast parses report
+ * at most one. */
 long long galley_syntax_error_count(GalleySession *session);
 
-/* Returns how many semantic errors the most recent parse recorded. */
+/* Returns how many semantic errors the most recent parse call recorded (0
+ * after a call that failed before its parse ran). */
 long long galley_semantic_error_count(GalleySession *session);
 
 /* Writes the variable and message of a semantic diagnostic. Returns
@@ -871,10 +877,11 @@ long long galley_diagnostic_recovery_occurrence(GalleySession *session,
                                                 unsigned int *out_rhs_index, unsigned int *out_symbol_index,
                                                 const char **out_variable, size_t *out_variable_len);
 
-/* Recorded diagnostics of the most recent parse. Every diagnostic the parse
- * recorded (bounded by its error limit) stays addressable by diag_index
- * (0-based, in recording order) until the next parse begins. The singular
- * accessors above remain available for the most recent diagnostic.
+/* Recorded diagnostics of the most recent parse call. Every diagnostic the
+ * call recorded (bounded by its error limit) stays addressable by
+ * diag_index (0-based, in recording order) until the next parse call
+ * starts. The singular accessors above remain available for the most recent
+ * diagnostic.
  *
  * galley_recorded_diagnostic_count returns how many diagnostics were
  * retained; every diag_index at or past it returns
