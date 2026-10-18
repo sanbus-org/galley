@@ -1,0 +1,60 @@
+# Each shape below has a call an inlined parser could make into its own
+# expansion. Built with inline_parsers on and outside Debug, any such call
+# that is forced inline fails the build.
+Start
+| "1" Bracket
+| "2" Loop
+| "3" Tail
+| "4" Nested
+| "5" Lines
+| "6" Unbroken
+
+# A cycle that breaks at the rule consuming "[" before it recurses.
+Bracket
+| "[" List "]"
+| "x"
+
+List
+| Bracket
+| "-"
+
+# Factoring gives Loop a tail that reaches Loop again, so Loop's parser is a
+# loop that renders its rules itself, and the cycle breaks at Back instead.
+Loop
+| "x" Loop
+| "x" "y" "z"
+| "x" "y" Back
+
+Back
+| Loop "w"
+
+# Factoring moves Tail's call of itself into a helper, which still renders
+# in Tail's parser.
+Tail
+| "x" Tail "y"
+| "x" "z"
+
+# The same through a helper of a helper.
+Nested
+| "x" "y" Nested "w"
+| "x" "y" "z"
+| "x" "q"
+
+# Factoring moves Lines's flattened call of itself into a helper, as in
+# Galley's own RightHandSides.
+Lines
+| Line Lines@<
+| Line
+
+Line
+| "l" ";"
+
+# Both variables refer to themselves, so the cycle has no breaker.
+Unbroken
+| "(" Inner ")"
+| "a" Unbroken
+| "x"
+
+Inner
+| Unbroken
+| "[" Inner "]"

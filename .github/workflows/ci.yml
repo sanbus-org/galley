@@ -769,7 +769,11 @@ jobs:
           # so one row times what each binding adds around a parse.
           - name: json-base
             grammar: json
-            flags: --no-ast --no-procedures --no-error-recovery --no-indentation-syntax --no-newline-after-block-end
+            # configure-benchmarks.sh only edits the fields the row's flags
+            # name, so naming inline-parsers keeps the c/cpp/rust/go
+            # benchmark grammars in lockstep with languages/json: every
+            # binding row runs the parser zig runs.
+            flags: --no-ast --no-procedures --no-error-recovery --no-indentation-syntax --no-newline-after-block-end --inline-parsers
             bindings: true
           - name: json-ast
             grammar: json

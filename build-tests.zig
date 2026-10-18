@@ -295,6 +295,13 @@ pub fn add(b: *std.Build, options: Options) !void {
                 }
             }
 
+            if (comptime std.mem.eql(u8, parser_type, "ll")) {
+                for (inline_cycles_variants) |variant| {
+                    const run_inline_cycles_tests = try addInlineCyclesTests(b, options, variant, selection.names);
+                    test_step.dependOn(&run_inline_cycles_tests.step);
+                }
+            }
+
             for (flatten_variants) |variant| {
                 const run_flatten_tests = try addFlattenTests(b, options, parser_type, variant, selection.names);
                 test_step.dependOn(&run_flatten_tests.step);
@@ -1575,6 +1582,82 @@ fn addTailLoopTests(
         .root_source_file = b.path("src/tests/tail_loop_test.zig"),
         .target = options.target,
         .optimize = options.optimize,
+        .imports = &.{.{ .name = "parser-under-test", .module = generated_parser.runtime_mod }},
+    });
+    const tests = b.addTest(.{
+        .name = b.fmt("{s}-tests", .{parser_name}),
+        .root_module = test_mod,
+        .filters = filters,
+    });
+    return b.addRunArtifact(tests);
+}
+
+/// Forced inlining with nodes in the AST, without nodes, and with recovery.
+const inline_cycles_variants = [_]TailLoopVariant{
+    .{ .name = "ast", .flags = &.{ "--with-ast", "--with-procedures" } },
+    .{ .name = "no-ast", .flags = &.{ "--no-ast", "--no-procedures" } },
+    .{ .name = "recovery", .flags = &.{ "--no-ast", "--no-procedures", "--with-error-recovery" } },
+};
+
+/// LL parsers with `inline_parsers` on, built in ReleaseSafe whatever the
+/// suite's mode: Debug forces nothing inline, so only an optimized build
+/// rejects a forced call into its own expansion.
+fn addInlineCyclesTests(
+    b: *std.Build,
+    options: Options,
+    variant: TailLoopVariant,
+    filters: []const []const u8,
+) !*std.Build.Step.Run {
+    const optimize: std.builtin.OptimizeMode = .ReleaseSafe;
+    const parser_name = b.fmt("inline-cycles-ll-{s}", .{variant.name});
+    const generate_parser = b.addRunArtifact(options.generate_parser_file_exe);
+    generate_parser.addArg("--grammar");
+    generate_parser.addFileArg(b.path("tests/inline-cycles/grammar.grm"));
+    generate_parser.addArg("--parser-type");
+    generate_parser.addArg("ll");
+    generate_parser.addArg("--label");
+    generate_parser.addArg(parser_name);
+    generate_parser.addArg("--output");
+    const generated_parser_path = generate_parser.addOutputFileArg(b.fmt("{s}-parser.zig", .{parser_name}));
+    generate_parser.addArg("--config-output");
+    const generated_config_path = generate_parser.addOutputFileArg(b.fmt("{s}-config.zig", .{parser_name}));
+    generate_parser.addArg("--inline-parsers");
+    generate_parser.addArgs(variant.flags);
+    generate_parser.stdio = .inherit;
+
+    const procedures_mod = b.createModule(.{
+        .root_source_file = b.path("tests/inline-cycles/procedures.zig"),
+        .target = options.target,
+        .optimize = optimize,
+    });
+    const config_mod = b.createModule(.{
+        .root_source_file = generated_config_path,
+        .target = options.target,
+        .optimize = optimize,
+    });
+    const error_messages_mod = b.createModule(.{
+        .root_source_file = b.path("tests/inline-cycles/error_messages.zig"),
+        .target = options.target,
+        .optimize = optimize,
+    });
+    const generated_parser = common.addGeneratedParserModule(
+        b,
+        options.target,
+        optimize,
+        parser_name,
+        b.fmt("{s}-source", .{parser_name}),
+        generated_parser_path,
+        procedures_mod,
+        config_mod,
+        error_messages_mod,
+        options.generator.runtime_options_mod,
+        options.generator.signals_mod,
+    );
+
+    const test_mod = b.createModule(.{
+        .root_source_file = b.path("src/tests/inline_cycles_test.zig"),
+        .target = options.target,
+        .optimize = optimize,
         .imports = &.{.{ .name = "parser-under-test", .module = generated_parser.runtime_mod }},
     });
     const tests = b.addTest(.{

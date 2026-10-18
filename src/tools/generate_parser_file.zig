@@ -13,6 +13,7 @@ const CliOptions = struct {
     strip_recovery_annotations: bool = false,
     indentation_syntax: bool = false,
     newline_after_block_end: bool = false,
+    inline_parsers: bool = false,
     generator_options: generator.Options = .{},
     ast_edited: bool = false,
     procedures_edited: bool = false,
@@ -22,6 +23,7 @@ const CliOptions = struct {
     input_streaming_edited: bool = false,
     indentation_syntax_edited: bool = false,
     newline_after_block_end_edited: bool = false,
+    inline_parsers_edited: bool = false,
 };
 
 pub fn main(init: std.process.Init) !void {
@@ -36,20 +38,21 @@ pub fn main(init: std.process.Init) !void {
     defer init.gpa.free(source);
 
     if (options.config_output_path) |config_output_path| {
-        var config_data: []const u8 = undefined;
+        // The flags edit the base config, or the documented defaults, which
+        // already carry the flags `config_file.write` takes.
+        var config_buffer = std.Io.Writer.Allocating.init(init.gpa);
+        defer config_buffer.deinit();
         if (options.config_base_path) |base_path| {
             const base = std.Io.Dir.cwd().readFileAlloc(init.io, base_path, init.gpa, .limited(max_source_size)) catch |err| switch (err) {
                 error.FileNotFound => fatal("error: --config-base file not found: {s}\n", .{base_path}),
                 else => return err,
             };
             defer init.gpa.free(base);
-            config_data = try editedConfigFromFlags(init.gpa, base, options);
+            try config_buffer.writer.writeAll(base);
         } else {
-            var config_buffer = std.Io.Writer.Allocating.init(init.gpa);
             try generator.config_file.write(&config_buffer.writer, options.generator_options, options.indentation_syntax, options.newline_after_block_end);
-            config_data = try init.gpa.dupe(u8, config_buffer.written());
-            config_buffer.deinit();
         }
+        const config_data = try editedConfigFromFlags(init.gpa, config_buffer.written(), options);
         try std.Io.Dir.cwd().writeFile(init.io, .{ .sub_path = config_output_path, .data = config_data });
         init.gpa.free(config_data);
     }
@@ -86,6 +89,7 @@ fn editedConfigFromFlags(gpa: std.mem.Allocator, base: []const u8, options: CliO
         .{ "input_streaming", if (options.input_streaming_edited) (if (o.with_input_streaming) "true" else "false") else null },
         .{ "indentation_syntax", if (options.indentation_syntax_edited) (if (options.indentation_syntax) "true" else "false") else null },
         .{ "newline_after_block_end", if (options.newline_after_block_end_edited) (if (options.newline_after_block_end) "true" else "false") else null },
+        .{ "inline_parsers", if (options.inline_parsers_edited) (if (options.inline_parsers) "true" else "false") else null },
     }) |edit| {
         if (edit[1]) |value| {
             const next = try generator.config_file.editedConstantSource(gpa, updated orelse base, edit[0], value);
@@ -163,6 +167,12 @@ fn parseArgs(init: std.process.Init) !CliOptions {
         } else if (std.mem.eql(u8, arg, "--newline-after-block-end")) {
             result.newline_after_block_end = true;
             result.newline_after_block_end_edited = true;
+        } else if (std.mem.eql(u8, arg, "--inline-parsers")) {
+            result.inline_parsers = true;
+            result.inline_parsers_edited = true;
+        } else if (std.mem.eql(u8, arg, "--no-inline-parsers")) {
+            result.inline_parsers = false;
+            result.inline_parsers_edited = true;
         } else if (std.mem.eql(u8, arg, "--with-ast")) {
             result.generator_options.with_ast = true;
             result.ast_edited = true;
@@ -233,6 +243,10 @@ fn printUsage(init: std.process.Init) !void {
         \\      --newline-after-block-end
         \\                             Sets newline_after_block_end = true in
         \\                             the written config.zig.
+        \\      --inline-parsers       Sets inline_parsers = true in the
+        \\                             written config.zig.
+        \\      --no-inline-parsers    Sets inline_parsers = false in the
+        \\                             written config.zig.
         \\      --with-ast             Enables AST construction.
         \\      --no-ast               Disables AST construction.
         \\      --with-procedures      Enables procedure hooks.

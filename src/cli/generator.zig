@@ -31,6 +31,7 @@ const ConfigEdits = struct {
     indentation_syntax: ?bool = null,
     newline_after_block_end: ?bool = null,
     fold_decisions: ?bool = null,
+    inline_parsers: ?bool = null,
 
     fn apply(self: ConfigEdits, init: std.process.Init, gpa: std.mem.Allocator, language_dir: []const u8) !void {
         const path = try std.fs.path.join(gpa, &.{ language_dir, "config.zig" });
@@ -56,6 +57,7 @@ const ConfigEdits = struct {
             .{ "indentation_syntax", self.indentation_syntax },
             .{ "newline_after_block_end", self.newline_after_block_end },
             .{ "fold_decisions", self.fold_decisions },
+            .{ "inline_parsers", self.inline_parsers },
         }) |edit| {
             if (edit[1]) |value| {
                 const next = try generator.config_file.editedConstantSource(
@@ -155,6 +157,10 @@ fn parseArgs(init: std.process.Init) !CliOptions {
             result.edits.fold_decisions = true;
         } else if (std.mem.eql(u8, arg, "--no-fold-decisions")) {
             result.edits.fold_decisions = false;
+        } else if (std.mem.eql(u8, arg, "--inline-parsers")) {
+            result.edits.inline_parsers = true;
+        } else if (std.mem.eql(u8, arg, "--no-inline-parsers")) {
+            result.edits.inline_parsers = false;
         } else if (std.mem.eql(u8, arg, "--with-procedures")) {
             result.edits.procedures = true;
         } else if (std.mem.eql(u8, arg, "--no-procedures")) {
@@ -247,6 +253,8 @@ fn printUsage(init: std.process.Init) !void {
         \\                             Writes `newline_after_block_end = false`.
         \\      --fold-decisions       Writes `fold_decisions = true`.
         \\      --no-fold-decisions    Writes `fold_decisions = false`.
+        \\      --inline-parsers       Writes `inline_parsers = true`.
+        \\      --no-inline-parsers    Writes `inline_parsers = false`.
         \\      --fill-error-messages  Append missing default syntax error hooks.
         \\      --emit-metadata        Write metadata.json and procedures.zig
         \\                             next to the generated parser(s); the
@@ -1216,6 +1224,7 @@ test "every constant written by config_file.write stays editable" {
         "indentation_syntax",
         "newline_after_block_end",
         "fold_decisions",
+        "inline_parsers",
     }) |name| {
         const edited_true = try generator.config_file.editedConstantSource(arena.allocator(), fresh, name, "true");
         const edited_false = try generator.config_file.editedConstantSource(arena.allocator(), fresh, name, "false");

@@ -43,6 +43,7 @@ Each language directory contains a user-owned `config.zig`. Its contract:
 | `input_streaming` | `bool` | Stream files incrementally. Only parsers with no AST, no procedures, and no verbatim capture use a bounded input window; AST-, procedure-, or verbatim-enabled parsers keep the complete source available, an indentation-syntax parser streaming a file by reading it again from the file. |
 | `indentation_syntax` | `bool` | Track indentation changes at line starts and emit virtual `block_start` (`\x01`) / `block_end` (`\x02`) tokens for indentation-sensitive grammars. Grammars that name the `block_start`/`block_end` terminals require it; otherwise compilation fails. |
 | `newline_after_block_end` | `bool` | After each `block_end` sequence, emit `\x03`. Productions that expect `new_line` match it as a newline; every other expected terminal skips it. Requires `indentation_syntax`; otherwise compilation fails. |
+| `inline_parsers` | `bool` | LL only. Force variable parsers inline into their callers, so a parse makes fewer calls. On each recursion cycle, the few rules chosen to break it keep their own functions, so one nesting level costs one frame. Builds take longer and parsers grow. Debug builds keep every parser a function, since unoptimized inlined parsers cost far more stack. `false` keeps every variable parser a function. |
 | `fold_decisions` | `bool` | LL only. Where a rule starts with a variable that has one non-nullable rule, the decision that selected the rule also selects the variable's rule, and the variable's parser skips its own decision. `false` makes every variable parser decide for itself. |
 | `error_messages` | anonymous struct | Template overrides for syntax-error messages — see [below](#syntax-error-message-overrides). |
 
@@ -80,6 +81,7 @@ parser files; consumers pick up new configuration when they next compile.
 | `--indentation-syntax` / `--no-indentation-syntax` | Flag | Writes `indentation_syntax = true` / `false`. |
 | `--newline-after-block-end` / `--no-newline-after-block-end` | Flag | Writes `newline_after_block_end = true` / `false`. |
 | `--fold-decisions` / `--no-fold-decisions` | Flag | Writes `fold_decisions = true` / `false`. |
+| `--inline-parsers` / `--no-inline-parsers` | Flag | Writes `inline_parsers = true` / `false`. |
 | `--require-reduction-procedures` | Flag | Warns at generation, and fails compilation of the generated parser, for each visible production without `reduction_<Var>_<N>`. Names variable, index, and shape. Does not touch `config.zig`. |
 | `--fill-error-messages` | Flag | Creates or appends default syntax-error message hooks in `ll_error_messages.zig` and/or `lr_error_messages.zig`. Existing hooks are preserved; obsolete public `syntax_error_*` hooks are reported. |
 | `--emit-metadata` | Flag | Write metadata.json and procedures.zig next to the generated parser(s); the bindings workflow consumes both. |

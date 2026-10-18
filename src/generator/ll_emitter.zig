@@ -45,6 +45,8 @@ const Generator = struct {
     /// Comptime branch budget spent so far in the body being rendered by
     /// calls to inline terminal parsers (see `functionBodyBranchQuota`).
     inline_call_cost: usize = 0,
+    /// Whether the body being rendered has a call that may be forced inline.
+    body_forces_inlining: bool = false,
     /// Comptime branch budget one call to each terminal parser spends in its
     /// caller, indexed by symbol; filled before any parser is emitted.
     terminal_inline_costs: []usize = &.{},
@@ -66,6 +68,28 @@ const Generator = struct {
     /// Which of the current level's occurrence values the code emitted since
     /// the last reset names, so a tail loop declares exactly those.
     occurrence_uses: OccurrenceUses = .{},
+    /// Indexed by symbol: the rules it heads.
+    rules_by_header: []std.ArrayList(usize) = &.{},
+    /// Indexed by rule: the variables its body calls (see `appendCallTargets`).
+    rule_targets: [][]const usize = &.{},
+    /// Indexed by symbol: the breakable recursion cycle the variable is on
+    /// (see `planCycleBreaking`).
+    cycle_of_variable: []?usize = &.{},
+    /// Indexed by symbol: the variable whose parser renders the symbol's
+    /// rules, the symbol itself unless it is a transparent helper, which the
+    /// parser of the variable it was factored from expands inline.
+    parser_variable: []usize = &.{},
+    /// Indexed by symbol: the variable is on a recursion cycle without a
+    /// breaker set, so its parser is never forced inline.
+    in_unbroken_cycle: []bool = &.{},
+    /// Indexed by rule: the cycle the rule breaks, when it is a breaker.
+    breaker_cycle_of_rule: []?usize = &.{},
+    /// Indexed by cycle: the frames one nesting level costs while every
+    /// variable parser is a function (see `shortestNestingCycle`).
+    cycle_frames: std.ArrayList(usize) = .empty,
+    /// The breaker rule functions the parser bodies call.
+    rule_functions: std.ArrayList(RuleFunction) = .empty,
+
     /// The `_selected` twins call sites name (see `childCallee`), emitted
     /// after every other parser.
     selected_parsers: std.ArrayList(SelectedParser) = .empty,
@@ -73,6 +97,21 @@ const Generator = struct {
     const SelectedParser = struct {
         variable: usize,
         skip_ast_construction: bool,
+    };
+
+    /// The largest breaker set `findBreakers` searches for exhaustively. A
+    /// component that needs more gets a greedy set instead, which may be
+    /// larger than the smallest one.
+    const exhaustive_breaker_search_limit = 3;
+
+    /// A breaker rule's body, moved to its own function.
+    const RuleFunction = struct {
+        name: []const u8,
+        rule_index: usize,
+        variable: usize,
+        skip_ast_construction: bool,
+        /// The decision that selected the rule matched its first terminal.
+        proven_first_terminal_rule: ?usize,
     };
 
     fn init(allocator: std.mem.Allocator, options: Options, grammar: *const common.PreparedGrammar, plan: *const LLPlan) Generator {
@@ -114,11 +153,14 @@ const Generator = struct {
         );
         try writer.writeAll(
             \\pub const is_decision_folding_enabled = config.fold_decisions;
+            \\pub const is_parser_inlining_enabled = config.inline_parsers;
             \\
             \\
         );
 
         try emitter_common.emitGrammarTables(writer, self.symbols.items, self.variables.items, self.rules.items, self.end_symbol);
+        try self.planCycleBreaking();
+        try self.emitCycleBreakingSupport(writer);
         try writer.writeAll(
             \\fn symbolReturnsNodeSuppressed(comptime symbol_index: usize, comptime suppress_ast: bool) bool {
             \\    return !suppress_ast and symbolReturnsNode(symbol_index);
@@ -156,6 +198,7 @@ const Generator = struct {
         try self.emitParserFunctions(writer);
         try self.emitAstSuppressedParsers(writer);
         try self.emitSelectedParsers(writer);
+        try self.emitRuleFunctions(writer);
         try self.emitSyntaxErrorHandlers(writer);
         if (self.uses_explicit_recovery) try self.emitExplicitSyntaxDiagnosticFlusher(writer);
         try writer.writeAll(
@@ -209,6 +252,392 @@ const Generator = struct {
         // Cold fail-fast support at the very end so it does not sit between
         // the hot parser functions and displace them in the final binary.
         try self.emitFailFastSyntaxErrorSupport(writer);
+    }
+
+    /// Plans cycle breaking. Forcing a variable parser inline copies it into
+    /// its callers, which a recursion cycle of the call graph would repeat
+    /// without end. Each cycle (a strongly connected component, with
+    /// self-references left out: they loop, or keep their own call) gets a
+    /// set of breaker rules that leaves it acyclic once removed. A breaker
+    /// rule's body moves to its own function, entered after its variable's
+    /// decision, so every variable parser on the cycle may inline and one
+    /// nesting level costs one frame.
+    fn planCycleBreaking(self: *Generator) EmitError!void {
+        const count = self.symbols.items.len;
+        self.cycle_of_variable = try self.allocator.alloc(?usize, count);
+        @memset(self.cycle_of_variable, null);
+        self.in_unbroken_cycle = try self.allocator.alloc(bool, count);
+        @memset(self.in_unbroken_cycle, false);
+        self.breaker_cycle_of_rule = try self.allocator.alloc(?usize, self.rules.items.len);
+        @memset(self.breaker_cycle_of_rule, null);
+        self.rules_by_header = try self.allocator.alloc(std.ArrayList(usize), count);
+        @memset(self.rules_by_header, .empty);
+        for (self.rules.items, 0..) |rule, rule_index| {
+            try self.rules_by_header[rule.header].append(self.allocator, rule_index);
+        }
+        try self.planParserVariables();
+        self.rule_targets = try self.allocator.alloc([]const usize, self.rules.items.len);
+        for (self.rules.items, 0..) |rule, rule_index| {
+            var targets: std.ArrayList(usize) = .empty;
+            for (rule.rhs.items) |child| try self.appendCallTargets(&targets, rule.header, child);
+            self.rule_targets[rule_index] = targets.items;
+        }
+
+        // reaches[from * count + to]: `to` is reachable from `from` by calls.
+        const reaches = try self.allocator.alloc(bool, count * count);
+        @memset(reaches, false);
+        var queue: std.ArrayList(usize) = .empty;
+        for (self.variables.items) |start| {
+            if (self.symbols.items[start].synthetic_transparent) continue;
+            queue.clearRetainingCapacity();
+            try queue.append(self.allocator, start);
+            var head: usize = 0;
+            while (head < queue.items.len) : (head += 1) {
+                for (self.rules_by_header[queue.items[head]].items) |rule_index| {
+                    for (self.rule_targets[rule_index]) |to| {
+                        if (reaches[start * count + to]) continue;
+                        reaches[start * count + to] = true;
+                        try queue.append(self.allocator, to);
+                    }
+                }
+            }
+        }
+
+        const component_of = try self.allocator.alloc(?usize, count);
+        @memset(component_of, null);
+        var components: std.ArrayList([]const usize) = .empty;
+        for (self.variables.items) |variable| {
+            if (self.symbols.items[variable].synthetic_transparent or component_of[variable] != null or !reaches[variable * count + variable]) continue;
+            var members: std.ArrayList(usize) = .empty;
+            for (self.variables.items) |other| {
+                if (!self.symbols.items[other].synthetic_transparent and reaches[variable * count + other] and reaches[other * count + variable]) {
+                    component_of[other] = components.items.len;
+                    try members.append(self.allocator, other);
+                }
+            }
+            try components.append(self.allocator, members.items);
+        }
+
+        for (components.items, 0..) |members, component| {
+            // LL has no left recursion, so every cycle passes a rule that
+            // consumes input before it re-enters the cycle. Breaking there
+            // puts calls only where nesting happens, so those rules come first.
+            var consuming: std.ArrayList(usize) = .empty;
+            var others: std.ArrayList(usize) = .empty;
+            for (members) |member| {
+                if (!try self.canBreakAt(member)) continue;
+                for (self.rules_by_header[member].items) |rule_index| {
+                    const rule = self.rules.items[rule_index];
+                    var enters_cycle = false;
+                    var enters_before_input = false;
+                    var consumed = false;
+                    var targets: std.ArrayList(usize) = .empty;
+                    for (rule.rhs.items) |child| {
+                        targets.clearRetainingCapacity();
+                        try self.appendCallTargets(&targets, rule.header, child);
+                        for (targets.items) |to| {
+                            if (component_of[to] != component) continue;
+                            enters_cycle = true;
+                            if (!consumed) enters_before_input = true;
+                        }
+                        if (self.symbols.items[child].kind != .variable or self.plan.nullable_rules[child] == null) consumed = true;
+                    }
+                    if (!enters_cycle) continue;
+                    try (if (enters_before_input) &others else &consuming).append(self.allocator, rule_index);
+                }
+            }
+            var candidates = consuming;
+            try candidates.appendSlice(self.allocator, others.items);
+            const breakers = try self.findBreakers(component_of, component, members, candidates.items) orelse {
+                for (members) |member| self.in_unbroken_cycle[member] = true;
+                continue;
+            };
+            const cycle = self.cycle_frames.items.len;
+            for (members) |member| self.cycle_of_variable[member] = cycle;
+            for (breakers) |rule_index| self.breaker_cycle_of_rule[rule_index] = cycle;
+            try self.cycle_frames.append(self.allocator, try self.shortestNestingCycle(component_of, component, breakers));
+        }
+    }
+
+    /// Fills `parser_variable`. Factoring refers to a helper only from rules
+    /// of the variable it was factored from, which may be a helper itself.
+    fn planParserVariables(self: *Generator) EmitError!void {
+        const count = self.symbols.items.len;
+        const referrer = try self.allocator.alloc(?usize, count);
+        defer self.allocator.free(referrer);
+        @memset(referrer, null);
+        for (self.rules.items) |rule| {
+            for (rule.rhs.items) |child| {
+                if (child == rule.header or !self.symbols.items[child].synthetic_transparent) continue;
+                std.debug.assert(referrer[child] == null or referrer[child] == rule.header);
+                referrer[child] = rule.header;
+            }
+        }
+        self.parser_variable = try self.allocator.alloc(usize, count);
+        for (self.parser_variable, 0..) |*parser_variable, symbol_index| {
+            var current = symbol_index;
+            while (self.symbols.items[current].synthetic_transparent) current = referrer[current] orelse break;
+            parser_variable.* = current;
+        }
+    }
+
+    /// Whether a call to `symbol_index` from a rule of `header` calls the
+    /// parser that renders the rule, which keeps such calls as loops or plain
+    /// calls.
+    fn callsOwnParser(self: *Generator, header: usize, symbol_index: usize) bool {
+        return symbol_index == self.parser_variable[header];
+    }
+
+    /// Appends the variables a call to `symbol_index` from a rule of `header`
+    /// enters: the variable itself, or, for a transparent helper expanded
+    /// inline, what its rules call. Calls of the rule's own parser are left
+    /// out (see `callsOwnParser`).
+    fn appendCallTargets(self: *Generator, targets: *std.ArrayList(usize), header: usize, symbol_index: usize) EmitError!void {
+        const symbol = self.symbols.items[symbol_index];
+        if (symbol.kind != .variable or self.callsOwnParser(header, symbol_index)) return;
+        if (!symbol.synthetic_transparent) return targets.append(self.allocator, symbol_index);
+        for (self.rules_by_header[symbol_index].items) |rule_index| {
+            for (self.rules.items[rule_index].rhs.items) |child| {
+                if (child != symbol_index) try self.appendCallTargets(targets, header, child);
+            }
+        }
+    }
+
+    /// Whether `variable`'s rules may move to breaker rule functions: every
+    /// parser of the variable renders its rules through `emitRuleBody`, the
+    /// only place a breaker rule becomes a call to its function. A byte run,
+    /// a tail loop, a flattened parser and a self-repeating parser render the
+    /// rules themselves, so a cycle through any of them would still inline
+    /// without end. Each case asks the predicate its renderer asks.
+    fn canBreakAt(self: *Generator, variable: usize) EmitError!bool {
+        if (variable == self.plan.augmented_start or self.symbols.items[variable].synthetic_transparent) return false;
+        if (self.hasFlattenedOccurrence(variable) or self.hasSelfRepeatingParser(variable)) return false;
+        for ([_]bool{ false, true }) |skip_ast_construction| {
+            if (try self.parserShape(variable, skip_ast_construction) != .rules) return false;
+        }
+        return true;
+    }
+
+    fn hasBreakerRule(self: *Generator, variable: usize) bool {
+        for (self.rules_by_header[variable].items) |rule_index| {
+            if (self.breaker_cycle_of_rule[rule_index] != null) return true;
+        }
+        return false;
+    }
+
+    /// The smallest set of at most `exhaustive_breaker_search_limit`
+    /// candidates whose removal leaves the component acyclic, the earlier
+    /// candidates preferred. Failing that, every candidate, less each one the
+    /// rest make unnecessary, tried from the end so the consuming rules stay.
+    /// Null when even every candidate leaves a cycle.
+    fn findBreakers(self: *Generator, component_of: []const ?usize, component: usize, members: []const usize, candidates: []const usize) EmitError!?[]usize {
+        const removed = try self.allocator.alloc(bool, self.rules.items.len);
+        var size: usize = 1;
+        while (size <= @min(exhaustive_breaker_search_limit, candidates.len)) : (size += 1) {
+            var indices: [exhaustive_breaker_search_limit]usize = undefined;
+            for (0..size) |i| indices[i] = i;
+            combinations: while (true) {
+                @memset(removed, false);
+                for (indices[0..size]) |i| removed[candidates[i]] = true;
+                if (try self.isAcyclicWithout(component_of, component, members, removed)) {
+                    const result = try self.allocator.alloc(usize, size);
+                    for (indices[0..size], 0..) |i, j| result[j] = candidates[i];
+                    return result;
+                }
+                var position = size;
+                while (position > 0) {
+                    position -= 1;
+                    if (indices[position] < candidates.len - size + position) {
+                        indices[position] += 1;
+                        for (position + 1..size) |later| indices[later] = indices[later - 1] + 1;
+                        continue :combinations;
+                    }
+                }
+                break;
+            }
+        }
+
+        @memset(removed, false);
+        for (candidates) |rule_index| removed[rule_index] = true;
+        if (!try self.isAcyclicWithout(component_of, component, members, removed)) return null;
+        var index = candidates.len;
+        while (index > 0) {
+            index -= 1;
+            removed[candidates[index]] = false;
+            if (!try self.isAcyclicWithout(component_of, component, members, removed)) removed[candidates[index]] = true;
+        }
+        var result: std.ArrayList(usize) = .empty;
+        for (candidates) |rule_index| if (removed[rule_index]) try result.append(self.allocator, rule_index);
+        return result.items;
+    }
+
+    fn isAcyclicWithout(self: *Generator, component_of: []const ?usize, component: usize, members: []const usize, removed: []const bool) EmitError!bool {
+        const indegree = try self.allocator.alloc(usize, self.symbols.items.len);
+        defer self.allocator.free(indegree);
+        @memset(indegree, 0);
+        for (members) |member| {
+            for (self.rules_by_header[member].items) |rule_index| {
+                if (removed[rule_index]) continue;
+                for (self.rule_targets[rule_index]) |to| {
+                    if (component_of[to] == component) indegree[to] += 1;
+                }
+            }
+        }
+        var ready: std.ArrayList(usize) = .empty;
+        defer ready.deinit(self.allocator);
+        for (members) |member| if (indegree[member] == 0) try ready.append(self.allocator, member);
+        var processed: usize = 0;
+        while (ready.pop()) |node| {
+            processed += 1;
+            for (self.rules_by_header[node].items) |rule_index| {
+                if (removed[rule_index]) continue;
+                for (self.rule_targets[rule_index]) |to| {
+                    if (component_of[to] != component) continue;
+                    indegree[to] -= 1;
+                    if (indegree[to] == 0) try ready.append(self.allocator, to);
+                }
+            }
+        }
+        return processed == members.len;
+    }
+
+    /// Variables on the shortest cycle through a breaker rule: the frames
+    /// one nesting level costs while every variable parser is a function.
+    fn shortestNestingCycle(self: *Generator, component_of: []const ?usize, component: usize, breakers: []const usize) EmitError!usize {
+        var best: usize = std.math.maxInt(usize);
+        const distance = try self.allocator.alloc(?usize, self.symbols.items.len);
+        var queue: std.ArrayList(usize) = .empty;
+        for (breakers) |breaker| {
+            const breaker_rule = self.rules.items[breaker];
+            for (self.rule_targets[breaker]) |start| {
+                if (component_of[start] != component) continue;
+                @memset(distance, null);
+                distance[start] = 0;
+                queue.clearRetainingCapacity();
+                try queue.append(self.allocator, start);
+                var head: usize = 0;
+                while (head < queue.items.len) : (head += 1) {
+                    const node = queue.items[head];
+                    for (self.rules_by_header[node].items) |rule_index| {
+                        for (self.rule_targets[rule_index]) |to| {
+                            if (component_of[to] != component or distance[to] != null) continue;
+                            distance[to] = distance[node].? + 1;
+                            try queue.append(self.allocator, to);
+                        }
+                    }
+                }
+                if (distance[breaker_rule.header]) |edges| best = @min(best, edges + 1);
+            }
+        }
+        return best;
+    }
+
+    fn emitCycleBreakingSupport(self: *Generator, writer: *std.Io.Writer) !void {
+        try writer.writeAll(
+            \\/// The fewest frames one nesting level of a recursion cycle must cost,
+            \\/// while every variable parser is a function, for the cycle to break
+            \\/// when `inline_parsers` is set. A level costs at least two frames.
+            \\const cycle_breaking_minimum_frames = 2;
+            \\/// Indexed by recursion cycle: the frames one nesting level costs while
+            \\/// every variable parser is a function.
+            \\const cycle_frames = [_]usize{
+        );
+        for (self.cycle_frames.items) |frames| try writer.print(" {d},", .{frames});
+        try writer.writeAll(
+            \\ };
+            \\/// Debug builds still break cycles but keep every parser a function:
+            \\/// unoptimized, each parser inlined into a breaker rule function keeps
+            \\/// its own stack slots, which can cost hundreds of kilobytes of stack
+            \\/// per nesting level.
+            \\const is_parser_inlining_forced = is_parser_inlining_enabled and builtin.mode != .debug;
+            \\/// Forced inlining makes a body analyze every parser inlined into it,
+            \\/// which the generator does not measure.
+            \\const inlined_body_branch_quota = 100_000_000;
+            \\/// Whether `cycle`'s breaker rules are functions, so its variable
+            \\/// parsers inline.
+            \\fn cycleBreaks(comptime cycle: usize) bool {
+            \\    return is_parser_inlining_enabled and cycle_frames[cycle] >= cycle_breaking_minimum_frames;
+            \\}
+            \\/// What a breaker rule function takes from its variable's parser: the
+            \\/// node it builds, by address or by value, if it builds one.
+            \\fn ruleNodeType(comptime symbol_index: usize, comptime suppress_ast: bool) type {
+            \\    if (!symbolReturnsNodeSuppressed(symbol_index, suppress_ast)) return void;
+            \\    return if (is_ast_enabled) data_structures.Node.Pointer else data_structures.Node;
+            \\}
+            \\
+            \\
+        );
+    }
+
+    fn emitRuleFunctions(self: *Generator, writer: *std.Io.Writer) !void {
+        for (self.rule_functions.items) |function| {
+            const flag = if (function.skip_ast_construction) "true" else "false";
+            try writer.print("noinline fn {s}(context: *data_structures.Context", .{function.name});
+            if (self.has_occurrence_procedures) try writer.writeAll(", occurrence_procedures: ?*const ProcedureSequenceNode");
+            if (self.uses_explicit_recovery) try writer.writeAll(", occurrence_recovery: ?*const ExplicitRecoveryScope");
+            try writer.print(", rule_node: ruleNodeType({d}, {s})) anyerror!nodeReturnType({d}, {s}) {{\n", .{ function.variable, flag, function.variable, flag });
+            try emitter_common.emitModeGatedBody(Generator, self, writer, RuleFunction, function, self.has_occurrence_procedures, renderRuleFunctionBody);
+            try writer.writeAll("}\n\n");
+        }
+    }
+
+    /// A breaker rule function's body: its rule's body as its variable's
+    /// parser renders it, around the node that parser hands over.
+    fn renderRuleFunctionBody(self: *Generator, writer: *std.Io.Writer, function: RuleFunction) !void {
+        const returns_node = self.symbolReturnsNode(function.variable, function.skip_ast_construction);
+        // Other configurations' bodies may mutate the node or name the
+        // recovery scope, so both are discarded by address.
+        if (!returns_node) {
+            try writer.writeAll("    _ = &rule_node;\n");
+        } else if (self.options.with_ast) {
+            try writer.writeAll("    var node_address = rule_node;\n    _ = &node_address;\n");
+        } else {
+            try writer.writeAll("    var node = rule_node;\n    _ = &node;\n");
+        }
+        var body = std.Io.Writer.Allocating.init(self.allocator);
+        const outer_recovery_use = self.occurrence_uses.recovery;
+        self.occurrence_uses.recovery = false;
+        self.proven_first_terminal_rule = function.proven_first_terminal_rule;
+        defer self.proven_first_terminal_rule = null;
+        try self.emitRuleBodyDirect(&body.writer, function.rule_index, function.variable, "    ", function.skip_ast_construction);
+        if (self.uses_explicit_recovery and !self.occurrence_uses.recovery) try writer.writeAll("    _ = &occurrence_recovery;\n");
+        self.occurrence_uses.recovery = outer_recovery_use or self.occurrence_uses.recovery;
+        try writer.writeAll(body.written());
+        if (returns_node) try writer.writeAll(if (self.options.with_ast) "    return node_address;\n" else "    return node;\n");
+    }
+
+    /// The `@call` modifier of a call to `symbol_index`'s parser, or null for
+    /// a plain call: variable parsers off recursion cycles inline when the
+    /// build forces inlining, and those on a cycle when the cycle breaks.
+    fn callModifier(self: *Generator, symbol_index: usize) EmitError!?[]const u8 {
+        if (self.symbols.items[symbol_index].kind != .variable or self.in_unbroken_cycle[symbol_index]) return null;
+        if (self.cycle_of_variable[symbol_index]) |cycle| {
+            return try std.fmt.allocPrint(self.allocator, "if (is_parser_inlining_forced and cycleBreaks({d})) .always_inline else .auto", .{cycle});
+        }
+        return "if (is_parser_inlining_forced) .always_inline else .auto";
+    }
+
+    /// `callModifier` for the call to `rule`'s child at `child_index`, or null
+    /// when the call is of the parser rendering the rule (see
+    /// `callsOwnParser`).
+    fn childCallModifier(self: *Generator, rule: Rule, child_index: usize) EmitError!?[]const u8 {
+        const symbol_index = rule.rhs.items[child_index];
+        if (self.callsOwnParser(rule.header, symbol_index)) return null;
+        return self.callModifier(symbol_index);
+    }
+
+    /// Opens a call of `callee` with the context as its first argument and
+    /// returns the text that closes it: through `@call` with `modifier`, or a
+    /// plain call without one. Every call that may be forced inline opens
+    /// here, so the body's branch quota knows of it.
+    fn emitCallOpen(self: *Generator, writer: *std.Io.Writer, modifier: ?[]const u8, callee: []const u8) EmitError![]const u8 {
+        if (modifier) |text| {
+            self.body_forces_inlining = true;
+            try writer.print("@call({s}, {s}, .{{context", .{ text, callee });
+            return "})";
+        }
+        try writer.print("{s}(context", .{callee});
+        return ")";
     }
 
     fn emitRecoverySupport(self: *Generator, writer: *std.Io.Writer) !void {
@@ -324,6 +753,7 @@ const Generator = struct {
     pub fn beginFunctionBody(self: *Generator) void {
         self.decision_count = 0;
         self.inline_call_cost = 0;
+        self.body_forces_inlining = false;
     }
 
     /// Comptime branch budget each `(` in a generated body may spend on the
@@ -334,15 +764,22 @@ const Generator = struct {
     /// (`head` through the lexer, about five calls).
     const branch_quota_per_call = 8;
 
-    /// The `@setEvalBranchQuota` a rendered function body needs. Zig charges
-    /// every inline call, including those inside inlined bodies, against the
-    /// analyzing function's budget (1000 by default). Every call site in the
-    /// text gets `branch_quota_per_call`, and each call to an inline terminal
-    /// parser also carries that parser's whole cost.
-    pub fn functionBodyBranchQuota(self: *Generator, text: []const u8) usize {
+    /// The `@setEvalBranchQuota` argument a rendered function body needs, or
+    /// null when Zig's default suffices. Zig charges every inline call,
+    /// including those inside inlined bodies, against the analyzing
+    /// function's budget (1000 by default). Every call site in the text gets
+    /// `branch_quota_per_call`, and each call to an inline terminal parser
+    /// also carries that parser's whole cost. A body that may force variable
+    /// parsers inline gets `inlined_body_branch_quota` when the build does.
+    pub fn functionBodyBranchQuota(self: *Generator, text: []const u8) EmitError!?[]const u8 {
         const quota = branch_quota_per_call * std.mem.count(u8, text, "(") + self.inline_call_cost;
         self.largest_body_branch_quota = @max(self.largest_body_branch_quota, quota);
-        return quota;
+        const base = @max(quota, emitter_common.default_branch_quota);
+        if (self.body_forces_inlining) {
+            return try std.fmt.allocPrint(self.allocator, "if (is_parser_inlining_forced) inlined_body_branch_quota else {d}", .{base});
+        }
+        if (quota <= emitter_common.default_branch_quota) return null;
+        return try std.fmt.allocPrint(self.allocator, "{d}", .{quota});
     }
 
     /// Terminal parsers are `inline fn`, so every call spends the callee's
@@ -384,16 +821,18 @@ const Generator = struct {
         // inlining. One generated file serves every build, so a wrapper picks
         // when the build compiles.
         const suffix = if (skip_ast_construction) "_" else "";
-        const loops = try self.tailLoopEnabled(variable, skip_ast_construction);
+        const loops = try self.parserShape(variable, skip_ast_construction) == .tail_loop;
         if (loops) {
             try writer.print("inline fn parse_{s}{s}(context: *data_structures.Context", .{ name, suffix });
             if (self.has_occurrence_procedures) try writer.writeAll(", occurrence_procedures: ?*const ProcedureSequenceNode");
             if (self.uses_explicit_recovery) try writer.writeAll(", occurrence_recovery: ?*const ExplicitRecoveryScope");
             try writer.print(") anyerror!nodeReturnType({d}, {s}) {{\n", .{ variable, if (skip_ast_construction) "true" else "false" });
-            try writer.print("    return @call(if (symbolReturnsNodeSuppressed({d}, {s})) .never_inline else .auto, parse_{s}{s}_loop, .{{context", .{ variable, if (skip_ast_construction) "true" else "false", name, suffix });
+            const modifier = try std.fmt.allocPrint(self.allocator, "if (symbolReturnsNodeSuppressed({d}, {s})) .never_inline else {s}", .{ variable, if (skip_ast_construction) "true" else "false", (try self.callModifier(variable)) orelse ".auto" });
+            try writer.writeAll("    return ");
+            const close = try self.emitCallOpen(writer, modifier, try std.fmt.allocPrint(self.allocator, "parse_{s}{s}_loop", .{ name, suffix }));
             if (self.has_occurrence_procedures) try writer.writeAll(", occurrence_procedures");
             if (self.uses_explicit_recovery) try writer.writeAll(", occurrence_recovery");
-            try writer.writeAll("});\n}\n");
+            try writer.print("{s};\n}}\n", .{close});
         }
         // A loop's levels each have their own occurrence; the caller's is
         // the outermost level's.
@@ -461,7 +900,7 @@ const Generator = struct {
     fn hasSelectedParser(self: *Generator, variable: usize, skip_ast_construction: bool) EmitError!bool {
         const symbol = self.symbols.items[variable];
         if (symbol.kind != .variable or symbol.synthetic_transparent or variable == self.plan.augmented_start) return false;
-        if (try self.tailLoopEnabled(variable, skip_ast_construction)) return false;
+        if (try self.parserShape(variable, skip_ast_construction) != .rules) return false;
         return self.foldableRule(variable) != null;
     }
 
@@ -477,13 +916,12 @@ const Generator = struct {
         const variable = params.variable;
         const skip_ast_construction = params.skip_ast_construction;
         const returns_node = self.symbolReturnsNode(variable, skip_ast_construction);
-        if (variable != self.plan.augmented_start and !returns_node) {
-            if (try self.byteRunBytes(variable)) |bytes| return self.emitByteRunLoop(writer, variable, skip_ast_construction, bytes);
-        }
+        const shape = try self.parserShape(variable, skip_ast_construction);
+        if (shape == .byte_run) return self.emitByteRunLoop(writer, variable, skip_ast_construction, shape.byte_run);
         if (variable == self.plan.augmented_start) {
             try writer.writeAll("    root_reduction.* = .{};\n");
         }
-        if (try self.tailLoopEnabled(variable, skip_ast_construction)) return self.renderTailLoopBody(writer, variable, skip_ast_construction, returns_node);
+        if (shape == .tail_loop) return self.renderTailLoopBody(writer, variable, skip_ast_construction, returns_node);
         if (returns_node) {
             const variable_index = self.variableIndex(variable);
             if (self.options.with_ast) {
@@ -492,6 +930,8 @@ const Generator = struct {
             } else {
                 try writer.print("    var node = data_structures.Node{{ .text_start = context.currentTokenSourceOffset(), .variable = {d}, .payload = .{{}} }};\n\n", .{variable_index});
             }
+            // A breaker rule function may take every mutation of the node.
+            if (self.hasBreakerRule(variable)) try writer.writeAll(if (self.options.with_ast) "    _ = &node_address;\n" else "    _ = &node;\n");
         }
         if (variable != self.plan.augmented_start) {
             try writer.writeAll("    const push_syntax_error_variable = if (comptime is_syntax_error_stack_enabled) context.pushSyntaxErrorVariable(");
@@ -650,6 +1090,25 @@ const Generator = struct {
         }
         if (!any) return .never;
         return if (all) .always else .sometimes;
+    }
+
+    /// How the parser of `variable`, in the variant `skip_ast_construction`
+    /// selects, renders its rules. Every emitter that depends on it asks here.
+    const ParserShape = union(enum) {
+        /// One loop over a run of the bytes (see `byteRunBytes`).
+        byte_run: []const u8,
+        /// A loop over the rules (see `tailLoopEnabled`).
+        tail_loop,
+        /// A dispatch to the rules, each rendered by `emitRuleBody`.
+        rules,
+    };
+
+    fn parserShape(self: *Generator, variable: usize, skip_ast_construction: bool) EmitError!ParserShape {
+        if (variable != self.plan.augmented_start and !self.symbolReturnsNode(variable, skip_ast_construction)) {
+            if (try self.byteRunBytes(variable)) |bytes| return .{ .byte_run = bytes };
+        }
+        if (try self.tailLoopEnabled(variable, skip_ast_construction)) return .tail_loop;
+        return .rules;
     }
 
     /// Whether the parser of `variable`, in the variant `skip_ast_construction`
@@ -1052,16 +1511,29 @@ const Generator = struct {
     }
 
     fn emitSelfRepeatingParsers(self: *Generator, writer: *std.Io.Writer, variable: usize, skip_ast_construction: bool) !void {
-        // A byte run parses as one loop in its own parser.
-        if (try self.byteRunBytes(variable) != null) return;
         for (self.rules.items, 0..) |rule, rule_index| {
             if (rule.header != variable) continue;
-            for (rule.rhs.items, 0..) |symbol_index, child_index| {
-                if (symbol_index != variable or planning.isTailLoopPosition(rule, child_index)) continue;
+            for (0..rule.rhs.items.len) |child_index| {
+                if (!isSelfRepeatingSite(rule, child_index)) continue;
                 try self.emitSelfRepeatingParser(writer, variable, rule_index, child_index, skip_ast_construction);
                 try writer.writeByte('\n');
             }
         }
+    }
+
+    /// Whether `rule`'s child at `child_index` refers to the rule's own
+    /// variable outside a tail loop position, which a self-repeating parser
+    /// handles.
+    fn isSelfRepeatingSite(rule: Rule, child_index: usize) bool {
+        return rule.rhs.items[child_index] == rule.header and !planning.isTailLoopPosition(rule, child_index);
+    }
+
+    fn hasSelfRepeatingParser(self: *Generator, variable: usize) bool {
+        for (self.rules.items) |rule| {
+            if (rule.header != variable) continue;
+            for (0..rule.rhs.items.len) |child_index| if (isSelfRepeatingSite(rule, child_index)) return true;
+        }
+        return false;
     }
 
     fn symbolReturnsNode(self: *Generator, symbol_index: usize, skip_ast_construction: bool) bool {
@@ -1228,7 +1700,7 @@ const Generator = struct {
             }
             if (self.uses_explicit_recovery) try writer.writeAll(", occurrence_recovery");
             if (explicit_recovery) {
-                try self.emitExplicitRuleCatch(writer, rule, variable, skip_ast_construction, "", null);
+                try self.emitExplicitRuleCatch(writer, ")", rule, variable, skip_ast_construction, "", null);
             } else {
                 try writer.writeByte(')');
             }
@@ -1297,7 +1769,7 @@ const Generator = struct {
                 try writer.writeAll(", occurrence_recovery");
             }
             if (explicit_recovery) {
-                try self.emitExplicitRuleCatch(writer, rule, variable, skip_ast_construction, "", "repeating_node_address");
+                try self.emitExplicitRuleCatch(writer, ")", rule, variable, skip_ast_construction, "", "repeating_node_address");
             } else {
                 try writer.writeByte(')');
             }
@@ -1369,7 +1841,7 @@ const Generator = struct {
             if (self.has_occurrence_procedures) try writer.writeAll(", null");
             if (self.uses_explicit_recovery) try writer.writeAll(", occurrence_recovery");
             if (explicit_recovery) {
-                try self.emitExplicitRuleCatch(writer, rule, variable, skip_ast_construction, "", null);
+                try self.emitExplicitRuleCatch(writer, ")", rule, variable, skip_ast_construction, "", null);
             } else {
                 try writer.writeByte(')');
             }
@@ -1753,7 +2225,41 @@ const Generator = struct {
         try emitter_common.emitFailFastMessageRenderer(writer, spec.name, &.{ spec.exact_name, spec.symbol_name, "syntax_error_ll", "syntax_error" });
     }
 
-    fn emitRuleBody(self: *Generator, writer: *std.Io.Writer, rule_index: usize, parent_variable: usize, indent: []const u8, skip_ast_construction: bool) !void {
+    /// A rule's body, or, for a breaker rule in its variable's own parser, a
+    /// call of the breaker rule function that holds the body when the cycle
+    /// breaks.
+    fn emitRuleBody(self: *Generator, writer: *std.Io.Writer, rule_index: usize, parent_variable: usize, indent: []const u8, skip_ast_construction: bool) EmitError!void {
+        const cycle = self.breaker_cycle_of_rule[rule_index] orelse return self.emitRuleBodyDirect(writer, rule_index, parent_variable, indent, skip_ast_construction);
+        // `canBreakAt` keeps breaker rules out of loops and flattened parsers,
+        // where the cycle would stay unbroken while its parsers inline.
+        std.debug.assert(self.tail_loop == null and self.flattened_variable == null);
+        const name = try std.fmt.allocPrint(self.allocator, "parse_{s}{s}_rule_{d}", .{ try self.parserName(parent_variable), if (skip_ast_construction) "_" else "", rule_index });
+        // `if (true)` keeps the code after the rule switch reachable to the
+        // compiler when every rule is a breaker.
+        try writer.print("{s}if (comptime cycleBreaks({d})) {{\n{s}    if (true) return try {s}(context", .{ indent, cycle, indent, name });
+        if (self.has_occurrence_procedures) try writer.print(", {s}", .{self.occurrenceProceduresName()});
+        if (self.uses_explicit_recovery) try writer.print(", {s}", .{self.occurrenceRecoveryName()});
+        const node_argument = if (!self.symbolReturnsNode(parent_variable, skip_ast_construction)) "{}" else if (self.options.with_ast) "node_address" else "node";
+        try writer.print(", {s});\n{s}}} else {{\n", .{ node_argument, indent });
+        const proven_first_terminal_rule = self.proven_first_terminal_rule;
+        try self.emitRuleBodyDirect(writer, rule_index, parent_variable, indent, skip_ast_construction);
+        try writer.print("{s}}}\n", .{indent});
+        for (self.rule_functions.items) |function| {
+            if (!std.mem.eql(u8, function.name, name)) continue;
+            // Every parser that renders the rule entered it the same way.
+            std.debug.assert(function.proven_first_terminal_rule == proven_first_terminal_rule);
+            return;
+        }
+        try self.rule_functions.append(self.allocator, .{
+            .name = name,
+            .rule_index = rule_index,
+            .variable = parent_variable,
+            .skip_ast_construction = skip_ast_construction,
+            .proven_first_terminal_rule = proven_first_terminal_rule,
+        });
+    }
+
+    fn emitRuleBodyDirect(self: *Generator, writer: *std.Io.Writer, rule_index: usize, parent_variable: usize, indent: []const u8, skip_ast_construction: bool) EmitError!void {
         const rule = self.rules.items[rule_index];
         const parent_returns_node = self.symbolReturnsNode(parent_variable, skip_ast_construction);
         const captures_root = if (parent_variable == self.plan.augmented_start) captures: {
@@ -1875,6 +2381,13 @@ const Generator = struct {
         return std.fmt.allocPrint(self.allocator, "(if (is_decision_folding_enabled) {s}_selected else {s})", .{ parser, parser });
     }
 
+    /// Opens the call of `parser` for `rule`'s child at `child_index` and
+    /// returns the text that closes it: through `@call` where `callModifier`
+    /// gives the call a modifier.
+    fn emitChildCallOpen(self: *Generator, writer: *std.Io.Writer, rule: Rule, child_index: usize, child_skips_ast_construction: bool, parser: []const u8) EmitError![]const u8 {
+        return self.emitCallOpen(writer, try self.childCallModifier(rule, child_index), try self.childCallee(rule, child_index, child_skips_ast_construction, parser));
+    }
+
     fn emitChildParseLine(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, parent_variable: usize, rule: Rule, child_index: usize, parent: ?[]const u8, parent_address: ?[]const u8, indent: []const u8, skip_ast_construction: bool, slot_index: usize) !void {
         const proven_first_terminal_rule = self.proven_first_terminal_rule;
         self.proven_first_terminal_rule = null;
@@ -1919,14 +2432,16 @@ const Generator = struct {
             // Without AST construction the children come back on a carrier.
             const takes_children = !self.options.with_ast and parent != null and child_returns_node;
             if (takes_children) {
-                try writer.print("{s}{{\n{s}    const flattened_children = {s}parse_{s}_flattened(context, {s}", .{ indent, indent, if (explicit_recovery) "" else "try ", name, target });
+                try writer.print("{s}{{\n{s}    const flattened_children = {s}", .{ indent, indent, if (explicit_recovery) "" else "try " });
             } else {
-                try writer.print("{s}_ = {s}parse_{s}_flattened(context, {s}", .{ indent, if (explicit_recovery) "" else "try ", name, target });
+                try writer.print("{s}_ = {s}", .{ indent, if (explicit_recovery) "" else "try " });
             }
+            const close = try self.emitCallOpen(writer, try self.childCallModifier(rule, child_index), try std.fmt.allocPrint(self.allocator, "parse_{s}_flattened", .{name}));
+            try writer.print(", {s}", .{target});
             if (explicit_recovery) {
-                try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent, inner_level);
+                try self.emitExplicitRuleCatch(writer, close, rule, parent_variable, skip_ast_construction, indent, inner_level);
             } else {
-                try writer.writeByte(')');
+                try writer.writeAll(close);
             }
             try writer.print("; // child {d}, flattened\n", .{child_index});
             if (takes_children) {
@@ -1948,23 +2463,24 @@ const Generator = struct {
             proven_terminal_node = is_proven_child and !verbatim;
         }
         if (child.kind != .variable) self.inline_call_cost += self.terminal_inline_costs[symbol_index];
-        const call_name = if (symbol_index == parent_variable and !planning.isTailLoopPosition(rule, child_index))
+        const call_name = if (isSelfRepeatingSite(rule, child_index))
             try std.fmt.allocPrint(self.allocator, "{s}_{s}_{d}", .{ name, rule.rhs_index, child_index })
         else if (proven_terminal_node)
             try std.fmt.allocPrint(self.allocator, "{s}_proven", .{name})
         else
             name;
-        const callee = try self.childCallee(rule, child_index, child_skips_ast_construction, try std.fmt.allocPrint(self.allocator, "parse_{s}{s}", .{ call_name, if (child_skips_ast_construction) "_" else "" }));
+        const parser = try std.fmt.allocPrint(self.allocator, "parse_{s}{s}", .{ call_name, if (child_skips_ast_construction) "_" else "" });
         if (verbatim) try self.emitVerbatimTerminatorStart(writer, symbol_index, indent);
         if (parent != null) {
             if (child_returns_node) {
                 if (!self.options.with_ast) {
-                    try writer.print("{s}{{\n{s}    {s} child_node = {s}{s}(context", .{ indent, indent, if (verbatim) "var" else "const", if (explicit_recovery) "" else "try ", callee });
+                    try writer.print("{s}{{\n{s}    {s} child_node = {s}", .{ indent, indent, if (verbatim) "var" else "const", if (explicit_recovery) "" else "try " });
+                    const close = try self.emitChildCallOpen(writer, rule, child_index, child_skips_ast_construction, parser);
                     try self.emitChildOccurrenceArgument(writer, rule, child_index, child_returns_node);
                     if (explicit_recovery) {
-                        try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent, inner_level);
+                        try self.emitExplicitRuleCatch(writer, close, rule, parent_variable, skip_ast_construction, indent, inner_level);
                     } else {
-                        try writer.writeByte(')');
+                        try writer.writeAll(close);
                     }
                     try writer.print("; // child {d}\n", .{child_index});
                     if (verbatim) {
@@ -1991,12 +2507,13 @@ const Generator = struct {
                     , .{ indent, indent, parent_address.?, slot_index, indent, parent.?, parent_address.?, slot_index, indent, indent });
                     return;
                 }
-                try writer.print("{s}{{\n{s}    const child_node = {s}{s}(context", .{ indent, indent, if (explicit_recovery) "" else "try ", callee });
+                try writer.print("{s}{{\n{s}    const child_node = {s}", .{ indent, indent, if (explicit_recovery) "" else "try " });
+                const close = try self.emitChildCallOpen(writer, rule, child_index, child_skips_ast_construction, parser);
                 try self.emitChildOccurrenceArgument(writer, rule, child_index, child_returns_node);
                 if (explicit_recovery) {
-                    try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent, inner_level);
+                    try self.emitExplicitRuleCatch(writer, close, rule, parent_variable, skip_ast_construction, indent, inner_level);
                 } else {
-                    try writer.writeByte(')');
+                    try writer.writeAll(close);
                 }
                 try writer.print("; // child {d}\n", .{child_index});
                 if (verbatim) {
@@ -2016,23 +2533,25 @@ const Generator = struct {
                     \\
                 , .{ indent, indent, parent_address.?, parent_address.?, child_index, indent, indent });
             } else {
-                try writer.print("{s}_ = {s}{s}(context", .{ indent, if (explicit_recovery) "" else "try ", callee });
+                try writer.print("{s}_ = {s}", .{ indent, if (explicit_recovery) "" else "try " });
+                const close = try self.emitChildCallOpen(writer, rule, child_index, child_skips_ast_construction, parser);
                 try self.emitChildOccurrenceArgument(writer, rule, child_index, false);
                 if (explicit_recovery) {
-                    try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent, inner_level);
+                    try self.emitExplicitRuleCatch(writer, close, rule, parent_variable, skip_ast_construction, indent, inner_level);
                 } else {
-                    try writer.writeByte(')');
+                    try writer.writeAll(close);
                 }
                 try writer.print("; // child {d}\n", .{child_index});
                 if (verbatim) try self.emitVerbatimCapture(writer, symbol_index, indent);
             }
         } else if (child_returns_node) {
-            try writer.print("{s}{s} = {s}{s}(context", .{ indent, parent_address orelse "_", if (explicit_recovery) "" else "try ", callee });
+            try writer.print("{s}{s} = {s}", .{ indent, parent_address orelse "_", if (explicit_recovery) "" else "try " });
+            const close = try self.emitChildCallOpen(writer, rule, child_index, child_skips_ast_construction, parser);
             try self.emitChildOccurrenceArgument(writer, rule, child_index, true);
             if (explicit_recovery) {
-                try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent, inner_level);
+                try self.emitExplicitRuleCatch(writer, close, rule, parent_variable, skip_ast_construction, indent, inner_level);
             } else {
-                try writer.writeByte(')');
+                try writer.writeAll(close);
             }
             try writer.print("; // child {d}\n", .{child_index});
             if (verbatim) {
@@ -2044,12 +2563,13 @@ const Generator = struct {
                 }
             }
         } else {
-            try writer.print("{s}_ = {s}{s}(context", .{ indent, if (explicit_recovery) "" else "try ", callee });
+            try writer.print("{s}_ = {s}", .{ indent, if (explicit_recovery) "" else "try " });
+            const close = try self.emitChildCallOpen(writer, rule, child_index, child_skips_ast_construction, parser);
             try self.emitChildOccurrenceArgument(writer, rule, child_index, false);
             if (explicit_recovery) {
-                try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent, inner_level);
+                try self.emitExplicitRuleCatch(writer, close, rule, parent_variable, skip_ast_construction, indent, inner_level);
             } else {
-                try writer.writeByte(')');
+                try writer.writeAll(close);
             }
             try writer.print("; // child {d}\n", .{child_index});
             if (verbatim) try self.emitVerbatimCapture(writer, symbol_index, indent);
@@ -2446,9 +2966,9 @@ const Generator = struct {
         }
     }
 
-    fn emitExplicitRuleCatch(self: *Generator, writer: *std.Io.Writer, rule: Rule, parent_variable: usize, skip_ast_construction: bool, indent: []const u8, inner_level: ?[]const u8) !void {
+    fn emitExplicitRuleCatch(self: *Generator, writer: *std.Io.Writer, close: []const u8, rule: Rule, parent_variable: usize, skip_ast_construction: bool, indent: []const u8, inner_level: ?[]const u8) !void {
         const rule_index = self.ruleIndex(rule);
-        try writer.writeAll(") catch |err| switch (err) {\n");
+        try writer.print("{s} catch |err| switch (err) {{\n", .{close});
         try writer.print("{s}        error.ExplicitSyntaxRecovery => {{\n", .{indent});
         try writer.print("{s}            if (try llTryRecoveryRule_{d}(context, {s})) {{\n", .{ indent, rule_index, self.occurrenceRecoveryName() });
         const recovered_indent = try indented(self.allocator, indent, 16);
