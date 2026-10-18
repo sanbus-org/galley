@@ -28,6 +28,24 @@ pub fn build(b: *std.Build) !void {
         .add_galley_step = true,
     });
 
+    // Regenerates every checked-in copy of the ABI's named values from the
+    // single declaration in bindings/abi_values.zon. The `build` test suite
+    // owns the freshness check; this step is the writer.
+    const abi_values_step = b.step("abi-values", "Regenerate the checked-in ABI value copies from bindings/abi_values.zon");
+    const abi_values_exe = b.addExecutable(.{
+        .name = "abi-values",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/tools/abi_values.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    const run_abi_values = b.addRunArtifact(abi_values_exe);
+    run_abi_values.addArg("--write");
+    run_abi_values.addFileInput(b.path("bindings/abi_values.zon"));
+    run_abi_values.setCwd(b.path("."));
+    abi_values_step.dependOn(&run_abi_values.step);
+
     const package_consumer_step = b.step(
         "test-package-consumer",
         "Build and run an external project using galley_generator",

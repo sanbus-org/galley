@@ -27,7 +27,6 @@ fn snapshot_matches_per_node_accessors() {
     assert_eq!(snap.child_count.len(), count);
     assert_eq!(snap.variable.len(), count);
     assert!(snap.variable.contains(&-1));
-    assert_eq!(NodeHandle::INVALID.index(), i64::MAX as u64);
     assert_eq!(snap.is_semantic_error.len(), count);
     for address in 0..count as u64 {
         let node = snap.node(address);
@@ -128,7 +127,9 @@ fn snapshot_nodes_go_stale_with_the_next_parse() {
     let snap = session.snapshot().expect("snapshot");
     let node = snap.node(0);
     assert!(!session.text(node).expect("live read").is_empty());
-    session.parse_sentinel("alpha:12,beta:3").expect("second parse");
+    session
+        .parse_sentinel("alpha:12,beta:3")
+        .expect("second parse");
     assert_eq!(session.text(node), Err(Error::StaleTree));
     assert_eq!(session.tree_clean_children(node), Err(Error::StaleTree));
 }

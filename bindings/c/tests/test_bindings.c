@@ -453,10 +453,6 @@ static void test_snapshot(void) {
                                   variable, NULL, NULL, is_semantic_error, is_recovered,
                                   count) == (long long)count);
     CHECK(parent[root] == GALLEY_INVALID_NODE);
-    /* Every address and both sentinels are non-negative: only statuses are
-     * negative, so a value-returning call can tell them apart. */
-    CHECK(GALLEY_INVALID_NODE == 0x7FFFFFFFFFFFFFFFULL);
-    CHECK(GALLEY_NO_VARIABLE == 0x7FFFFFFFFFFFFFFFLL);
     /* The variable column and galley_node_variable_index say the same thing
      * for every node, and a node without a variable reads GALLEY_NO_VARIABLE
      * in both. */

@@ -6,7 +6,7 @@
  * All `Uint8Array` fields are copies that remain valid after the next parse.
  */
 
-import type { Kind, RecoveryTarget, Resume } from "./constants.ts";
+import type { DiagnosticKind, RecoveryTarget, ResumeSide } from "./constants.ts";
 
 /**
  * Display name for the synthetic control-byte terminals (end of input and
@@ -32,7 +32,7 @@ export function displayTokenName(token: Uint8Array): string | null {
 }
 
 export interface Diagnostic {
-  readonly kind: Kind;
+  readonly kind: DiagnosticKind;
   readonly offset: number; // byte offset in the input
   readonly line: number; // 1-based; 0 when it has none
   readonly column: number;
@@ -47,7 +47,7 @@ export interface Diagnostic {
   readonly indentation: [number, number] | null; // (spaces, width) for indentation errors
   readonly recoveryKind: RecoveryTarget | null;
   readonly recoveryTerminal: Uint8Array | null;
-  readonly recoveryResume: Resume | null;
+  readonly recoveryResume: ResumeSide | null;
   readonly recoveryLhsVariable: string | null;
   readonly recoveryProduction: [string, number] | null; // (variable, rhs_index)
   readonly recoveryOccurrence: [string, number, number, string] | null; // (parent, rhs, symbol, variable)

@@ -144,14 +144,6 @@ class ParserSurfaceTests(unittest.TestCase):
         self.assertIn("syntax", rendered.lower())
         self.assertIsNone(grammar.status_string(999999))
 
-    def test_status_enum_carries_the_refusals(self):
-        # The ABI's statuses and their texts, in both the enum and the
-        # status-string mapping.
-        self.assertEqual(grammar.Status.ERROR_OUT_OF_RANGE, -17)
-        self.assertEqual(grammar.Status.ERROR_INVALID_ARGUMENT, -18)
-        self.assertEqual(grammar.status_string(-17), "out of range")
-        self.assertEqual(grammar.status_string(-18), "invalid argument")
-
     def test_diagnostic_type_is_not_directly_constructible(self):
         with self.assertRaises(TypeError):
             grammar.Diagnostic()
@@ -867,7 +859,7 @@ class SessionTests(unittest.TestCase):
         self.assertIsNotNone(self.session.diagnostic())
         self.assertIsNotNone(diagnostic)
         assert diagnostic is not None
-        self.assertEqual(diagnostic.kind, grammar.Kind.SYNTAX)
+        self.assertEqual(diagnostic.kind, grammar.DiagnosticKind.SYNTAX)
         self.assertEqual(diagnostic.offset, 6)
         self.assertEqual(diagnostic.line, 1)
         self.assertEqual(diagnostic.column, 7)
@@ -968,14 +960,16 @@ class SemanticErrorTests(unittest.TestCase):
         diagnostic = self.session.diagnostic()
         self.assertIsNotNone(diagnostic)
         assert diagnostic is not None
-        self.assertEqual(diagnostic.kind, grammar.Kind.SEMANTIC)
+        self.assertEqual(diagnostic.kind, grammar.DiagnosticKind.SEMANTIC)
         self.assertEqual(diagnostic.line, 1)
         self.assertEqual(diagnostic.semantic_error_count, 2)
         self.assertEqual(diagnostic.semantic, (b"Number", "value out of range"))
         self.assertIn("SemanticError", diagnostic.message)
         recorded = self.session.diagnostics()
         self.assertEqual(len(recorded), 2)
-        self.assertTrue(all(item.kind == grammar.Kind.SEMANTIC for item in recorded))
+        self.assertTrue(
+            all(item.kind == grammar.DiagnosticKind.SEMANTIC for item in recorded)
+        )
         self.assertLess(recorded[0].offset, recorded[1].offset)
         self.assertTrue(
             all(item.semantic == (b"Number", "value out of range") for item in recorded)
@@ -1042,7 +1036,7 @@ class HookDispatchTests(unittest.TestCase):
         self.assertEqual(raised.exception.code, grammar.Status.ERROR_HOOK_FAILED)
         diagnostic = raised.exception.diagnostic
         assert diagnostic is not None
-        self.assertEqual(diagnostic.kind, grammar.Kind.HOOK)
+        self.assertEqual(diagnostic.kind, grammar.DiagnosticKind.HOOK)
         self.assertGreaterEqual(diagnostic.line, 1)
         self.assertGreaterEqual(diagnostic.column, 1)
         self.assertIn("reduction_Number", str(raised.exception))
@@ -1089,7 +1083,7 @@ class HookDispatchTests(unittest.TestCase):
         self.assertEqual(raised.exception.code, grammar.Status.ERROR_HOOK_FAILED)
         diagnostic = raised.exception.diagnostic
         assert diagnostic is not None
-        self.assertEqual(diagnostic.kind, grammar.Kind.HOOK)
+        self.assertEqual(diagnostic.kind, grammar.DiagnosticKind.HOOK)
         self.assertIn("HookError", str(raised.exception))
         assert diagnostic.message is not None and diagnostic.message_ansi is not None
         self.assertIn("HookError", diagnostic.message)
@@ -1756,9 +1750,6 @@ class WalkTests(unittest.TestCase):
         self.assertEqual(snap.node(first.address), first)
         # An absent node link answers None, never a node.
         self.assertIsNone(snap.node(grammar.INVALID_NODE))
-        # Every address and the sentinel are non-negative: only statuses are
-        # negative in the ABI, so the sentinel is the largest signed 64-bit value.
-        self.assertEqual(grammar.INVALID_NODE, 2**63 - 1)
         # A node without a variable reads None in the column and the accessor.
         self.assertIn(None, snap.variable)
         for address, variable in enumerate(snap.variable):
@@ -3078,7 +3069,8 @@ class RawAbiRefusalTests(unittest.TestCase):
         recorded = lib.galley_recorded_diagnostic_count(self.session)
         self.assertGreaterEqual(recorded, 1)
         self.assertEqual(
-            lib.galley_recorded_diagnostic_kind(self.session, 0), grammar.Kind.SYNTAX
+            lib.galley_recorded_diagnostic_kind(self.session, 0),
+            grammar.DiagnosticKind.SYNTAX,
         )
         self.assertEqual(
             lib.galley_recorded_diagnostic_kind(self.session, recorded),
@@ -4414,7 +4406,7 @@ class PublishedFailureTests(unittest.TestCase):
         current = self.session.diagnostic()
         assert current is not None
         entry = recorded[0]
-        self.assertEqual(entry.kind, grammar.Kind.SYNTAX)
+        self.assertEqual(entry.kind, grammar.DiagnosticKind.SYNTAX)
         self.assertEqual(entry.syntax_error_count, 1)
         self.assertEqual(entry.semantic_error_count, 0)
         for field in (

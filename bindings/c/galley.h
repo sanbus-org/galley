@@ -62,15 +62,19 @@ typedef struct GalleyHookDoor GalleyHookDoor;
 /* Stable node index into a session's AST storage. */
 typedef unsigned long long GalleyNodeAddress;
 
+// >>> generated: sentinels (bindings/abi_values.zon; regenerate: zig build abi-values)
 /* Returned by tree queries when no node exists at that position. Every node
  * address and this sentinel are non-negative (INT64_MAX), so a call that
- * returns an address can report a negative status in the same long long. */
+ * returns an address can report a negative status in the same long long.
+ */
 #define GALLEY_INVALID_NODE 0x7FFFFFFFFFFFFFFFULL
 
 /* Returned by galley_node_variable_index and written to the snapshot's
  * variable column for a node that has no variable. Non-negative like
- * GALLEY_INVALID_NODE: only statuses are negative. */
+ * GALLEY_INVALID_NODE: only statuses are negative.
+ */
 #define GALLEY_NO_VARIABLE 0x7FFFFFFFFFFFFFFFLL
+// <<< generated: sentinels
 
 /* Status codes returned by galley_parse_sentinel, galley_parse, and the
  * accessor functions. Non-negative values are success and (for parse)
@@ -92,53 +96,97 @@ typedef unsigned long long GalleyNodeAddress;
  * galley_error_hook_failed. Those are the statuses that end a parse that
  * ran, and the session's diagnostic then belongs to that attempt; a failure
  * built from any other status carries none. */
+// >>> generated: statuses (bindings/abi_values.zon; regenerate: zig build abi-values)
 enum {
-    galley_ok                             = 0,
-    galley_error_null_argument            = -1,
-    galley_error_syntax                   = -2,
-    galley_error_indentation              = -3,
-    galley_error_stack_overflow           = -4,
-    galley_error_ast_capacity_exceeded    = -5,
-    galley_error_unterminated_raw_string  = -6,
-    galley_error_out_of_memory            = -7,
-    galley_error_internal                 = -8,
-    galley_error_no_diagnostic            = -9,
-    galley_error_invalid_node             = -10,
-    galley_error_io                       = -11,
-    galley_error_semantic                 = -12,
+    /* Success: the call ran to its end (a parse answers the number of bytes
+     * parsed).
+     */
+    galley_ok                            = 0,
+    /* A required argument is null: a session, a hook door, or a required
+     * pointer.
+     */
+    galley_error_null_argument           = -1,
+    /* The parse recorded syntax errors. A parse that recovered and ran to its
+     * end still publishes its tree, with the damaged regions flagged as
+     * recovered nodes; a parse that could not recover publishes nothing.
+     */
+    galley_error_syntax                  = -2,
+    /* The parse failed on indentation, which has no recovery; nothing is
+     * published.
+     */
+    galley_error_indentation             = -3,
+    /* The parser stack exceeded its configured limit; nothing is published.
+     */
+    galley_error_stack_overflow          = -4,
+    /* AST storage ran out of its planned capacity; nothing is published.
+     */
+    galley_error_ast_capacity_exceeded   = -5,
+    /* Input ended inside a raw string; nothing is published.
+     */
+    galley_error_unterminated_raw_string = -6,
+    /* An allocation failed; nothing is published.
+     */
+    galley_error_out_of_memory           = -7,
+    /* An internal invariant failed: a bug in the library, not a property of
+     * the input.
+     */
+    galley_error_internal                = -8,
+    /* The read needs a diagnostic and none matches: no diagnostic is
+     * recorded, it is not of the requested kind, or a recorded-diagnostic
+     * index is past its table.
+     */
+    galley_error_no_diagnostic           = -9,
+    /* A tree position names no node of the tree the call addresses; an index
+     * past any other table is galley_error_out_of_range instead.
+     */
+    galley_error_invalid_node            = -10,
+    /* Reading the input failed; nothing is published.
+     */
+    galley_error_io                      = -11,
+    /* The parse recorded semantic errors; the tree is still published, with
+     * the erroring nodes marked.
+     */
+    galley_error_semantic                = -12,
     /* A parse holds the session exclusively; the call is refused rather than
      * queued. Post-parse node/tree/diagnostic accessors return this while a
-     * parse is in flight (hook code must use the galley_hook_* door). */
-    galley_error_session_in_use           = -13,
+     * parse is in flight (hook code must use the galley_hook_* door).
+     */
+    galley_error_session_in_use          = -13,
     /* A node, tree edit, snapshot, or walk cursor carries a generation that
      * is not the door's live tree's. On the session door: the session parsed
      * again, the last parse failed and published nothing, or nothing was ever
      * published; re-read the tree with galley_root_node and use its nodes.
-     * galley_last_input and galley_last_position follow the published tree the
-     * same way. On
-     * the hook door (galley_hook_*, galley_procedure_set_current_node): the
-     * generation is not the running parse's (galley_hook_generation). Calls
-     * on both doors pass the generation they address; the check runs in every
-     * build, because it is a lifetime contract, not a misuse check. */
-    galley_error_stale_tree               = -14,
-    /* A galley_procedure_* call made with the ticket of a hook that has
-     * returned: the arguments are valid only while their hook runs. */
-    galley_error_stale_hook               = -15,
-    /* A hook's dispatch returned nonzero: the parse stopped where the hook ran
-     * and published nothing. The diagnostic is of kind
-     * galley_diagnostic_kind_hook; the host keeps the cause of the failure. */
-    galley_error_hook_failed              = -16,
+     * galley_last_input and galley_last_position follow the published tree
+     * the same way. On the hook door (galley_hook_*,
+     * galley_procedure_set_current_node): the generation is not the running
+     * parse's (galley_hook_generation). Calls on both doors pass the
+     * generation they address; the check runs in every build, because it is a
+     * lifetime contract, not a misuse check.
+     */
+    galley_error_stale_tree              = -14,
+    /* A galley_procedure_* call made with the ticket of a hook that returned:
+     * the arguments are valid only while their hook runs.
+     */
+    galley_error_stale_hook              = -15,
+    /* A hook's dispatch returned nonzero: the parse stopped where the hook
+     * ran and published nothing. The diagnostic is of kind
+     * galley_diagnostic_kind_hook; the host keeps the cause of the failure.
+     */
+    galley_error_hook_failed             = -16,
     /* An index outside the table it was read from: a hook name, a grammar
      * symbol or variable name, or an expected-token or context-name index
-     * past its diagnostic's table. An address outside the live node
-     * storage is galley_error_invalid_node instead. */
-    galley_error_out_of_range             = -17,
-    /* A value in GalleyCOptions is outside its domain (a negative
-     * max_errors, recovery_window, or verbosity, or a non-finite
+     * past its diagnostic's table. An address outside the live node storage
+     * is galley_error_invalid_node instead.
+     */
+    galley_error_out_of_range            = -17,
+    /* A value in GalleyCOptions is outside its domain (a negative max_errors,
+     * recovery_window, or verbosity, or a non-finite
      * ast_preallocation_ratio), or the enable-flag count passed to
-     * galley_session_set_hooks does not match galley_hooks_count(). */
-    galley_error_invalid_argument         = -18,
+     * galley_session_set_hooks does not match galley_hooks_count().
+     */
+    galley_error_invalid_argument        = -18,
 };
+// <<< generated: statuses
 
 /* Returns the build-supplied version string of this library. The pointer
  * remains valid for the lifetime of the process. */
@@ -148,16 +196,31 @@ const char *galley_version(void);
  * generated; a surface whose feature is off answers what the reference below
  * says for it (node reads without AST construction, for example, answer 0
  * counts and refuse every node address). */
+// >>> generated: flags (bindings/abi_values.zon; regenerate: zig build abi-values)
 enum {
+    /* Predictive LL parser: recursive descent over the native call stack.
+     */
     galley_parser_type_ll = 0,
+    /* Canonical LR parser: recursive ascent over the native call stack.
+     */
     galley_parser_type_lr = 1
 };
 
 enum {
+    /* Recovery is disabled: the parser is fail-fast, and grammar annotations
+     * are inert.
+     */
     galley_recovery_mode_disabled  = 0,
+    /* Recovery is enabled for an unannotated grammar: the parser synchronizes
+     * on its own.
+     */
     galley_recovery_mode_automatic = 1,
+    /* Recovery is enabled for an annotated grammar: only committed annotated
+     * scopes recover, with no automatic fallback.
+     */
     galley_recovery_mode_explicit  = 2
 };
+// <<< generated: flags
 
 /* Returns the parser family of this library. */
 long long galley_parser_type(void);
@@ -711,25 +774,55 @@ const char *galley_status_string(long long status);
  * galley_error_session_in_use. Hooks use the galley_hook_* twins.
  *
  * Kinds and enum values: */
+// >>> generated: kinds (bindings/abi_values.zon; regenerate: zig build abi-values)
 enum {
+    /* No diagnostic: the previous parse succeeded, or no parse has run.
+     */
     galley_diagnostic_kind_none        = 0,
+    /* A syntax error. A parse that recovered from its syntax errors still
+     * publishes its tree, with the damaged regions flagged as recovered
+     * nodes.
+     */
     galley_diagnostic_kind_syntax      = 1,
+    /* An indentation error, reported where the input's indentation does not
+     * fit the grammar.
+     */
     galley_diagnostic_kind_indentation = 2,
+    /* A semantic error recorded by a reduction or a hook; the parse continues
+     * and the node is marked.
+     */
     galley_diagnostic_kind_semantic    = 3,
+    /* A hook raised or its dispatch returned failure: the parse stopped at
+     * that hook and published nothing.
+     */
     galley_diagnostic_kind_hook        = 4
 };
 
 enum {
-    galley_recovery_target_none        = 0,
+    /* No recovery information: the diagnostic did not come from a recovery,
+     * or recovery could not attribute a target.
+     */
+    galley_recovery_target_none         = 0,
+    /* The recovery synchronized at a left-hand-side variable.
+     */
     galley_recovery_target_lhs_variable = 1,
-    galley_recovery_target_production  = 2,
-    galley_recovery_target_occurrence  = 3
+    /* The recovery synchronized at a committed production.
+     */
+    galley_recovery_target_production   = 2,
+    /* The recovery synchronized at an annotated right-hand-side occurrence.
+     */
+    galley_recovery_target_occurrence   = 3
 };
 
 enum {
+    /* The recovery terminal is preserved for the parser to match.
+     */
     galley_resume_before = 0,
+    /* The recovery terminal is consumed by the recovery.
+     */
     galley_resume_after  = 1
 };
+// <<< generated: kinds
 
 /* Returns the kind of the current diagnostic (galley_diagnostic_kind_none
  * when the previous parse succeeded). */

@@ -10,6 +10,11 @@ A complete consumer lives in
 [`examples/rust`](https://github.com/sanbus-org/galley/tree/main/examples/rust);
 it is built and executed by CI on every push.
 
+Every named value this crate shares with the C ABI — statuses, diagnostic
+kinds, recovery targets, resume sides, parser types, and recovery modes — is
+declared once, then rendered into each binding's idiom in
+[ABI Values](/abi_values).
+
 ## Procedures
 
 Set `pub const procedures = true;` in your grammar's `config.zig` and implement the

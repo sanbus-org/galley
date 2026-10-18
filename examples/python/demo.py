@@ -114,9 +114,9 @@ def main() -> int:
         for index, diag in enumerate(recorded):
             kind_name = (
                 "syntax"
-                if diag.kind == parser.Kind.SYNTAX
+                if diag.kind == parser.DiagnosticKind.SYNTAX
                 else "indentation"
-                if diag.kind == parser.Kind.INDENTATION
+                if diag.kind == parser.DiagnosticKind.INDENTATION
                 else "none"
             )
             unexpected = diag.unexpected_token.decode() if diag.unexpected_token else ""

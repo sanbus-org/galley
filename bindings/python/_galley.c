@@ -363,22 +363,24 @@ static int py_dispatch_impl(void *handle, unsigned int index, unsigned long long
  * eight, the statuses that end a parse that ran. Any other status carries
  * none — a file read that failed included, whether before the parse began
  * or, in a streaming build, during it. */
+// >>> generated: status flags (bindings/abi_values.zon; regenerate: zig build abi-values)
 static int status_carries_diagnostic(long long status)
 {
     switch (status) {
     case galley_error_syntax:
-    case galley_error_semantic:
     case galley_error_indentation:
     case galley_error_stack_overflow:
     case galley_error_ast_capacity_exceeded:
     case galley_error_unterminated_raw_string:
     case galley_error_out_of_memory:
+    case galley_error_semantic:
     case galley_error_hook_failed:
         return 1;
     default:
         return 0;
     }
 }
+// <<< generated: status flags
 
 /* Sets ErrorException from a negative galley status code. The instance
  * carries the raw code as its `code` attribute and, when a session is
@@ -1917,7 +1919,7 @@ static void Diagnostic_dealloc(DiagnosticObject *self)
 
 static PyMemberDef Diagnostic_members[] = {
     {"kind", T_LONG, offsetof(DiagnosticObject, kind), READONLY,
-     "diagnostic classification: Kind.NONE, Kind.SYNTAX, Kind.SEMANTIC, Kind.INDENTATION, Kind.HOOK"},
+     "diagnostic classification: DiagnosticKind.NONE, DiagnosticKind.SYNTAX, DiagnosticKind.SEMANTIC, DiagnosticKind.INDENTATION, DiagnosticKind.HOOK"},
     {"offset", T_ULONGLONG, offsetof(DiagnosticObject, offset), READONLY,
      "byte offset in the input of the failure"},
     {"line", T_LONG, offsetof(DiagnosticObject, line), READONLY,
@@ -1955,7 +1957,7 @@ static PyMemberDef Diagnostic_members[] = {
      "synchronization terminal bytes chosen by recovery"},
     {"recovery_resume", T_OBJECT,
      offsetof(DiagnosticObject, recovery_resume), READONLY,
-     "Resume.BEFORE or Resume.AFTER"},
+     "ResumeSide.BEFORE or ResumeSide.AFTER"},
     {"recovery_lhs_variable", T_OBJECT,
      offsetof(DiagnosticObject, recovery_lhs_variable), READONLY,
      "LHS variable scope of the applied recovery"},
@@ -4452,97 +4454,62 @@ static int add_int_enum(PyObject *module, const char *class_name,
     return 0;
 }
 
-/* Registers one IntEnum from `<prefix>_members` and `<prefix>_values`. The
- * count is derived from the values array, so a member can no longer be left
- * out of the class by a stale hand-written count; ENUM_ARRAYS_MATCH refuses a
- * build where the two arrays differ in length. */
+/* Registers one IntEnum from `<prefix>_members` and `<prefix>_values`, both
+ * generated: the count is derived from the values array, so a member cannot
+ * be left out of the class by a stale hand-written count. */
 #define ARRAY_LENGTH(array) (sizeof(array) / sizeof((array)[0]))
-#define ENUM_ARRAYS_MATCH(prefix)                                                  \
-    _Static_assert(ARRAY_LENGTH(prefix##_members) == ARRAY_LENGTH(prefix##_values), \
-                   #prefix " members and values differ in length")
 #define ADD_INT_ENUM(module, class_name, prefix)                                   \
     add_int_enum(module, class_name, prefix##_members, prefix##_values,            \
                  ARRAY_LENGTH(prefix##_values))
 
 static int add_binding_enums(PyObject *module)
 {
+    // >>> generated: enum arrays (bindings/abi_values.zon; regenerate: zig build abi-values)
     static const char *const parser_type_members[] = {"LL", "LR"};
-    static const long long parser_type_values[] = {
-        galley_parser_type_ll, galley_parser_type_lr};
-    static const char *const recovery_mode_members[] = {
-        "DISABLED", "AUTOMATIC", "EXPLICIT"};
-    static const long long recovery_mode_values[] = {
-        galley_recovery_mode_disabled, galley_recovery_mode_automatic,
-        galley_recovery_mode_explicit};
-    static const char *const kind_members[] = {
-        "NONE", "SYNTAX", "INDENTATION", "SEMANTIC", "HOOK"};
-    static const long long kind_values[] = {
-        galley_diagnostic_kind_none, galley_diagnostic_kind_syntax,
-        galley_diagnostic_kind_indentation, galley_diagnostic_kind_semantic,
-        galley_diagnostic_kind_hook};
-    static const char *const recovery_target_members[] = {
-        "NONE", "LHS_VARIABLE", "PRODUCTION", "OCCURRENCE"};
-    static const long long recovery_target_values[] = {
-        galley_recovery_target_none, galley_recovery_target_lhs_variable,
+    static const long long parser_type_values[] = {galley_parser_type_ll,
+        galley_parser_type_lr};
+    static const char *const recovery_mode_members[] = {"DISABLED",
+        "AUTOMATIC", "EXPLICIT"};
+    static const long long recovery_mode_values[] = {galley_recovery_mode_disabled,
+        galley_recovery_mode_automatic, galley_recovery_mode_explicit};
+    static const char *const diagnostic_kind_members[] = {"NONE", "SYNTAX",
+        "INDENTATION", "SEMANTIC", "HOOK"};
+    static const long long diagnostic_kind_values[] = {galley_diagnostic_kind_none,
+        galley_diagnostic_kind_syntax, galley_diagnostic_kind_indentation,
+        galley_diagnostic_kind_semantic, galley_diagnostic_kind_hook};
+    static const char *const recovery_target_members[] = {"NONE",
+        "LHS_VARIABLE", "PRODUCTION", "OCCURRENCE"};
+    static const long long recovery_target_values[] = {galley_recovery_target_none,
+        galley_recovery_target_lhs_variable,
         galley_recovery_target_production, galley_recovery_target_occurrence};
-    static const char *const resume_members[] = {"BEFORE", "AFTER"};
-    static const long long resume_values[] = {
-        galley_resume_before, galley_resume_after};
-    static const char *const status_members[] = {
-        "OK",
-        "ERROR_NULL_ARGUMENT",
-        "ERROR_SYNTAX",
-        "ERROR_INDENTATION",
-        "ERROR_STACK_OVERFLOW",
-        "ERROR_AST_CAPACITY_EXCEEDED",
-        "ERROR_UNTERMINATED_RAW_STRING",
-        "ERROR_OUT_OF_MEMORY",
-        "ERROR_INTERNAL",
-        "ERROR_NO_DIAGNOSTIC",
-        "ERROR_INVALID_NODE",
-        "ERROR_IO",
-        "ERROR_SEMANTIC",
-        "ERROR_SESSION_IN_USE",
-        "ERROR_STALE_TREE",
-        "ERROR_STALE_HOOK",
-        "ERROR_HOOK_FAILED",
-        "ERROR_OUT_OF_RANGE",
-        "ERROR_INVALID_ARGUMENT"};
-    static const long long status_values[] = {
-        galley_ok,
-        galley_error_null_argument,
-        galley_error_syntax,
-        galley_error_indentation,
-        galley_error_stack_overflow,
+    static const char *const resume_side_members[] = {"BEFORE", "AFTER"};
+    static const long long resume_side_values[] = {galley_resume_before,
+        galley_resume_after};
+    static const char *const status_members[] = {"OK", "ERROR_NULL_ARGUMENT",
+        "ERROR_SYNTAX", "ERROR_INDENTATION", "ERROR_STACK_OVERFLOW",
+        "ERROR_AST_CAPACITY_EXCEEDED", "ERROR_UNTERMINATED_RAW_STRING",
+        "ERROR_OUT_OF_MEMORY", "ERROR_INTERNAL", "ERROR_NO_DIAGNOSTIC",
+        "ERROR_INVALID_NODE", "ERROR_IO", "ERROR_SEMANTIC",
+        "ERROR_SESSION_IN_USE", "ERROR_STALE_TREE", "ERROR_STALE_HOOK",
+        "ERROR_HOOK_FAILED", "ERROR_OUT_OF_RANGE", "ERROR_INVALID_ARGUMENT"};
+    static const long long status_values[] = {galley_ok,
+        galley_error_null_argument, galley_error_syntax,
+        galley_error_indentation, galley_error_stack_overflow,
         galley_error_ast_capacity_exceeded,
-        galley_error_unterminated_raw_string,
-        galley_error_out_of_memory,
-        galley_error_internal,
-        galley_error_no_diagnostic,
-        galley_error_invalid_node,
-        galley_error_io,
-        galley_error_semantic,
-        galley_error_session_in_use,
-        galley_error_stale_tree,
-        galley_error_stale_hook,
-        galley_error_hook_failed,
-        galley_error_out_of_range,
-        galley_error_invalid_argument};
-
-    ENUM_ARRAYS_MATCH(parser_type);
-    ENUM_ARRAYS_MATCH(recovery_mode);
-    ENUM_ARRAYS_MATCH(kind);
-    ENUM_ARRAYS_MATCH(recovery_target);
-    ENUM_ARRAYS_MATCH(resume);
-    ENUM_ARRAYS_MATCH(status);
-
+        galley_error_unterminated_raw_string, galley_error_out_of_memory,
+        galley_error_internal, galley_error_no_diagnostic,
+        galley_error_invalid_node, galley_error_io, galley_error_semantic,
+        galley_error_session_in_use, galley_error_stale_tree,
+        galley_error_stale_hook, galley_error_hook_failed,
+        galley_error_out_of_range, galley_error_invalid_argument};
     if (ADD_INT_ENUM(module, "ParserType", parser_type) < 0 ||
         ADD_INT_ENUM(module, "RecoveryMode", recovery_mode) < 0 ||
-        ADD_INT_ENUM(module, "Kind", kind) < 0 ||
+        ADD_INT_ENUM(module, "DiagnosticKind", diagnostic_kind) < 0 ||
         ADD_INT_ENUM(module, "RecoveryTarget", recovery_target) < 0 ||
-        ADD_INT_ENUM(module, "Resume", resume) < 0 ||
+        ADD_INT_ENUM(module, "ResumeSide", resume_side) < 0 ||
         ADD_INT_ENUM(module, "Status", status) < 0)
         return -1;
+    // <<< generated: enum arrays
     return 0;
 }
 

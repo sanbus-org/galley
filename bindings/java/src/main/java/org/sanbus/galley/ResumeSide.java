@@ -1,27 +1,35 @@
 package org.sanbus.galley;
 
+// >>> generated file (bindings/abi_values.zon; regenerate: zig build abi-values)
+
 /**
- * Resume sides reported by {@code galley_diagnostic_recovery_resume},
- * per the {@code galley_resume_*} constants in the C ABI. Converted once
- * at the FFI boundary via {@link #fromCode}; branching code uses these
- * names, never integers.
+ * Resume sides returned by {@code galley_diagnostic_recovery_resume}.
  */
 public enum ResumeSide {
+    /**
+     * The recovery terminal is preserved for the parser to match.
+     */
     BEFORE(0),
+    /**
+     * The recovery terminal is consumed by the recovery.
+     */
     AFTER(1),
-    /** Fallback for codes this binding does not know (newer native builds). */
+    /**
+     * Fallback for codes this binding does not know.
+     */
     UNKNOWN(-1);
 
     private final int code;
-
     ResumeSide(int code) { this.code = code; }
 
-    /** Raw {@code galley_diagnostic_recovery_resume} value. */
+    /**
+     * Raw code value.
+     */
     public int getCode() { return code; }
 
     /**
      * Single converter for this category: known codes map to their member,
-     * anything else maps to {@link #UNKNOWN}.
+     * anything else maps to {@code UNKNOWN}.
      */
     public static ResumeSide fromCode(long code) {
         for (ResumeSide value : values()) {

@@ -255,7 +255,7 @@ public final class Session implements AutoCloseable {
     /**
      * The failure of a parse, with that parse's diagnostic snapshot attached
      * exactly when its status carries one
-     * ({@link StatusCode#carriesDiagnostic}): the statuses that end a parse
+     * ({@link Status#carriesDiagnostic}): the statuses that end a parse
      * that ran, whose diagnostic then belongs to that attempt. A failure
      * built from any other status carries none. {@code ERROR_SESSION_IN_USE}
      * is also the one refusal the attach may skip, because another thread's
@@ -267,13 +267,13 @@ public final class Session implements AutoCloseable {
      */
     private GalleyException parseFailure(long status) {
         Diagnostic diagnostic = null;
-        if (StatusCode.fromCode(status).carriesDiagnostic()) {
+        if (Status.fromCode(status).carriesDiagnostic()) {
             try {
                 if (gate(this::hasDiagnosticWith)) {
                     diagnostic = buildDiagnosticSingular();
                 }
             } catch (GalleyException refusal) {
-                if (refusal.getCode() != StatusCode.ERROR_SESSION_IN_USE) throw refusal;
+                if (refusal.getCode() != Status.ERROR_SESSION_IN_USE) throw refusal;
             } catch (GalleyClosedException closed) {
                 // close() won the in-flight window: the parse's failure stands.
             }
@@ -290,7 +290,7 @@ public final class Session implements AutoCloseable {
      * {@code diagnostic} may be null.
      */
     static GalleyException statusFailure(GalleyLibrary lib, long status, Diagnostic diagnostic) {
-        if (status == StatusCode.ERROR_STALE_TREE.getCode()) {
+        if (status == Status.ERROR_STALE_TREE.getCode()) {
             return new StaleTreeException("tree");
         }
         String message = lib.galley_status_string(status);
@@ -318,7 +318,7 @@ public final class Session implements AutoCloseable {
      * raises.
      */
     private boolean fieldAbsent(long status) {
-        if (status == StatusCode.ERROR_NO_DIAGNOSTIC.getCode()) return true;
+        if (status == Status.ERROR_NO_DIAGNOSTIC.getCode()) return true;
         checkStatus(status);
         return false;
     }
@@ -342,13 +342,13 @@ public final class Session implements AutoCloseable {
      * walker is open.
      */
     private int completeParse(long status, ParseHolder holder) {
-        if (status != StatusCode.ERROR_SESSION_IN_USE.getCode()) {
+        if (status != Status.ERROR_SESSION_IN_USE.getCode()) {
             parseDoor = null;
         }
         Throwable cause = holder.failure;
         if (status < 0) {
             GalleyException failure = parseFailure(status);
-            if (status == StatusCode.ERROR_HOOK_FAILED.getCode() && cause != null) failure.initCause(cause);
+            if (status == Status.ERROR_HOOK_FAILED.getCode() && cause != null) failure.initCause(cause);
             throw failure;
         }
         return (int) status;
@@ -404,7 +404,7 @@ public final class Session implements AutoCloseable {
         synchronized (lifetime) {
             if (closed) return;
             if (inFlight > 0) {
-                refusal = StatusCode.ERROR_SESSION_IN_USE.getCode();
+                refusal = Status.ERROR_SESSION_IN_USE.getCode();
             } else if (handle != null && !handle.equals(MemorySegment.NULL)) {
                 long status = lib.galley_session_destroy(handle);
                 if (status < 0) {
@@ -1424,7 +1424,7 @@ public final class Session implements AutoCloseable {
 
     public String statusString(long status) { return parser.statusString(status); }
 
-    public String statusString(StatusCode status) { return parser.statusString(status); }
+    public String statusString(Status status) { return parser.statusString(status); }
 
     GalleyLibrary getLibrary() { return lib; }
 }

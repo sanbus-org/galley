@@ -9,20 +9,20 @@ package org.sanbus.galley;
  * this exception carries.
  */
 public class GalleyException extends RuntimeException {
-    private final StatusCode code;
+    private final Status code;
     private final Diagnostic diagnostic;
 
-    public GalleyException(String message, StatusCode code, Diagnostic diagnostic) {
+    public GalleyException(String message, Status code, Diagnostic diagnostic) {
         super(message);
-        this.code = code != null ? code : StatusCode.UNKNOWN;
+        this.code = code != null ? code : Status.UNKNOWN;
         this.diagnostic = diagnostic;
     }
 
     public GalleyException(String message, int code, Diagnostic diagnostic) {
-        this(message, StatusCode.fromCode(code), diagnostic);
+        this(message, Status.fromCode(code), diagnostic);
     }
 
-    public GalleyException(String message, StatusCode code) {
+    public GalleyException(String message, Status code) {
         this(message, code, null);
     }
 
@@ -31,7 +31,7 @@ public class GalleyException extends RuntimeException {
     }
 
     /** Raw {@code galley_status} value classified at the FFI boundary. */
-    public StatusCode getCode() { return code; }
+    public Status getCode() { return code; }
 
     /** Snapshot of the session diagnostic at failure, or null. */
     public Diagnostic getDiagnostic() { return diagnostic; }

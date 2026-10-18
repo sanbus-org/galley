@@ -6,9 +6,10 @@
 # checkout: the consumer build.zig verbatim, and under sources/ a slim
 # dependency root (a stub build.zig re-exporting build/common.zig) holding
 # verbatim copies of build/common.zig, build/config_edit.zig, src/runtime/,
-# the CLI procedure/error-message templates, bindings/c/capi.zig and galley.h, the
-# Node NAPI addon.c, and the Python extension source (_galley.c) plus its
-# PEP 484 stub.
+# the CLI procedure/error-message templates, bindings/abi_values.zon (the
+# single declaration capi.zig imports at comptime), bindings/c/capi.zig and
+# galley.h, the Node NAPI addon.c, and the Python extension source
+# (_galley.c) plus its PEP 484 stub.
 #
 # One assembler, one source list: every binding ships the same kit and only
 # the source root differs at build time (kit for consumers, GALLEY_CHECKOUT
@@ -35,6 +36,7 @@ for source in \
 	"$ROOT/src/cli/templates/procedures.zig" \
 	"$ROOT/src/cli/templates/ll_error_messages.zig" \
 	"$ROOT/src/cli/templates/lr_error_messages.zig" \
+	"$ROOT/bindings/abi_values.zon" \
 	"$ROOT/bindings/c/capi.zig" \
 	"$ROOT/bindings/c/galley.h" \
 	"$ROOT/bindings/js/node/addon.c" \
@@ -48,7 +50,8 @@ done
 
 rm -rf "$DEST"
 mkdir -p "$DEST/sources/build" "$DEST/sources/src/runtime" \
-	"$DEST/sources/src/cli/templates" "$DEST/sources/bindings/c" \
+	"$DEST/sources/src/cli/templates" "$DEST/sources/bindings" \
+	"$DEST/sources/bindings/c" \
 	"$DEST/sources/bindings/js/node" "$DEST/sources/bindings/python"
 
 cp "$ROOT/bindings/c/consumer/build.zig" "$DEST/build.zig"
@@ -105,6 +108,7 @@ cp -r "$ROOT/src/runtime/." "$DEST/sources/src/runtime/"
 for template in procedures.zig ll_error_messages.zig lr_error_messages.zig; do
 	cp "$ROOT/src/cli/templates/$template" "$DEST/sources/src/cli/templates/$template"
 done
+cp "$ROOT/bindings/abi_values.zon" "$DEST/sources/bindings/abi_values.zon"
 cp "$ROOT/bindings/c/capi.zig" "$ROOT/bindings/c/galley.h" "$DEST/sources/bindings/c/"
 cp "$ROOT/bindings/js/node/addon.c" "$DEST/sources/bindings/js/node/addon.c"
 cp "$ROOT/bindings/python/_galley.c" "$ROOT/bindings/python/galley.pyi" "$DEST/sources/bindings/python/"

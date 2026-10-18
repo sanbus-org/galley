@@ -15,12 +15,17 @@
 
 use std::ffi::{c_char, c_int, c_void};
 
-/// `GALLEY_INVALID_NODE`: no node at that position. Non-negative like every
-/// address.
-const INVALID_ADDRESS: u64 = i64::MAX as u64;
+// >>> generated: sentinels (bindings/abi_values.zon; regenerate: zig build abi-values)
+/// Returned by tree queries when no node exists at that position. Every node
+/// address and this sentinel are non-negative (`INT64_MAX`), so a call that
+/// returns an address can report a negative status in the same `long long`.
+const INVALID_NODE: u64 = 0x7FFFFFFFFFFFFFFF;
 
-/// `GALLEY_NO_VARIABLE`: the core's answer for a node without a variable.
-const NO_VARIABLE: i64 = i64::MAX;
+/// Returned by `galley_node_variable_index` and written to the snapshot's
+/// variable column for a node that has no variable. Non-negative like
+/// `GALLEY_INVALID_NODE`: only statuses are negative.
+const NO_VARIABLE: i64 = 0x7FFFFFFFFFFFFFFF;
+// <<< generated: sentinels
 
 /// Handle to a node of the current parse's AST: the core's parse generation
 /// and the node's address. The generation comes from the node's source —
@@ -38,38 +43,78 @@ impl NodeHandle {
     /// it as "clear the current node".
     pub const INVALID: NodeHandle = NodeHandle {
         generation: 0,
-        address: INVALID_ADDRESS,
+        address: INVALID_NODE,
     };
 }
 
-/// Parse/lookup failure modes mirroring the C API status codes.
+// >>> generated: error enum (bindings/abi_values.zon; regenerate: zig build abi-values)
+/// Failure modes mirroring the status codes of the C API.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
+    /// A required argument is null: a session, a hook door, or a required
+    /// pointer.
     NullArgument,
+    /// The parse recorded syntax errors. A parse that recovered and ran to its
+    /// end still publishes its tree, with the damaged regions flagged as
+    /// recovered nodes; a parse that could not recover publishes nothing.
     Syntax,
-    Semantic,
+    /// The parse failed on indentation, which has no recovery; nothing is
+    /// published.
     Indentation,
+    /// The parser stack exceeded its configured limit; nothing is published.
     StackOverflow,
+    /// AST storage ran out of its planned capacity; nothing is published.
     AstCapacityExceeded,
+    /// Input ended inside a raw string; nothing is published.
     UnterminatedRawString,
+    /// An allocation failed; nothing is published.
     OutOfMemory,
+    /// An internal invariant failed: a bug in the library, not a property of
+    /// the input.
     Internal,
+    /// The read needs a diagnostic and none matches: no diagnostic is recorded,
+    /// it is not of the requested kind, or a recorded-diagnostic index is past
+    /// its table.
     NoDiagnostic,
+    /// A tree position names no node of the tree the call addresses; an index
+    /// past any other table is `galley_error_out_of_range` instead.
     InvalidNode,
+    /// Reading the input failed; nothing is published.
     Io,
+    /// The parse recorded semantic errors; the tree is still published, with
+    /// the erroring nodes marked.
+    Semantic,
+    /// A parse holds the session exclusively; the call is refused rather than
+    /// queued. Post-parse node/tree/diagnostic accessors return this while a
+    /// parse is in flight (hook code must use the `galley_hook_*` door).
     SessionInUse,
-    /// The node's generation is not the generation of the parse that owns the
-    /// door: the node is of another parse, or `NodeHandle::INVALID` read
-    /// through the door (`set_current_node` takes it as "clear").
+    /// A node, tree edit, snapshot, or walk cursor carries a generation that is
+    /// not the door's live tree's. On the session door: the session parsed
+    /// again, the last parse failed and published nothing, or nothing was ever
+    /// published; re-read the tree with `galley_root_node` and use its nodes.
+    /// `galley_last_input` and `galley_last_position` follow the published tree
+    /// the same way. On the hook door (`galley_hook_*`,
+    /// `galley_procedure_set_current_node`): the generation is not the running
+    /// parse's (`galley_hook_generation`). Calls on both doors pass the
+    /// generation they address; the check runs in every build, because it is a
+    /// lifetime contract, not a misuse check.
     StaleTree,
-    /// A call made with the arguments of a hook that has returned.
+    /// A `galley_procedure_*` call made with the ticket of a hook that
+    /// returned: the arguments are valid only while their hook runs.
     StaleHook,
-    /// A host hook's dispatch reported failure and the parse stopped. Only a
-    /// library built with a host shim returns it; Rust hooks cannot fail.
+    /// A hook's dispatch returned nonzero: the parse stopped where the hook ran
+    /// and published nothing. The diagnostic is of kind
+    /// `galley_diagnostic_kind_hook`; the host keeps the cause of the failure.
     HookFailed,
-    /// An index outside the table it was read from.
+    /// An index outside the table it was read from: a hook name, a grammar
+    /// symbol or variable name, or an expected-token or context-name index past
+    /// its diagnostic's table. An address outside the live node storage is
+    /// `galley_error_invalid_node` instead.
     OutOfRange,
-    /// A value outside its domain.
+    /// A value in `GalleyCOptions` is outside its domain (a negative
+    /// `max_errors`, `recovery_window`, or `verbosity`, or a non-finite
+    /// `ast_preallocation_ratio`), or the enable-flag count passed to
+    /// `galley_session_set_hooks` does not match `galley_hooks_count()`.
     InvalidArgument,
 }
 
@@ -78,7 +123,6 @@ impl Error {
         match status {
             -1 => Error::NullArgument,
             -2 => Error::Syntax,
-            -12 => Error::Semantic,
             -3 => Error::Indentation,
             -4 => Error::StackOverflow,
             -5 => Error::AstCapacityExceeded,
@@ -88,6 +132,7 @@ impl Error {
             -9 => Error::NoDiagnostic,
             -10 => Error::InvalidNode,
             -11 => Error::Io,
+            -12 => Error::Semantic,
             -13 => Error::SessionInUse,
             -14 => Error::StaleTree,
             -15 => Error::StaleHook,
@@ -98,6 +143,7 @@ impl Error {
         }
     }
 }
+// <<< generated: error enum
 
 fn map_status(status: i64) -> Result<(), Error> {
     if status == 0 {

@@ -82,9 +82,6 @@ func TestSnapshotMatchesPerNodeAccessors(t *testing.T) {
 	if withoutVariable == 0 {
 		t.Fatal("expected a node without a variable to read -1")
 	}
-	if galley.InvalidNode.Index() != 1<<63-1 {
-		t.Fatalf("invalid node sentinel %#x, want INT64_MAX", galley.InvalidNode.Index())
-	}
 	var preorder []uint64
 	stack := []uint64{root.Index()}
 	for len(stack) > 0 {

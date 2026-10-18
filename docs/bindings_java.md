@@ -14,6 +14,11 @@ A complete, runnable consumer lives in
 [`examples/java`](https://github.com/sanbus-org/galley/tree/main/examples/java);
 it is built and executed by CI on every push.
 
+Every named value this binding shares with the C ABI — statuses, diagnostic
+kinds, recovery targets, resume sides, parser types, and recovery modes — is
+declared once, then rendered into each binding's idiom in
+[ABI Values](/abi_values).
+
 ## Getting Started
 
 Requires `java` ≥ 22, `javac`, and `zig` 0.17 (`git` is only needed by `examples/scripts/fetch-galley.sh`).
@@ -226,7 +231,7 @@ A hook reports a semantic error when the input parses but its meaning is
 invalid. `reportSemanticError` records the diagnostic, marks the node, and
 returns the running total so hooks can limit themselves. Parsing continues;
 a syntax-clean parse with any semantic error throws `GalleyException` with
-code `StatusCode.ERROR_SEMANTIC`:
+code `Status.ERROR_SEMANTIC`:
 
 ```java
 if (Long.parseLong(text) > 999) {
@@ -262,7 +267,7 @@ yielded node's children host-side, without a native call. Steps follow
 the live links, so edits between steps are visible, and a step whose
 position is no longer inside the walk's root (removed, or moved
 elsewhere) throws `GalleyException` with
-`StatusCode.ERROR_INVALID_NODE`:
+`Status.ERROR_INVALID_NODE`:
 
 ```java
 Walker walker = session.rootNode().walk(false, false);
@@ -365,7 +370,7 @@ parser.hasProcedures();
 parser.errorRecoveryMode();                  // RecoveryMode (DISABLED / AUTOMATIC / EXPLICIT / UNKNOWN)
 parser.symbolCount();                        // long
 parser.variableCount();
-parser.statusString(StatusCode.ERROR_SYNTAX); // "syntax error" / null
+parser.statusString(Status.ERROR_SYNTAX); // "syntax error" / null
 session.symbolNameAt(0);                     // String; an out-of-range index throws ERROR_OUT_OF_RANGE
 session.symbolNameAtBytes(0);                // byte[]; an out-of-range index throws ERROR_OUT_OF_RANGE
 session.symbolIsTerminal(0);                 // boolean; an out-of-range index throws ERROR_OUT_OF_RANGE

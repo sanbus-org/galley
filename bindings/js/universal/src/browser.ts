@@ -29,9 +29,9 @@ export {
   Status,
   ParserType,
   RecoveryMode,
-  Kind,
+  DiagnosticKind,
   RecoveryTarget,
-  Resume,
+  ResumeSide,
 } from "@sanbus/galley-core";
 export type { SessionOptions, WalkStep, Diagnostic, TreeSnapshot } from "@sanbus/galley-core";
 

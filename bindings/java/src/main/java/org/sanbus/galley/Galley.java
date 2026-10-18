@@ -11,10 +11,23 @@ import org.sanbus.galley.internal.GalleyLibraryLoader;
  * methods on the {@link Parser} a load returns.
  */
 public final class Galley {
-    /** {@code GALLEY_INVALID_NODE}: no node at that position. Non-negative, like every address. */
+    // >>> generated: sentinels (bindings/abi_values.zon; regenerate: zig build abi-values)
+    /**
+     * Returned by tree queries when no node exists at that position. Every
+     * node address and this sentinel are non-negative ({@code INT64_MAX}), so
+     * a call that returns an address can report a negative status in the same
+     * {@code long long}.
+     */
     public static final long INVALID_NODE = 0x7FFFFFFFFFFFFFFFL;
-    /** {@code GALLEY_NO_VARIABLE}: the core's answer for a node without a variable. */
+
+    /**
+     * Returned by {@code galley_node_variable_index} and written to the
+     * snapshot's variable column for a node that has no variable.
+     * Non-negative like {@code GALLEY_INVALID_NODE}: only statuses are
+     * negative.
+     */
     public static final long NO_VARIABLE = 0x7FFFFFFFFFFFFFFFL;
+    // <<< generated: sentinels
 
     private Galley() {}
 

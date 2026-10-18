@@ -20,9 +20,9 @@ export {
   Status,
   ParserType,
   RecoveryMode,
-  Kind,
+  DiagnosticKind,
   RecoveryTarget,
-  Resume,
+  ResumeSide,
 } from "@sanbus/galley-core";
 export { getNodePort, getNodePortFromFile, libFileName } from "./ffi.ts";
 export type { Session, StagedInput, SessionOptions, WalkStep, Diagnostic, TreeSnapshot } from "@sanbus/galley-core";

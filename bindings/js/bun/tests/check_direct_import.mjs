@@ -41,11 +41,11 @@ const surface = [
   "ProcedureArguments",
   "Parser",
   "GalleyError",
-  "Kind",
+  "DiagnosticKind",
   "ParserType",
   "RecoveryMode",
   "RecoveryTarget",
-  "Resume",
+  "ResumeSide",
 ];
 // The entry mirrors the parser's interface: derive the pin from the
 // Parser prototype chain (universal additions over core), excluding

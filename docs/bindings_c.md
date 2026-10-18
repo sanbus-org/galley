@@ -9,6 +9,11 @@ Complete, runnable consumers live in
 [`examples/cpp`](https://github.com/sanbus-org/galley/tree/main/examples/cpp);
 both are built and executed by CI on every push.
 
+Every named value this ABI shares with a binding — statuses, diagnostic
+kinds, recovery targets, resume sides, parser types, and recovery modes — is
+declared once, then rendered into each binding's idiom in
+[ABI Values](/abi_values).
+
 ## Procedures
 
 Grammars can use `@hook_name` annotations on RHS occurrences. When Galley's

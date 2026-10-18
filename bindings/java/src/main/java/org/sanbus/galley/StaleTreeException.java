@@ -14,6 +14,6 @@ package org.sanbus.galley;
 public class StaleTreeException extends GalleyException {
     public StaleTreeException(String objectName) {
         super(objectName + " is stale: the session parsed again since; read rootNode() for a current node",
-                StatusCode.ERROR_STALE_TREE);
+                Status.ERROR_STALE_TREE);
     }
 }

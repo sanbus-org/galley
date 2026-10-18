@@ -8,6 +8,11 @@ binds the runtime-neutral
 one loads (Node, Bun, Deno) and to WebAssembly otherwise, with no native
 dependencies beyond the built parser artifacts.
 
+Every named value this package shares with the C ABI — statuses, diagnostic
+kinds, recovery targets, resume sides, parser types, and recovery modes — is
+declared once, then rendered into each binding's idiom in
+[ABI Values](/abi_values).
+
 Construct a `Session` and parse. Parsers come from the `galley`
 object — `load` (an explicit artifact file), `loadBytes` (raw wasm
 module bytes), `loadUrl` (fetched) — or from a generated package entry,
@@ -273,7 +278,7 @@ node's generation on the hook door too: a node of an earlier parse throws
 `StaleTreeError` on a read, a link, an edit or a walk step, never `null`.
 
 A hook that throws aborts the parse. `parse` throws a `GalleyError` with code
-`Status.ErrorHookFailed`, the thrown value as `error.cause`, and a `Kind.Hook`
+`Status.ErrorHookFailed`, the thrown value as `error.cause`, and a `DiagnosticKind.Hook`
 diagnostic of where the parse stopped; the parse publishes nothing, so `rootNode()`
 returns `null` and the nodes of that parse throw `StaleTreeError`. The session
 parses again afterwards. A hook that wants the parse to go on reports a semantic
@@ -357,7 +362,7 @@ if (value > 999) {
 ```
 
 Read them through `session.diagnostic()` / `session.diagnostics()`; the
-snapshot carries `kind === Kind.Semantic` and a `semantic` pair of
+snapshot carries `kind === DiagnosticKind.Semantic` and a `semantic` pair of
 `[variable, message]`.
 
 ## Tree Walking

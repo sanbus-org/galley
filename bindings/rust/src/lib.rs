@@ -269,38 +269,74 @@ impl Default for SessionOptions {
     }
 }
 
-/// Parse/lookup failure modes mirroring the status codes of the C API.
+// >>> generated: error enum (bindings/abi_values.zon; regenerate: zig build abi-values)
+/// Failure modes mirroring the status codes of the C API.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
+    /// A required argument is null: a session, a hook door, or a required
+    /// pointer.
     NullArgument,
+    /// The parse recorded syntax errors. A parse that recovered and ran to its
+    /// end still publishes its tree, with the damaged regions flagged as
+    /// recovered nodes; a parse that could not recover publishes nothing.
     Syntax,
-    Semantic,
+    /// The parse failed on indentation, which has no recovery; nothing is
+    /// published.
     Indentation,
+    /// The parser stack exceeded its configured limit; nothing is published.
     StackOverflow,
+    /// AST storage ran out of its planned capacity; nothing is published.
     AstCapacityExceeded,
+    /// Input ended inside a raw string; nothing is published.
     UnterminatedRawString,
+    /// An allocation failed; nothing is published.
     OutOfMemory,
+    /// An internal invariant failed: a bug in the library, not a property of
+    /// the input.
     Internal,
+    /// The read needs a diagnostic and none matches: no diagnostic is recorded,
+    /// it is not of the requested kind, or a recorded-diagnostic index is past
+    /// its table.
     NoDiagnostic,
+    /// A tree position names no node of the tree the call addresses; an index
+    /// past any other table is `galley_error_out_of_range` instead.
     InvalidNode,
+    /// Reading the input failed; nothing is published.
     Io,
+    /// The parse recorded semantic errors; the tree is still published, with
+    /// the erroring nodes marked.
+    Semantic,
+    /// A parse holds the session exclusively; the call is refused rather than
+    /// queued. Post-parse node/tree/diagnostic accessors return this while a
+    /// parse is in flight (hook code must use the `galley_hook_*` door).
     SessionInUse,
-    /// A handle's tree is gone: the session parsed again since, the last
-    /// parse published nothing, or nothing was ever published. One failure
-    /// for every source that can find a tree gone, so a dead handle never
-    /// reads as a live one and never answers an empty value.
+    /// A node, tree edit, snapshot, or walk cursor carries a generation that is
+    /// not the door's live tree's. On the session door: the session parsed
+    /// again, the last parse failed and published nothing, or nothing was ever
+    /// published; re-read the tree with `galley_root_node` and use its nodes.
+    /// `galley_last_input` and `galley_last_position` follow the published tree
+    /// the same way. On the hook door (`galley_hook_*`,
+    /// `galley_procedure_set_current_node`): the generation is not the running
+    /// parse's (`galley_hook_generation`). Calls on both doors pass the
+    /// generation they address; the check runs in every build, because it is a
+    /// lifetime contract, not a misuse check.
     StaleTree,
-    /// A procedure call made with the arguments of a hook that has returned.
+    /// A `galley_procedure_*` call made with the ticket of a hook that
+    /// returned: the arguments are valid only while their hook runs.
     StaleHook,
-    /// A host hook's dispatch reported failure and the parse stopped. Only a
-    /// library built with a host shim returns it; Rust hooks cannot fail yet.
+    /// A hook's dispatch returned nonzero: the parse stopped where the hook ran
+    /// and published nothing. The diagnostic is of kind
+    /// `galley_diagnostic_kind_hook`; the host keeps the cause of the failure.
     HookFailed,
     /// An index outside the table it was read from: a hook name, a grammar
-    /// symbol or variable name, or an expected-token or context-name index
-    /// past its diagnostic's table.
+    /// symbol or variable name, or an expected-token or context-name index past
+    /// its diagnostic's table. An address outside the live node storage is
+    /// `galley_error_invalid_node` instead.
     OutOfRange,
-    /// A value in [`SessionOptions`] outside its domain. The core owns the
-    /// check; the refused call carries the status.
+    /// A value in `GalleyCOptions` is outside its domain (a negative
+    /// `max_errors`, `recovery_window`, or `verbosity`, or a non-finite
+    /// `ast_preallocation_ratio`), or the enable-flag count passed to
+    /// `galley_session_set_hooks` does not match `galley_hooks_count()`.
     InvalidArgument,
 }
 
@@ -309,7 +345,6 @@ impl Error {
         match status {
             -1 => Error::NullArgument,
             -2 => Error::Syntax,
-            -12 => Error::Semantic,
             -3 => Error::Indentation,
             -4 => Error::StackOverflow,
             -5 => Error::AstCapacityExceeded,
@@ -319,6 +354,7 @@ impl Error {
             -9 => Error::NoDiagnostic,
             -10 => Error::InvalidNode,
             -11 => Error::Io,
+            -12 => Error::Semantic,
             -13 => Error::SessionInUse,
             -14 => Error::StaleTree,
             -15 => Error::StaleHook,
@@ -329,11 +365,11 @@ impl Error {
         }
     }
 
+    /// The C status code this error mirrors.
     fn status(&self) -> i64 {
         match self {
             Error::NullArgument => -1,
             Error::Syntax => -2,
-            Error::Semantic => -12,
             Error::Indentation => -3,
             Error::StackOverflow => -4,
             Error::AstCapacityExceeded => -5,
@@ -343,6 +379,7 @@ impl Error {
             Error::NoDiagnostic => -9,
             Error::InvalidNode => -10,
             Error::Io => -11,
+            Error::Semantic => -12,
             Error::SessionInUse => -13,
             Error::StaleTree => -14,
             Error::StaleHook => -15,
@@ -357,6 +394,7 @@ impl Error {
         unsafe { cstr(galley_status_string(self.status())).unwrap_or("unknown error") }
     }
 }
+// <<< generated: error enum
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -443,7 +481,7 @@ impl NodeHandle {
     /// [`Error::StaleTree`].
     pub const INVALID: NodeHandle = NodeHandle {
         generation: 0,
-        address: INVALID_ADDRESS,
+        address: INVALID_NODE,
     };
 
     /// Raw address backing this handle (indexes [`TreeSnapshot`] columns).
@@ -560,7 +598,7 @@ impl Iterator for Walker<'_> {
                 self.finished = true;
                 Some(Err(Error::from_status(status)))
             }
-            _ if self.cursor.current == INVALID_ADDRESS => None,
+            _ if self.cursor.current == INVALID_NODE => None,
             _ => Some(Ok(WalkStep {
                 node: NodeHandle {
                     generation: self.cursor.generation,
@@ -636,15 +674,26 @@ pub struct Diagnostic {
     pub semantic: Option<(String, String)>,
 }
 
+// >>> generated: diagnostic kinds (bindings/abi_values.zon; regenerate: zig build abi-values)
+/// Diagnostic classifications mirroring the C API's diagnostic kinds.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub enum DiagnosticKind {
     #[default]
     None,
+    /// A syntax error. A parse that recovered from its syntax errors still
+    /// publishes its tree, with the damaged regions flagged as recovered nodes.
     Syntax,
-    Semantic,
+    /// An indentation error, reported where the input's indentation does not
+    /// fit the grammar.
     Indentation,
+    /// A semantic error recorded by a reduction or a hook; the parse continues
+    /// and the node is marked.
+    Semantic,
+    /// A hook raised or its dispatch returned failure: the parse stopped at
+    /// that hook and published nothing.
     Hook,
 }
+// <<< generated: diagnostic kinds
 
 /// The diagnostic a [`Session::diagnostic_snapshot`] read names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -842,7 +891,7 @@ impl Session {
         let index = value(unsafe {
             galley_node_variable_index(self.inner, node.generation, node.address)
         })?;
-        Ok(if index == NO_VARIABLE {
+        Ok(if index == NO_VARIABLE as u64 {
             None
         } else {
             Some(index as i64)
@@ -865,9 +914,9 @@ impl Session {
         // two trees.
         let generation = self.published()?.1;
         let count = self.node_count_in(generation)? as usize;
-        let mut parent = vec![INVALID_ADDRESS; count];
-        let mut first_child = vec![INVALID_ADDRESS; count];
-        let mut next = vec![INVALID_ADDRESS; count];
+        let mut parent = vec![INVALID_NODE; count];
+        let mut first_child = vec![INVALID_NODE; count];
+        let mut next = vec![INVALID_NODE; count];
         let mut child_count = vec![0u32; count];
         let mut variable = vec![-1i64; count];
         let mut span_start = vec![0u64; count];
@@ -905,13 +954,7 @@ impl Session {
             child_count,
             variable: variable
                 .into_iter()
-                .map(|index| {
-                    if index == NO_VARIABLE as i64 {
-                        -1
-                    } else {
-                        index
-                    }
-                })
+                .map(|index| if index == NO_VARIABLE { -1 } else { index })
                 .collect(),
             span_start,
             span_len,
@@ -1516,15 +1559,20 @@ impl Session {
     }
 }
 
-/// `GALLEY_INVALID_NODE`: no node at that position. Non-negative like every
-/// address, so a value-returning call can report a negative status.
-const INVALID_ADDRESS: u64 = i64::MAX as u64;
+// >>> generated: sentinels (bindings/abi_values.zon; regenerate: zig build abi-values)
+/// Returned by tree queries when no node exists at that position. Every node
+/// address and this sentinel are non-negative (`INT64_MAX`), so a call that
+/// returns an address can report a negative status in the same `long long`.
+const INVALID_NODE: u64 = 0x7FFFFFFFFFFFFFFF;
 
-/// `GALLEY_NO_VARIABLE`: the core's answer for a node without a variable.
-const NO_VARIABLE: u64 = i64::MAX as u64;
+/// Returned by `galley_node_variable_index` and written to the snapshot's
+/// variable column for a node that has no variable. Non-negative like
+/// `GALLEY_INVALID_NODE`: only statuses are negative.
+const NO_VARIABLE: i64 = 0x7FFFFFFFFFFFFFFF;
+// <<< generated: sentinels
 
 fn invalid_raw() -> u64 {
-    INVALID_ADDRESS
+    INVALID_NODE
 }
 
 /// A value-returning session-door call answers with its value, always
@@ -1534,7 +1582,7 @@ fn value(status: i64) -> Result<u64, Error> {
 }
 
 fn opt_handle(generation: u64, address: u64) -> Option<NodeHandle> {
-    if address == INVALID_ADDRESS {
+    if address == INVALID_NODE {
         None
     } else {
         Some(NodeHandle {
@@ -1544,8 +1592,9 @@ fn opt_handle(generation: u64, address: u64) -> Option<NodeHandle> {
     }
 }
 
+// >>> generated: diagnostic kind fn (bindings/abi_values.zon; regenerate: zig build abi-values)
 /// One diagnostic kind code — the C enum value — as an enum, or the status
-/// that refused the read. Only a status is negative; the none kind is a real
+/// value it came with. Only a status is negative; the none kind is a real
 /// value.
 fn diagnostic_kind(status: i64) -> Result<DiagnosticKind, Error> {
     match status {
@@ -1557,6 +1606,7 @@ fn diagnostic_kind(status: i64) -> Result<DiagnosticKind, Error> {
         refused => Err(Error::from_status(refused)),
     }
 }
+// <<< generated: diagnostic kind fn
 
 fn map_status(status: i64) -> Result<(), Error> {
     if status == 0 {
@@ -1571,51 +1621,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_error_status_round_trips() {
-        for error in [
-            Error::NullArgument,
-            Error::Syntax,
-            Error::Semantic,
-            Error::Indentation,
-            Error::StackOverflow,
-            Error::AstCapacityExceeded,
-            Error::UnterminatedRawString,
-            Error::OutOfMemory,
-            Error::Internal,
-            Error::NoDiagnostic,
-            Error::InvalidNode,
-            Error::Io,
-            Error::SessionInUse,
-            Error::StaleTree,
-            Error::StaleHook,
-            Error::HookFailed,
-            Error::OutOfRange,
-            Error::InvalidArgument,
-        ] {
-            assert_eq!(Error::from_status(error.status()), error);
-        }
-    }
-
-    #[test]
-    fn the_new_statuses_carry_their_codes() {
-        assert_eq!(Error::OutOfRange.status(), -17);
-        assert_eq!(Error::InvalidArgument.status(), -18);
-    }
-
-    #[test]
     fn an_unknown_status_is_internal() {
         assert_eq!(Error::from_status(-999), Error::Internal);
         assert_eq!(Error::from_status(7), Error::Internal);
-    }
-
-    #[test]
-    fn only_negative_values_are_statuses() {
-        assert_eq!(diagnostic_kind(0), Ok(DiagnosticKind::None));
-        assert_eq!(diagnostic_kind(1), Ok(DiagnosticKind::Syntax));
-        assert_eq!(diagnostic_kind(2), Ok(DiagnosticKind::Indentation));
-        assert_eq!(diagnostic_kind(3), Ok(DiagnosticKind::Semantic));
-        assert_eq!(diagnostic_kind(4), Ok(DiagnosticKind::Hook));
-        assert_eq!(diagnostic_kind(-9), Err(Error::NoDiagnostic));
-        assert_eq!(diagnostic_kind(-17), Err(Error::OutOfRange));
     }
 }

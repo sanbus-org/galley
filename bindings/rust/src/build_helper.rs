@@ -280,6 +280,10 @@ impl Options {
         let (build_file, source_root) = resolve_compile_inputs();
         println!(
             "cargo:rerun-if-changed={}",
+            source_root.join("bindings/abi_values.zon").display()
+        );
+        println!(
+            "cargo:rerun-if-changed={}",
             source_root.join("bindings/c/capi.zig").display()
         );
         println!(

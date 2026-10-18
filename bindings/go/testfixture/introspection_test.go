@@ -197,19 +197,3 @@ func TestOptionValuesAreRejectedByTheCore(t *testing.T) {
 		_ = session.Close()
 	}
 }
-
-// The statuses carry the core's exact numbers and texts.
-func TestStatusNumbersAndTexts(t *testing.T) {
-	if galley.Error(-17) != galley.ErrOutOfRange {
-		t.Errorf("ErrOutOfRange = %d, want -17", int32(galley.ErrOutOfRange))
-	}
-	if galley.Error(-18) != galley.ErrInvalidArgument {
-		t.Errorf("ErrInvalidArgument = %d, want -18", int32(galley.ErrInvalidArgument))
-	}
-	if text := galley.ErrOutOfRange.Error(); text != "out of range" {
-		t.Errorf("ErrOutOfRange text = %q, want %q", text, "out of range")
-	}
-	if text := galley.ErrInvalidArgument.Error(); text != "invalid argument" {
-		t.Errorf("ErrInvalidArgument text = %q, want %q", text, "invalid argument")
-	}
-}

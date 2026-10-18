@@ -4,6 +4,7 @@ const generated_parser_matrix = @import("build/generated_parser_matrix.zig");
 const config_refusal_tests = @import("build/config_refusal_tests.zig");
 const option_matrix = @import("build/option_matrix.zig");
 const test_selection = @import("build/test_selection.zig");
+const abi_values_gen = @import("src/tools/abi_values_gen.zig");
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
@@ -109,6 +110,27 @@ pub fn add(b: *std.Build, options: Options) !void {
         });
         const run_config_override_tests = b.addRunArtifact(config_override_tests);
         test_step.dependOn(&run_config_override_tests.step);
+        // The freshness check for every checked-in copy of the ABI values;
+        // like the config test above, it reads the repository it runs in.
+        const abi_values_test_mod = b.createModule(.{
+            .root_source_file = b.path("src/tools/abi_values_gen.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        const abi_values_tests = b.addTest(.{
+            .name = "abi-values-tests",
+            .root_module = abi_values_test_mod,
+            .filters = selection.names,
+        });
+        const run_abi_values_tests = b.addRunArtifact(abi_values_tests);
+        // The check reads the repository it runs in, so every file it reads
+        // must be an input: a hand-edited copy would otherwise leave the
+        // step cached and the drift unseen.
+        run_abi_values_tests.addFileInput(b.path(abi_values_gen.declaration_path));
+        for (abi_values_gen.artifacts) |artifact| {
+            run_abi_values_tests.addFileInput(b.path(artifact.path));
+        }
+        test_step.dependOn(&run_abi_values_tests.step);
         // Compile steps have no test names, so a name filter skips them.
         if (selection.names.len == 0) {
             config_refusal_tests.addConfigRefusalTests(b, test_step, target, optimize, generator, generate_parser_file_exe);

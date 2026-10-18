@@ -160,7 +160,7 @@ class ConcurrencyTest {
                 assertNull(worker.barrierFailure, "the four parses did not overlap");
                 assertExpectedCalls(worker, workers);
                 assertTrue(worker.refusal instanceof GalleyException);
-                assertEquals(StatusCode.ERROR_SESSION_IN_USE, ((GalleyException) worker.refusal).getCode());
+                assertEquals(Status.ERROR_SESSION_IN_USE, ((GalleyException) worker.refusal).getCode());
                 assertEquals(worker.hooks.size(), worker.session.listProcedures().size());
             }
 

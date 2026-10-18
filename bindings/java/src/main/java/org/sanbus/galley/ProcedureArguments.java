@@ -10,7 +10,7 @@ import org.sanbus.galley.internal.GalleyLibrary;
  * Per-hook arguments passed to a procedure hook: the current node and its
  * redirect, the scanner position, drop and replace, and semantic errors.
  * Valid only while the hook runs: the core refuses every call made with the
- * arguments of a hook that has returned ({@link StatusCode#ERROR_STALE_HOOK}),
+ * arguments of a hook that has returned ({@link Status#ERROR_STALE_HOOK}),
  * and this object keeps no expiry state of its own. The tree is not per
  * hook: nodes this object yields belong to the running parse's core
  * generation, stay usable from later hooks of the same parse and, when the
@@ -79,7 +79,7 @@ public final class ProcedureArguments {
     /**
      * Records a semantic error on the current node and returns the running
      * total. Parsing continues; a syntax-clean parse with any semantic
-     * error fails with {@link StatusCode#ERROR_SEMANTIC}.
+     * error fails with {@link Status#ERROR_SEMANTIC}.
      */
     public int reportSemanticError(String message) {
         byte[] bytes = message.getBytes(StandardCharsets.UTF_8);

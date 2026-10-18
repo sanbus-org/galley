@@ -130,8 +130,6 @@ public class GalleyTest {
         assertNotNull(parser.stackOverflowRecoveryAvailable());
         RecoveryMode rm = parser.errorRecoveryMode();
         assertTrue(rm == RecoveryMode.DISABLED || rm == RecoveryMode.AUTOMATIC || rm == RecoveryMode.EXPLICIT);
-        assertEquals(0, ParserType.LL.getCode());
-        assertEquals(1, ParserType.LR.getCode());
         assertEquals(ParserType.UNKNOWN, ParserType.fromCode(999));
         assertEquals(RecoveryMode.UNKNOWN, RecoveryMode.fromCode(999));
     }
@@ -139,14 +137,11 @@ public class GalleyTest {
     @Test
     void statusStringRendersKnownCodes() throws Exception {
         Parser parser = fixtureParser();
-        String rendered = parser.statusString(StatusCode.ERROR_SYNTAX);
+        String rendered = parser.statusString(Status.ERROR_SYNTAX);
         assertNotNull(rendered);
         assertTrue(rendered.toLowerCase().contains("syntax"));
-        assertEquals("no diagnostic available", parser.statusString(StatusCode.ERROR_NO_DIAGNOSTIC));
-        assertEquals("out of range", parser.statusString(StatusCode.ERROR_OUT_OF_RANGE));
-        assertEquals("invalid argument", parser.statusString(StatusCode.ERROR_INVALID_ARGUMENT));
-        assertEquals(StatusCode.UNKNOWN, StatusCode.fromCode(999999));
-        assertNull(parser.statusString(StatusCode.fromCode(999999)));
+        assertEquals(Status.UNKNOWN, Status.fromCode(999999));
+        assertNull(parser.statusString(Status.fromCode(999999)));
     }
 
     @Test
@@ -229,7 +224,7 @@ public class GalleyTest {
             session.parse("alpha:1");
             List<Boolean> hookReads = new ArrayList<>();
             List<Boolean> sameThreadReads = new ArrayList<>();
-            List<StatusCode> refusals = new ArrayList<>();
+            List<Status> refusals = new ArrayList<>();
             session.installProcedure("reduction_Pair", args -> {
                 Node node = args.currentNode();
                 hookReads.add(node != null && node.text() != null);
@@ -266,7 +261,7 @@ public class GalleyTest {
             }
             assertEquals(List.of(true, true), hookReads);
             assertEquals(List.of(true, true), sameThreadReads);
-            assertEquals(List.of(StatusCode.ERROR_SESSION_IN_USE, StatusCode.ERROR_SESSION_IN_USE), refusals);
+            assertEquals(List.of(Status.ERROR_SESSION_IN_USE, Status.ERROR_SESSION_IN_USE), refusals);
         }
 
         @Test
@@ -289,7 +284,7 @@ public class GalleyTest {
         @Test
         void syntaxErrorThrowsWithCodeAndDiagnostic() {
             GalleyException ex = assertThrows(GalleyException.class, () -> session.parse("alpha:"));
-            assertEquals(StatusCode.ERROR_SYNTAX, ex.getCode());
+            assertEquals(Status.ERROR_SYNTAX, ex.getCode());
             Diagnostic d = ex.getDiagnostic();
             assertNotNull(d);
             assertTrue(session.hasDiagnostic());
@@ -422,7 +417,7 @@ public class GalleyTest {
                     Thread.sleep(1);
                 }
                 GalleyException refusal = assertThrows(GalleyException.class, session::close);
-                assertEquals(StatusCode.ERROR_SESSION_IN_USE, refusal.getCode());
+                assertEquals(Status.ERROR_SESSION_IN_USE, refusal.getCode());
                 assertFalse(session.isClosed());
                 assertEquals(-1, outcome.get(), "the parse was not in flight");
             } finally {
@@ -464,7 +459,7 @@ public class GalleyTest {
             });
             GalleyException ex = assertThrows(GalleyException.class,
                     () -> session.parse("alpha:12,beta:300,gamma:400"));
-            assertEquals(StatusCode.ERROR_SEMANTIC, ex.getCode());
+            assertEquals(Status.ERROR_SEMANTIC, ex.getCode());
             assertTrue(ex.getMessage().contains("value out of range"));
             assertEquals(List.of(1, 2), counts);
             Diagnostic d = session.diagnostic();
@@ -600,7 +595,7 @@ public class GalleyTest {
                     "org.sanbus.galley.Session#variableNameAtBytes(long)",
                     "org.sanbus.galley.Session#statusString(long)",
                     "org.sanbus.galley.SessionOptions$Builder#astPreallocationCap(long)",
-                    "org.sanbus.galley.StatusCode#fromCode(long)",
+                    "org.sanbus.galley.Status#fromCode(long)",
                     "org.sanbus.galley.TreeSnapshot#node(long)");
 
             // Scan the package's own classes from its class directory, so a
@@ -884,7 +879,7 @@ public class GalleyTest {
             walker.next();
             assertEquals(15, session.parse("alpha:12,beta:3"));
             StaleTreeException stale = assertThrows(StaleTreeException.class, walker::next);
-            assertEquals(StatusCode.ERROR_STALE_TREE, stale.getCode());
+            assertEquals(Status.ERROR_STALE_TREE, stale.getCode());
             // skipChildren is a pure host-side state write: staleness is the
             // next step's answer, not this one's.
             walker.skipChildren();
@@ -990,7 +985,7 @@ public class GalleyTest {
             });
             GalleyException ex = assertThrows(GalleyException.class,
                     () -> session.parse("alpha:1,beta:2000"));
-            assertEquals(StatusCode.ERROR_SEMANTIC, ex.getCode());
+            assertEquals(Status.ERROR_SEMANTIC, ex.getCode());
             assertFalse(full.isEmpty());
             List<Long> flagged = new ArrayList<>();
             for (long[] row : full) if (row[2] == 1) flagged.add(row[0]);
@@ -1012,7 +1007,7 @@ public class GalleyTest {
             walker.next();
             CountDownLatch firstHookDone = new CountDownLatch(1);
             CountDownLatch probesDone = new CountDownLatch(1);
-            List<StatusCode> codes = new ArrayList<>();
+            List<Status> codes = new ArrayList<>();
             session.installProcedure("reduction_Pair", args -> {
                 if (firstHookDone.getCount() > 0) {
                     firstHookDone.countDown();
@@ -1033,7 +1028,7 @@ public class GalleyTest {
                 parseThread.join(TimeUnit.SECONDS.toMillis(30));
             }
             session.clearProcedures();
-            assertEquals(List.of(StatusCode.ERROR_SESSION_IN_USE), codes);
+            assertEquals(List.of(Status.ERROR_SESSION_IN_USE), codes);
         }
 
         @Test
@@ -1053,7 +1048,7 @@ public class GalleyTest {
             session.removeSelf(leaf);
             // The step has no live position to advance from: invalid node,
             // and the cursor never moves past the failure.
-            assertEquals(StatusCode.ERROR_INVALID_NODE,
+            assertEquals(Status.ERROR_INVALID_NODE,
                     assertThrows(GalleyException.class, walker::next).getCode());
             assertThrows(GalleyException.class, walker::next);
         }
@@ -1194,9 +1189,6 @@ public class GalleyTest {
             assertEquals(first, snap.node(firstAddress));
             // An absent node link answers null, never a node.
             assertNull(snap.node(Galley.INVALID_NODE));
-            // Every address and the sentinel are non-negative: only statuses are negative.
-            assertEquals(Long.MAX_VALUE, Galley.INVALID_NODE);
-            assertEquals(Long.MAX_VALUE, Galley.NO_VARIABLE);
             // The columns never follow a later parse: node() keeps answering
             // for its own parse, and that node reads as stale.
             assertEquals(7, session.parse("alpha:1"));
@@ -1342,7 +1334,7 @@ public class GalleyTest {
                 }
             });
             List<String> expected = new ArrayList<>();
-            for (String name : reads.keySet()) expected.add(name + ":" + StatusCode.ERROR_SESSION_IN_USE);
+            for (String name : reads.keySet()) expected.add(name + ":" + Status.ERROR_SESSION_IN_USE);
             for (int attempt = 0; attempt < 2; attempt++) { // nothing published, then a tree
                 outcomes.clear();
                 session.parse("alpha:12,beta:3");
@@ -1363,7 +1355,7 @@ public class GalleyTest {
                     Thread.currentThread().interrupt();
                 }
             });
-            List<StatusCode> codes = new ArrayList<>();
+            List<Status> codes = new ArrayList<>();
             Thread parseThread = new Thread(() -> session.parse("alpha:12,beta:3"));
             parseThread.start();
             try {
@@ -1378,7 +1370,7 @@ public class GalleyTest {
                 parseThread.join(TimeUnit.SECONDS.toMillis(30));
                 session.clearProcedures();
             }
-            assertEquals(Collections.nCopies(5, StatusCode.ERROR_SESSION_IN_USE), codes);
+            assertEquals(Collections.nCopies(5, Status.ERROR_SESSION_IN_USE), codes);
         }
 
         @Test
@@ -1449,7 +1441,7 @@ public class GalleyTest {
                 }
             });
             GalleyException failure = assertThrows(GalleyException.class, () -> session.parse(SEMANTIC));
-            assertEquals(StatusCode.ERROR_SEMANTIC, failure.getCode());
+            assertEquals(Status.ERROR_SEMANTIC, failure.getCode());
 
             List<Walker.WalkStep> full = steps(false, false);
             List<Walker.WalkStep> marked = full.stream().filter(step -> step.isSemanticError).toList();
@@ -1480,7 +1472,7 @@ public class GalleyTest {
         @Test
         void aRecoveredSyntaxErrorPublishesItsTree() {
             GalleyException failure = assertThrows(GalleyException.class, () -> session.parse(RECOVERED));
-            assertEquals(StatusCode.ERROR_SYNTAX, failure.getCode());
+            assertEquals(Status.ERROR_SYNTAX, failure.getCode());
 
             List<Walker.WalkStep> full = steps(false, false);
             List<Walker.WalkStep> recovered = full.stream().filter(step -> step.isRecovered).toList();
@@ -1535,7 +1527,7 @@ public class GalleyTest {
             assertNotNull(leaf);
             session.removeSelf(leaf);
             GalleyException invalid = assertThrows(GalleyException.class, walker::next);
-            assertEquals(StatusCode.ERROR_INVALID_NODE, invalid.getCode());
+            assertEquals(Status.ERROR_INVALID_NODE, invalid.getCode());
             assertNull(invalid.getDiagnostic());
             assertNotEquals(parseFailure.getDiagnostic().getMessage(), invalid.getMessage());
         }
@@ -1550,7 +1542,7 @@ public class GalleyTest {
                     "galley-java-missing-" + System.nanoTime() + ".kv");
             GalleyException refusal = assertThrows(GalleyException.class,
                     () -> session.parseFile(missing.toString()));
-            assertEquals(StatusCode.ERROR_IO, refusal.getCode());
+            assertEquals(Status.ERROR_IO, refusal.getCode());
             assertNull(refusal.getDiagnostic());
             assertNotNull(session.diagnostic());
         }
@@ -1646,7 +1638,7 @@ public class GalleyTest {
             try {
                 assertTrue(firstHookDone.await(30, TimeUnit.SECONDS));
                 GalleyException refusal = assertThrows(GalleyException.class, () -> session.parse("gamma:1"));
-                assertEquals(StatusCode.ERROR_SESSION_IN_USE, refusal.getCode());
+                assertEquals(Status.ERROR_SESSION_IN_USE, refusal.getCode());
             } finally {
                 refusedParseDone.countDown();
                 worker.join(30_000);
@@ -1661,7 +1653,7 @@ public class GalleyTest {
 
         @Test
         void hookThatParsesItsOwnSessionIsRefusedAndKeepsItsNodes() {
-            List<StatusCode> refusals = new ArrayList<>();
+            List<Status> refusals = new ArrayList<>();
             List<String> reads = new ArrayList<>();
             AtomicReference<Node> stashed = new AtomicReference<>();
             session.installProcedure("reduction_Pair", args -> {
@@ -1676,7 +1668,7 @@ public class GalleyTest {
                 reads.add(new String(stashed.get().text(), StandardCharsets.UTF_8));
             });
             session.parse("alpha:12,beta:3");
-            assertEquals(List.of(StatusCode.ERROR_SESSION_IN_USE), refusals);
+            assertEquals(List.of(Status.ERROR_SESSION_IN_USE), refusals);
             assertEquals(List.of("alpha:12", "alpha:12"), reads);
             assertEquals("alpha:12", new String(stashed.get().text(), StandardCharsets.UTF_8));
         }
@@ -1742,7 +1734,7 @@ public class GalleyTest {
             AtomicReference<Node> stashed = new AtomicReference<>();
             CountDownLatch firstHookDone = new CountDownLatch(1);
             CountDownLatch probesDone = new CountDownLatch(1);
-            List<StatusCode> probeCodes = new ArrayList<>();
+            List<Status> probeCodes = new ArrayList<>();
             session.installProcedure("reduction_Pair", args -> {
                 if (stashed.get() == null) {
                     stashed.set(args.currentNode());
@@ -1768,8 +1760,8 @@ public class GalleyTest {
                 probesDone.countDown();
                 worker.join(30_000);
             }
-            assertEquals(List.of(StatusCode.ERROR_SESSION_IN_USE, StatusCode.ERROR_SESSION_IN_USE,
-                    StatusCode.ERROR_SESSION_IN_USE, StatusCode.ERROR_SESSION_IN_USE), probeCodes);
+            assertEquals(List.of(Status.ERROR_SESSION_IN_USE, Status.ERROR_SESSION_IN_USE,
+                    Status.ERROR_SESSION_IN_USE, Status.ERROR_SESSION_IN_USE), probeCodes);
             assertEquals("alpha:12", new String(stashed.get().text(), StandardCharsets.UTF_8));
         }
 
@@ -1973,7 +1965,7 @@ public class GalleyTest {
             // Old parseLong logic went silent past Long.MAX; digit extraction reports.
             GalleyException ex = assertThrows(GalleyException.class,
                     () -> session.parse("alpha:99999999999999999999999"));
-            assertEquals(StatusCode.ERROR_SEMANTIC, ex.getCode());
+            assertEquals(Status.ERROR_SEMANTIC, ex.getCode());
             assertTrue(ex.getMessage().contains("value out of range"));
         }
 
@@ -2061,7 +2053,7 @@ public class GalleyTest {
                 scanned.clearProcedures();
                 assertEquals(1, scanned.installProcedures(CheckedFailureHooks.class));
                 GalleyException failure = assertThrows(GalleyException.class, () -> scanned.parse("alpha:12"));
-                assertEquals(StatusCode.ERROR_HOOK_FAILED, failure.getCode());
+                assertEquals(Status.ERROR_HOOK_FAILED, failure.getCode());
                 assertSame(CheckedFailureHooks.failure, failure.getCause());
             } finally {
                 scanned.close();
@@ -2205,9 +2197,9 @@ public class GalleyTest {
                     long generation = outGeneration.get(ValueLayout.JAVA_LONG, 0);
                     assertTrue(generation > 0);
                     assertEquals(0, lib.galley_node_count(handle, generation));
-                    assertEquals(StatusCode.ERROR_INVALID_NODE.getCode(),
+                    assertEquals(Status.ERROR_INVALID_NODE.getCode(),
                             lib.sessionCalls.childCount(handle, generation, 0));
-                    assertEquals(StatusCode.ERROR_STALE_TREE.getCode(),
+                    assertEquals(Status.ERROR_STALE_TREE.getCode(),
                             lib.galley_node_count(handle, 0));
                 } finally {
                     assertEquals(0, lib.galley_session_destroy(handle));
@@ -2233,20 +2225,20 @@ public class GalleyTest {
             GalleyLibrary lib = fixtureLibrary();
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment out = arena.allocate(ValueLayout.ADDRESS);
-                assertEquals(StatusCode.ERROR_NULL_ARGUMENT.getCode(),
+                assertEquals(Status.ERROR_NULL_ARGUMENT.getCode(),
                         lib.galley_session_create(MemorySegment.NULL, MemorySegment.NULL));
 
                 MemorySegment bad = arena.allocate(GalleyLibrary.GALLEY_COPTIONS_SIZE);
                 bad.set(ValueLayout.JAVA_INT, GalleyLibrary.OFF_MAX_ERRORS, -1);
                 out.set(ValueLayout.ADDRESS, 0, MemorySegment.ofAddress(0x1234L));
-                assertEquals(StatusCode.ERROR_INVALID_ARGUMENT.getCode(),
+                assertEquals(Status.ERROR_INVALID_ARGUMENT.getCode(),
                         lib.galley_session_create(bad, out));
                 assertEquals(0x1234L, out.get(ValueLayout.ADDRESS, 0).address(),
                         "the out-parameter is written only on success");
 
                 bad.set(ValueLayout.JAVA_INT, GalleyLibrary.OFF_MAX_ERRORS, 0);
                 bad.set(ValueLayout.JAVA_DOUBLE, GalleyLibrary.OFF_AST_PREALLOCATION_RATIO, Double.NaN);
-                assertEquals(StatusCode.ERROR_INVALID_ARGUMENT.getCode(),
+                assertEquals(Status.ERROR_INVALID_ARGUMENT.getCode(),
                         lib.galley_session_create(bad, out));
 
                 assertEquals(0, lib.galley_session_create(MemorySegment.NULL, out));
@@ -2276,13 +2268,13 @@ public class GalleyTest {
 
                 outData.set(ValueLayout.ADDRESS, 0, MemorySegment.ofAddress(0x5678L));
                 outLen.set(ValueLayout.JAVA_LONG, 0, 0x7777L);
-                assertEquals(StatusCode.ERROR_OUT_OF_RANGE.getCode(), lib.galley_hooks_name(count, outData, outLen));
+                assertEquals(Status.ERROR_OUT_OF_RANGE.getCode(), lib.galley_hooks_name(count, outData, outLen));
                 assertEquals(0x5678L, outData.get(ValueLayout.ADDRESS, 0).address());
                 assertEquals(0x7777L, outLen.get(ValueLayout.JAVA_LONG, 0));
 
-                assertEquals(StatusCode.ERROR_NULL_ARGUMENT.getCode(),
+                assertEquals(Status.ERROR_NULL_ARGUMENT.getCode(),
                         lib.galley_hooks_name(0, MemorySegment.NULL, outLen));
-                assertEquals(StatusCode.ERROR_NULL_ARGUMENT.getCode(),
+                assertEquals(Status.ERROR_NULL_ARGUMENT.getCode(),
                         lib.galley_hooks_name(0, outData, MemorySegment.NULL));
             }
         }
@@ -2303,14 +2295,14 @@ public class GalleyTest {
                     assertEquals(0, lib.galley_has_diagnostic(session, outHas));
                     assertEquals(1, outHas.get(ValueLayout.JAVA_INT, 0));
                     outHas.set(ValueLayout.JAVA_INT, 0, 0x5A5A);
-                    assertEquals(StatusCode.ERROR_NULL_ARGUMENT.getCode(),
+                    assertEquals(Status.ERROR_NULL_ARGUMENT.getCode(),
                             lib.galley_has_diagnostic(session, MemorySegment.NULL));
                     assertEquals(0x5A5A, outHas.get(ValueLayout.JAVA_INT, 0));
 
                     assertEquals(1, lib.galley_recorded_diagnostic_count(session));
                     assertEquals(DiagnosticKind.SYNTAX.getCode(), lib.galley_diagnostic_kind(session));
                     assertEquals(DiagnosticKind.SYNTAX.getCode(), lib.galley_recorded_diagnostic_kind(session, 0));
-                    assertEquals(StatusCode.ERROR_NO_DIAGNOSTIC.getCode(),
+                    assertEquals(Status.ERROR_NO_DIAGNOSTIC.getCode(),
                             lib.galley_recorded_diagnostic_kind(session, 7));
 
                     MemorySegment outOffset = arena.allocate(ValueLayout.JAVA_LONG);
@@ -2319,7 +2311,7 @@ public class GalleyTest {
                     outOffset.set(ValueLayout.JAVA_LONG, 0, 0x1111L);
                     outLine.set(ValueLayout.JAVA_INT, 0, 0x2222);
                     outCol.set(ValueLayout.JAVA_INT, 0, 0x3333);
-                    assertEquals(StatusCode.ERROR_NO_DIAGNOSTIC.getCode(),
+                    assertEquals(Status.ERROR_NO_DIAGNOSTIC.getCode(),
                             lib.galley_recorded_diagnostic_position(session, 7, outOffset, outLine, outCol));
                     assertEquals(0x1111L, outOffset.get(ValueLayout.JAVA_LONG, 0));
                     assertEquals(0x2222, outLine.get(ValueLayout.JAVA_INT, 0));
@@ -2329,11 +2321,11 @@ public class GalleyTest {
                     MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
                     outData.set(ValueLayout.ADDRESS, 0, MemorySegment.ofAddress(0x9ABC));
                     outLen.set(ValueLayout.JAVA_LONG, 0, 0x4444L);
-                    assertEquals(StatusCode.ERROR_OUT_OF_RANGE.getCode(),
+                    assertEquals(Status.ERROR_OUT_OF_RANGE.getCode(),
                             lib.galley_recorded_expected_token(session, 0, 10_000L, outData, outLen));
                     assertEquals(0x9ABCL, outData.get(ValueLayout.ADDRESS, 0).address());
                     assertEquals(0x4444L, outLen.get(ValueLayout.JAVA_LONG, 0));
-                    assertEquals(StatusCode.ERROR_OUT_OF_RANGE.getCode(),
+                    assertEquals(Status.ERROR_OUT_OF_RANGE.getCode(),
                             lib.galley_diagnostic_expected_at(session, 10_000L, outData, outLen));
                 } finally {
                     assertEquals(0, lib.galley_session_destroy(session));
@@ -2356,26 +2348,26 @@ public class GalleyTest {
 
                     outData.set(ValueLayout.ADDRESS, 0, MemorySegment.ofAddress(0x1111L));
                     outLen.set(ValueLayout.JAVA_LONG, 0, 0x2222L);
-                    assertEquals(StatusCode.ERROR_OUT_OF_RANGE.getCode(),
+                    assertEquals(Status.ERROR_OUT_OF_RANGE.getCode(),
                             lib.galley_symbol_name(session, huge, outData, outLen));
                     assertEquals(0x1111L, outData.get(ValueLayout.ADDRESS, 0).address());
                     assertEquals(0x2222L, outLen.get(ValueLayout.JAVA_LONG, 0));
-                    assertEquals(StatusCode.ERROR_OUT_OF_RANGE.getCode(),
+                    assertEquals(Status.ERROR_OUT_OF_RANGE.getCode(),
                             lib.galley_variable_name(session, huge, outData, outLen));
                     assertEquals(0x1111L, outData.get(ValueLayout.ADDRESS, 0).address());
                     assertEquals(0x2222L, outLen.get(ValueLayout.JAVA_LONG, 0));
 
                     MemorySegment outIsTerminal = arena.allocate(ValueLayout.JAVA_INT);
                     outIsTerminal.set(ValueLayout.JAVA_INT, 0, 0x3333);
-                    assertEquals(StatusCode.ERROR_OUT_OF_RANGE.getCode(),
+                    assertEquals(Status.ERROR_OUT_OF_RANGE.getCode(),
                             lib.galley_symbol_is_terminal(session, huge, outIsTerminal));
                     assertEquals(0x3333, outIsTerminal.get(ValueLayout.JAVA_INT, 0));
 
                     MemorySegment enabled = arena.allocate(hookCount);
-                    assertEquals(StatusCode.ERROR_INVALID_ARGUMENT.getCode(),
+                    assertEquals(Status.ERROR_INVALID_ARGUMENT.getCode(),
                             lib.galley_session_set_hooks(session, MemorySegment.NULL, MemorySegment.NULL,
                                     enabled, hookCount + 1));
-                    assertEquals(StatusCode.ERROR_NULL_ARGUMENT.getCode(),
+                    assertEquals(Status.ERROR_NULL_ARGUMENT.getCode(),
                             lib.galley_session_set_hooks(session, MemorySegment.NULL, MemorySegment.NULL,
                                     MemorySegment.NULL, 1));
                     assertEquals(0, lib.galley_session_set_hooks(session, MemorySegment.NULL, MemorySegment.NULL,
@@ -2620,7 +2612,7 @@ public class GalleyTest {
             AtomicReference<ProcedureArguments> stashed = new AtomicReference<>();
             AtomicReference<ProcedureArguments> last = new AtomicReference<>();
             AtomicReference<Node> lastNode = new AtomicReference<>();
-            List<StatusCode> during = new ArrayList<>();
+            List<Status> during = new ArrayList<>();
             session.installProcedure("reduction_Pair", args -> {
                 if (stashed.get() == null) stashed.set(args);
             });
@@ -2642,11 +2634,11 @@ public class GalleyTest {
                 session.clearProcedures();
             }
             int calls = uses(stashed.get(), lastNode.get()).size();
-            assertEquals(Collections.nCopies(calls, StatusCode.ERROR_STALE_HOOK), during);
+            assertEquals(Collections.nCopies(calls, Status.ERROR_STALE_HOOK), during);
             for (ProcedureArguments args : List.of(stashed.get(), last.get())) {
                 for (Runnable use : uses(args, root)) {
                     GalleyException refused = assertThrows(GalleyException.class, use::run);
-                    assertEquals(StatusCode.ERROR_STALE_HOOK, refused.getCode());
+                    assertEquals(Status.ERROR_STALE_HOOK, refused.getCode());
                     assertFalse(refused instanceof StaleTreeException);
                 }
             }
@@ -2668,7 +2660,7 @@ public class GalleyTest {
         void liveArgumentsAreRefusedOnAnyThreadButTheHooks() {
             // A hook's arguments live on the dispatching thread's stack: every
             // other thread is refused with session in use while it runs.
-            List<StatusCode> codes = new ArrayList<>();
+            List<Status> codes = new ArrayList<>();
             AtomicInteger probed = new AtomicInteger();
             session.installProcedure("reduction_Document", args -> {
                 Thread thread = new Thread(() -> {
@@ -2696,7 +2688,7 @@ public class GalleyTest {
                 session.clearProcedures();
             }
             assertEquals(1, probed.get());
-            assertEquals(Collections.nCopies(4, StatusCode.ERROR_SESSION_IN_USE), codes);
+            assertEquals(Collections.nCopies(4, Status.ERROR_SESSION_IN_USE), codes);
         }
 
         @Test
@@ -2707,8 +2699,8 @@ public class GalleyTest {
             // dispatching thread the same arguments are a stale hook, and once
             // the parse is over nothing overlaps, so any thread gets stale hook.
             AtomicReference<ProcedureArguments> stashed = new AtomicReference<>();
-            List<StatusCode> foreign = new ArrayList<>();
-            List<StatusCode> own = new ArrayList<>();
+            List<Status> foreign = new ArrayList<>();
+            List<Status> own = new ArrayList<>();
             session.installProcedure("reduction_Pair", args -> {
                 if (stashed.get() == null) stashed.set(args);
             });
@@ -2741,9 +2733,9 @@ public class GalleyTest {
             } finally {
                 session.clearProcedures();
             }
-            assertEquals(Collections.nCopies(4, StatusCode.ERROR_SESSION_IN_USE), foreign);
-            assertEquals(List.of(StatusCode.ERROR_STALE_HOOK), own);
-            List<StatusCode> after = new ArrayList<>();
+            assertEquals(Collections.nCopies(4, Status.ERROR_SESSION_IN_USE), foreign);
+            assertEquals(List.of(Status.ERROR_STALE_HOOK), own);
+            List<Status> after = new ArrayList<>();
             Thread thread = new Thread(() -> {
                 try {
                     stashed.get().currentLine();
@@ -2753,7 +2745,7 @@ public class GalleyTest {
             });
             thread.start();
             thread.join(30_000);
-            assertEquals(List.of(StatusCode.ERROR_STALE_HOOK), after);
+            assertEquals(List.of(Status.ERROR_STALE_HOOK), after);
         }
 
         @Test
@@ -2764,8 +2756,8 @@ public class GalleyTest {
             String text = "expected digits here";
             CountDownLatch entered = new CountDownLatch(1);
             CountDownLatch release = new CountDownLatch(1);
-            List<StatusCode> fromHook = new ArrayList<>();
-            List<StatusCode> fromThread = new ArrayList<>();
+            List<Status> fromHook = new ArrayList<>();
+            List<Status> fromThread = new ArrayList<>();
             session.installProcedure("reduction_Document", args -> {
                 try {
                     session.setMessageOverride("Number", text);
@@ -2793,8 +2785,8 @@ public class GalleyTest {
                 parser.join(30_000);
                 session.clearProcedures();
             }
-            assertEquals(List.of(StatusCode.ERROR_SESSION_IN_USE), fromHook);
-            assertEquals(List.of(StatusCode.ERROR_SESSION_IN_USE), fromThread);
+            assertEquals(List.of(Status.ERROR_SESSION_IN_USE), fromHook);
+            assertEquals(List.of(Status.ERROR_SESSION_IN_USE), fromThread);
             GalleyException before = assertThrows(GalleyException.class, () -> session.parse("alpha:"));
             assertFalse(before.getDiagnostic().getMessage().contains(text));
             session.setMessageOverride("Number", text);
@@ -2809,8 +2801,8 @@ public class GalleyTest {
             // leaves the session open and reading.
             CountDownLatch entered = new CountDownLatch(1);
             CountDownLatch release = new CountDownLatch(1);
-            List<StatusCode> fromHook = new ArrayList<>();
-            List<StatusCode> fromThread = new ArrayList<>();
+            List<Status> fromHook = new ArrayList<>();
+            List<Status> fromThread = new ArrayList<>();
             session.installProcedure("reduction_Document", args -> {
                 try {
                     session.close();
@@ -2838,8 +2830,8 @@ public class GalleyTest {
                 parser.join(30_000);
                 session.clearProcedures();
             }
-            assertEquals(List.of(StatusCode.ERROR_SESSION_IN_USE), fromHook);
-            assertEquals(List.of(StatusCode.ERROR_SESSION_IN_USE), fromThread);
+            assertEquals(List.of(Status.ERROR_SESSION_IN_USE), fromHook);
+            assertEquals(List.of(Status.ERROR_SESSION_IN_USE), fromThread);
             assertFalse(session.isClosed());
             assertEquals("alpha:12,beta:3", new String(session.rootNode().text(), StandardCharsets.UTF_8));
             session.close();
@@ -2862,7 +2854,7 @@ public class GalleyTest {
             // drop_self through the first Pair's arguments, made from a later
             // Pair hook, is refused and cannot drop that hook's node.
             AtomicReference<ProcedureArguments> stashed = new AtomicReference<>();
-            List<StatusCode> refusals = new ArrayList<>();
+            List<Status> refusals = new ArrayList<>();
             session.installProcedure("reduction_Pair", args -> {
                 if (stashed.get() == null) {
                     stashed.set(args);
@@ -2879,7 +2871,7 @@ public class GalleyTest {
             } finally {
                 session.clearProcedures();
             }
-            assertEquals(List.of(StatusCode.ERROR_STALE_HOOK), refusals);
+            assertEquals(List.of(Status.ERROR_STALE_HOOK), refusals);
             List<String> pairs = new ArrayList<>();
             Walker walker = session.rootNode().walk(false, false);
             while (walker.hasNext()) {
@@ -2959,19 +2951,19 @@ public class GalleyTest {
             assertArrayEquals(varName.getBytes(StandardCharsets.UTF_8), session.variableNameAtBytes(0));
             GalleyException nameRefusal = assertThrows(GalleyException.class,
                     () -> session.symbolNameAt(1_000_000_000L));
-            assertEquals(StatusCode.ERROR_OUT_OF_RANGE, nameRefusal.getCode());
+            assertEquals(Status.ERROR_OUT_OF_RANGE, nameRefusal.getCode());
             GalleyException nameBytesRefusal = assertThrows(GalleyException.class,
                     () -> session.symbolNameAtBytes(1_000_000_000L));
-            assertEquals(StatusCode.ERROR_OUT_OF_RANGE, nameBytesRefusal.getCode());
+            assertEquals(Status.ERROR_OUT_OF_RANGE, nameBytesRefusal.getCode());
             GalleyException terminalRefusal = assertThrows(GalleyException.class,
                     () -> session.symbolIsTerminal(1_000_000_000L));
-            assertEquals(StatusCode.ERROR_OUT_OF_RANGE, terminalRefusal.getCode());
+            assertEquals(Status.ERROR_OUT_OF_RANGE, terminalRefusal.getCode());
             GalleyException variableRefusal = assertThrows(GalleyException.class,
                     () -> session.variableNameAt(1_000_000_000L));
-            assertEquals(StatusCode.ERROR_OUT_OF_RANGE, variableRefusal.getCode());
+            assertEquals(Status.ERROR_OUT_OF_RANGE, variableRefusal.getCode());
             GalleyException variableBytesRefusal = assertThrows(GalleyException.class,
                     () -> session.variableNameAtBytes(1_000_000_000L));
-            assertEquals(StatusCode.ERROR_OUT_OF_RANGE, variableBytesRefusal.getCode());
+            assertEquals(Status.ERROR_OUT_OF_RANGE, variableBytesRefusal.getCode());
         }
     }
 
@@ -3183,7 +3175,7 @@ public class GalleyTest {
                 });
                 sess.parse("alpha:12");
                 assertTrue(refusal.get() instanceof GalleyException);
-                assertEquals(StatusCode.ERROR_SESSION_IN_USE, ((GalleyException) refusal.get()).getCode());
+                assertEquals(Status.ERROR_SESSION_IN_USE, ((GalleyException) refusal.get()).getCode());
                 // The refused changes left the table as it was.
                 assertEquals(1, sess.listProcedures().size());
                 assertNotNull(sess.lookupProcedure("reduction_Pair"));
@@ -3240,7 +3232,7 @@ public class GalleyTest {
                 // hook's own throwable, the status and where the parse stopped.
                 assertEquals(1, fired.size());
                 assertSame(boom, failure.getCause());
-                assertEquals(StatusCode.ERROR_HOOK_FAILED, failure.getCode());
+                assertEquals(Status.ERROR_HOOK_FAILED, failure.getCode());
                 Diagnostic diagnostic = failure.getDiagnostic();
                 assertNotNull(diagnostic);
                 assertEquals(DiagnosticKind.HOOK, diagnostic.getKind());
@@ -3261,7 +3253,7 @@ public class GalleyTest {
             Session openedSession = parser.openSession();
             try {
                 GalleyException failure = assertThrows(GalleyException.class, () -> openedSession.parse("alpha:12,beta@3"));
-                assertEquals(StatusCode.ERROR_HOOK_FAILED, failure.getCode());
+                assertEquals(Status.ERROR_HOOK_FAILED, failure.getCode());
                 Diagnostic diagnostic = failure.getDiagnostic();
                 assertNotNull(diagnostic);
                 assertEquals(DiagnosticKind.HOOK, diagnostic.getKind());

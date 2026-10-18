@@ -192,6 +192,12 @@ pub fn build(b: *std.Build) !void {
         .link_libc = true,
     });
     capi_mod.addImport("galley", runtime_mod);
+    // The ABI's named values: declared once in bindings/abi_values.zon and
+    // imported at comptime by capi.zig, which derives every C-visible
+    // constant and galley_status_string from it.
+    capi_mod.addAnonymousImport("abi_values", .{
+        .root_source_file = galley_dep.path("bindings/abi_values.zon"),
+    });
     const capi_options = b.addOptions();
     capi_options.addOption([]const u8, "version", capi_version);
     capi_mod.addImport("capi_options", capi_options.createModule());

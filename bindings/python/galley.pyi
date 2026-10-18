@@ -29,76 +29,141 @@ from typing import Any, Final
 # Module-level enums (from galley.h, exposed as IntEnum classes)
 # ---------------------------------------------------------------------------
 
+# >>> generated: enums (bindings/abi_values.zon; regenerate: zig build abi-values)
 class ParserType(enum.IntEnum):
-    """Parser families."""
-
+    """Parser families returned by `galley_parser_type`."""
     LL = 0
+    """Predictive LL parser: recursive descent over the native call stack."""
     LR = 1
+    """Canonical LR parser: recursive ascent over the native call stack."""
 
 class RecoveryMode(enum.IntEnum):
-    """Error recovery modes."""
-
+    """Error-recovery modes returned by `galley_error_recovery_mode`."""
     DISABLED = 0
+    """Recovery is disabled: the parser is fail-fast, and grammar annotations
+    are inert."""
     AUTOMATIC = 1
+    """Recovery is enabled for an unannotated grammar: the parser synchronizes
+    on its own."""
     EXPLICIT = 2
+    """Recovery is enabled for an annotated grammar: only committed annotated
+    scopes recover, with no automatic fallback."""
 
-class Kind(enum.IntEnum):
-    """Diagnostic kinds."""
-
+class DiagnosticKind(enum.IntEnum):
+    """Diagnostic kinds returned by `galley_diagnostic_kind`."""
     NONE = 0
+    """No diagnostic: the previous parse succeeded, or no parse has run."""
     SYNTAX = 1
+    """A syntax error. A parse that recovered from its syntax errors still
+    publishes its tree, with the damaged regions flagged as recovered
+    nodes."""
     INDENTATION = 2
+    """An indentation error, reported where the input's indentation does not
+    fit the grammar."""
     SEMANTIC = 3
+    """A semantic error recorded by a reduction or a hook; the parse continues
+    and the node is marked."""
     HOOK = 4
+    """A hook raised or its dispatch returned failure: the parse stopped at
+    that hook and published nothing."""
 
 class RecoveryTarget(enum.IntEnum):
-    """Recovery targets."""
-
+    """Recovery target kinds returned by `galley_diagnostic_recovery_kind`."""
     NONE = 0
+    """No recovery information: the diagnostic did not come from a recovery,
+    or recovery could not attribute a target."""
     LHS_VARIABLE = 1
+    """The recovery synchronized at a left-hand-side variable."""
     PRODUCTION = 2
+    """The recovery synchronized at a committed production."""
     OCCURRENCE = 3
+    """The recovery synchronized at an annotated right-hand-side occurrence."""
 
-class Resume(enum.IntEnum):
-    """Resume sides."""
-
+class ResumeSide(enum.IntEnum):
+    """Resume sides returned by `galley_diagnostic_recovery_resume`."""
     BEFORE = 0
+    """The recovery terminal is preserved for the parser to match."""
     AFTER = 1
+    """The recovery terminal is consumed by the recovery."""
 
 class Status(enum.IntEnum):
-    """Status codes (negative on failure).
-
-    A failure carries the session's diagnostic exactly when its status is
-    one of ``ERROR_SYNTAX``, ``ERROR_SEMANTIC``, ``ERROR_INDENTATION``,
-    ``ERROR_STACK_OVERFLOW``, ``ERROR_AST_CAPACITY_EXCEEDED``,
-    ``ERROR_UNTERMINATED_RAW_STRING``, ``ERROR_OUT_OF_MEMORY`` and
-    ``ERROR_HOOK_FAILED`` — the statuses that end a parse that ran, whose
-    diagnostic then belongs to that attempt. A failure built from any other
-    status carries none.
-    """
-
+    """Status codes returned by parse and accessor functions. Non-negative
+    values are success; negative values are failures, and
+    `galley_status_string` renders each one's text for diagnostics."""
     OK = 0
+    """Success: the call ran to its end (a parse answers the number of bytes
+    parsed)."""
     ERROR_NULL_ARGUMENT = -1
+    """A required argument is null: a session, a hook door, or a required
+    pointer."""
     ERROR_SYNTAX = -2
+    """The parse recorded syntax errors. A parse that recovered and ran to its
+    end still publishes its tree, with the damaged regions flagged as
+    recovered nodes; a parse that could not recover publishes nothing."""
     ERROR_INDENTATION = -3
+    """The parse failed on indentation, which has no recovery; nothing is
+    published."""
     ERROR_STACK_OVERFLOW = -4
+    """The parser stack exceeded its configured limit; nothing is published."""
     ERROR_AST_CAPACITY_EXCEEDED = -5
+    """AST storage ran out of its planned capacity; nothing is published."""
     ERROR_UNTERMINATED_RAW_STRING = -6
+    """Input ended inside a raw string; nothing is published."""
     ERROR_OUT_OF_MEMORY = -7
+    """An allocation failed; nothing is published."""
     ERROR_INTERNAL = -8
+    """An internal invariant failed: a bug in the library, not a property of
+    the input."""
     ERROR_NO_DIAGNOSTIC = -9
+    """The read needs a diagnostic and none matches: no diagnostic is
+    recorded, it is not of the requested kind, or a recorded-diagnostic
+    index is past its table."""
     ERROR_INVALID_NODE = -10
+    """A tree position names no node of the tree the call addresses; an index
+    past any other table is `galley_error_out_of_range` instead."""
     ERROR_IO = -11
+    """Reading the input failed; nothing is published."""
     ERROR_SEMANTIC = -12
+    """The parse recorded semantic errors; the tree is still published, with
+    the erroring nodes marked."""
     ERROR_SESSION_IN_USE = -13
+    """A parse holds the session exclusively; the call is refused rather than
+    queued. Post-parse node/tree/diagnostic accessors return this while a
+    parse is in flight (hook code must use the `galley_hook_*` door)."""
     ERROR_STALE_TREE = -14
+    """A node, tree edit, snapshot, or walk cursor carries a generation that
+    is not the door's live tree's. On the session door: the session parsed
+    again, the last parse failed and published nothing, or nothing was ever
+    published; re-read the tree with `galley_root_node` and use its nodes.
+    `galley_last_input` and `galley_last_position` follow the published
+    tree the same way. On the hook door (`galley_hook_*`,
+    `galley_procedure_set_current_node`): the generation is not the running
+    parse's (`galley_hook_generation`). Calls on both doors pass the
+    generation they address; the check runs in every build, because it is a
+    lifetime contract, not a misuse check."""
     ERROR_STALE_HOOK = -15
+    """A `galley_procedure_*` call made with the ticket of a hook that
+    returned: the arguments are valid only while their hook runs."""
     ERROR_HOOK_FAILED = -16
+    """A hook's dispatch returned nonzero: the parse stopped where the hook
+    ran and published nothing. The diagnostic is of kind
+    `galley_diagnostic_kind_hook`; the host keeps the cause of the failure."""
     ERROR_OUT_OF_RANGE = -17
+    """An index outside the table it was read from: a hook name, a grammar
+    symbol or variable name, or an expected-token or context-name index
+    past its diagnostic's table. An address outside the live node storage
+    is `galley_error_invalid_node` instead."""
     ERROR_INVALID_ARGUMENT = -18
+    """A value in `GalleyCOptions` is outside its domain (a negative
+    `max_errors`, `recovery_window`, or `verbosity`, or a non-finite
+    `ast_preallocation_ratio`), or the enable-flag count passed to
+    `galley_session_set_hooks` does not match `galley_hooks_count()`."""
 
 INVALID_NODE: Final[int]
-"""``2**63 - 1``, the address marking an absent node link."""
+"""Returned by tree queries when no node exists at that position. Every node
+address and this sentinel are non-negative (`INT64_MAX`), so a call that
+returns an address can report a negative status in the same `long long`."""
+# <<< generated: enums
 
 # ---------------------------------------------------------------------------
 # Exceptions
@@ -116,7 +181,7 @@ class GalleyError(Exception):
     other status carries ``None``.
 
     A hook that raised aborts the parse: ``parse`` raises a ``GalleyError``
-    with code ``ERROR_HOOK_FAILED``, a ``Kind.HOOK`` diagnostic, and the
+    with code ``ERROR_HOOK_FAILED``, a ``DiagnosticKind.HOOK`` diagnostic, and the
     hook's exception as ``__cause__``. Nothing is published.
 
     ``str(error)`` is the rendered diagnostic message when there is one,
@@ -148,7 +213,7 @@ class Diagnostic:
     """
 
     kind: int
-    """``Kind`` classification (``Kind.SYNTAX``, ...)."""
+    """``DiagnosticKind`` classification (``DiagnosticKind.SYNTAX``, ...)."""
     offset: int
     """Byte offset in the input of the failure."""
     line: int
@@ -178,7 +243,7 @@ class Diagnostic:
     recovery_terminal: bytes | None
     """Synchronization terminal bytes chosen by recovery."""
     recovery_resume: int | None
-    """``Resume.BEFORE`` or ``Resume.AFTER``."""
+    """``ResumeSide.BEFORE`` or ``ResumeSide.AFTER``."""
     recovery_lhs_variable: bytes | None
     """LHS variable scope of the applied recovery."""
     recovery_production: tuple[bytes, int] | None

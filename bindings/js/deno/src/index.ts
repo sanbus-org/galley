@@ -21,9 +21,9 @@ export {
   Status,
   ParserType,
   RecoveryMode,
-  Kind,
+  DiagnosticKind,
   RecoveryTarget,
-  Resume,
+  ResumeSide,
 } from "@sanbus/galley-core";
 export { getDenoPort, getDenoPortFromFile, libFileName } from "./ffi.ts";
 export type { Session, StagedInput, SessionOptions, WalkStep, Diagnostic, TreeSnapshot } from "@sanbus/galley-core";

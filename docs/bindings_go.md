@@ -13,6 +13,11 @@ A complete, runnable consumer lives in
 [`examples/go`](https://github.com/sanbus-org/galley/tree/main/examples/go);
 it is built and executed by CI on every push.
 
+Every named value this package shares with the C ABI — statuses, diagnostic
+kinds, recovery targets, resume sides, parser types, and recovery modes — is
+declared once, then rendered into each binding's idiom in
+[ABI Values](/abi_values).
+
 ## Getting Started
 
 Add the bindings module to your `go.mod` and point a `replace` directive at

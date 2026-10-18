@@ -48,7 +48,8 @@ export default defineConfig({
           { text: 'Go', link: '/bindings_go' },
           { text: 'Python', link: '/bindings_python' },
           { text: 'JavaScript', link: '/bindings_javascript' },
-          { text: 'Java', link: '/bindings_java' }
+          { text: 'Java', link: '/bindings_java' },
+          { text: 'ABI Values', link: '/abi_values' }
         ]
       },
       {

@@ -1,27 +1,35 @@
 package org.sanbus.galley;
 
+// >>> generated file (bindings/abi_values.zon; regenerate: zig build abi-values)
+
 /**
- * Parser families reported by {@code galley_parser_type}, per the
- * {@code galley_parser_type_*} constants in the C ABI. Converted once at
- * the FFI boundary via {@link #fromCode}; branching code uses these names,
- * never integers.
+ * Parser families returned by {@code galley_parser_type}.
  */
 public enum ParserType {
+    /**
+     * Predictive LL parser: recursive descent over the native call stack.
+     */
     LL(0),
+    /**
+     * Canonical LR parser: recursive ascent over the native call stack.
+     */
     LR(1),
-    /** Fallback for codes this binding does not know (newer native builds). */
+    /**
+     * Fallback for codes this binding does not know.
+     */
     UNKNOWN(-1);
 
     private final int code;
-
     ParserType(int code) { this.code = code; }
 
-    /** Raw {@code galley_parser_type} value. */
+    /**
+     * Raw code value.
+     */
     public int getCode() { return code; }
 
     /**
      * Single converter for this category: known codes map to their member,
-     * anything else maps to {@link #UNKNOWN}.
+     * anything else maps to {@code UNKNOWN}.
      */
     public static ParserType fromCode(long code) {
         for (ParserType value : values()) {

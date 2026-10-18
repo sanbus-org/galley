@@ -7,7 +7,7 @@
 
 import {
   galley,
-  Kind,
+  DiagnosticKind,
   type Node,
   type Session,
 } from "@sanbus/galley/browser";
@@ -110,9 +110,9 @@ async function main(): Promise<void> {
     console.log(`recorded diagnostics: ${recorded.length}`);
     recorded.forEach((diag, idx) => {
       const kindName =
-        diag.kind === Kind.Syntax
+        diag.kind === DiagnosticKind.Syntax
           ? "syntax"
-          : diag.kind === Kind.Indentation
+          : diag.kind === DiagnosticKind.Indentation
             ? "indentation"
             : "none";
       const unexpected = diag.unexpectedToken ? utf8.decode(diag.unexpectedToken) : "";

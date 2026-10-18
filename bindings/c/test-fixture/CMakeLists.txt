@@ -69,6 +69,7 @@ add_custom_command(
 # the libraries below.
 file(GLOB_RECURSE GALLEY_LIBRARY_SOURCES CONFIGURE_DEPENDS
     "${GALLEY_SOURCE_DIR}/src/runtime/*.zig"
+    "${GALLEY_SOURCE_DIR}/bindings/abi_values.zon"
     "${GALLEY_SOURCE_DIR}/bindings/c/capi.zig"
     "${GALLEY_SOURCE_DIR}/bindings/c/consumer/build.zig")
 

@@ -44,9 +44,9 @@ export {
   Status,
   ParserType,
   RecoveryMode,
-  Kind,
+  DiagnosticKind,
   RecoveryTarget,
-  Resume,
+  ResumeSide,
 } from "@sanbus/galley-core";
 export { galley, openLanguageDirectory, Parser } from "./session.ts";
 export type { Session };

@@ -119,7 +119,7 @@ public final class Parser {
     /** The library's text for a status code, or {@code null} when it names none. */
     public String statusString(long status) { return lib.galley_status_string(status); }
 
-    public String statusString(StatusCode status) {
+    public String statusString(Status status) {
         if (status == null) return null;
         return lib.galley_status_string(status.getCode());
     }

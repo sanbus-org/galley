@@ -23,18 +23,23 @@ func boolToCInt(value bool) C.int {
 // read from, reporting false for invalid-node results (missing links, empty
 // chains).
 func cToNode(generation uint64, value C.ulonglong) (Node, bool) {
-	if uint64(value) == invalidAddress {
+	if uint64(value) == invalidNode {
 		return Node{}, false
 	}
 	return Node{generation: generation, address: uint64(value)}, true
 }
 
-// invalidAddress is GALLEY_INVALID_NODE; noVariable is GALLEY_NO_VARIABLE.
-// Both are non-negative, like every address: only statuses are negative.
-const (
-	invalidAddress = uint64(0x7FFFFFFFFFFFFFFF)
-	noVariable     = int64(0x7FFFFFFFFFFFFFFF)
-)
+// >>> generated: sentinels (bindings/abi_values.zon; regenerate: zig build abi-values)
+// Returned by tree queries when no node exists at that position. Every node
+// address and this sentinel are non-negative (INT64_MAX), so a call that
+// returns an address can report a negative status in the same long long.
+const invalidNode = uint64(0x7FFFFFFFFFFFFFFF)
+
+// Returned by galley_node_variable_index and written to the snapshot's variable
+// column for a node that has no variable. Non-negative like
+// GALLEY_INVALID_NODE: only statuses are negative.
+const noVariable = int64(0x7FFFFFFFFFFFFFFF)
+// <<< generated: sentinels
 
 // Node is a handle to a node of one parse's AST: the core's parse
 // generation the node belongs to, and its address. Every read and edit
@@ -52,49 +57,78 @@ func (n Node) Index() uint64 { return n.address }
 
 // InvalidNode is the sentinel for "no node here". It belongs to no parse
 // (generation 0 is never live), so using it is ErrStaleTree.
-var InvalidNode = Node{address: invalidAddress}
+var InvalidNode = Node{address: invalidNode}
 
+// >>> generated: statuses (bindings/abi_values.zon; regenerate: zig build abi-values)
 // Status codes mirrored from the C API (negative values are failures).
 type Error int32
 
 const (
-	ErrNullArgument         Error = -1
-	ErrSyntax               Error = -2
-	ErrIndentation          Error = -3
-	ErrStackOverflow        Error = -4
-	ErrASTCapacityExceeded  Error = -5
+	// ErrNullArgument: A required argument is null: a session, a hook door, or a required pointer.
+	ErrNullArgument          Error = -1
+	// ErrSyntax: The parse recorded syntax errors. A parse that recovered and ran to its end
+	// still publishes its tree, with the damaged regions flagged as recovered
+	// nodes; a parse that could not recover publishes nothing.
+	ErrSyntax                Error = -2
+	// ErrIndentation: The parse failed on indentation, which has no recovery; nothing is
+	// published.
+	ErrIndentation           Error = -3
+	// ErrStackOverflow: The parser stack exceeded its configured limit; nothing is published.
+	ErrStackOverflow         Error = -4
+	// ErrASTCapacityExceeded: AST storage ran out of its planned capacity; nothing is published.
+	ErrASTCapacityExceeded   Error = -5
+	// ErrUnterminatedRawString: Input ended inside a raw string; nothing is published.
 	ErrUnterminatedRawString Error = -6
-	ErrOutOfMemory          Error = -7
-	ErrInternal             Error = -8
-	ErrNoDiagnostic         Error = -9
-	ErrInvalidNode          Error = -10
-	ErrIO                   Error = -11
-	ErrSemantic             Error = -12
-	// ErrSessionInUse: a parse holds the session exclusively; a post-parse
-	// accessor was called mid-parse (hook code must use the args door).
-	ErrSessionInUse Error = -13
-	// ErrStaleTree: a handle's tree is gone — the session parsed again
-	// since, the last parse published nothing, or nothing was ever
-	// published. One failure for every source that can find a tree gone,
-	// so a dead handle never reads as a live one.
-	ErrStaleTree Error = -14
-	// ErrStaleHook: a procedure call made with the arguments of a hook that
-	// has returned; the core refuses it, whatever the tree is now.
-	ErrStaleHook Error = -15
-	// ErrHookFailed: a host hook's dispatch reported failure and the parse
-	// stopped. Only a library built with a host shim returns it; Go hooks
-	// cannot fail yet.
-	ErrHookFailed Error = -16
-	// ErrOutOfRange: an index past a table the core reads by number: a hook
-	// name, a grammar symbol or variable name, an expected-token or
-	// context-name index. A tree position past its storage is
-	// ErrInvalidNode, a recorded diagnostic past its count ErrNoDiagnostic.
-	ErrOutOfRange Error = -17
-	// ErrInvalidArgument: a non-null argument the call cannot accept: an
-	// option value outside its domain, or a hook-enable count that does not
-	// match the library's hook count. A nil argument is ErrNullArgument.
-	ErrInvalidArgument Error = -18
+	// ErrOutOfMemory: An allocation failed; nothing is published.
+	ErrOutOfMemory           Error = -7
+	// ErrInternal: An internal invariant failed: a bug in the library, not a property of the
+	// input.
+	ErrInternal              Error = -8
+	// ErrNoDiagnostic: The read needs a diagnostic and none matches: no diagnostic is recorded, it
+	// is not of the requested kind, or a recorded-diagnostic index is past its
+	// table.
+	ErrNoDiagnostic          Error = -9
+	// ErrInvalidNode: A tree position names no node of the tree the call addresses; an index past
+	// any other table is galley_error_out_of_range instead.
+	ErrInvalidNode           Error = -10
+	// ErrIO: Reading the input failed; nothing is published.
+	ErrIO                    Error = -11
+	// ErrSemantic: The parse recorded semantic errors; the tree is still published, with the
+	// erroring nodes marked.
+	ErrSemantic              Error = -12
+	// ErrSessionInUse: A parse holds the session exclusively; the call is refused rather than
+	// queued. Post-parse node/tree/diagnostic accessors return this while a parse
+	// is in flight (hook code must use the galley_hook_* door).
+	ErrSessionInUse          Error = -13
+	// ErrStaleTree: A node, tree edit, snapshot, or walk cursor carries a generation that is not
+	// the door's live tree's. On the session door: the session parsed again, the
+	// last parse failed and published nothing, or nothing was ever published;
+	// re-read the tree with galley_root_node and use its nodes. galley_last_input
+	// and galley_last_position follow the published tree the same way. On the hook
+	// door (galley_hook_*, galley_procedure_set_current_node): the generation is
+	// not the running parse's (galley_hook_generation). Calls on both doors pass
+	// the generation they address; the check runs in every build, because it is a
+	// lifetime contract, not a misuse check.
+	ErrStaleTree             Error = -14
+	// ErrStaleHook: A galley_procedure_* call made with the ticket of a hook that returned: the
+	// arguments are valid only while their hook runs.
+	ErrStaleHook             Error = -15
+	// ErrHookFailed: A hook's dispatch returned nonzero: the parse stopped where the hook ran and
+	// published nothing. The diagnostic is of kind galley_diagnostic_kind_hook;
+	// the host keeps the cause of the failure.
+	ErrHookFailed            Error = -16
+	// ErrOutOfRange: An index outside the table it was read from: a hook name, a grammar symbol
+	// or variable name, or an expected-token or context-name index past its
+	// diagnostic's table. An address outside the live node storage is
+	// galley_error_invalid_node instead.
+	ErrOutOfRange            Error = -17
+	// ErrInvalidArgument: A value in GalleyCOptions is outside its domain (a negative max_errors,
+	// recovery_window, or verbosity, or a non-finite ast_preallocation_ratio), or
+	// the enable-flag count passed to galley_session_set_hooks does not match
+	// galley_hooks_count().
+	ErrInvalidArgument       Error = -18
 )
+// <<< generated: statuses
 
 // statusCarriesDiagnostic reports whether a failure with this code carries
 // the session's diagnostic: exactly the statuses that ended a parse that
@@ -102,42 +136,27 @@ const (
 // from any other status carries none — a file-read failure included,
 // whether it happened before the parse began or, in a streaming build,
 // during it.
+// >>> generated: status flags (bindings/abi_values.zon; regenerate: zig build abi-values)
 func statusCarriesDiagnostic(code Error) bool {
 	switch code {
-	case ErrSyntax, ErrSemantic, ErrIndentation, ErrStackOverflow,
-		ErrASTCapacityExceeded, ErrUnterminatedRawString, ErrOutOfMemory,
-		ErrHookFailed:
+	case ErrSyntax, ErrIndentation, ErrStackOverflow, ErrASTCapacityExceeded,
+		ErrUnterminatedRawString, ErrOutOfMemory, ErrSemantic, ErrHookFailed:
 		return true
 	}
 	return false
 }
-
-var errorDescriptions = map[Error]string{
-	ErrNullArgument:         "null argument",
-	ErrSyntax:               "syntax error",
-	ErrIndentation:          "indentation error",
-	ErrStackOverflow:        "parser stack overflow",
-	ErrASTCapacityExceeded:  "AST capacity exceeded",
-	ErrUnterminatedRawString: "unterminated raw string",
-	ErrOutOfMemory:          "out of memory",
-	ErrInternal:             "internal error",
-	ErrNoDiagnostic:         "no diagnostic available",
-	ErrInvalidNode:          "invalid node address",
-	ErrIO:                   "I/O error",
-	ErrSemantic:             "semantic error",
-	ErrSessionInUse:         "session in use",
-	ErrStaleTree:            "stale tree",
-	ErrStaleHook:            "stale hook",
-	ErrHookFailed:           "hook failed",
-	ErrOutOfRange:           "out of range",
-	ErrInvalidArgument:      "invalid argument",
-}
+// <<< generated: status flags
 
 func (e Error) Error() string {
-	if description, ok := errorDescriptions[e]; ok {
-		return description
+	if e == 0 {
+		// 0 is not a failure; the core renders it "ok".
+		return "unknown galley error"
 	}
-	return "unknown galley error"
+	text := C.galley_status_string(C.longlong(e))
+	if text == nil {
+		return "unknown galley error"
+	}
+	return C.GoString(text)
 }
 
 // Version returns the build-supplied version string of this library.
@@ -674,7 +693,7 @@ type Snapshot struct {
 // parse. The handle goes stale with the snapshot: a later parse refuses it
 // with ErrStaleTree.
 func (snap Snapshot) Node(index uint64) Node {
-	if index == invalidAddress {
+	if index == invalidNode {
 		return Node{}
 	}
 	if index >= snap.Count {
@@ -839,7 +858,7 @@ func (w *Walker) Next() (WalkStep, bool, error) {
 	if status < 0 {
 		return WalkStep{}, false, Error(int32(status))
 	}
-	if uint64(w.cursor.current) == invalidAddress {
+	if uint64(w.cursor.current) == invalidNode {
 		return WalkStep{}, false, nil
 	}
 	return WalkStep{
@@ -910,27 +929,45 @@ func (s *Session) LineColumn(node Node) (line uint32, column uint32, err error) 
 }
 
 // DiagnosticKind classifies the current diagnostic.
+// >>> generated: diagnostic kinds (bindings/abi_values.zon; regenerate: zig build abi-values)
 type DiagnosticKind int32
 
 const (
+	// DiagnosticKindNone: No diagnostic: the previous parse succeeded, or no parse has run.
 	DiagnosticKindNone        DiagnosticKind = 0
+	// DiagnosticKindSyntax: A syntax error. A parse that recovered from its syntax errors still
+	// publishes its tree, with the damaged regions flagged as recovered nodes.
 	DiagnosticKindSyntax      DiagnosticKind = 1
+	// DiagnosticKindIndentation: An indentation error, reported where the input's indentation does not fit
+	// the grammar.
 	DiagnosticKindIndentation DiagnosticKind = 2
+	// DiagnosticKindSemantic: A semantic error recorded by a reduction or a hook; the parse continues and
+	// the node is marked.
 	DiagnosticKindSemantic    DiagnosticKind = 3
+	// DiagnosticKindHook: A hook raised or its dispatch returned failure: the parse stopped at that
+	// hook and published nothing.
 	DiagnosticKindHook        DiagnosticKind = 4
 )
+// <<< generated: diagnostic kinds
 
 // RecoveryTarget names what a recovered syntax diagnostic's recovery
 // damaged. It is RecoveryTargetNone when the diagnostic carries no recovery
 // information, whatever the reason.
+// >>> generated: recovery targets (bindings/abi_values.zon; regenerate: zig build abi-values)
 type RecoveryTarget int32
 
 const (
+	// RecoveryTargetNone: No recovery information: the diagnostic did not come from a recovery, or
+	// recovery could not attribute a target.
 	RecoveryTargetNone        RecoveryTarget = 0
+	// RecoveryTargetLHSVariable: The recovery synchronized at a left-hand-side variable.
 	RecoveryTargetLHSVariable RecoveryTarget = 1
+	// RecoveryTargetProduction: The recovery synchronized at a committed production.
 	RecoveryTargetProduction  RecoveryTarget = 2
+	// RecoveryTargetOccurrence: The recovery synchronized at an annotated right-hand-side occurrence.
 	RecoveryTargetOccurrence  RecoveryTarget = 3
 )
+// <<< generated: recovery targets
 
 // SemanticInfo carries the variable and message of a semantic diagnostic.
 type SemanticInfo struct {

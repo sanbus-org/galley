@@ -41,7 +41,7 @@ const {
   __resetModuleCache,
   ParserType,
   RecoveryMode,
-  Kind,
+  DiagnosticKind,
   Status,
   INVALID_NODE,
   SessionClosedError,
@@ -214,11 +214,11 @@ await test("direct package import wires bundled hooks", async () => {
     "ProcedureArguments",
     "Parser",
     "GalleyError",
-    "Kind",
+    "DiagnosticKind",
     "ParserType",
     "RecoveryMode",
     "RecoveryTarget",
-    "Resume",
+    "ResumeSide",
   ];
   // The entry mirrors the parser's interface: derive the pin from the
   // Parser prototype chain (universal additions over core), excluding
@@ -275,8 +275,6 @@ await test("status_string renders known codes", async () => {
   const rendered = parser.statusString(-2);
   assert.equal(typeof rendered, "string");
   assert.ok(rendered.toLowerCase().includes("syntax"));
-  assert.equal(parser.statusString(-17), "out of range");
-  assert.equal(parser.statusString(-18), "invalid argument");
   assert.equal(parser.statusString(999999), null);
 });
 
@@ -371,7 +369,7 @@ await test("syntax error throws error with code and diagnostic", async () => {
       assert.equal(err.code, Status.ErrorSyntax);
       assert.ok(err.diagnostic);
       const d = err.diagnostic;
-      assert.equal(d.kind, Kind.Syntax);
+      assert.equal(d.kind, DiagnosticKind.Syntax);
       assert.equal(d.offset, 6);
       assert.equal(d.line, 1);
       assert.equal(d.column, 7);
@@ -545,9 +543,7 @@ await test("snapshot node round-trips columns and accessors", async () => {
     assert.ok(snap.node(first.address) === first);
     // An absent node link answers null, never a node.
     assert.equal(snap.node(INVALID_NODE), null);
-    // Every address and the sentinel are non-negative, and a generation is a
-    // plain Number: only statuses are negative, and no BigInt copy rides along.
-    assert.equal(INVALID_NODE, 2n ** 63n - 1n);
+    // A generation is a plain Number: no BigInt copy rides along.
     assert.equal(typeof s.rootNode().generation, "number");
   } finally {
     s.close();
@@ -1335,13 +1331,13 @@ await test("hook-reported semantic errors aggregate and fail", async () => {
     assert.deepEqual(counts, [1, 2]);
     const d = s.diagnostic();
     assert.ok(d);
-    assert.equal(d.kind, Kind.Semantic);
+    assert.equal(d.kind, DiagnosticKind.Semantic);
     assert.equal(d.semanticErrorCount, 2);
     assert.deepEqual(d.semantic, ["Number", "value out of range"]);
     assert.ok(d.message.includes("SemanticError"));
     const recorded = s.diagnostics();
     assert.equal(recorded.length, 2);
-    assert.ok(recorded.every((item) => item.kind === Kind.Semantic));
+    assert.ok(recorded.every((item) => item.kind === DiagnosticKind.Semantic));
     s.parse("alpha:12");
     assert.equal(s.diagnostic(), null);
   } finally {
@@ -1734,7 +1730,7 @@ await test("two language directories parse independently", async () => {
 
 await runGenerationScenarios({ test, assert, newParser, SessionClosedError, StaleTreeError, GalleyError, Status, collect });
 await runPublishedFailureScenarios({ test, assert, newParser, StaleTreeError, GalleyError, Status });
-await runHookFailureScenarios({ test, assert, newParser, StaleTreeError, GalleyError, Status, Kind });
+await runHookFailureScenarios({ test, assert, newParser, StaleTreeError, GalleyError, Status, DiagnosticKind });
 await runHookNameScenarios({ test, assert, newParser, newDisabledParser });
 await runRefusalScenarios({ test, assert, newParser, StaleTreeError, GalleyError, Status });
 

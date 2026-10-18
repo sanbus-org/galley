@@ -738,11 +738,11 @@ import {
   ProcedureArguments,
   Parser,
   GalleyError,
-  Kind,
+  DiagnosticKind,
   ParserType,
   RecoveryMode,
   RecoveryTarget,
-  Resume,
+  ResumeSide,
 } from "@sanbus/galley-core";
 import { openLanguageDirectory } from "@sanbus/galley";
 import * as procedures from "${proceduresSpecifier}";
@@ -754,11 +754,11 @@ export {
   ProcedureArguments,
   Parser,
   GalleyError,
-  Kind,
+  DiagnosticKind,
   ParserType,
   RecoveryMode,
   RecoveryTarget,
-  Resume,
+  ResumeSide,
 };
 
 const LANGUAGE_DIR = fileURLToPath(new URL(".", import.meta.url));
@@ -787,11 +787,11 @@ import type {
   Parser,
   Diagnostic,
   GalleyError,
-  Kind,
+  DiagnosticKind,
   ParserType,
   RecoveryMode,
   RecoveryTarget,
-  Resume,
+  ResumeSide,
 } from "@sanbus/galley";
 
 export {
@@ -802,11 +802,11 @@ export {
   Parser,
   Diagnostic,
   GalleyError,
-  Kind,
+  DiagnosticKind,
   ParserType,
   RecoveryMode,
   RecoveryTarget,
-  Resume,
+  ResumeSide,
 };
 
 ${parserMembersTypes}

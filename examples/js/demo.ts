@@ -6,7 +6,7 @@
 import * as fs from "node:fs";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { Kind, galley } from "@sanbus/galley";
+import { DiagnosticKind, galley } from "@sanbus/galley";
 import type { Session } from "@sanbus/galley";
 import * as kv from "./kv/index.mjs";
 import * as procedures from "./kv/procedures.ts";
@@ -147,9 +147,9 @@ function main(): number {
     console.log(`recorded diagnostics: ${recorded.length}`);
     recorded.forEach((diag, idx) => {
       const kindName =
-        diag.kind === Kind.Syntax
+        diag.kind === DiagnosticKind.Syntax
           ? "syntax"
-          : diag.kind === Kind.Indentation
+          : diag.kind === DiagnosticKind.Indentation
             ? "indentation"
             : "none";
       const unexpected = diag.unexpectedToken

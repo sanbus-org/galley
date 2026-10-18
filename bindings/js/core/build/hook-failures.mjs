@@ -6,13 +6,13 @@
  * with the thrown value as its `cause`, the failure carries the status and
  * the diagnostic snapshot of where the parse stopped, and nothing is
  * published. `newParser` resolves a parser of the keyvalue fixture;
- * `GalleyError`, `StaleTreeError`, `Status` and `Kind` come from the
+ * `GalleyError`, `StaleTreeError`, `Status` and `DiagnosticKind` come from the
  * runtime's own entry so identity checks hold.
  */
 
 const SAMPLE = "alpha:12,beta:3";
 
-export async function runHookFailureScenarios({ test, assert, newParser, GalleyError, StaleTreeError, Status, Kind }) {
+export async function runHookFailureScenarios({ test, assert, newParser, GalleyError, StaleTreeError, Status, DiagnosticKind }) {
   await test("a hook that throws aborts the parse and publishes nothing", async () => {
     const parser = await newParser();
     parser.clearProcedures();
@@ -38,7 +38,7 @@ export async function runHookFailureScenarios({ test, assert, newParser, GalleyE
       assert.equal(failure.cause, boom);
       assert.equal(failure.code, Status.ErrorHookFailed);
       assert.ok(failure.diagnostic !== null);
-      assert.equal(failure.diagnostic.kind, Kind.Hook);
+      assert.equal(failure.diagnostic.kind, DiagnosticKind.Hook);
       assert.ok(failure.diagnostic.line >= 1 && failure.diagnostic.column >= 1);
       assert.ok(failure.message.includes("reduction_Number"));
       assert.equal(session.rootNode(), null);
@@ -66,7 +66,7 @@ export async function runHookFailureScenarios({ test, assert, newParser, GalleyE
       }
       assert.ok(failure instanceof GalleyError);
       assert.equal(failure.code, Status.ErrorHookFailed);
-      assert.equal(failure.diagnostic.kind, Kind.Hook);
+      assert.equal(failure.diagnostic.kind, DiagnosticKind.Hook);
       assert.ok(failure.message.includes("HookError"));
       assert.ok(failure.diagnostic.message.includes("HookError"));
       assert.ok(!failure.diagnostic.message.includes("SyntaxError"));

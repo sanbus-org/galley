@@ -27,6 +27,23 @@ const parser = root.parser;
 const tree_walker = root.data_structures.tree_walker;
 const capi_options = @import("capi_options");
 
+/// The ABI's named values, declared once in `bindings/abi_values.zon` and
+/// imported at comptime (the consumer build registers this named import).
+/// Every C-visible constant below derives from it: the names are spelled
+/// here because Zig cannot synthesize top-level declarations, but the
+/// values, status texts and their documentation all come from the
+/// declaration.
+const abi_values = @import("abi_values");
+
+/// The declared value of `name` in `entries`, resolved at compile time; a
+/// name the declaration does not have fails the build here.
+fn abiValue(comptime entries: anytype, comptime name: []const u8) i64 {
+    inline for (entries) |entry| {
+        if (comptime std.mem.eql(u8, entry.name, name)) return entry.value;
+    }
+    @compileError("bindings/abi_values.zon has no entry named \"" ++ name ++ "\"");
+}
+
 /// Opaque session handle owned by the C side.
 pub const GalleySession = opaque {};
 
@@ -54,84 +71,58 @@ pub const GalleyCOptions = extern struct {
 /// Node addresses are stable indices into the session's node storage.
 pub const GalleyNodeAddress = u64;
 
-/// Returned by tree queries when no node exists at that position. Every
-/// address and this sentinel are non-negative (`INT64_MAX`), so a
-/// value-returning call can report a negative status in the same `long long`.
-pub const galley_invalid_node: GalleyNodeAddress = std.math.maxInt(i64);
+/// The two sentinels: `bindings/abi_values.zon` has their values and docs
+/// (both `INT64_MAX`; only statuses are negative).
+pub const galley_invalid_node: GalleyNodeAddress = @intCast(abiValue(abi_values.sentinels.entries, "invalid_node"));
+pub const galley_no_variable: i64 = abiValue(abi_values.sentinels.entries, "no_variable");
 
-/// Returned by `galley_node_variable_index` (and written to the snapshot's
-/// variable column) for a node that has no variable. Non-negative, like
-/// `galley_invalid_node`: only statuses are negative.
-pub const galley_no_variable: i64 = std.math.maxInt(i64);
-
-/// Status codes returned by parse and accessor functions. Non-negative
-/// values are success; negative values are failures, and
-/// `galley_status_string` renders them for diagnostics.
-pub const galley_ok: i64 = 0;
-pub const galley_error_null_argument: i64 = -1;
-pub const galley_error_syntax: i64 = -2;
-pub const galley_error_indentation: i64 = -3;
-pub const galley_error_stack_overflow: i64 = -4;
-pub const galley_error_ast_capacity_exceeded: i64 = -5;
-pub const galley_error_unterminated_raw_string: i64 = -6;
-pub const galley_error_out_of_memory: i64 = -7;
-pub const galley_error_internal: i64 = -8;
-pub const galley_error_no_diagnostic: i64 = -9;
-pub const galley_error_invalid_node: i64 = -10;
-pub const galley_error_io: i64 = -11;
-pub const galley_error_semantic: i64 = -12;
-/// The session is held by a concurrent operation: a parse while another
-/// parse or a gated read/mutation is in flight, or a post-parse call from
-/// inside a hook that holds the parse exclusively. Retry after it finishes.
-pub const galley_error_session_in_use: i64 = -13;
-/// A node, tree, or walk cursor addresses a tree that no longer exists: the
-/// generation it carries is not the session's published tree's (the session
-/// parsed again, the last parse failed and published nothing, or nothing was
-/// ever published), and in a hook the generation is not that parse's.
-pub const galley_error_stale_tree: i64 = -14;
-/// A `galley_procedure_*` call made with the ticket of a hook that has
-/// returned: the arguments are valid only while their hook runs.
-pub const galley_error_stale_hook: i64 = -15;
-/// A hook reported failure through its dispatch's return value: the parse
-/// stopped where the hook ran and published nothing. The diagnostic of the
-/// failed parse is of kind `galley_diagnostic_kind_hook`.
-pub const galley_error_hook_failed: i64 = -16;
-/// An index addresses a position outside the table it was read from: a hook
-/// name, grammar symbol or variable name, or an expected-token or
-/// context-name index past its table. An address outside the live node
-/// storage is `galley_error_invalid_node` instead.
-pub const galley_error_out_of_range: i64 = -17;
-/// A value in `GalleyCOptions` is outside its domain (a negative
-/// `max_errors`, `recovery_window`, or `verbosity`, or a non-finite
-/// `ast_preallocation_ratio`), or the enable-flag count passed to
-/// `galley_session_set_hooks` does not match `galley_hooks_count()`.
-pub const galley_error_invalid_argument: i64 = -18;
+/// Status codes returned by parse and accessor functions; `galley_status_string`
+/// renders each one's text.
+pub const galley_ok: i64 = abiValue(abi_values.statuses.entries, "ok");
+pub const galley_error_null_argument: i64 = abiValue(abi_values.statuses.entries, "error_null_argument");
+pub const galley_error_syntax: i64 = abiValue(abi_values.statuses.entries, "error_syntax");
+pub const galley_error_indentation: i64 = abiValue(abi_values.statuses.entries, "error_indentation");
+pub const galley_error_stack_overflow: i64 = abiValue(abi_values.statuses.entries, "error_stack_overflow");
+pub const galley_error_ast_capacity_exceeded: i64 = abiValue(abi_values.statuses.entries, "error_ast_capacity_exceeded");
+pub const galley_error_unterminated_raw_string: i64 = abiValue(abi_values.statuses.entries, "error_unterminated_raw_string");
+pub const galley_error_out_of_memory: i64 = abiValue(abi_values.statuses.entries, "error_out_of_memory");
+pub const galley_error_internal: i64 = abiValue(abi_values.statuses.entries, "error_internal");
+pub const galley_error_no_diagnostic: i64 = abiValue(abi_values.statuses.entries, "error_no_diagnostic");
+pub const galley_error_invalid_node: i64 = abiValue(abi_values.statuses.entries, "error_invalid_node");
+pub const galley_error_io: i64 = abiValue(abi_values.statuses.entries, "error_io");
+pub const galley_error_semantic: i64 = abiValue(abi_values.statuses.entries, "error_semantic");
+pub const galley_error_session_in_use: i64 = abiValue(abi_values.statuses.entries, "error_session_in_use");
+pub const galley_error_stale_tree: i64 = abiValue(abi_values.statuses.entries, "error_stale_tree");
+pub const galley_error_stale_hook: i64 = abiValue(abi_values.statuses.entries, "error_stale_hook");
+pub const galley_error_hook_failed: i64 = abiValue(abi_values.statuses.entries, "error_hook_failed");
+pub const galley_error_out_of_range: i64 = abiValue(abi_values.statuses.entries, "error_out_of_range");
+pub const galley_error_invalid_argument: i64 = abiValue(abi_values.statuses.entries, "error_invalid_argument");
 
 /// Diagnostic kinds returned by `galley_diagnostic_kind`.
-pub const galley_diagnostic_kind_none: i64 = 0;
-pub const galley_diagnostic_kind_syntax: i64 = 1;
-pub const galley_diagnostic_kind_indentation: i64 = 2;
-pub const galley_diagnostic_kind_semantic: i64 = 3;
-pub const galley_diagnostic_kind_hook: i64 = 4;
+pub const galley_diagnostic_kind_none: i64 = abiValue(abi_values.diagnostic_kinds.entries, "none");
+pub const galley_diagnostic_kind_syntax: i64 = abiValue(abi_values.diagnostic_kinds.entries, "syntax");
+pub const galley_diagnostic_kind_indentation: i64 = abiValue(abi_values.diagnostic_kinds.entries, "indentation");
+pub const galley_diagnostic_kind_semantic: i64 = abiValue(abi_values.diagnostic_kinds.entries, "semantic");
+pub const galley_diagnostic_kind_hook: i64 = abiValue(abi_values.diagnostic_kinds.entries, "hook");
 
 /// Recovery target kinds returned by `galley_diagnostic_recovery_kind`.
-pub const galley_recovery_target_none: i64 = 0;
-pub const galley_recovery_target_lhs_variable: i64 = 1;
-pub const galley_recovery_target_production: i64 = 2;
-pub const galley_recovery_target_occurrence: i64 = 3;
+pub const galley_recovery_target_none: i64 = abiValue(abi_values.recovery_targets.entries, "none");
+pub const galley_recovery_target_lhs_variable: i64 = abiValue(abi_values.recovery_targets.entries, "lhs_variable");
+pub const galley_recovery_target_production: i64 = abiValue(abi_values.recovery_targets.entries, "production");
+pub const galley_recovery_target_occurrence: i64 = abiValue(abi_values.recovery_targets.entries, "occurrence");
 
 /// Resume sides returned by `galley_diagnostic_recovery_resume`.
-pub const galley_resume_before: i64 = 0;
-pub const galley_resume_after: i64 = 1;
+pub const galley_resume_before: i64 = abiValue(abi_values.resume_sides.entries, "before");
+pub const galley_resume_after: i64 = abiValue(abi_values.resume_sides.entries, "after");
 
 /// Parser families returned by `galley_parser_type`.
-pub const galley_parser_type_ll: i64 = 0;
-pub const galley_parser_type_lr: i64 = 1;
+pub const galley_parser_type_ll: i64 = abiValue(abi_values.parser_types.entries, "ll");
+pub const galley_parser_type_lr: i64 = abiValue(abi_values.parser_types.entries, "lr");
 
 /// Error-recovery modes returned by `galley_error_recovery_mode`.
-pub const galley_recovery_mode_disabled: i64 = 0;
-pub const galley_recovery_mode_automatic: i64 = 1;
-pub const galley_recovery_mode_explicit: i64 = 2;
+pub const galley_recovery_mode_disabled: i64 = abiValue(abi_values.recovery_modes.entries, "disabled");
+pub const galley_recovery_mode_automatic: i64 = abiValue(abi_values.recovery_modes.entries, "automatic");
+pub const galley_recovery_mode_explicit: i64 = abiValue(abi_values.recovery_modes.entries, "explicit");
 
 var version_buffer: [capi_options.version.len + 1]u8 = blk: {
     var buffer: [capi_options.version.len + 1]u8 = undefined;
@@ -1744,28 +1735,12 @@ export fn galley_recorded_unexpected_token(
 /// when the code is unknown. The returned pointer remains valid for the
 /// lifetime of the process.
 export fn galley_status_string(status: i64) ?[*:0]const u8 {
-    return switch (status) {
-        galley_ok => "ok",
-        galley_error_null_argument => "null argument",
-        galley_error_syntax => "syntax error",
-        galley_error_semantic => "semantic error",
-        galley_error_indentation => "indentation error",
-        galley_error_stack_overflow => "parser stack overflow",
-        galley_error_ast_capacity_exceeded => "AST capacity exceeded",
-        galley_error_unterminated_raw_string => "unterminated raw string",
-        galley_error_out_of_memory => "out of memory",
-        galley_error_internal => "internal error",
-        galley_error_no_diagnostic => "no diagnostic available",
-        galley_error_invalid_node => "invalid node address",
-        galley_error_io => "I/O error",
-        galley_error_session_in_use => "session in use",
-        galley_error_stale_tree => "stale tree",
-        galley_error_stale_hook => "stale hook",
-        galley_error_hook_failed => "hook failed",
-        galley_error_out_of_range => "out of range",
-        galley_error_invalid_argument => "invalid argument",
-        else => null,
-    };
+    // The texts are the declaration's; this loop only maps a code to its
+    // entry.
+    inline for (abi_values.statuses.entries) |entry| {
+        if (entry.value == status) return entry.text;
+    }
+    return null;
 }
 
 /// Returns the number of expected tokens of a syntax diagnostic, or a

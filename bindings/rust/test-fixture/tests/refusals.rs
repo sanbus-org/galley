@@ -32,10 +32,8 @@ extern "C" {
 const NULL_SESSION: *mut c_void = std::ptr::null_mut();
 
 #[test]
-fn the_statuses_carry_the_frozen_texts() {
-    assert_eq!(Error::OutOfRange.description(), "out of range");
-    assert_eq!(Error::InvalidArgument.description(), "invalid argument");
-    assert_eq!(Error::NoDiagnostic.description(), "no diagnostic available");
+fn a_named_status_renders_the_library_text() {
+    assert!(Error::Syntax.description().contains("syntax"));
 }
 
 #[test]

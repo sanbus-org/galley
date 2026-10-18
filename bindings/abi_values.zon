@@ -1,0 +1,293 @@
+// The C ABI's named values, declared once: every checked-in copy — the C
+// header (`bindings/c/galley.h`), the Python, JavaScript, Java, Rust and Go
+// bindings, the docs page, and capi.zig (which imports this file at comptime)
+// — is rendered from here by `src/tools/abi_values_gen.zig`. Regenerate with
+// `zig build abi-values`; the `build` test suite fails when a copy drifts.
+//
+// Per table: `name` is the canonical snake_case family name hosts derive
+// their type names from, `prefix` is the C spelling's prefix, `title` is the
+// docs heading, `doc` is the family's one description, and `entries` holds
+// the values in ABI order. Per entry: `name` is the canonical snake_case
+// name (the C name is `prefix ++ name`), `value` is the ABI number, and `doc`
+// is one documentation paragraph every copy prints (backtick spans are
+// inline code). Statuses additionally carry the static `text` that
+// `galley_status_string` answers and `carries_diagnostic`: whether a failure
+// with this status keeps the session's diagnostic of the parse that ended
+// with it. Sentinels set `unsigned` when the C spelling is unsigned (`ULL`)
+// and the host type is an address rather than a signed index.
+//
+// The declaration holds ABI facts only. Which core error maps to which
+// status is not one; that table stays in capi.zig's `statusForError`.
+// Values never change in place: renumbering or renaming one is a breaking
+// ABI change and moves every consumer in lockstep.
+.{
+    .statuses = .{
+        .name = "status",
+        .prefix = "galley_",
+        .title = "Statuses",
+        .doc = "Status codes returned by parse and accessor functions. Non-negative values are success; negative values are failures, and `galley_status_string` renders each one's text for diagnostics.",
+        .entries = .{
+            .{
+                .name = "ok",
+                .value = 0,
+                .text = "ok",
+                .doc = "Success: the call ran to its end (a parse answers the number of bytes parsed).",
+            },
+            .{
+                .name = "error_null_argument",
+                .value = -1,
+                .text = "null argument",
+                .doc = "A required argument is null: a session, a hook door, or a required pointer.",
+            },
+            .{
+                .name = "error_syntax",
+                .value = -2,
+                .text = "syntax error",
+                .carries_diagnostic = true,
+                .doc = "The parse recorded syntax errors. A parse that recovered and ran to its end still publishes its tree, with the damaged regions flagged as recovered nodes; a parse that could not recover publishes nothing.",
+            },
+            .{
+                .name = "error_indentation",
+                .value = -3,
+                .text = "indentation error",
+                .carries_diagnostic = true,
+                .doc = "The parse failed on indentation, which has no recovery; nothing is published.",
+            },
+            .{
+                .name = "error_stack_overflow",
+                .value = -4,
+                .text = "parser stack overflow",
+                .carries_diagnostic = true,
+                .doc = "The parser stack exceeded its configured limit; nothing is published.",
+            },
+            .{
+                .name = "error_ast_capacity_exceeded",
+                .value = -5,
+                .text = "AST capacity exceeded",
+                .carries_diagnostic = true,
+                .doc = "AST storage ran out of its planned capacity; nothing is published.",
+            },
+            .{
+                .name = "error_unterminated_raw_string",
+                .value = -6,
+                .text = "unterminated raw string",
+                .carries_diagnostic = true,
+                .doc = "Input ended inside a raw string; nothing is published.",
+            },
+            .{
+                .name = "error_out_of_memory",
+                .value = -7,
+                .text = "out of memory",
+                .carries_diagnostic = true,
+                .doc = "An allocation failed; nothing is published.",
+            },
+            .{
+                .name = "error_internal",
+                .value = -8,
+                .text = "internal error",
+                .doc = "An internal invariant failed: a bug in the library, not a property of the input.",
+            },
+            .{
+                .name = "error_no_diagnostic",
+                .value = -9,
+                .text = "no diagnostic available",
+                .doc = "The read needs a diagnostic and none matches: no diagnostic is recorded, it is not of the requested kind, or a recorded-diagnostic index is past its table.",
+            },
+            .{
+                .name = "error_invalid_node",
+                .value = -10,
+                .text = "invalid node address",
+                .doc = "A tree position names no node of the tree the call addresses; an index past any other table is `galley_error_out_of_range` instead.",
+            },
+            .{
+                .name = "error_io",
+                .value = -11,
+                .text = "I/O error",
+                .doc = "Reading the input failed; nothing is published.",
+            },
+            .{
+                .name = "error_semantic",
+                .value = -12,
+                .text = "semantic error",
+                .carries_diagnostic = true,
+                .doc = "The parse recorded semantic errors; the tree is still published, with the erroring nodes marked.",
+            },
+            .{
+                .name = "error_session_in_use",
+                .value = -13,
+                .text = "session in use",
+                .doc = "A parse holds the session exclusively; the call is refused rather than queued. Post-parse node/tree/diagnostic accessors return this while a parse is in flight (hook code must use the `galley_hook_*` door).",
+            },
+            .{
+                .name = "error_stale_tree",
+                .value = -14,
+                .text = "stale tree",
+                .doc = "A node, tree edit, snapshot, or walk cursor carries a generation that is not the door's live tree's. On the session door: the session parsed again, the last parse failed and published nothing, or nothing was ever published; re-read the tree with `galley_root_node` and use its nodes. `galley_last_input` and `galley_last_position` follow the published tree the same way. On the hook door (`galley_hook_*`, `galley_procedure_set_current_node`): the generation is not the running parse's (`galley_hook_generation`). Calls on both doors pass the generation they address; the check runs in every build, because it is a lifetime contract, not a misuse check.",
+            },
+            .{
+                .name = "error_stale_hook",
+                .value = -15,
+                .text = "stale hook",
+                .doc = "A `galley_procedure_*` call made with the ticket of a hook that returned: the arguments are valid only while their hook runs.",
+            },
+            .{
+                .name = "error_hook_failed",
+                .value = -16,
+                .text = "hook failed",
+                .carries_diagnostic = true,
+                .doc = "A hook's dispatch returned nonzero: the parse stopped where the hook ran and published nothing. The diagnostic is of kind `galley_diagnostic_kind_hook`; the host keeps the cause of the failure.",
+            },
+            .{
+                .name = "error_out_of_range",
+                .value = -17,
+                .text = "out of range",
+                .doc = "An index outside the table it was read from: a hook name, a grammar symbol or variable name, or an expected-token or context-name index past its diagnostic's table. An address outside the live node storage is `galley_error_invalid_node` instead.",
+            },
+            .{
+                .name = "error_invalid_argument",
+                .value = -18,
+                .text = "invalid argument",
+                .doc = "A value in `GalleyCOptions` is outside its domain (a negative `max_errors`, `recovery_window`, or `verbosity`, or a non-finite `ast_preallocation_ratio`), or the enable-flag count passed to `galley_session_set_hooks` does not match `galley_hooks_count()`.",
+            },
+        },
+    },
+    .diagnostic_kinds = .{
+        .name = "diagnostic_kind",
+        .prefix = "galley_diagnostic_kind_",
+        .title = "Diagnostic kinds",
+        .doc = "Diagnostic kinds returned by `galley_diagnostic_kind`.",
+        .entries = .{
+            .{
+                .name = "none",
+                .value = 0,
+                .doc = "No diagnostic: the previous parse succeeded, or no parse has run.",
+            },
+            .{
+                .name = "syntax",
+                .value = 1,
+                .doc = "A syntax error. A parse that recovered from its syntax errors still publishes its tree, with the damaged regions flagged as recovered nodes.",
+            },
+            .{
+                .name = "indentation",
+                .value = 2,
+                .doc = "An indentation error, reported where the input's indentation does not fit the grammar.",
+            },
+            .{
+                .name = "semantic",
+                .value = 3,
+                .doc = "A semantic error recorded by a reduction or a hook; the parse continues and the node is marked.",
+            },
+            .{
+                .name = "hook",
+                .value = 4,
+                .doc = "A hook raised or its dispatch returned failure: the parse stopped at that hook and published nothing.",
+            },
+        },
+    },
+    .recovery_targets = .{
+        .name = "recovery_target",
+        .prefix = "galley_recovery_target_",
+        .title = "Recovery targets",
+        .doc = "Recovery target kinds returned by `galley_diagnostic_recovery_kind`.",
+        .entries = .{
+            .{
+                .name = "none",
+                .value = 0,
+                .doc = "No recovery information: the diagnostic did not come from a recovery, or recovery could not attribute a target.",
+            },
+            .{
+                .name = "lhs_variable",
+                .value = 1,
+                .doc = "The recovery synchronized at a left-hand-side variable.",
+            },
+            .{
+                .name = "production",
+                .value = 2,
+                .doc = "The recovery synchronized at a committed production.",
+            },
+            .{
+                .name = "occurrence",
+                .value = 3,
+                .doc = "The recovery synchronized at an annotated right-hand-side occurrence.",
+            },
+        },
+    },
+    .resume_sides = .{
+        .name = "resume_side",
+        .prefix = "galley_resume_",
+        .title = "Resume sides",
+        .doc = "Resume sides returned by `galley_diagnostic_recovery_resume`.",
+        .entries = .{
+            .{
+                .name = "before",
+                .value = 0,
+                .doc = "The recovery terminal is preserved for the parser to match.",
+            },
+            .{
+                .name = "after",
+                .value = 1,
+                .doc = "The recovery terminal is consumed by the recovery.",
+            },
+        },
+    },
+    .parser_types = .{
+        .name = "parser_type",
+        .prefix = "galley_parser_type_",
+        .title = "Parser types",
+        .doc = "Parser families returned by `galley_parser_type`.",
+        .entries = .{
+            .{
+                .name = "ll",
+                .value = 0,
+                .doc = "Predictive LL parser: recursive descent over the native call stack.",
+            },
+            .{
+                .name = "lr",
+                .value = 1,
+                .doc = "Canonical LR parser: recursive ascent over the native call stack.",
+            },
+        },
+    },
+    .recovery_modes = .{
+        .name = "recovery_mode",
+        .prefix = "galley_recovery_mode_",
+        .title = "Recovery modes",
+        .doc = "Error-recovery modes returned by `galley_error_recovery_mode`.",
+        .entries = .{
+            .{
+                .name = "disabled",
+                .value = 0,
+                .doc = "Recovery is disabled: the parser is fail-fast, and grammar annotations are inert.",
+            },
+            .{
+                .name = "automatic",
+                .value = 1,
+                .doc = "Recovery is enabled for an unannotated grammar: the parser synchronizes on its own.",
+            },
+            .{
+                .name = "explicit",
+                .value = 2,
+                .doc = "Recovery is enabled for an annotated grammar: only committed annotated scopes recover, with no automatic fallback.",
+            },
+        },
+    },
+    .sentinels = .{
+        .name = "sentinel",
+        .prefix = "GALLEY_",
+        .title = "Sentinels",
+        .doc = "Both sentinels are `INT64_MAX`; only statuses are negative.",
+        .entries = .{
+            .{
+                .name = "invalid_node",
+                .value = 9223372036854775807,
+                .unsigned = true,
+                .doc = "Returned by tree queries when no node exists at that position. Every node address and this sentinel are non-negative (`INT64_MAX`), so a call that returns an address can report a negative status in the same `long long`.",
+            },
+            .{
+                .name = "no_variable",
+                .value = 9223372036854775807,
+                .doc = "Returned by `galley_node_variable_index` and written to the snapshot's variable column for a node that has no variable. Non-negative like `GALLEY_INVALID_NODE`: only statuses are negative.",
+            },
+        },
+    },
+}

@@ -8,7 +8,7 @@
  */
 
 import { INVALID_NODE, NO_VARIABLE, Status, statusCarriesDiagnostic } from "./constants.ts";
-import type { Kind, RecoveryTarget, Resume } from "./constants.ts";
+import type { DiagnosticKind, RecoveryTarget, ResumeSide } from "./constants.ts";
 import type { Diagnostic } from "./diagnostic.ts";
 import { GalleyError, SessionClosedError, StaleTreeError } from "./errors.ts";
 import type {
@@ -1230,7 +1230,7 @@ export class Session implements HookOwner {
    * raises instead of leaving an empty field.
    */
   #buildDiagnostic(reads: DiagnosticReads): Diagnostic {
-    const kind = reads.kind() as Kind;
+    const kind = reads.kind() as DiagnosticKind;
     const [offset, line, col] = reads.position();
 
     const expectedTokens: Uint8Array[] = [];
@@ -1259,7 +1259,7 @@ export class Session implements HookOwner {
       indentation: reads.indentation(),
       recoveryKind: recoveryKind === 0 ? null : (recoveryKind as RecoveryTarget),
       recoveryTerminal: reads.recoveryTerminal(),
-      recoveryResume: reads.recoveryResume() as Resume | null,
+      recoveryResume: reads.recoveryResume() as ResumeSide | null,
       recoveryLhsVariable: reads.recoveryLhsVariable(),
       recoveryProduction: reads.recoveryProduction(),
       recoveryOccurrence: reads.recoveryOccurrence(),

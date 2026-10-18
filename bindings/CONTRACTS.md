@@ -1,6 +1,6 @@
 # Binding contracts
 
-A binding has two interfaces, and each has its contract. **With the user**: what a host's users can depend on. **With the core**: what a binding does, and refrains from doing, when it crosses into the galley core. Spelling in a language (class names, types, build commands) is documentation, not contract; how a binding is built inside, beyond what crosses these two interfaces, is not contract either. Names in code spans (`open_session`, `root_node`) are written in snake_case and indicate the call; each host spells it in its own idiom. Applies to Python, Java and JavaScript. Grammar-level hook semantics live in [procedures.md](../docs/procedures.md).
+A binding has two interfaces, and each has its contract. **With the user**: what a host's users can depend on. **With the core**: what a binding does, and refrains from doing, when it crosses into the galley core. Spelling in a language (class names, types, build commands) is documentation, not contract; how a binding is built inside, beyond what crosses these two interfaces, is not contract either. Names in code spans (`open_session`, `root_node`) are written in snake_case and indicate the call; each host spells it in its own idiom. Applies to Python, Java and JavaScript. Grammar-level hook semantics live in [procedures.md](../docs/procedures.md). The named ABI values this contract refers to (statuses, kinds, sentinels) are declared once and rendered per host in [ABI Values](../docs/abi_values.md).
 
 ## With the user
 

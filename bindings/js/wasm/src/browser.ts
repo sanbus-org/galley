@@ -18,9 +18,9 @@ export {
   Status,
   ParserType,
   RecoveryMode,
-  Kind,
+  DiagnosticKind,
   RecoveryTarget,
-  Resume,
+  ResumeSide,
 } from "@sanbus/galley-core";
 export { getWasmPort, instantiateWasm, __resetModuleCache, __resetWasmAcquisition, wasmFileName } from "./ffi.ts";
 export type { WasmPortSource } from "./ffi.ts";

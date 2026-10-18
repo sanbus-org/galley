@@ -388,7 +388,6 @@ export async function runRefusalScenarios({ test, assert, newParser, GalleyError
     // A negative maxErrors is `invalid argument`, not a quiet default: the
     // library validates the options struct before creating anything.
     const parser = await newParser();
-    assert.equal(Status.ErrorInvalidArgument, -18);
     let refusal = null;
     try {
       const s = await parser.openSession({ maxErrors: -5 });
@@ -416,7 +415,6 @@ export async function runRefusalScenarios({ test, assert, newParser, GalleyError
       s.parse(FIRST);
       assert.ok(parser.symbolCount() > 0);
       assert.ok(parser.variableCount() > 0);
-      assert.equal(Status.ErrorOutOfRange, -17);
       const reads = {
         symbolName: () => s.symbolNameAt(1_000_000_000),
         symbolIsTerminal: () => s.symbolIsTerminal(1_000_000_000),

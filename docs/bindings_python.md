@@ -12,6 +12,11 @@ One self-contained artifact per grammar, consumed either by direct
 package import (bundled hooks automatic) or by bare file load through
 the `galley` loader (manual hooks only).
 
+Every named value this binding shares with the C ABI — statuses, diagnostic
+kinds, recovery targets, resume sides, parser types, and recovery modes — is
+declared once, then rendered into each binding's idiom in
+[ABI Values](/abi_values).
+
 A complete, runnable consumer lives in
 [`examples/python`](https://github.com/sanbus-org/galley/tree/main/examples/python):
 the `kv` keyvalue package behind `demo.py` and the `json` JSON
@@ -210,7 +215,7 @@ of an earlier parse raises `StaleTreeError` on a read, a link, an edit or a
 walk step, never `None`.
 
 A hook that raises aborts the parse. `parse` raises `GalleyError` with code
-`ERROR_HOOK_FAILED`, the hook's own exception as `__cause__`, and a `Kind.HOOK`
+`ERROR_HOOK_FAILED`, the hook's own exception as `__cause__`, and a `DiagnosticKind.HOOK`
 diagnostic of where the parse stopped; the parse publishes nothing, so
 `root_node()` is `None` and the nodes of that parse raise `StaleTreeError`. The
 session parses again afterwards. A hook that wants the parse to go on reports a
@@ -384,7 +389,7 @@ indentation details, and the full structured recovery information — or
 A hook reports a semantic error through `args.report_semantic_error(message)`,
 which returns the running total so hooks can limit themselves. Parsing
 continues and a syntax-clean parse with any semantic error raises
-`parser.GalleyError` with code `Status.ERROR_SEMANTIC` (`Kind.SEMANTIC` diagnostics):
+`parser.GalleyError` with code `Status.ERROR_SEMANTIC` (`DiagnosticKind.SEMANTIC` diagnostics):
 
 ```python
 def reduction_Number(args: ProcedureArguments) -> None:
