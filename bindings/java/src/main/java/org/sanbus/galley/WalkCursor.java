@@ -35,7 +35,10 @@ final class WalkCursor {
     static final byte FLAG_SEMANTIC_ERROR = 1;
     static final byte FLAG_RECOVERED = 2;
 
-    /** The node of a completed step: its address in the parse storage. */
+    /**
+     * The node of a completed step: its address in the parse storage, or
+     * {@link Galley#INVALID_NODE} once the walk is done.
+     */
     static long current(MemorySegment cursor) {
         return cursor.get(ValueLayout.JAVA_LONG, CURRENT_OFFSET);
     }

@@ -99,7 +99,6 @@ public final class Session implements AutoCloseable {
         this.lib = parser.library();
         this.sessionDoor = NodeDoor.ofSession(lib, this);
 
-        MemorySegment h;
         boolean hasNonDefault = options.getMaxErrors() != 10 ||
                 options.getRecoveryWindow() != 500 ||
                 options.isStackOverflowRecovery() ||
@@ -108,9 +107,11 @@ public final class Session implements AutoCloseable {
                 options.getAstPreallocationRatio() != -1.0 ||
                 options.getAstPreallocationCap() != 0;
 
-        if (hasNonDefault) {
-            try (Arena arena = Arena.ofConfined()) {
-                MemorySegment opts = arena.allocate(GalleyLibrary.GALLEY_COPTIONS_SIZE);
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment outSession = arena.allocate(ValueLayout.ADDRESS);
+            MemorySegment opts = MemorySegment.NULL;
+            if (hasNonDefault) {
+                opts = arena.allocate(GalleyLibrary.GALLEY_COPTIONS_SIZE);
                 opts.set(ValueLayout.JAVA_INT, GalleyLibrary.OFF_MAX_ERRORS, options.getMaxErrors());
                 opts.set(ValueLayout.JAVA_INT, GalleyLibrary.OFF_RECOVERY_WINDOW, options.getRecoveryWindow());
                 opts.set(ValueLayout.JAVA_INT, GalleyLibrary.OFF_STACK_OVERFLOW_RECOVERY, options.isStackOverflowRecovery() ? 1 : 0);
@@ -118,15 +119,10 @@ public final class Session implements AutoCloseable {
                 opts.set(ValueLayout.JAVA_INT, GalleyLibrary.OFF_VERBOSITY, options.getVerbosity());
                 opts.set(ValueLayout.JAVA_DOUBLE, GalleyLibrary.OFF_AST_PREALLOCATION_RATIO, options.getAstPreallocationRatio());
                 opts.set(ValueLayout.JAVA_LONG, GalleyLibrary.OFF_AST_PREALLOCATION_CAP, options.getAstPreallocationCap());
-                h = lib.galley_session_create_ex(opts);
             }
-        } else {
-            h = lib.galley_session_create();
+            checkStatus(lib.galley_session_create(opts, outSession));
+            this.handle = outSession.get(ValueLayout.ADDRESS, 0);
         }
-        if (h == null || h.equals(MemorySegment.NULL) || h.address() == 0) {
-            throw new GalleyException("out of memory", StatusCode.ERROR_OUT_OF_MEMORY);
-        }
-        this.handle = h;
         this.handleId = parser.register(this);
         try {
             commitHooks(parser.defaultHooks());
@@ -257,18 +253,30 @@ public final class Session implements AutoCloseable {
     }
 
     /**
-     * The failure of a parse, with that parse's diagnostic snapshot. A parse
-     * refused with {@code ERROR_SESSION_IN_USE} started nothing, so it carries
-     * none.
+     * The failure of a parse, with that parse's diagnostic snapshot attached
+     * exactly when its status carries one
+     * ({@link StatusCode#carriesDiagnostic}): the statuses that end a parse
+     * that ran, whose diagnostic then belongs to that attempt. A failure
+     * built from any other status carries none. {@code ERROR_SESSION_IN_USE}
+     * is also the one refusal the attach may skip, because another thread's
+     * parse took the session in the window between this parse and the
+     * attach. A {@link GalleyClosedException} from the attach is that same
+     * race with a concurrent {@code close()} winning it: the attach is
+     * skipped too, so the parse's own failure stands — never the close's.
+     * Every other refusal from the attach path is the failure.
      */
     private GalleyException parseFailure(long status) {
         Diagnostic diagnostic = null;
-        if (status != StatusCode.ERROR_SESSION_IN_USE.getCode()) {
+        if (StatusCode.fromCode(status).carriesDiagnostic()) {
             try {
-                if (gate(sessionHandle -> lib.galley_has_diagnostic(sessionHandle) != 0)) {
+                if (gate(this::hasDiagnosticWith)) {
                     diagnostic = buildDiagnosticSingular();
                 }
-            } catch (Exception ignored) {}
+            } catch (GalleyException refusal) {
+                if (refusal.getCode() != StatusCode.ERROR_SESSION_IN_USE) throw refusal;
+            } catch (GalleyClosedException closed) {
+                // close() won the in-flight window: the parse's failure stands.
+            }
         }
         return statusFailure(lib, status, diagnostic);
     }
@@ -295,6 +303,33 @@ public final class Session implements AutoCloseable {
 
     private void checkStatus(long status) {
         if (status < 0) throw errorFromStatus(status);
+    }
+
+    /** {@link #checkStatus} for a call whose non-negative return is the answer. */
+    private long statusValue(long status) {
+        checkStatus(status);
+        return status;
+    }
+
+    /**
+     * The one reading of "this field does not apply": a field read that
+     * reported {@code no_diagnostic} (no diagnostic, or a diagnostic of
+     * another kind) leaves the field null or empty. Every other refusal
+     * raises.
+     */
+    private boolean fieldAbsent(long status) {
+        if (status == StatusCode.ERROR_NO_DIAGNOSTIC.getCode()) return true;
+        checkStatus(status);
+        return false;
+    }
+
+    /**
+     * The one {@code galley_has_diagnostic} read: checks the status and
+     * answers the flag; the out-parameter is read only on success.
+     */
+    private boolean hasDiagnosticWith(MemorySegment sessionHandle) {
+        checkStatus(lib.galley_has_diagnostic(sessionHandle, Scratch.local().first));
+        return Scratch.local().firstInt() != 0;
     }
 
     /**
@@ -505,14 +540,13 @@ public final class Session implements AutoCloseable {
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment outDoor = arena.allocate(ValueLayout.ADDRESS);
                 MemorySegment out = arena.allocate(ValueLayout.JAVA_LONG);
-                if (gate(sessionHandle -> lib.galley_procedure_door(sessionHandle, hook, outDoor)) >= 0) {
-                    MemorySegment door = outDoor.get(ValueLayout.ADDRESS, 0);
-                    if (gate(sessionHandle -> lib.galley_hook_generation(door, out)) >= 0) {
-                        parseGeneration = out.get(ValueLayout.JAVA_LONG, 0);
-                        hookDoor = NodeDoor.ofHook(lib, this, door);
-                        parseDoor = hookDoor;
-                    }
-                }
+                // A live hook on its own dispatching thread cannot reach this refusal.
+                checkStatus(gate(sessionHandle -> lib.galley_procedure_door(sessionHandle, hook, outDoor)));
+                MemorySegment door = outDoor.get(ValueLayout.ADDRESS, 0);
+                checkStatus(gate(sessionHandle -> lib.galley_hook_generation(door, out)));
+                parseGeneration = out.get(ValueLayout.JAVA_LONG, 0);
+                hookDoor = NodeDoor.ofHook(lib, this, door);
+                parseDoor = hookDoor;
             }
         }
         dispatchThread = hookDoor == null ? null : Thread.currentThread();
@@ -629,7 +663,8 @@ public final class Session implements AutoCloseable {
     // -- arena --
 
     /**
-     * Number of AST nodes in the published tree.
+     * Number of AST nodes in the published tree — 0 in a parser built
+     * without AST construction, where a live tree has no nodes.
      *
      * @throws StaleTreeException when nothing is published
      */
@@ -639,9 +674,10 @@ public final class Session implements AutoCloseable {
     }
 
     /**
-     * The count of the tree {@code generation} names. The core refuses a
-     * generation it does not hold, 0 (nothing published) included, so
-     * nothing published is never a zero.
+     * The count of the tree {@code generation} names — 0 in a parser built
+     * without AST construction, where a live tree has no nodes. The core
+     * refuses a generation it does not hold, 0 (nothing published)
+     * included, so nothing published is never a zero.
      */
     long nodeCount(long generation) {
         long count = gate(sessionHandle -> lib.galley_node_count(sessionHandle, generation));
@@ -747,7 +783,9 @@ public final class Session implements AutoCloseable {
      * address back to a node.
      *
      * Every leg carries one generation, so a parse that runs in between
-     * raises instead of returning columns that mix two trees.
+     * raises instead of returning columns that mix two trees. In a parser
+     * built without AST construction the snapshot is empty: a live tree
+     * has no nodes.
      *
      * @throws StaleTreeException when nothing is published
      */
@@ -827,18 +865,21 @@ public final class Session implements AutoCloseable {
     /**
      * One step of a walk: crosses the door of the calling context — the
      * hook door inside a hook dispatch of this session's running parse,
-     * the session door everywhere else — and maps the status onto the
-     * walker's contract: null at the end of the walk, {@code door.failure}
-     * (which maps a stale tree to {@link StaleTreeException}) for a refusal.
+     * the session door everywhere else — and maps the step onto the
+     * walker's contract: the cursor's current address is the yielded node,
+     * or {@link Galley#INVALID_NODE} once the walk is done (null), and
+     * {@code door.failure} (which maps a stale tree to
+     * {@link StaleTreeException}) for a refusal.
      */
     Walker.WalkStep walkerStep(MemorySegment cursor, long generation) {
         requireOpen();
         NodeDoor door = door();
         long status = door.walkStep(cursor);
         if (status < 0) throw door.failure(status);
-        if (status == 0) return null;
+        long current = WalkCursor.current(cursor);
+        if (current == Galley.INVALID_NODE) return null;
         return new Walker.WalkStep(
-            new Node(this, WalkCursor.current(cursor), generation),
+            new Node(this, current, generation),
             WalkCursor.depth(cursor),
             WalkCursor.isSemanticError(cursor),
             WalkCursor.isRecovered(cursor));
@@ -900,7 +941,7 @@ public final class Session implements AutoCloseable {
 
     public boolean hasDiagnostic() {
         requireOpen();
-        return gate(sessionHandle -> lib.galley_has_diagnostic(sessionHandle) != 0);
+        return gate(this::hasDiagnosticWith);
     }
 
     /**
@@ -932,20 +973,55 @@ public final class Session implements AutoCloseable {
 
     // -- diagnostics helpers --
 
-    private Diagnostic buildDiagnosticSingular() {
-        return gate(this::buildDiagnosticSingularWith);
+    /**
+     * One diagnostic the snapshot builder reads: the current (last)
+     * diagnostic of the published parse, or the diagnostic recorded at
+     * {@code index} of it.
+     */
+    private record DiagnosticSource(boolean recorded, long index) {
+        static final DiagnosticSource CURRENT = new DiagnosticSource(false, 0);
+        static DiagnosticSource recorded(long index) { return new DiagnosticSource(true, index); }
     }
 
-    /** The snapshot proper: one handle the gate claimed, held across every read it makes. */
-    private Diagnostic buildDiagnosticSingularWith(MemorySegment sessionHandle) {
-        long kind = lib.galley_diagnostic_kind(sessionHandle);
+    private Diagnostic buildDiagnosticSingular() {
+        return buildDiagnostic(DiagnosticSource.CURRENT);
+    }
+
+    private Diagnostic buildRecordedDiagnostic(long diagIndex) {
+        return buildDiagnostic(DiagnosticSource.recorded(diagIndex));
+    }
+
+    private Diagnostic buildDiagnostic(DiagnosticSource source) {
+        return gate(sessionHandle -> buildDiagnosticWith(source, sessionHandle));
+    }
+
+    /**
+     * The one diagnostic snapshot builder, for every source: one handle the
+     * gate claimed, held for every read the snapshot makes, so the handle
+     * stays valid across them. A read the core refuses raises; the one
+     * absence a field read may report ({@code no_diagnostic}: no diagnostic,
+     * or a diagnostic of another kind) leaves that field null or empty
+     * ({@link #fieldAbsent}). Kind, position, and message belong to every
+     * diagnostic: their {@code no_diagnostic} is a refusal, never an
+     * absence, so they raise like every other status.
+     */
+    private Diagnostic buildDiagnosticWith(DiagnosticSource source, MemorySegment sessionHandle) {
+        boolean recorded = source.recorded();
+        long diagIndex = source.index();
+
+        long kind = recorded
+                ? statusValue(lib.galley_recorded_diagnostic_kind(sessionHandle, diagIndex))
+                : statusValue(lib.galley_diagnostic_kind(sessionHandle));
+
         long offset;
         int line, col;
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outOffset = arena.allocate(ValueLayout.JAVA_LONG);
             MemorySegment outLine = arena.allocate(ValueLayout.JAVA_INT);
             MemorySegment outCol = arena.allocate(ValueLayout.JAVA_INT);
-            lib.galley_diagnostic_position(sessionHandle, outOffset, outLine, outCol);
+            checkStatus(recorded
+                    ? lib.galley_recorded_diagnostic_position(sessionHandle, diagIndex, outOffset, outLine, outCol)
+                    : lib.galley_diagnostic_position(sessionHandle, outOffset, outLine, outCol));
             offset = outOffset.get(ValueLayout.JAVA_LONG, 0);
             line = outLine.get(ValueLayout.JAVA_INT, 0);
             col = outCol.get(ValueLayout.JAVA_INT, 0);
@@ -955,24 +1031,28 @@ public final class Session implements AutoCloseable {
         String messageAnsi = "";
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outMsg = arena.allocate(ValueLayout.ADDRESS);
-            if (lib.galley_diagnostic_message(sessionHandle, outMsg) == 0) {
-                MemorySegment p = outMsg.get(ValueLayout.ADDRESS, 0);
-                if (!p.equals(MemorySegment.NULL)) message = p.reinterpret(Long.MAX_VALUE).getString(0);
-            }
-        }
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment outMsg = arena.allocate(ValueLayout.ADDRESS);
-            if (lib.galley_diagnostic_message_ansi(sessionHandle, outMsg) == 0) {
-                MemorySegment p = outMsg.get(ValueLayout.ADDRESS, 0);
-                if (!p.equals(MemorySegment.NULL)) messageAnsi = p.reinterpret(Long.MAX_VALUE).getString(0);
-            }
+            checkStatus(recorded
+                    ? lib.galley_recorded_diagnostic_message(sessionHandle, diagIndex, outMsg)
+                    : lib.galley_diagnostic_message(sessionHandle, outMsg));
+            MemorySegment p = outMsg.get(ValueLayout.ADDRESS, 0);
+            if (!p.equals(MemorySegment.NULL)) message = p.reinterpret(Long.MAX_VALUE).getString(0);
+
+            MemorySegment outAnsi = arena.allocate(ValueLayout.ADDRESS);
+            checkStatus(recorded
+                    ? lib.galley_recorded_diagnostic_message_ansi(sessionHandle, diagIndex, outAnsi)
+                    : lib.galley_diagnostic_message_ansi(sessionHandle, outAnsi));
+            p = outAnsi.get(ValueLayout.ADDRESS, 0);
+            if (!p.equals(MemorySegment.NULL)) messageAnsi = p.reinterpret(Long.MAX_VALUE).getString(0);
         }
 
         byte[] unexpected = null;
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
-            if (lib.galley_diagnostic_unexpected_token(sessionHandle, outData, outLen) == 0) {
+            long st = recorded
+                    ? lib.galley_recorded_unexpected_token(sessionHandle, diagIndex, outData, outLen)
+                    : lib.galley_diagnostic_unexpected_token(sessionHandle, outData, outLen);
+            if (!fieldAbsent(st)) {
                 MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
                 long len = outLen.get(ValueLayout.JAVA_LONG, 0);
                 if (!ptr.equals(MemorySegment.NULL) && len > 0) unexpected = ptr.reinterpret(len).toArray(ValueLayout.JAVA_BYTE);
@@ -980,13 +1060,18 @@ public final class Session implements AutoCloseable {
         }
 
         List<byte[]> expected = new ArrayList<>();
-        long expCount = lib.galley_diagnostic_expected_count(sessionHandle);
-        if (expCount > 0) {
+        long expCount = recorded
+                ? lib.galley_recorded_expected_count(sessionHandle, diagIndex)
+                : lib.galley_diagnostic_expected_count(sessionHandle);
+        if (!fieldAbsent(expCount)) {
             for (long i = 0; i < expCount; i++) {
                 try (Arena arena = Arena.ofConfined()) {
                     MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
                     MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
-                    if (lib.galley_diagnostic_expected_at(sessionHandle, i, outData, outLen) == 0) {
+                    long st = recorded
+                            ? lib.galley_recorded_expected_token(sessionHandle, diagIndex, i, outData, outLen)
+                            : lib.galley_diagnostic_expected_at(sessionHandle, i, outData, outLen);
+                    if (!fieldAbsent(st)) {
                         MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
                         long len = outLen.get(ValueLayout.JAVA_LONG, 0);
                         if (!ptr.equals(MemorySegment.NULL)) {
@@ -1000,13 +1085,18 @@ public final class Session implements AutoCloseable {
 
         List<String> context = new ArrayList<>();
         List<byte[]> contextBytes = new ArrayList<>();
-        long ctxCount = lib.galley_diagnostic_context_count(sessionHandle);
-        if (ctxCount > 0) {
+        long ctxCount = recorded
+                ? lib.galley_recorded_context_count(sessionHandle, diagIndex)
+                : lib.galley_diagnostic_context_count(sessionHandle);
+        if (!fieldAbsent(ctxCount)) {
             for (long i = 0; i < ctxCount; i++) {
                 try (Arena arena = Arena.ofConfined()) {
                     MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
                     MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
-                    if (lib.galley_diagnostic_context_at(sessionHandle, i, outData, outLen) == 0) {
+                    long st = recorded
+                            ? lib.galley_recorded_context_name(sessionHandle, diagIndex, i, outData, outLen)
+                            : lib.galley_diagnostic_context_at(sessionHandle, i, outData, outLen);
+                    if (!fieldAbsent(st)) {
                         MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
                         long len = outLen.get(ValueLayout.JAVA_LONG, 0);
                         if (!ptr.equals(MemorySegment.NULL)) {
@@ -1019,33 +1109,39 @@ public final class Session implements AutoCloseable {
             }
         }
 
-        long sec = lib.galley_syntax_error_count(sessionHandle);
-        int syntaxErrorCount = sec < 0 ? 0 : (int) sec;
+        int syntaxErrorCount = (int) statusValue(lib.galley_syntax_error_count(sessionHandle));
+        int semanticErrorCount = (int) statusValue(lib.galley_semantic_error_count(sessionHandle));
 
-        long semc = lib.galley_semantic_error_count(sessionHandle);
-        int semanticErrorCount = semc < 0 ? 0 : (int) semc;
-
-        String[] semantic = readSemanticWith(-1, false, sessionHandle);
+        String[] semantic = readSemantic(source, sessionHandle);
 
         int[] indentation = null;
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outSpaces = arena.allocate(ValueLayout.JAVA_INT);
             MemorySegment outWidth = arena.allocate(ValueLayout.JAVA_INT);
-            if (lib.galley_diagnostic_indentation(sessionHandle, outSpaces, outWidth) == 0) {
+            long st = recorded
+                    ? lib.galley_recorded_indentation(sessionHandle, diagIndex, outSpaces, outWidth)
+                    : lib.galley_diagnostic_indentation(sessionHandle, outSpaces, outWidth);
+            if (!fieldAbsent(st)) {
                 indentation = new int[]{outSpaces.get(ValueLayout.JAVA_INT, 0), outWidth.get(ValueLayout.JAVA_INT, 0)};
             }
         }
 
         RecoveryTarget recoveryKind = null;
-        long rk = lib.galley_diagnostic_recovery_kind(sessionHandle);
+        long rk = statusValue(recorded
+                ? lib.galley_recorded_diagnostic_recovery_kind(sessionHandle, diagIndex)
+                : lib.galley_diagnostic_recovery_kind(sessionHandle));
         if (rk != 0) recoveryKind = RecoveryTarget.fromCode(rk);
 
-        // Absent stays null: same rule as the recorded builder below.
+        // Absent stays null: a field read that reports no_diagnostic is the
+        // field not applying, and anything else it reports raises.
         byte[] recoveryTerminal = null;
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
-            if (lib.galley_diagnostic_recovery_terminal(sessionHandle, outData, outLen) == 0) {
+            long st = recorded
+                    ? lib.galley_recorded_recovery_terminal(sessionHandle, diagIndex, outData, outLen)
+                    : lib.galley_diagnostic_recovery_terminal(sessionHandle, outData, outLen);
+            if (!fieldAbsent(st)) {
                 MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
                 long len = outLen.get(ValueLayout.JAVA_LONG, 0);
                 if (!ptr.equals(MemorySegment.NULL) && len > 0) recoveryTerminal = ptr.reinterpret(len).toArray(ValueLayout.JAVA_BYTE);
@@ -1055,7 +1151,10 @@ public final class Session implements AutoCloseable {
         ResumeSide recoveryResume = null;
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outResume = arena.allocate(ValueLayout.JAVA_LONG);
-            if (lib.galley_diagnostic_recovery_resume(sessionHandle, outResume) == 0) {
+            long st = recorded
+                    ? lib.galley_recorded_recovery_resume(sessionHandle, diagIndex, outResume)
+                    : lib.galley_diagnostic_recovery_resume(sessionHandle, outResume);
+            if (!fieldAbsent(st)) {
                 recoveryResume = ResumeSide.fromCode(outResume.get(ValueLayout.JAVA_LONG, 0));
             }
         }
@@ -1064,7 +1163,10 @@ public final class Session implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
-            if (lib.galley_diagnostic_recovery_lhs_variable(sessionHandle, outData, outLen) == 0) {
+            long st = recorded
+                    ? lib.galley_recorded_recovery_lhs_variable(sessionHandle, diagIndex, outData, outLen)
+                    : lib.galley_diagnostic_recovery_lhs_variable(sessionHandle, outData, outLen);
+            if (!fieldAbsent(st)) {
                 MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
                 long len = outLen.get(ValueLayout.JAVA_LONG, 0);
                 if (!ptr.equals(MemorySegment.NULL)) {
@@ -1079,7 +1181,10 @@ public final class Session implements AutoCloseable {
             MemorySegment outVar = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outVarLen = arena.allocate(ValueLayout.JAVA_LONG);
             MemorySegment outIdx = arena.allocate(ValueLayout.JAVA_INT);
-            if (lib.galley_diagnostic_recovery_production(sessionHandle, outVar, outVarLen, outIdx) == 0) {
+            long st = recorded
+                    ? lib.galley_recorded_recovery_production(sessionHandle, diagIndex, outVar, outVarLen, outIdx)
+                    : lib.galley_diagnostic_recovery_production(sessionHandle, outVar, outVarLen, outIdx);
+            if (!fieldAbsent(st)) {
                 MemorySegment ptr = outVar.get(ValueLayout.ADDRESS, 0);
                 long len = outVarLen.get(ValueLayout.JAVA_LONG, 0);
                 int idx = outIdx.get(ValueLayout.JAVA_INT, 0);
@@ -1098,7 +1203,10 @@ public final class Session implements AutoCloseable {
             MemorySegment outSym = arena.allocate(ValueLayout.JAVA_INT);
             MemorySegment outVar = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outVarLen = arena.allocate(ValueLayout.JAVA_LONG);
-            if (lib.galley_diagnostic_recovery_occurrence(sessionHandle, outParent, outParentLen, outRhs, outSym, outVar, outVarLen) == 0) {
+            long st = recorded
+                    ? lib.galley_recorded_recovery_occurrence(sessionHandle, diagIndex, outParent, outParentLen, outRhs, outSym, outVar, outVarLen)
+                    : lib.galley_diagnostic_recovery_occurrence(sessionHandle, outParent, outParentLen, outRhs, outSym, outVar, outVarLen);
+            if (!fieldAbsent(st)) {
                 MemorySegment pb = outParent.get(ValueLayout.ADDRESS, 0);
                 long pl = outParentLen.get(ValueLayout.JAVA_LONG, 0);
                 MemorySegment vb = outVar.get(ValueLayout.ADDRESS, 0);
@@ -1116,215 +1224,61 @@ public final class Session implements AutoCloseable {
                 recoveryLhs, recoveryProd, recoveryOcc);
     }
 
-    private Diagnostic buildRecordedDiagnostic(long diagIndex) {
-        return gate(sessionHandle -> buildRecordedDiagnosticWith(diagIndex, sessionHandle));
-    }
-
-    /** The recorded-snapshot proper: one handle the gate claimed, held across every read it makes. */
-    private Diagnostic buildRecordedDiagnosticWith(long diagIndex, MemorySegment sessionHandle) {
-        long offset;
-        int line, col;
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment outOffset = arena.allocate(ValueLayout.JAVA_LONG);
-            MemorySegment outLine = arena.allocate(ValueLayout.JAVA_INT);
-            MemorySegment outCol = arena.allocate(ValueLayout.JAVA_INT);
-            long st = lib.galley_recorded_diagnostic_position(sessionHandle, diagIndex, outOffset, outLine, outCol);
-            if (st < 0) return null;
-            offset = outOffset.get(ValueLayout.JAVA_LONG, 0);
-            line = outLine.get(ValueLayout.JAVA_INT, 0);
-            col = outCol.get(ValueLayout.JAVA_INT, 0);
-        }
-
-        long kind = lib.galley_recorded_diagnostic_kind(sessionHandle, diagIndex);
-
-        String message = "";
-        String messageAnsi = "";
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment outMsg = arena.allocate(ValueLayout.ADDRESS);
-            if (lib.galley_recorded_diagnostic_message(sessionHandle, diagIndex, outMsg) == 0) {
-                MemorySegment p = outMsg.get(ValueLayout.ADDRESS, 0);
-                if (!p.equals(MemorySegment.NULL)) message = p.reinterpret(Long.MAX_VALUE).getString(0);
-            }
-            if (lib.galley_recorded_diagnostic_message_ansi(sessionHandle, diagIndex, outMsg) == 0) {
-                MemorySegment p = outMsg.get(ValueLayout.ADDRESS, 0);
-                if (!p.equals(MemorySegment.NULL)) messageAnsi = p.reinterpret(Long.MAX_VALUE).getString(0);
-            }
-        }
-
-        byte[] unexpected = null;
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
-            MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
-            if (lib.galley_recorded_unexpected_token(sessionHandle, diagIndex, outData, outLen) == 0) {
-                MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
-                long len = outLen.get(ValueLayout.JAVA_LONG, 0);
-                if (!ptr.equals(MemorySegment.NULL) && len > 0) unexpected = ptr.reinterpret(len).toArray(ValueLayout.JAVA_BYTE);
-            }
-        }
-
-        List<byte[]> expected = new ArrayList<>();
-        long expCount = lib.galley_recorded_expected_count(sessionHandle, diagIndex);
-        if (expCount > 0) {
-            for (long i = 0; i < expCount; i++) {
-                try (Arena arena = Arena.ofConfined()) {
-                    MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
-                    MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
-                    if (lib.galley_recorded_expected_token(sessionHandle, diagIndex, i, outData, outLen) == 0) {
-                        MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
-                        long len = outLen.get(ValueLayout.JAVA_LONG, 0);
-                        if (!ptr.equals(MemorySegment.NULL)) {
-                            byte[] b = len == 0 ? new byte[0] : ptr.reinterpret(len).toArray(ValueLayout.JAVA_BYTE);
-                            expected.add(b);
-                        }
-                    }
-                }
-            }
-        }
-
-        List<String> context = new ArrayList<>();
-        List<byte[]> contextBytes = new ArrayList<>();
-        long ctxCount = lib.galley_recorded_context_count(sessionHandle, diagIndex);
-        if (ctxCount > 0) {
-            for (long i = 0; i < ctxCount; i++) {
-                try (Arena arena = Arena.ofConfined()) {
-                    MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
-                    MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
-                    if (lib.galley_recorded_context_name(sessionHandle, diagIndex, i, outData, outLen) == 0) {
-                        MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
-                        long len = outLen.get(ValueLayout.JAVA_LONG, 0);
-                        if (!ptr.equals(MemorySegment.NULL)) {
-                            byte[] b = len == 0 ? new byte[0] : ptr.reinterpret(len).toArray(ValueLayout.JAVA_BYTE);
-                            contextBytes.add(b);
-                            context.add(new String(b, StandardCharsets.UTF_8));
-                        }
-                    }
-                }
-            }
-        }
-
-        int[] indentation = null;
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment outSpaces = arena.allocate(ValueLayout.JAVA_INT);
-            MemorySegment outWidth = arena.allocate(ValueLayout.JAVA_INT);
-            if (lib.galley_recorded_indentation(sessionHandle, diagIndex, outSpaces, outWidth) == 0) {
-                indentation = new int[]{outSpaces.get(ValueLayout.JAVA_INT, 0), outWidth.get(ValueLayout.JAVA_INT, 0)};
-            }
-        }
-
-        RecoveryTarget recoveryKind = null;
-        long rk = lib.galley_recorded_diagnostic_recovery_kind(sessionHandle, diagIndex);
-        if (rk != 0) recoveryKind = RecoveryTarget.fromCode(rk);
-
-        byte[] recoveryTerminal = null;
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
-            MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
-            if (lib.galley_recorded_recovery_terminal(sessionHandle, diagIndex, outData, outLen) == 0) {
-                MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
-                long len = outLen.get(ValueLayout.JAVA_LONG, 0);
-                if (!ptr.equals(MemorySegment.NULL) && len > 0) recoveryTerminal = ptr.reinterpret(len).toArray(ValueLayout.JAVA_BYTE);
-            }
-        }
-
-        ResumeSide recoveryResume = null;
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment outResume = arena.allocate(ValueLayout.JAVA_LONG);
-            if (lib.galley_recorded_recovery_resume(sessionHandle, diagIndex, outResume) == 0) {
-                recoveryResume = ResumeSide.fromCode(outResume.get(ValueLayout.JAVA_LONG, 0));
-            }
-        }
-
-        String recoveryLhs = null;
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
-            MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
-            if (lib.galley_recorded_recovery_lhs_variable(sessionHandle, diagIndex, outData, outLen) == 0) {
-                MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
-                long len = outLen.get(ValueLayout.JAVA_LONG, 0);
-                if (!ptr.equals(MemorySegment.NULL)) {
-                    byte[] b = len == 0 ? new byte[0] : ptr.reinterpret(len).toArray(ValueLayout.JAVA_BYTE);
-                    recoveryLhs = new String(b, StandardCharsets.UTF_8);
-                }
-            }
-        }
-
-        Diagnostic.RecoveryProduction recoveryProd = null;
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment outVar = arena.allocate(ValueLayout.ADDRESS);
-            MemorySegment outVarLen = arena.allocate(ValueLayout.JAVA_LONG);
-            MemorySegment outIdx = arena.allocate(ValueLayout.JAVA_INT);
-            if (lib.galley_recorded_recovery_production(sessionHandle, diagIndex, outVar, outVarLen, outIdx) == 0) {
-                MemorySegment ptr = outVar.get(ValueLayout.ADDRESS, 0);
-                long len = outVarLen.get(ValueLayout.JAVA_LONG, 0);
-                int idx = outIdx.get(ValueLayout.JAVA_INT, 0);
-                if (!ptr.equals(MemorySegment.NULL)) {
-                    byte[] b = len == 0 ? new byte[0] : ptr.reinterpret(len).toArray(ValueLayout.JAVA_BYTE);
-                    recoveryProd = new Diagnostic.RecoveryProduction(new String(b, StandardCharsets.UTF_8), idx);
-                }
-            }
-        }
-
-        Diagnostic.RecoveryOccurrence recoveryOcc = null;
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment outParent = arena.allocate(ValueLayout.ADDRESS);
-            MemorySegment outParentLen = arena.allocate(ValueLayout.JAVA_LONG);
-            MemorySegment outRhs = arena.allocate(ValueLayout.JAVA_INT);
-            MemorySegment outSym = arena.allocate(ValueLayout.JAVA_INT);
-            MemorySegment outVar = arena.allocate(ValueLayout.ADDRESS);
-            MemorySegment outVarLen = arena.allocate(ValueLayout.JAVA_LONG);
-            if (lib.galley_recorded_recovery_occurrence(sessionHandle, diagIndex, outParent, outParentLen, outRhs, outSym, outVar, outVarLen) == 0) {
-                MemorySegment pb = outParent.get(ValueLayout.ADDRESS, 0);
-                long pl = outParentLen.get(ValueLayout.JAVA_LONG, 0);
-                MemorySegment vb = outVar.get(ValueLayout.ADDRESS, 0);
-                long vl = outVarLen.get(ValueLayout.JAVA_LONG, 0);
-                byte[] pbytes = pb.equals(MemorySegment.NULL) || pl == 0 ? new byte[0] : pb.reinterpret(pl).toArray(ValueLayout.JAVA_BYTE);
-                byte[] vbytes = vb.equals(MemorySegment.NULL) || vl == 0 ? new byte[0] : vb.reinterpret(vl).toArray(ValueLayout.JAVA_BYTE);
-                recoveryOcc = new Diagnostic.RecoveryOccurrence(
-                        new String(pbytes, StandardCharsets.UTF_8), outRhs.get(ValueLayout.JAVA_INT, 0), outSym.get(ValueLayout.JAVA_INT, 0), new String(vbytes, StandardCharsets.UTF_8));
-            }
-        }
-
-        return new Diagnostic(DiagnosticKind.fromCode(kind), offset, line, col, message, messageAnsi, unexpected, expected, context,
-                contextBytes,
-                0, 0, readSemanticWith(diagIndex, true, sessionHandle), indentation, recoveryKind, recoveryTerminal, recoveryResume,
-                recoveryLhs, recoveryProd, recoveryOcc);
-    }
-
-    private String[] readSemanticWith(long diagIndex, boolean recorded, MemorySegment sessionHandle) {
+    /**
+     * The semantic variable and message of the snapshot's diagnostic, or
+     * null when the source has no diagnostic or it is not a semantic error
+     * ({@link #fieldAbsent}); every other refusal raises.
+     */
+    private String[] readSemantic(DiagnosticSource source, MemorySegment sessionHandle) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outVar = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outVarLen = arena.allocate(ValueLayout.JAVA_LONG);
             MemorySegment outMsg = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outMsgLen = arena.allocate(ValueLayout.JAVA_LONG);
-            long st = recorded
-                    ? lib.galley_recorded_semantic(sessionHandle, diagIndex, outVar, outVarLen, outMsg, outMsgLen)
+            long st = source.recorded()
+                    ? lib.galley_recorded_semantic(sessionHandle, source.index(), outVar, outVarLen, outMsg, outMsgLen)
                     : lib.galley_diagnostic_semantic(sessionHandle, outVar, outVarLen, outMsg, outMsgLen);
-            if (st != 0) return null;
+            if (fieldAbsent(st)) return null;
             MemorySegment vb = outVar.get(ValueLayout.ADDRESS, 0);
             long vl = outVarLen.get(ValueLayout.JAVA_LONG, 0);
             MemorySegment mb = outMsg.get(ValueLayout.ADDRESS, 0);
             long ml = outMsgLen.get(ValueLayout.JAVA_LONG, 0);
-            if (vb.equals(MemorySegment.NULL) || mb.equals(MemorySegment.NULL)) return null;
+            // Contract: on success both written pointers are non-null — the
+            // variable is grammar-static, the message arena-copied. A null
+            // pointer is a core contract violation, never absence.
+            if (vb.equals(MemorySegment.NULL) || mb.equals(MemorySegment.NULL)) {
+                throw new IllegalStateException("galley answered a semantic diagnostic with a null payload pointer");
+            }
             return new String[]{
                     new String(vb.reinterpret(vl).toArray(ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8),
                     new String(mb.reinterpret(ml).toArray(ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8)};
         }
     }
 
+    /**
+     * The most recent parse's diagnostic, or null when none was recorded.
+     * The error counts are the parse's totals, read from the session door
+     * ({@code galley_syntax_error_count} / {@code galley_semantic_error_count}),
+     * never a per-diagnostic tally.
+     */
     public Diagnostic diagnostic() {
         requireOpen();
-        if (!gate(sessionHandle -> lib.galley_has_diagnostic(sessionHandle) != 0)) return null;
+        if (!gate(this::hasDiagnosticWith)) return null;
         return buildDiagnosticSingular();
     }
 
+    /**
+     * Every diagnostic the most recent parse recorded, in recording order.
+     * Each snapshot carries the parse's totals in
+     * {@link Diagnostic#getSyntaxErrorCount()} / {@link Diagnostic#getSemanticErrorCount()}:
+     * the session-door values, identical to the current snapshot's.
+     */
     public List<Diagnostic> diagnostics() {
         requireOpen();
-        long count = gate(sessionHandle -> lib.galley_recorded_diagnostic_count(sessionHandle));
-        if (count <= 0) return new ArrayList<>();
+        long count = statusValue(gate(sessionHandle -> lib.galley_recorded_diagnostic_count(sessionHandle)));
         List<Diagnostic> out = new ArrayList<>((int) count);
         for (long i = 0; i < count; i++) {
-            Diagnostic d = buildRecordedDiagnostic(i);
-            if (d != null) out.add(d);
+            out.add(buildRecordedDiagnostic(i));
         }
         return out;
     }
@@ -1375,21 +1329,24 @@ public final class Session implements AutoCloseable {
 
     /**
      * Grammar name of the symbol at table {@code index}, decoded as UTF-8
-     * with replacement for malformed input. Null for out-of-range indices.
+     * with replacement for malformed input. A refused read throws, never
+     * answers null.
+     *
+     * @throws GalleyException with {@code ERROR_OUT_OF_RANGE} for an index at
+     *         or past {@link #symbolCount()}
      */
     public String symbolNameAt(long index) {
-        byte[] bytes = symbolNameAtBytes(index);
-        return bytes == null ? null : new String(bytes, StandardCharsets.UTF_8);
+        return new String(symbolNameAtBytes(index), StandardCharsets.UTF_8);
     }
 
-    /** Raw bytes behind {@link #symbolNameAt(long)}. Null for out-of-range indices. */
+    /** Raw bytes behind {@link #symbolNameAt(long)}. */
     public byte[] symbolNameAtBytes(long index) {
         requireOpen();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
             long st = gate(sessionHandle -> lib.galley_symbol_name(sessionHandle, index, outData, outLen));
-            if (st < 0) return null;
+            statusValue(st);
             MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
             long len = outLen.get(ValueLayout.JAVA_LONG, 0);
             if (ptr.equals(MemorySegment.NULL) || len == 0) return new byte[0];
@@ -1397,28 +1354,41 @@ public final class Session implements AutoCloseable {
         }
     }
 
+    /**
+     * Whether the symbol at table {@code index} is a terminal.
+     *
+     * @throws GalleyException with {@code ERROR_OUT_OF_RANGE} for an index at
+     *         or past {@link #symbolCount()}
+     */
     public boolean symbolIsTerminal(long index) {
         requireOpen();
-        return gate(sessionHandle -> lib.galley_symbol_is_terminal(sessionHandle, index) != 0);
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment outIsTerminal = arena.allocate(ValueLayout.JAVA_INT);
+            checkStatus(gate(sessionHandle -> lib.galley_symbol_is_terminal(sessionHandle, index, outIsTerminal)));
+            return outIsTerminal.get(ValueLayout.JAVA_INT, 0) != 0;
+        }
     }
 
     /**
      * Grammar name of the variable at table {@code index}, decoded as UTF-8
-     * with replacement for malformed input. Null for out-of-range indices.
+     * with replacement for malformed input. A refused read throws, never
+     * answers null.
+     *
+     * @throws GalleyException with {@code ERROR_OUT_OF_RANGE} for an index at
+     *         or past {@link #variableCount()}
      */
     public String variableNameAt(long index) {
-        byte[] bytes = variableNameAtBytes(index);
-        return bytes == null ? null : new String(bytes, StandardCharsets.UTF_8);
+        return new String(variableNameAtBytes(index), StandardCharsets.UTF_8);
     }
 
-    /** Raw bytes behind {@link #variableNameAt(long)}. Null for out-of-range indices. */
+    /** Raw bytes behind {@link #variableNameAt(long)}. */
     public byte[] variableNameAtBytes(long index) {
         requireOpen();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outData = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
             long st = gate(sessionHandle -> lib.galley_variable_name(sessionHandle, index, outData, outLen));
-            if (st < 0) return null;
+            statusValue(st);
             MemorySegment ptr = outData.get(ValueLayout.ADDRESS, 0);
             long len = outLen.get(ValueLayout.JAVA_LONG, 0);
             if (ptr.equals(MemorySegment.NULL) || len == 0) return new byte[0];

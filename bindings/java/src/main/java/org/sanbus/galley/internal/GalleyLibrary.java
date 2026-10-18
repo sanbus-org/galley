@@ -53,7 +53,6 @@ public final class GalleyLibrary {
     private final MethodHandle mh_galley_symbol_is_terminal;
     private final MethodHandle mh_galley_variable_name;
     private final MethodHandle mh_galley_session_create;
-    private final MethodHandle mh_galley_session_create_ex;
     private final MethodHandle mh_galley_session_destroy;
     private final MethodHandle mh_galley_session_set_message_override;
     private final MethodHandle mh_galley_parse;
@@ -115,8 +114,7 @@ public final class GalleyLibrary {
     private final MethodHandle mh_galley_procedure_context_column;
     private final MethodHandle mh_galley_procedure_report_semantic_error;
     private final MethodHandle mh_galley_hooks_count;
-    private final MethodHandle mh_galley_hooks_name_data;
-    private final MethodHandle mh_galley_hooks_name_length;
+    private final MethodHandle mh_galley_hooks_name;
     private final MethodHandle mh_galley_session_set_hooks;
 
     public GalleyLibrary(String libraryPath) {
@@ -139,10 +137,9 @@ public final class GalleyLibrary {
         this.mh_galley_variable_count = downcall("galley_variable_count", FunctionDescriptor.of(ValueLayout.JAVA_LONG));
         this.mh_galley_status_string = downcall("galley_status_string", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
         this.mh_galley_symbol_name = downcall("galley_symbol_name", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        this.mh_galley_symbol_is_terminal = downcall("galley_symbol_is_terminal", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+        this.mh_galley_symbol_is_terminal = downcall("galley_symbol_is_terminal", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
         this.mh_galley_variable_name = downcall("galley_variable_name", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        this.mh_galley_session_create = downcall("galley_session_create", FunctionDescriptor.of(ValueLayout.ADDRESS));
-        this.mh_galley_session_create_ex = downcall("galley_session_create_ex", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+        this.mh_galley_session_create = downcall("galley_session_create", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.mh_galley_session_destroy = downcall("galley_session_destroy", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
         this.mh_galley_session_set_message_override = downcall("galley_session_set_message_override", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
         this.mh_galley_parse = downcall("galley_parse", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
@@ -155,7 +152,7 @@ public final class GalleyLibrary {
         this.mh_galley_root_node = downcall("galley_root_node", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.mh_galley_tree_snapshot = downcall("galley_tree_snapshot", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
         this.mh_galley_last_input = downcall("galley_last_input", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        this.mh_galley_has_diagnostic = downcall("galley_has_diagnostic", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+        this.mh_galley_has_diagnostic = downcall("galley_has_diagnostic", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.mh_galley_diagnostic_kind = downcall("galley_diagnostic_kind", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
         this.mh_galley_diagnostic_semantic = downcall("galley_diagnostic_semantic", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.mh_galley_diagnostic_message = downcall("galley_diagnostic_message", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
@@ -204,8 +201,7 @@ public final class GalleyLibrary {
         this.mh_galley_procedure_context_column = downcall("galley_procedure_context_column", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
         this.mh_galley_procedure_report_semantic_error = downcall("galley_procedure_report_semantic_error", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
         this.mh_galley_hooks_count = downcall("galley_hooks_count", FunctionDescriptor.of(ValueLayout.JAVA_LONG));
-        this.mh_galley_hooks_name_data = downcall("galley_hooks_name_data", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-        this.mh_galley_hooks_name_length = downcall("galley_hooks_name_length", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG));
+        this.mh_galley_hooks_name = downcall("galley_hooks_name", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.mh_galley_session_set_hooks = downcall("galley_session_set_hooks", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
     }
 
@@ -249,22 +245,16 @@ public final class GalleyLibrary {
     public long galley_symbol_name(MemorySegment session, long index, MemorySegment outData, MemorySegment outLen) {
         try { return (long) mh_galley_symbol_name.invoke(session, index, outData, outLen); } catch (Throwable t) { throw new RuntimeException(t); }
     }
-    public int galley_symbol_is_terminal(MemorySegment session, long index) {
-        try { return (int) mh_galley_symbol_is_terminal.invoke(session, index); } catch (Throwable t) { throw new RuntimeException(t); }
+    public long galley_symbol_is_terminal(MemorySegment session, long index, MemorySegment outIsTerminal) {
+        try { return (long) mh_galley_symbol_is_terminal.invoke(session, index, outIsTerminal); } catch (Throwable t) { throw new RuntimeException(t); }
     }
     public long galley_variable_name(MemorySegment session, long index, MemorySegment outData, MemorySegment outLen) {
         try { return (long) mh_galley_variable_name.invoke(session, index, outData, outLen); } catch (Throwable t) { throw new RuntimeException(t); }
     }
 
     // session
-    public MemorySegment galley_session_create() {
-        try { return (MemorySegment) mh_galley_session_create.invoke(); } catch (Throwable t) { throw new RuntimeException(t); }
-    }
-    public MemorySegment galley_session_create_ex(MemorySegment options) {
-        try {
-            if (options.equals(MemorySegment.NULL)) return (MemorySegment) mh_galley_session_create_ex.invoke(MemorySegment.NULL);
-            return (MemorySegment) mh_galley_session_create_ex.invoke(options);
-        } catch (Throwable t) { throw new RuntimeException(t); }
+    public long galley_session_create(MemorySegment options, MemorySegment outSession) {
+        try { return (long) mh_galley_session_create.invoke(options, outSession); } catch (Throwable t) { throw new RuntimeException(t); }
     }
     public long galley_session_destroy(MemorySegment session) {
         try { return (long) mh_galley_session_destroy.invoke(session); } catch (Throwable t) { throw new RuntimeException(t); }
@@ -296,7 +286,7 @@ public final class GalleyLibrary {
     public long galley_last_input(MemorySegment session, MemorySegment outData, MemorySegment outLen) { try { return (long) mh_galley_last_input.invoke(session, outData, outLen); } catch (Throwable t) { throw new RuntimeException(t); } }
 
     // diagnostics (singular)
-    public int galley_has_diagnostic(MemorySegment session) { try { return (int) mh_galley_has_diagnostic.invoke(session); } catch (Throwable t) { throw new RuntimeException(t); } }
+    public long galley_has_diagnostic(MemorySegment session, MemorySegment outHas) { try { return (long) mh_galley_has_diagnostic.invoke(session, outHas); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_diagnostic_kind(MemorySegment session) { try { return (long) mh_galley_diagnostic_kind.invoke(session); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_diagnostic_message(MemorySegment session, MemorySegment out) { try { return (long) mh_galley_diagnostic_message.invoke(session, out); } catch (Throwable t) { throw new RuntimeException(t); } }
     public long galley_diagnostic_message_ansi(MemorySegment session, MemorySegment out) { try { return (long) mh_galley_diagnostic_message_ansi.invoke(session, out); } catch (Throwable t) { throw new RuntimeException(t); } }
@@ -365,14 +355,9 @@ public final class GalleyLibrary {
         try { return (long) mh_galley_hooks_count.invoke(); } catch (Throwable t) { throw new RuntimeException(t); }
     }
 
-    /** Name of hook {@code index}, or null when out of range. */
-    public String galley_hooks_name(long index) {
-        try {
-            MemorySegment data = (MemorySegment) mh_galley_hooks_name_data.invoke(index);
-            if (data.equals(MemorySegment.NULL)) return null;
-            long length = (long) mh_galley_hooks_name_length.invoke(index);
-            return new String(data.reinterpret(length).toArray(ValueLayout.JAVA_BYTE), java.nio.charset.StandardCharsets.UTF_8);
-        } catch (Throwable t) { throw new RuntimeException(t); }
+    /** Writes the name and length of hook {@code index}; the caller checks the status. */
+    public long galley_hooks_name(long index, MemorySegment outData, MemorySegment outLen) {
+        try { return (long) mh_galley_hooks_name.invoke(index, outData, outLen); } catch (Throwable t) { throw new RuntimeException(t); }
     }
 
     public long galley_session_set_hooks(MemorySegment session, MemorySegment dispatch, MemorySegment handle, MemorySegment enabled, long enabledCount) {

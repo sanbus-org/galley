@@ -248,8 +248,10 @@ export async function runRefusalScenarios({ test, assert, newParser, GalleyError
       s.parse(FIRST);
       const walker = s.rootNode().walk();
       assert.ok([...walker].length > 0);
-      // A finished walk is still answered by the core: "done" only while its
-      // tree is live, the stale-tree failure once it is not.
+      // A finished walk is still answered by the core: every further step
+      // keeps answering done while its tree is live, the stale-tree failure
+      // once it is not.
+      assert.equal(walker.next().done, true);
       assert.equal(walker.next().done, true);
       s.parse(FIRST);
       for (let attempt = 0; attempt < 2; attempt++) {
@@ -316,6 +318,14 @@ export async function runRefusalScenarios({ test, assert, newParser, GalleyError
       assert.ok(failure instanceof GalleyError && failure.diagnostic !== null);
       const current = s.diagnostic();
       const recorded = s.diagnostics();
+      // A recorded snapshot's error totals are the most recent parse's:
+      // the same session-door reads the current snapshot uses.
+      assert.ok(recorded.length > 0);
+      assert.ok(current.syntaxErrorCount > 0);
+      for (const item of recorded) {
+        assert.equal(item.syntaxErrorCount, current.syntaxErrorCount);
+        assert.equal(item.semanticErrorCount, current.semanticErrorCount);
+      }
       const fields = (d) =>
         JSON.stringify({
           message: d.message,
@@ -342,6 +352,125 @@ export async function runRefusalScenarios({ test, assert, newParser, GalleyError
         }
       }
       assert.deepEqual(snapshot(), before);
+    } finally {
+      s.close();
+    }
+  });
+
+  await test("only a failure that ended a parse carries a diagnostic", async () => {
+    const parser = await newParser();
+    const s = await parser.openSession();
+    try {
+      // The failed parse attaches its diagnostic...
+      assert.throws(
+        () => s.parse("alpha:"),
+        (error) => error instanceof GalleyError && error.diagnostic !== null,
+      );
+      // ...which no later refusal borrows: an I/O refusal ran no parse, so
+      // it carries none, and neither does a stale-tree node read.
+      assert.throws(
+        () => s.parseFile("/nonexistent/galley/refusal-test"),
+        (error) => error instanceof GalleyError && error.code === Status.ErrorIo && error.diagnostic === null,
+      );
+      s.parse(FIRST);
+      const root = s.rootNode();
+      s.parse(FIRST);
+      assert.throws(
+        () => root.text(),
+        (error) => error instanceof StaleTreeError && error.diagnostic === null,
+      );
+    } finally {
+      s.close();
+    }
+  });
+
+  await test("invalid session options are refused before a session exists", async () => {
+    // A negative maxErrors is `invalid argument`, not a quiet default: the
+    // library validates the options struct before creating anything.
+    const parser = await newParser();
+    assert.equal(Status.ErrorInvalidArgument, -18);
+    let refusal = null;
+    try {
+      const s = await parser.openSession({ maxErrors: -5 });
+      s.close();
+    } catch (error) {
+      refusal = error;
+    }
+    assert.ok(refusal instanceof GalleyError);
+    assert.equal(refusal.code, Status.ErrorInvalidArgument);
+    // The refusal leaves the parser usable.
+    const s = await parser.openSession();
+    try {
+      s.parse(FIRST);
+    } finally {
+      s.close();
+    }
+  });
+
+  await test("out-of-range symbol and variable reads are refused", async () => {
+    // An index at or past the count is `out of range`, never a null name or
+    // a false is-terminal.
+    const parser = await newParser();
+    const s = await parser.openSession();
+    try {
+      s.parse(FIRST);
+      assert.ok(parser.symbolCount() > 0);
+      assert.ok(parser.variableCount() > 0);
+      assert.equal(Status.ErrorOutOfRange, -17);
+      const reads = {
+        symbolName: () => s.symbolNameAt(1_000_000_000),
+        symbolIsTerminal: () => s.symbolIsTerminal(1_000_000_000),
+        variableName: () => s.variableNameAt(1_000_000_000),
+      };
+      for (const read of Object.values(reads)) {
+        assert.throws(read, (error) => {
+          assert.ok(error instanceof GalleyError);
+          assert.equal(error.code, Status.ErrorOutOfRange);
+          return true;
+        });
+      }
+    } finally {
+      s.close();
+    }
+  });
+
+  await test("a hook reads the live diagnostic through its own door", async () => {
+    // Inside a hook the session door is `session in use`; the hook door
+    // answers the in-flight parse's current diagnostic instead. What
+    // describes a finished parse (the recorded family) still refuses.
+    const parser = await newParser();
+    const s = await parser.openSession();
+    try {
+      const seen = [];
+      s.installProcedure("reduction_Pair", () => {
+        let recorded = null;
+        try {
+          s.diagnostics();
+        } catch (error) {
+          recorded = error.code;
+        }
+        const current = s.diagnostic();
+        seen.push({
+          has: s.hasDiagnostic(),
+          message: current === null ? null : current.message,
+          recorded,
+        });
+      });
+      assert.throws(() => s.parse("alpha:12,beta:?"), (error) => {
+        assert.ok(error instanceof GalleyError);
+        return true;
+      });
+      assert.equal(seen.length, 2);
+      // The first Pair finishes clean; the second Pair is the one whose
+      // Number failed, so its hook sees the live diagnostic.
+      assert.equal(seen[0].has, false);
+      assert.equal(seen[0].message, null);
+      assert.equal(seen[0].recorded, Status.ErrorSessionInUse);
+      assert.equal(seen[1].has, true);
+      assert.ok(seen[1].message.length > 0);
+      assert.equal(seen[1].recorded, Status.ErrorSessionInUse);
+      // The published current diagnostic matches what the hook saw.
+      assert.equal(s.diagnostic().message, seen[1].message);
     } finally {
       s.close();
     }

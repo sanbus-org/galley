@@ -49,10 +49,10 @@ fn main() -> Result<(), galley::Error> {
         match session.parse_file(&args[1]) {
             Ok(bytes) => println!("parsed {bytes} bytes"),
             Err(e) => {
-                if let Some(d) = session.diagnostic() {
-                    eprintln!("{}:{}:{}: {}", args[1], d.line, d.column, d.message);
-                } else {
-                    eprintln!("parse failed: {e}");
+                match session.diagnostic() {
+                    Ok(Some(d)) => eprintln!("{}:{}:{}: {}", args[1], d.line, d.column, d.message),
+                    Ok(None) => eprintln!("parse failed: {e}"),
+                    Err(read) => eprintln!("parse failed: {e} (diagnostic read: {read})"),
                 }
                 std::process::exit(1);
             }
@@ -88,9 +88,13 @@ fn main() -> Result<(), galley::Error> {
         std::process::exit(1);
     }
     let diagnostic = match session.diagnostic() {
-        Some(diagnostic) => diagnostic,
-        None => {
+        Ok(Some(diagnostic)) => diagnostic,
+        Ok(None) => {
             eprintln!("expected a diagnostic for the broken sample");
+            std::process::exit(1);
+        }
+        Err(e) => {
+            eprintln!("failed to read the diagnostic: {e}");
             std::process::exit(1);
         }
     };
@@ -117,7 +121,7 @@ fn main() -> Result<(), galley::Error> {
         eprintln!("expected the multi-error sample to fail");
         std::process::exit(1);
     }
-    let diagnostics = session.diagnostics();
+    let diagnostics = session.diagnostics()?;
     println!("recorded diagnostics: {}", diagnostics.len());
     for (index, d) in diagnostics.iter().enumerate() {
         let kind_name = match d.kind {

@@ -1,4 +1,5 @@
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -84,7 +85,32 @@ const (
 	// stopped. Only a library built with a host shim returns it; Go hooks
 	// cannot fail yet.
 	ErrHookFailed Error = -16
+	// ErrOutOfRange: an index past a table the core reads by number: a hook
+	// name, a grammar symbol or variable name, an expected-token or
+	// context-name index. A tree position past its storage is
+	// ErrInvalidNode, a recorded diagnostic past its count ErrNoDiagnostic.
+	ErrOutOfRange Error = -17
+	// ErrInvalidArgument: a non-null argument the call cannot accept: an
+	// option value outside its domain, or a hook-enable count that does not
+	// match the library's hook count. A nil argument is ErrNullArgument.
+	ErrInvalidArgument Error = -18
 )
+
+// statusCarriesDiagnostic reports whether a failure with this code carries
+// the session's diagnostic: exactly the statuses that ended a parse that
+// ran, whose diagnostic then belongs to that attempt. A *ParseError built
+// from any other status carries none — a file-read failure included,
+// whether it happened before the parse began or, in a streaming build,
+// during it.
+func statusCarriesDiagnostic(code Error) bool {
+	switch code {
+	case ErrSyntax, ErrSemantic, ErrIndentation, ErrStackOverflow,
+		ErrASTCapacityExceeded, ErrUnterminatedRawString, ErrOutOfMemory,
+		ErrHookFailed:
+		return true
+	}
+	return false
+}
 
 var errorDescriptions = map[Error]string{
 	ErrNullArgument:         "null argument",
@@ -103,6 +129,8 @@ var errorDescriptions = map[Error]string{
 	ErrStaleTree:            "stale tree",
 	ErrStaleHook:            "stale hook",
 	ErrHookFailed:           "hook failed",
+	ErrOutOfRange:           "out of range",
+	ErrInvalidArgument:      "invalid argument",
 }
 
 func (e Error) Error() string {
@@ -122,9 +150,45 @@ func HasAST() bool {
 	return C.galley_has_ast() != 0
 }
 
-// SessionOptions selects session behavior; zero/negative fields select
-// library defaults. The zero value enables every default except MaxErrors,
-// which must be set explicitly through DefaultOptions.
+// SymbolCount returns the number of grammar symbols: the generated
+// grammar's variables and terminals share one table. Fixed for the process
+// lifetime; the count takes nothing and cannot fail.
+func SymbolCount() uint64 {
+	return uint64(C.galley_symbol_count())
+}
+
+// VariableCount returns the number of grammar variables. Fixed for the
+// process lifetime; the count takes nothing and cannot fail.
+func VariableCount() uint64 {
+	return uint64(C.galley_variable_count())
+}
+
+// HooksCount returns the number of hooks this library forwards to a host:
+// every hook its parser binds, none when procedures are disabled. A library
+// built with C, C++, Rust, or Go hooks reports zero hooks. Fixed for the
+// process lifetime; the count takes nothing and cannot fail.
+func HooksCount() uint64 {
+	return uint64(C.galley_hooks_count())
+}
+
+// HookName returns the name of the host hook at index, always an
+// identifier: reduction, reduction_<Variable>, reduction_<terminal stem>, or
+// reduction_<Variable>_<RhsIndex>. The bytes are a Go copy of static storage
+// valid for the process lifetime. An index at or past HooksCount is
+// ErrOutOfRange.
+func HookName(index uint64) ([]byte, error) {
+	var data *C.char
+	var length C.size_t
+	if status := C.galley_hooks_name(C.size_t(index), &data, &length); status < 0 {
+		return nil, Error(int32(status))
+	}
+	return C.GoBytes(unsafe.Pointer(data), C.int(length)), nil
+}
+
+// SessionOptions selects session behavior; zero fields select library
+// defaults, the ones DefaultOptions spells out. A negative MaxErrors,
+// RecoveryWindow, or Verbosity, or a non-finite ASTPreallocationRatio, is
+// rejected by the core with ErrInvalidArgument.
 type SessionOptions struct {
 	MaxErrors               int32
 	RecoveryWindow          int32
@@ -173,7 +237,8 @@ type sessionLife struct {
 var sessions sync.Map // uintptr of the *C.GalleySession -> *sessionLife
 
 // parseEnded ends the lifetime of every hook door taken during the parse that
-// just returned.
+// just returned. A parse the core refused never reaches it: a running parse
+// keeps its hooks and doors.
 func (s *Session) parseEnded() {
 	if s.life != nil {
 		atomic.AddUint64(&s.life.epoch, 1)
@@ -185,7 +250,10 @@ func New() (*Session, error) {
 	return WithOptions(DefaultOptions())
 }
 
-// WithOptions creates a session with explicit options.
+// WithOptions creates a session with explicit options. The core owns every
+// check: a negative MaxErrors, RecoveryWindow, or Verbosity, or a
+// non-finite ASTPreallocationRatio, comes back as ErrInvalidArgument, and an
+// initialization failure as ErrOutOfMemory.
 func WithOptions(options SessionOptions) (*Session, error) {
 	cOptions := &C.GalleyCOptions{
 		max_errors:                C.int(options.MaxErrors),
@@ -196,7 +264,12 @@ func WithOptions(options SessionOptions) (*Session, error) {
 		ast_preallocation_ratio:   C.double(options.ASTPreallocationRatio),
 		ast_preallocation_cap:     C.ulonglong(options.ASTPreallocationCap),
 	}
-	ptr := C.galley_session_create_ex(cOptions)
+	// Every create refusal is the status the core mapped, never a
+	// reinterpretation: a rejected option value reads invalid argument.
+	var ptr *C.GalleySession
+	if status := C.galley_session_create(cOptions, &ptr); status < 0 {
+		return nil, Error(int32(status))
+	}
 	if ptr == nil {
 		return nil, ErrOutOfMemory
 	}
@@ -205,9 +278,17 @@ func WithOptions(options SessionOptions) (*Session, error) {
 	for name, message := range options.MessageOverrides {
 		cName := C.CString(name)
 		cMessage := C.CString(message)
-		C.galley_session_set_message_override(session.ptr, cName, C.size_t(len(name)), cMessage, C.size_t(len(message)))
+		status := C.galley_session_set_message_override(session.ptr, cName, C.size_t(len(name)), cMessage, C.size_t(len(message)))
 		C.free(unsafe.Pointer(cName))
 		C.free(unsafe.Pointer(cMessage))
+		if status < 0 {
+			// A session whose overrides are incomplete is no session: hand
+			// out none rather than one that silently ignores options. The
+			// destroy cannot fail here: the session was never shared.
+			_ = C.galley_session_destroy(session.ptr)
+			sessions.Delete(uintptr(unsafe.Pointer(session.ptr)))
+			return nil, Error(int32(status))
+		}
 	}
 	return session, nil
 }
@@ -238,15 +319,67 @@ func (s *Session) status(status C.longlong) (int, error) {
 	return 0, Error(int32(status))
 }
 
+// ParseError is the failure of one parse leg: the status the parse stopped
+// with and, when the parse recorded one, a snapshot of the diagnostic it
+// stopped at, frozen into Go when the failure is created. Only parse legs
+// return it; every other call returns the bare Error.
+type ParseError struct {
+	Status     Error
+	Diagnostic *Diagnostic
+}
+
+// Error is the status's description, like the bare Error's.
+func (e *ParseError) Error() string { return e.Status.Error() }
+
+// Unwrap exposes the status, so errors.Is(err, ErrSyntax) and
+// errors.As(err, &statusError) hold for every parse failure.
+func (e *ParseError) Unwrap() error { return e.Status }
+
+// parseOutcome is the one gate ending every parse leg: it ends the parse's
+// hook-door lifetime (parseEnded) and maps the core's status to the leg's
+// result — the byte count, or a *ParseError carrying the diagnostic the
+// parse stopped at. Every leg that entered the parse ends its lifetime
+// whatever it returns; only the call the core refused with ErrSessionInUse
+// entered nothing, so the running parse keeps its hooks and doors. A failure
+// carries a diagnostic exactly when its status is one that ended a parse
+// that ran (statusCarriesDiagnostic); a failure built from any other status
+// carries none. Any other refused diagnostic read replaces the parse failure
+// rather than being folded into "no snapshot".
+func (s *Session) parseOutcome(status C.longlong) (int, error) {
+	if status >= 0 {
+		s.parseEnded()
+		return int(status), nil
+	}
+	failure := &ParseError{Status: Error(int32(status))}
+	if failure.Status == ErrSessionInUse {
+		return 0, failure
+	}
+	s.parseEnded()
+	if !statusCarriesDiagnostic(failure.Status) {
+		return 0, failure
+	}
+	diagnostic, present, err := s.Diagnostic()
+	if err != nil {
+		if err == ErrSessionInUse {
+			return 0, failure
+		}
+		return 0, err
+	}
+	if present {
+		failure.Diagnostic = &diagnostic
+	}
+	return 0, failure
+}
+
 // Parse parses a byte buffer that may contain NUL bytes and returns the
-// number of bytes parsed.
+// number of bytes parsed. A parse failure is a *ParseError, its Diagnostic
+// set when the parse recorded one.
 func (s *Session) Parse(input []byte) (int, error) {
-	defer s.parseEnded()
 	var data *C.char
 	if len(input) > 0 {
 		data = (*C.char)(unsafe.Pointer(&input[0]))
 	}
-	return s.status(C.galley_parse(s.ptr, data, C.size_t(len(input))))
+	return s.parseOutcome(C.galley_parse(s.ptr, data, C.size_t(len(input))))
 }
 
 // ParseSentinel parses a string and returns the number of bytes parsed.
@@ -254,20 +387,18 @@ func (s *Session) Parse(input []byte) (int, error) {
 // allocate or copy in the binding. Interior NUL bytes are valid and are
 // parsed as data, matching Parse.
 func (s *Session) ParseSentinel(input string) (int, error) {
-	defer s.parseEnded()
 	var data *C.char
 	if len(input) > 0 {
 		data = (*C.char)(unsafe.Pointer(unsafe.StringData(input)))
 	}
-	return s.status(C.galley_parse(s.ptr, data, C.size_t(len(input))))
+	return s.parseOutcome(C.galley_parse(s.ptr, data, C.size_t(len(input))))
 }
 
 // ParseFile parses the file at path and returns the number of bytes parsed.
 func (s *Session) ParseFile(path string) (int, error) {
-	defer s.parseEnded()
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
-	return s.status(C.galley_parse_file(s.ptr, cPath))
+	return s.parseOutcome(C.galley_parse_file(s.ptr, cPath))
 }
 
 // ParseInfo summarizes the most recent successful parse when AST
@@ -313,7 +444,8 @@ func (s *Session) publishedTree() (Node, error) {
 	return Node{generation: uint64(generation), address: uint64(root)}, nil
 }
 
-// NodeCount returns the number of AST nodes in the published tree, or
+// NodeCount returns the number of AST nodes in the published tree — 0 in a
+// build without AST construction, where a live tree has no nodes — or
 // ErrStaleTree when nothing is published.
 func (s *Session) NodeCount() (uint64, error) {
 	tree, err := s.publishedTree()
@@ -533,14 +665,28 @@ type Snapshot struct {
 	SpanLen    []uint64
 }
 
-// Node returns the handle for address index of the snapshot's parse. It goes
-// stale with the snapshot: a later parse refuses it with ErrStaleTree.
+// Node returns the handle for address index of the snapshot's parse,
+// converting a stored column address back to a node. The invalid-node
+// constant answers the empty Node (generation 0 belongs to no parse, so
+// every use of it is refused like any stale handle) and an address at or
+// past Count panics with the host's index error at the call, like any Go
+// index out of range; every other address is a node of the snapshot's
+// parse. The handle goes stale with the snapshot: a later parse refuses it
+// with ErrStaleTree.
 func (snap Snapshot) Node(index uint64) Node {
+	if index == invalidAddress {
+		return Node{}
+	}
+	if index >= snap.Count {
+		panic(fmt.Sprintf("node address %d out of range for a snapshot of %d nodes", index, snap.Count))
+	}
 	return Node{generation: snap.Generation, address: index}
 }
 
-// Snapshot returns the published tree in a single call.
-// Walk Parent/FirstChild/Next directly instead of one call per node.
+// Snapshot returns the published tree in a single call. In a build without
+// AST construction a live generation answers an empty snapshot (Count 0, nil
+// columns) — a tree with no nodes; the calls that address a node refuse
+// there. Walk Parent/FirstChild/Next directly instead of one call per node.
 // Every leg carries one generation, so a parse that runs in between fails
 // with ErrStaleTree instead of returning columns that mix two trees, and
 // nothing published fails the same way rather than returning an empty
@@ -682,18 +828,19 @@ func (d HookDoor) Walk(root Node, skipSemanticErrors bool) *Walker {
 
 // Next advances the walker. ok reports whether a step was yielded: false at
 // the end of the walk and after a failed step, so a plain for/Next loop
-// terminates either way. A non-nil err reports the failure itself:
-// ErrStaleTree for a walker whose tree a later parse replaced,
-// ErrInvalidNode for a removed current node, ErrSessionInUse while a parse
-// runs, or
-// ErrNullArgument once the session is closed.
+// terminates either way. A finished walk is an answer, not an error: while
+// its generation is live, every further step keeps answering (_, false, nil),
+// and only a later parse makes it fail again with ErrStaleTree. A non-nil err
+// reports the failure itself: ErrStaleTree for a walker whose tree a later
+// parse replaced, ErrInvalidNode for a removed current node, ErrSessionInUse
+// while a parse runs, or ErrNullArgument once the session is closed.
 func (w *Walker) Next() (WalkStep, bool, error) {
 	status := w.door.walkNext(&w.cursor)
-	if status == 0 {
-		return WalkStep{}, false, nil
-	}
 	if status < 0 {
 		return WalkStep{}, false, Error(int32(status))
+	}
+	if uint64(w.cursor.current) == invalidAddress {
+		return WalkStep{}, false, nil
 	}
 	return WalkStep{
 		Node:            Node{generation: uint64(w.cursor.generation), address: uint64(w.cursor.current)},
@@ -714,6 +861,42 @@ func (w *Walker) SkipChildren() {
 // SymbolName returns the grammar symbol name of a node (empty for
 // terminal-only nodes).
 func (s *Session) SymbolName(node Node) ([]byte, error) { return s.door().symbolName(node) }
+
+// SymbolNameAt returns the grammar symbol name at index into the symbol
+// table (variables and terminals share one; SymbolIsTerminal tells them
+// apart). The bytes are a Go copy of static grammar storage. An index at or
+// past SymbolCount is ErrOutOfRange; a closed session is ErrNullArgument.
+func (s *Session) SymbolNameAt(index uint64) ([]byte, error) {
+	var data *C.char
+	var length C.size_t
+	if status := C.galley_symbol_name(s.ptr, C.ulonglong(index), &data, &length); status < 0 {
+		return nil, Error(int32(status))
+	}
+	return C.GoBytes(unsafe.Pointer(data), C.int(length)), nil
+}
+
+// SymbolIsTerminal reports whether the grammar symbol at index is a
+// terminal (or generative terminal); false means it is a variable. An index
+// at or past SymbolCount is ErrOutOfRange.
+func (s *Session) SymbolIsTerminal(index uint64) (bool, error) {
+	var isTerminal C.int
+	if status := C.galley_symbol_is_terminal(s.ptr, C.ulonglong(index), &isTerminal); status < 0 {
+		return false, Error(int32(status))
+	}
+	return isTerminal != 0, nil
+}
+
+// VariableNameAt returns the grammar variable name at index. The bytes are
+// a Go copy of static grammar storage. An index at or past VariableCount is
+// ErrOutOfRange; a closed session is ErrNullArgument.
+func (s *Session) VariableNameAt(index uint64) ([]byte, error) {
+	var data *C.char
+	var length C.size_t
+	if status := C.galley_variable_name(s.ptr, C.ulonglong(index), &data, &length); status < 0 {
+		return nil, Error(int32(status))
+	}
+	return C.GoBytes(unsafe.Pointer(data), C.int(length)), nil
+}
 
 // Text returns the source text matched by a node.
 func (s *Session) Text(node Node) ([]byte, error) { return s.door().text(node) }
@@ -737,6 +920,18 @@ const (
 	DiagnosticKindHook        DiagnosticKind = 4
 )
 
+// RecoveryTarget names what a recovered syntax diagnostic's recovery
+// damaged. It is RecoveryTargetNone when the diagnostic carries no recovery
+// information, whatever the reason.
+type RecoveryTarget int32
+
+const (
+	RecoveryTargetNone        RecoveryTarget = 0
+	RecoveryTargetLHSVariable RecoveryTarget = 1
+	RecoveryTargetProduction  RecoveryTarget = 2
+	RecoveryTargetOccurrence  RecoveryTarget = 3
+)
+
 // SemanticInfo carries the variable and message of a semantic diagnostic.
 type SemanticInfo struct {
 	Variable, Message string
@@ -746,6 +941,18 @@ type SemanticInfo struct {
 // structured diagnostic of the C API.
 type Diagnostic struct {
 	Kind DiagnosticKind
+	// SyntaxErrorCount and SemanticErrorCount are the totals of the parse
+	// the diagnostic belongs to: they describe the parse, not one
+	// diagnostic, so every diagnostic of one parse carries the same
+	// counts. A hook-door snapshot reports the running parse's totals
+	// through the hook door's twins; a session snapshot reads the
+	// session's own counters.
+	SyntaxErrorCount   uint64
+	SemanticErrorCount uint64
+	// RecoveryTarget names the recovery target of a recovered syntax
+	// diagnostic (RecoveryTargetNone when there is no recovery
+	// information).
+	RecoveryTarget RecoveryTarget
 	// Offset is the byte offset of the failure in the input.
 	Offset uint64
 	// Line and Column are 1-based; both are 0 when the diagnostic has none.
@@ -754,95 +961,338 @@ type Diagnostic struct {
 	UnexpectedToken []byte
 	ExpectedTokens  [][]byte
 	// Context lists the innermost-first "while parsing" variable chain
-	// (syntax diagnostics only).
+	// (syntax and semantic diagnostics).
 	Context []string
 	// Semantic is set for semantic diagnostics only.
 	Semantic *SemanticInfo
 }
 
-// diagnosticAt snapshots the diagnostic recorded at diagIndex (0-based, in
-// recording order) of the most recent parse.
-func (s *Session) diagnosticAt(diagIndex C.ulonglong) (Diagnostic, bool) {
-	var diagnostic Diagnostic
-	var offset C.ulonglong
-	var line, column C.uint
-	if C.galley_recorded_diagnostic_position(s.ptr, diagIndex, &offset, &line, &column) != 0 {
-		return Diagnostic{}, false
-	}
-	diagnostic.Offset = uint64(offset)
-	diagnostic.Line, diagnostic.Column = uint32(line), uint32(column)
-	diagnostic.Kind = DiagnosticKind(C.galley_recorded_diagnostic_kind(s.ptr, diagIndex))
-	var message *C.char
-	if C.galley_recorded_diagnostic_message(s.ptr, diagIndex, &message) == 0 {
-		diagnostic.Message = C.GoString(message)
-	}
-	var tokenData *C.char
-	var tokenLength C.size_t
-	if C.galley_recorded_unexpected_token(s.ptr, diagIndex, &tokenData, &tokenLength) == 0 {
-		diagnostic.UnexpectedToken = C.GoBytes(unsafe.Pointer(tokenData), C.int(tokenLength))
-	}
-	if expectedCount := C.galley_recorded_expected_count(s.ptr, diagIndex); expectedCount > 0 {
-		for i := C.ulonglong(0); i < C.ulonglong(expectedCount); i++ {
-			if C.galley_recorded_expected_token(s.ptr, diagIndex, i, &tokenData, &tokenLength) == 0 {
-				diagnostic.ExpectedTokens = append(diagnostic.ExpectedTokens,
-					C.GoBytes(unsafe.Pointer(tokenData), C.int(tokenLength)))
-			}
-		}
-	}
-	if contextCount := C.galley_recorded_context_count(s.ptr, diagIndex); contextCount > 0 {
-		for i := C.ulonglong(0); i < C.ulonglong(contextCount); i++ {
-			var nameData *C.char
-			var nameLength C.size_t
-			if C.galley_recorded_context_name(s.ptr, diagIndex, i, &nameData, &nameLength) == 0 {
-				diagnostic.Context = append(diagnostic.Context, C.GoStringN(nameData, C.int(nameLength)))
-			}
-		}
-	}
-	var variableData, messageData *C.char
-	var variableLength, messageLength C.size_t
-	if C.galley_recorded_semantic(s.ptr, diagIndex, &variableData, &variableLength, &messageData, &messageLength) == 0 {
-		diagnostic.Semantic = &SemanticInfo{
-			Variable: C.GoStringN(variableData, C.int(variableLength)),
-			Message:  C.GoStringN(messageData, C.int(messageLength)),
-		}
-	}
-	return diagnostic, true
+// diagnosticReads is one diagnostic's reads, bound to the door that answers
+// them: the session's current (most recent) diagnostic, the session's record
+// at an index, or the parse-time hook door. Each field is one C call; a
+// negative status is a refusal, never folded into an answer.
+type diagnosticReads struct {
+	kind          func() C.longlong
+	syntaxCount   func() C.longlong
+	semanticCount func() C.longlong
+	position      func(*C.ulonglong, *C.uint, *C.uint) C.longlong
+	message       func(**C.char) C.longlong
+	recovery      func() C.longlong
+	token         func(**C.char, *C.size_t) C.longlong
+	expected      func() C.longlong
+	expectedAt    func(C.ulonglong, **C.char, *C.size_t) C.longlong
+	context       func() C.longlong
+	contextAt     func(C.ulonglong, **C.char, *C.size_t) C.longlong
+	semantic      func(**C.char, *C.size_t, **C.char, *C.size_t) C.longlong
 }
 
-// Diagnostic inspects the failure of the most recent parse (the most
-// recently recorded diagnostic). The second result is false when the parse
-// succeeded. Its message prefers the text rendered by the grammar's
-// error-message hooks during the parse.
-func (s *Session) Diagnostic() (Diagnostic, bool) {
-	count := C.galley_recorded_diagnostic_count(s.ptr)
-	if count <= 0 {
-		return Diagnostic{}, false
+// currentDiagnosticReads binds the session's current diagnostic, the most
+// recent one the most recent parse recorded.
+func currentDiagnosticReads(session *Session) diagnosticReads {
+	return diagnosticReads{
+		kind: func() C.longlong { return C.galley_diagnostic_kind(session.ptr) },
+		syntaxCount: func() C.longlong { return C.galley_syntax_error_count(session.ptr) },
+		semanticCount: func() C.longlong { return C.galley_semantic_error_count(session.ptr) },
+		position: func(offset *C.ulonglong, line, column *C.uint) C.longlong {
+			return C.galley_diagnostic_position(session.ptr, offset, line, column)
+		},
+		message:  func(out **C.char) C.longlong { return C.galley_diagnostic_message(session.ptr, out) },
+		recovery: func() C.longlong { return C.galley_diagnostic_recovery_kind(session.ptr) },
+		token: func(data **C.char, length *C.size_t) C.longlong {
+			return C.galley_diagnostic_unexpected_token(session.ptr, data, length)
+		},
+		expected: func() C.longlong { return C.galley_diagnostic_expected_count(session.ptr) },
+		expectedAt: func(index C.ulonglong, data **C.char, length *C.size_t) C.longlong {
+			return C.galley_diagnostic_expected_at(session.ptr, index, data, length)
+		},
+		context: func() C.longlong { return C.galley_diagnostic_context_count(session.ptr) },
+		contextAt: func(index C.ulonglong, data **C.char, length *C.size_t) C.longlong {
+			return C.galley_diagnostic_context_at(session.ptr, index, data, length)
+		},
+		semantic: func(variable **C.char, variableLength *C.size_t, message **C.char, messageLength *C.size_t) C.longlong {
+			return C.galley_diagnostic_semantic(session.ptr, variable, variableLength, message, messageLength)
+		},
 	}
-	diagnostic, ok := s.diagnosticAt(C.ulonglong(count - 1))
-	if !ok {
-		return Diagnostic{}, false
+}
+
+// recordedDiagnosticReads binds the session's record at index (0-based, in
+// recording order) of the most recent parse.
+func recordedDiagnosticReads(session *Session, index C.ulonglong) diagnosticReads {
+	return diagnosticReads{
+		kind: func() C.longlong { return C.galley_recorded_diagnostic_kind(session.ptr, index) },
+		syntaxCount: func() C.longlong { return C.galley_syntax_error_count(session.ptr) },
+		semanticCount: func() C.longlong { return C.galley_semantic_error_count(session.ptr) },
+		position: func(offset *C.ulonglong, line, column *C.uint) C.longlong {
+			return C.galley_recorded_diagnostic_position(session.ptr, index, offset, line, column)
+		},
+		message: func(out **C.char) C.longlong {
+			return C.galley_recorded_diagnostic_message(session.ptr, index, out)
+		},
+		recovery: func() C.longlong { return C.galley_recorded_diagnostic_recovery_kind(session.ptr, index) },
+		token: func(data **C.char, length *C.size_t) C.longlong {
+			return C.galley_recorded_unexpected_token(session.ptr, index, data, length)
+		},
+		expected: func() C.longlong { return C.galley_recorded_expected_count(session.ptr, index) },
+		expectedAt: func(tokenIndex C.ulonglong, data **C.char, length *C.size_t) C.longlong {
+			return C.galley_recorded_expected_token(session.ptr, index, tokenIndex, data, length)
+		},
+		context: func() C.longlong { return C.galley_recorded_context_count(session.ptr, index) },
+		contextAt: func(contextIndex C.ulonglong, data **C.char, length *C.size_t) C.longlong {
+			return C.galley_recorded_context_name(session.ptr, index, contextIndex, data, length)
+		},
+		semantic: func(variable **C.char, variableLength *C.size_t, message **C.char, messageLength *C.size_t) C.longlong {
+			return C.galley_recorded_semantic(session.ptr, index, variable, variableLength, message, messageLength)
+		},
 	}
+}
+
+// hookDiagnosticReads binds the in-flight parse's current diagnostic through
+// its hook door. The door is already open (the Go epoch was crossed); the
+// core owns whether it is still live.
+func hookDiagnosticReads(door C.galley_go_door) diagnosticReads {
+	return diagnosticReads{
+		kind: func() C.longlong { return C.galley_hook_diagnostic_kind(door.hook) },
+		syntaxCount: func() C.longlong { return C.galley_hook_syntax_error_count(door.hook) },
+		semanticCount: func() C.longlong { return C.galley_hook_semantic_error_count(door.hook) },
+		position: func(offset *C.ulonglong, line, column *C.uint) C.longlong {
+			return C.galley_hook_diagnostic_position(door.hook, offset, line, column)
+		},
+		message:  func(out **C.char) C.longlong { return C.galley_hook_diagnostic_message(door.hook, out) },
+		recovery: func() C.longlong { return C.galley_hook_diagnostic_recovery_kind(door.hook) },
+		token: func(data **C.char, length *C.size_t) C.longlong {
+			return C.galley_hook_diagnostic_unexpected_token(door.hook, data, length)
+		},
+		expected: func() C.longlong { return C.galley_hook_diagnostic_expected_count(door.hook) },
+		expectedAt: func(index C.ulonglong, data **C.char, length *C.size_t) C.longlong {
+			return C.galley_hook_diagnostic_expected_at(door.hook, index, data, length)
+		},
+		context: func() C.longlong { return C.galley_hook_diagnostic_context_count(door.hook) },
+		contextAt: func(index C.ulonglong, data **C.char, length *C.size_t) C.longlong {
+			return C.galley_hook_diagnostic_context_at(door.hook, index, data, length)
+		},
+		semantic: func(variable **C.char, variableLength *C.size_t, message **C.char, messageLength *C.size_t) C.longlong {
+			return C.galley_hook_diagnostic_semantic(door.hook, variable, variableLength, message, messageLength)
+		},
+	}
+}
+
+// errorCounts reads the parse's syntax and semantic error totals. They
+// describe the parse, not one diagnostic, so every diagnostic of the parse
+// carries them, and the same door that answers the diagnostic answers the
+// totals (the hook door's twins while a parse runs).
+func (reads diagnosticReads) errorCounts() (syntax uint64, semantic uint64, err error) {
+	status := reads.syntaxCount()
+	if status < 0 {
+		return 0, 0, Error(int32(status))
+	}
+	syntax = uint64(status)
+	if status = reads.semanticCount(); status < 0 {
+		return 0, 0, Error(int32(status))
+	}
+	return syntax, uint64(status), nil
+}
+
+func (reads diagnosticReads) diagnosticPosition() (offset uint64, line uint32, column uint32, err error) {
+	var cOffset C.ulonglong
+	var cLine, cColumn C.uint
+	if status := reads.position(&cOffset, &cLine, &cColumn); status < 0 {
+		return 0, 0, 0, Error(int32(status))
+	}
+	return uint64(cOffset), uint32(cLine), uint32(cColumn), nil
+}
+
+func (reads diagnosticReads) recoveryTarget() (RecoveryTarget, error) {
+	status := reads.recovery()
+	if status < 0 {
+		return RecoveryTargetNone, Error(int32(status))
+	}
+	return RecoveryTarget(status), nil
+}
+
+func (reads diagnosticReads) diagnosticMessage() (string, error) {
 	var message *C.char
-	if C.galley_diagnostic_message(s.ptr, &message) == 0 {
-		diagnostic.Message = C.GoString(message)
+	if status := reads.message(&message); status < 0 {
+		return "", Error(int32(status))
 	}
-	return diagnostic, true
+	return C.GoString(message), nil
+}
+
+func (reads diagnosticReads) unexpectedToken() ([]byte, error) {
+	var data *C.char
+	var length C.size_t
+	if status := reads.token(&data, &length); status < 0 {
+		return nil, Error(int32(status))
+	}
+	return C.GoBytes(unsafe.Pointer(data), C.int(length)), nil
+}
+
+func (reads diagnosticReads) expectedTokens() ([][]byte, error) {
+	count := reads.expected()
+	if count < 0 {
+		return nil, Error(int32(count))
+	}
+	var tokens [][]byte
+	for index := C.ulonglong(0); index < C.ulonglong(count); index++ {
+		var data *C.char
+		var length C.size_t
+		if status := reads.expectedAt(index, &data, &length); status < 0 {
+			return nil, Error(int32(status))
+		}
+		tokens = append(tokens, C.GoBytes(unsafe.Pointer(data), C.int(length)))
+	}
+	return tokens, nil
+}
+
+func (reads diagnosticReads) contextNames() ([]string, error) {
+	count := reads.context()
+	if count < 0 {
+		return nil, Error(int32(count))
+	}
+	var names []string
+	for index := C.ulonglong(0); index < C.ulonglong(count); index++ {
+		var data *C.char
+		var length C.size_t
+		if status := reads.contextAt(index, &data, &length); status < 0 {
+			return nil, Error(int32(status))
+		}
+		names = append(names, C.GoStringN(data, C.int(length)))
+	}
+	return names, nil
+}
+
+func (reads diagnosticReads) semanticFields() (*SemanticInfo, error) {
+	var variableData, messageData *C.char
+	var variableLength, messageLength C.size_t
+	if status := reads.semantic(&variableData, &variableLength, &messageData, &messageLength); status < 0 {
+		return nil, Error(int32(status))
+	}
+	return &SemanticInfo{
+		Variable: C.GoStringN(variableData, C.int(variableLength)),
+		Message:  C.GoStringN(messageData, C.int(messageLength)),
+	}, nil
+}
+
+// buildDiagnostic snapshots the diagnostic a set of reads answers, the one
+// builder behind every diagnostic surface. present is false only when the
+// door has no diagnostic at all (kind none); every refused read is returned
+// as the error, never folded into an absence or a zero field. Fields are
+// read by the record's kind — syntax records carry the unexpected and
+// expected tokens, syntax and semantic records a context chain, semantic
+// records their variable and message — so a read that cannot apply to the
+// record is never made.
+func buildDiagnostic(reads diagnosticReads) (Diagnostic, bool, error) {
+	kindStatus := reads.kind()
+	if kindStatus < 0 {
+		return Diagnostic{}, false, Error(int32(kindStatus))
+	}
+	kind := DiagnosticKind(kindStatus)
+	if kind == DiagnosticKindNone {
+		return Diagnostic{}, false, nil
+	}
+	diagnostic := Diagnostic{Kind: kind}
+	offset, line, column, err := reads.diagnosticPosition()
+	if err != nil {
+		return Diagnostic{}, false, err
+	}
+	diagnostic.Offset, diagnostic.Line, diagnostic.Column = offset, line, column
+	if diagnostic.SyntaxErrorCount, diagnostic.SemanticErrorCount, err = reads.errorCounts(); err != nil {
+		return Diagnostic{}, false, err
+	}
+	if diagnostic.RecoveryTarget, err = reads.recoveryTarget(); err != nil {
+		return Diagnostic{}, false, err
+	}
+	if diagnostic.Message, err = reads.diagnosticMessage(); err != nil {
+		return Diagnostic{}, false, err
+	}
+	if kind == DiagnosticKindSyntax {
+		if diagnostic.UnexpectedToken, err = reads.unexpectedToken(); err != nil {
+			return Diagnostic{}, false, err
+		}
+		if diagnostic.ExpectedTokens, err = reads.expectedTokens(); err != nil {
+			return Diagnostic{}, false, err
+		}
+	}
+	if kind == DiagnosticKindSyntax || kind == DiagnosticKindSemantic {
+		if diagnostic.Context, err = reads.contextNames(); err != nil {
+			return Diagnostic{}, false, err
+		}
+	}
+	if kind == DiagnosticKindSemantic {
+		if diagnostic.Semantic, err = reads.semanticFields(); err != nil {
+			return Diagnostic{}, false, err
+		}
+	}
+	return diagnostic, true, nil
+}
+
+// HasDiagnostic reports whether the previous parse produced a diagnostic. A
+// parse in flight is refused with ErrSessionInUse, never answered false;
+// hook code reads the running parse through HookDoor.HasDiagnostic.
+func (s *Session) HasDiagnostic() (bool, error) {
+	var has C.int
+	if status := C.galley_has_diagnostic(s.ptr, &has); status < 0 {
+		return false, Error(int32(status))
+	}
+	return has != 0, nil
+}
+
+// Diagnostic inspects the failure of the most recent parse (its most
+// recently recorded diagnostic). The second result is false when the parse
+// succeeded (or nothing was parsed yet). Its message is the text rendered
+// for that diagnostic, grammar hooks and message overrides included. A
+// refused read is the core's error, never a false.
+func (s *Session) Diagnostic() (Diagnostic, bool, error) {
+	return buildDiagnostic(currentDiagnosticReads(s))
 }
 
 // Diagnostics returns every diagnostic recorded during the most recent
-// parse, in recording order. Nil when the parse succeeded.
-func (s *Session) Diagnostics() []Diagnostic {
+// parse, in recording order. Nil when the parse succeeded. A refused read is
+// the core's error, never an empty or short list.
+func (s *Session) Diagnostics() ([]Diagnostic, error) {
 	count := C.galley_recorded_diagnostic_count(s.ptr)
-	if count <= 0 {
-		return nil
+	if count < 0 {
+		return nil, Error(int32(count))
 	}
-	diagnostics := make([]Diagnostic, 0, count)
-	for i := C.ulonglong(0); i < C.ulonglong(count); i++ {
-		if diagnostic, ok := s.diagnosticAt(i); ok {
-			diagnostics = append(diagnostics, diagnostic)
+	if count == 0 {
+		return nil, nil
+	}
+	diagnostics := make([]Diagnostic, 0, int(count))
+	for index := C.ulonglong(0); index < C.ulonglong(count); index++ {
+		diagnostic, present, err := buildDiagnostic(recordedDiagnosticReads(s, index))
+		if err != nil {
+			return nil, err
 		}
+		if !present {
+			// The core counted a record at this index and then reported no
+			// diagnostic for it; a skip here would answer a short list.
+			return nil, ErrNoDiagnostic
+		}
+		diagnostics = append(diagnostics, diagnostic)
 	}
-	return diagnostics
+	return diagnostics, nil
+}
+
+// SyntaxErrorCount returns how many syntax errors the most recent
+// recovery-enabled parse recorded; a fail-fast parse reports at most one.
+// Zero before any parse and after a syntax-clean one. A refused read is the
+// core's error, never a zero.
+func (s *Session) SyntaxErrorCount() (uint64, error) {
+	count := C.galley_syntax_error_count(s.ptr)
+	if count < 0 {
+		return 0, Error(int32(count))
+	}
+	return uint64(count), nil
+}
+
+// SemanticErrorCount returns how many semantic errors the most recent parse
+// recorded. Zero before any parse and after one without semantic errors. A
+// refused read is the core's error, never a zero.
+func (s *Session) SemanticErrorCount() (uint64, error) {
+	count := C.galley_semantic_error_count(s.ptr)
+	if count < 0 {
+		return 0, Error(int32(count))
+	}
+	return uint64(count), nil
 }
 
 // TreeAppendChildren appends chain (and its next-linked siblings) as the
@@ -1020,8 +1470,13 @@ func (a ProcedureArgs) Door() (HookDoor, error) {
 		return HookDoor{}, Error(int32(status))
 	}
 	door := HookDoor{ptr: unsafe.Pointer(native)}
-	// The hook's own session names the life the door ends with.
-	life, _ := sessions.Load(uintptr(a.session))
+	// The hook's own session names the life the door ends with. open already
+	// found the entry; one that vanished since is the same null argument,
+	// raised instead of asserted.
+	life, ok := sessions.Load(uintptr(a.session))
+	if !ok {
+		return HookDoor{}, ErrNullArgument
+	}
 	door.life = life.(*sessionLife)
 	door.epoch = atomic.LoadUint64(&door.life.epoch)
 	return door, nil
@@ -1097,6 +1552,32 @@ func (d HookDoor) Span(node Node) (start uint64, length uint64, err error) {
 // through the parse-time door.
 func (d HookDoor) LineColumn(node Node) (line uint32, column uint32, err error) {
 	return d.door().lineColumn(node)
+}
+
+// HasDiagnostic reports whether the running parse has recorded a diagnostic
+// so far. The door ends with its parse, like every call on it: after the
+// parse it is ErrStaleTree, never false.
+func (d HookDoor) HasDiagnostic() (bool, error) {
+	door, err := d.door().open()
+	if err != nil {
+		return false, err
+	}
+	var has C.int
+	if status := C.galley_hook_has_diagnostic(door.hook, &has); status < 0 {
+		return false, Error(int32(status))
+	}
+	return has != 0, nil
+}
+
+// Diagnostic returns the running parse's most recent diagnostic; the second
+// result is false when the parse has not recorded one yet. A refused read is
+// the core's error, never a false, and the door ends with its parse.
+func (d HookDoor) Diagnostic() (Diagnostic, bool, error) {
+	door, err := d.door().open()
+	if err != nil {
+		return Diagnostic{}, false, err
+	}
+	return buildDiagnostic(hookDiagnosticReads(door))
 }
 
 func procedureStatus(status C.longlong) error {

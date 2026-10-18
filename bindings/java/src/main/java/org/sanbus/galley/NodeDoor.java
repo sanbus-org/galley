@@ -137,10 +137,11 @@ final class NodeDoor {
     // -- walking --
 
     /**
-     * One step of a walk over the host-owned cursor: 1 yields a node, 0
-     * ends the walk (and keeps ending it while the cursor's tree is live),
-     * negative is a failure
-     * (stale tree, session in use, invalid cursor bytes).
+     * One step of a walk over the host-owned cursor. Every step that runs
+     * answers {@code galley_ok}: a yielded node is in the cursor's current
+     * field, a finished walk leaves {@link Galley#INVALID_NODE} there.
+     * Negative is a failure (stale tree, session in use, invalid cursor
+     * bytes).
      */
     long walkStep(MemorySegment cursor) {
         return cross(handle -> calls.walkNext(handle, cursor));

@@ -6,7 +6,8 @@ package org.sanbus.galley;
  * read as {@link Galley#INVALID_NODE}, missing variables as {@code -1L},
  * spans index {@link Session#lastInput()}, and
  * {@code isSemanticError} and {@code isRecovered} carry the flags
- * {@link Walker.WalkStep} yields.
+ * {@link Walker.WalkStep} yields. A parser built without AST construction
+ * snapshots empty — its live tree has no nodes.
  *
  * <p>The columns are fixed at the parse they describe, and the snapshot
  * remembers that parse's generation: {@link #node(long)} is the one

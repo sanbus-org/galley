@@ -118,9 +118,11 @@ Semantic payloads remain unavailable through the C API.
 A library built with a host shim (`galley --emit-host-procedures`, used by the
 Python, Java and JavaScript bindings) forwards its hooks to the host instead of
 to C functions, per session. `galley_hooks_count()` and
-`galley_hooks_name_data(i)` / `galley_hooks_name_length(i)` list the hooks;
+`galley_hooks_name(i, &data, &len)` list the hooks;
 `galley_session_set_hooks(session, dispatch, handle, enabled, count)` gives one
 session its enabled set (one byte per hook), a dispatch callback and a handle.
+A count other than `galley_hooks_count()` is `galley_error_invalid_argument`;
+a NULL `enabled` with a nonzero count is `galley_error_null_argument`.
 Each enabled hook then calls `dispatch(handle, index, hook)` on the parsing
 thread, with the ticket of that call; the others return before any call. `dispatch`
 returns an `int`: zero lets the parse go on, anything else means the hook failed. The host keeps
@@ -276,10 +278,15 @@ else (exit status reports success; failures print a diagnostic):
 ### Sessions
 
 ```c
-GalleySession *session = galley_session_create();
+GalleySession *session = NULL;
+if (galley_session_create(NULL, &session) != galley_ok) {
+    /* Initialization failed; *out_session is untouched. */
+}
 /* or with options: */
 const GalleyCOptions options = { .max_errors = 10 };
-GalleySession *session = galley_session_create_ex(&options);
+if (galley_session_create(&options, &session) != galley_ok) {
+    /* An option value was outside its domain: galley_error_invalid_argument. */
+}
 /* ... */
 if (galley_session_destroy(session) != galley_ok) {
     /* A parse is in flight (another thread or a hook): nothing was freed,
@@ -335,7 +342,8 @@ if (published < 0) { /* a parse holds the session */ }
 cursor.generation = generation;
 cursor.root = root;
 long long status;
-while ((status = galley_walk_next(session, &cursor)) > 0) {
+while ((status = galley_walk_next(session, &cursor)) == galley_ok &&
+       cursor.current != GALLEY_INVALID_NODE) {
     GalleyNodeAddress n = cursor.current;
     unsigned int depth = cursor.depth;
     const char *name_data; size_t name_len;
@@ -347,9 +355,11 @@ while ((status = galley_walk_next(session, &cursor)) > 0) {
 }
 ```
 
-`galley_walk_next` returns 1 for a yielded node, 0 when the walk is done
-(further steps keep returning 0 while the cursor's tree is live), or a
-negative code: `galley_error_stale_tree` after a re-parse, a finished walk
+`galley_walk_next` returns `galley_ok` for every step that runs: the yielded
+node is in `cursor.current`, and a finished walk leaves `GALLEY_INVALID_NODE`
+there (`cursor.state` becomes `GALLEY_WALK_STATE_DONE`, and further steps keep
+answering `galley_ok` with the sentinel while the cursor's tree is live).
+Negative codes: `galley_error_stale_tree` after a re-parse, a finished walk
 included, `galley_error_session_in_use` while a parse runs, or
 `galley_error_invalid_node` for a cursor that is not a walk position, an
 invalid root, or a step whose position is no longer inside the walk's root
@@ -441,7 +451,8 @@ When a parse fails, structured information is available until the next
 parse:
 
 ```c
-if (galley_has_diagnostic(session)) {
+int has = 0;
+if (galley_has_diagnostic(session, &has) == galley_ok && has) {
     long long kind = galley_diagnostic_kind(session); /* none/syntax/indentation/semantic */
     unsigned long long offset;
     unsigned int line, column;          /* 0, 0 when it has none */
@@ -483,7 +494,9 @@ for (long long i = 0; i < recorded; ++i) {
 }
 ```
 
-The singular accessors report the most recent diagnostic.
+The singular accessors report the most recent diagnostic. A recorded index at
+or past `galley_recorded_diagnostic_count` is `galley_error_no_diagnostic`,
+the kind accessors included.
 
 ### Parser Metadata
 
@@ -493,7 +506,8 @@ The singular accessors report the most recent diagnostic.
 `galley_uses_verbatim`, `galley_stack_overflow_recovery_available`, and the
 grammar symbol table (`galley_symbol_count` / `_name` / `_is_terminal`,
 `galley_variable_count` / `_name`) let embedders introspect exactly what the
-library was built with.
+library was built with. An index at or past the counts is
+`galley_error_out_of_range`.
 
 ## Storage Notes
 

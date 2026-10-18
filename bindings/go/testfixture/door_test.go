@@ -67,8 +67,8 @@ func TestHookDoorEndsWithItsParse(t *testing.T) {
 	if _, err := session.Parse([]byte("alpha:12,beta:3")); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if keptInHookWalkErr != nil || keptInHookCountErr != nil {
-		t.Fatalf("inside the hook: walker %v, door %v", keptInHookWalkErr, keptInHookCountErr)
+	if keptInHookWalkErr != nil || keptInHookCountErr != nil || keptInHookDiagErr != nil {
+		t.Fatalf("inside the hook: walker %v, door %v, diagnostic %v", keptInHookWalkErr, keptInHookCountErr, keptInHookDiagErr)
 	}
 	walker, door, node := keptWalker, keptDoor, keptNode
 	expectStale := func(when string) {
@@ -84,6 +84,12 @@ func TestHookDoorEndsWithItsParse(t *testing.T) {
 		}
 		if _, err := door.Text(node); err != galley.ErrStaleTree {
 			t.Fatalf("%s: kept door Text err = %v; want ErrStaleTree", when, err)
+		}
+		if _, err := door.HasDiagnostic(); err != galley.ErrStaleTree {
+			t.Fatalf("%s: kept door HasDiagnostic err = %v; want ErrStaleTree", when, err)
+		}
+		if _, _, err := door.Diagnostic(); err != galley.ErrStaleTree {
+			t.Fatalf("%s: kept door Diagnostic err = %v; want ErrStaleTree", when, err)
 		}
 	}
 	expectStale("after the parse")

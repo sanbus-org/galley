@@ -66,7 +66,16 @@ class Resume(enum.IntEnum):
     AFTER = 1
 
 class Status(enum.IntEnum):
-    """Status codes (negative on failure)."""
+    """Status codes (negative on failure).
+
+    A failure carries the session's diagnostic exactly when its status is
+    one of ``ERROR_SYNTAX``, ``ERROR_SEMANTIC``, ``ERROR_INDENTATION``,
+    ``ERROR_STACK_OVERFLOW``, ``ERROR_AST_CAPACITY_EXCEEDED``,
+    ``ERROR_UNTERMINATED_RAW_STRING``, ``ERROR_OUT_OF_MEMORY`` and
+    ``ERROR_HOOK_FAILED`` — the statuses that end a parse that ran, whose
+    diagnostic then belongs to that attempt. A failure built from any other
+    status carries none.
+    """
 
     OK = 0
     ERROR_NULL_ARGUMENT = -1
@@ -85,6 +94,8 @@ class Status(enum.IntEnum):
     ERROR_STALE_TREE = -14
     ERROR_STALE_HOOK = -15
     ERROR_HOOK_FAILED = -16
+    ERROR_OUT_OF_RANGE = -17
+    ERROR_INVALID_ARGUMENT = -18
 
 INVALID_NODE: Final[int]
 """``2**63 - 1``, the address marking an absent node link."""
@@ -99,6 +110,10 @@ class GalleyError(Exception):
     Attributes:
         code: Raw ``galley_status`` value (negative on failure).
         diagnostic: Snapshot of the session diagnostic at failure, or ``None``.
+
+    A failure carries a diagnostic only when its status is one of the eight
+    that end a parse that ran (see :class:`Status`); a failure built from any
+    other status carries ``None``.
 
     A hook that raised aborts the parse: ``parse`` raises a ``GalleyError``
     with code ``ERROR_HOOK_FAILED``, a ``Kind.HOOK`` diagnostic, and the
@@ -378,9 +393,10 @@ class Walker(Iterator[WalkStep]):
         created; raises ``GalleyError`` while a parse holds the session
         (``ERROR_SESSION_IN_USE``) or when a step's position is no longer
         inside the walk's root — removed, or moved elsewhere
-        (``ERROR_INVALID_NODE``). Raises ``StopIteration`` at the end of the
-        walk, including after a later parse: a finished walker stays
-        finished.
+        (``ERROR_INVALID_NODE``). Raises ``StopIteration`` once the walk has
+        finished — the step after the last node — and keeps raising it: a
+        finished walker stays finished while its generation is live, and a
+        later parse turns it stale rather than finished.
         """
         ...
 
@@ -464,6 +480,14 @@ class Session:
         verbosity: diagnostic verbosity (0).
         ast_preallocation_ratio: preallocation ratio (``-1.0`` selects default; ``0`` drops the scaled contribution, the floor still applies; the scaled contribution is ignored on segment platforms such as Windows/wasm, where only the floor is prepared eagerly).
         ast_preallocation_cap: minimum ready node storage per parse in nodes (0 = default).
+
+    A negative ``max_errors``, ``recovery_window``, or ``verbosity``, or a
+    non-finite ``ast_preallocation_ratio``, raises ``GalleyError``
+    (``ERROR_INVALID_ARGUMENT``).
+    ``syntax_error_stack_depth`` and ``ast_preallocation_cap`` are unsigned
+    counts: ``0`` selects the build default, and a negative value is
+    reinterpreted as unsigned (wrapped modulo 2^32 / 2^64) rather than
+    refused.
     """
 
     def __init__(
@@ -527,8 +551,12 @@ class Session:
         the flags a walk step carries). Missing links and variables are
         ``None``.
 
-        Raises ``StaleTreeError`` when nothing is published, and
-        ``GalleyError`` (``ERROR_SESSION_IN_USE``) while a parse runs.
+        A live tree of a parser built without AST construction has no
+        nodes: the columns answer empty with ``count`` 0, and every call
+        that addresses a node raises ``GalleyError``
+        (``ERROR_INVALID_NODE``). Raises ``GalleyError``
+        (``ERROR_SESSION_IN_USE``) while a parse runs, and
+        ``StaleTreeError`` when nothing is published.
         """
         ...
 
@@ -544,9 +572,12 @@ class Session:
         ...
 
     def node_count(self) -> int:
-        """Number of AST nodes of the published tree (0 when ``has_ast`` is false).
+        """Number of AST nodes of the published tree.
 
-        Raises ``StaleTreeError`` when nothing is published.
+        A live tree of a parser built without AST construction has no
+        nodes, so the count answers ``0``; every call that addresses a node
+        then raises ``GalleyError`` (``ERROR_INVALID_NODE``). Raises
+        ``StaleTreeError`` when nothing is published.
         """
         ...
 
@@ -562,6 +593,10 @@ class Session:
 
     def root_node(self) -> Node | None:
         """Root of the published tree, or ``None`` when nothing is published.
+
+        A parser built without AST construction has no root, so a published
+        parse answers ``None`` here too; ``node_count()`` and ``snapshot()``
+        then answer 0 and empty columns for its live tree.
 
         Raises ``GalleyError`` (``ERROR_SESSION_IN_USE``) while a parse runs.
         """
@@ -613,15 +648,27 @@ class Session:
         ...
 
     def has_diagnostic(self) -> bool:
-        """Whether the last parse produced a diagnostic."""
+        """Whether the last parse produced a diagnostic.
+
+        Raises ``GalleyError`` (``ERROR_SESSION_IN_USE``) while a parse
+        runs.
+        """
         ...
 
     def diagnostic(self) -> Diagnostic | None:
-        """Snapshot of the last diagnostic, or ``None`` on success."""
+        """Snapshot of the last diagnostic, or ``None`` on success.
+
+        Raises ``GalleyError`` (``ERROR_SESSION_IN_USE``) while a parse
+        runs.
+        """
         ...
 
     def diagnostics(self) -> tuple[Diagnostic, ...]:
-        """All recorded diagnostics (empty tuple on success)."""
+        """All recorded diagnostics (empty tuple on success).
+
+        Every entry carries the parse's error counts and, when it applies,
+        its indentation and structured recovery fields.
+        """
         ...
 
     def set_message_override(self, name: str | bytes, message: str | bytes) -> None:
@@ -697,16 +744,28 @@ class Session:
         """Remove ``count`` children of ``parent`` at ``index`` and return the head."""
         ...
 
-    def symbol_name_at(self, index: int) -> bytes | None:
-        """Symbol name at global symbol table ``index``."""
+    def symbol_name_at(self, index: int) -> bytes:
+        """Symbol name at global symbol table ``index``.
+
+        Raises ``GalleyError`` (``ERROR_OUT_OF_RANGE``) for an index at or
+        past ``symbol_count()``.
+        """
         ...
 
     def symbol_is_terminal(self, index: int) -> bool:
-        """Whether global symbol ``index`` is a terminal."""
+        """Whether global symbol ``index`` is a terminal.
+
+        Raises ``GalleyError`` (``ERROR_OUT_OF_RANGE``) for an index at or
+        past ``symbol_count()``.
+        """
         ...
 
-    def variable_name_at(self, index: int) -> bytes | None:
-        """Variable name at ``index``."""
+    def variable_name_at(self, index: int) -> bytes:
+        """Variable name at ``index``.
+
+        Raises ``GalleyError`` (``ERROR_OUT_OF_RANGE``) for an index at or
+        past ``variable_count()``.
+        """
         ...
 
 # ---------------------------------------------------------------------------

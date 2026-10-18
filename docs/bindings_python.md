@@ -138,7 +138,11 @@ parse raise `galley.StaleTreeError`, a `GalleyError` subclass with code
 `session.snapshot()`, `session.last_input()` and `session.last_position()`
 raise it too — before the first parse, and after a parse that published
 nothing — and `session.root_node()` returns `None`, the one "is there a tree
-here" probe; there is no validity probe.
+here" probe; there is no validity probe. A parser built without AST
+construction publishes its parse and its generation: its live tree has no
+nodes, so `session.node_count()` and `session.snapshot()` answer 0 and
+empty columns, `session.root_node()` is `None`, and every call that
+addresses a node raises `ERROR_INVALID_NODE`.
 
 A parse that fails after running to its end publishes its tree like a
 success, and `parse()` still raises: one that recorded only semantic errors,
@@ -188,8 +192,9 @@ def hook_print(args: ProcedureArguments) -> None:
 call made with the arguments of a hook that has returned, and the object keeps
 no expiry state of its own, so a kept reference raises `GalleyError` with code
 `ERROR_STALE_HOOK`, from a later hook of the same parse and after the parse
-alike. `node_capacity()`, `node_count()`, `snapshot()`, `last_input()` and
-`last_position()` raise `GalleyError` with `ERROR_SESSION_IN_USE` inside a hook,
+alike. `node_capacity()`, `node_count()`, `snapshot()`, `last_input()`,
+`last_position()`, `has_diagnostic()`, `diagnostic()` and `diagnostics()`
+raise `GalleyError` with `ERROR_SESSION_IN_USE` inside a hook,
 never 0 or an empty value, and a walker belongs to the parse of the tree it was
 created over: stepping it after a re-parse raises `StaleTreeError`, even if it
 had already finished. Text and input bytes are copies that outlive the next
@@ -276,7 +281,10 @@ Semantic payloads are unavailable through bindings.
 `node.walk()` returns a pre-order `Walker` over that node's subtree,
 yielding read-only `WalkStep` objects with `node`, `depth`,
 `is_semantic_error` and `is_recovered` attributes; the node itself is at depth 0 — the
-shared runtime walker. The walker owns no native
+shared runtime walker. A finished walk raises `StopIteration` for the step
+after its last node and keeps raising it while its generation is live; a
+later parse turns even a finished walker stale, never merely finished. The
+walker owns no native
 resource: no `close` and no context-manager block, and abandoning it is
 free — its next step raises the dead-generation error instead of reading
 stale storage. `walk()` itself does not raise for a stale node; the first
@@ -320,9 +328,22 @@ with parser.Session(max_errors=10, recovery_window=500) as session:
 Options mirror the runtime defaults: `max_errors=10`,
 `recovery_window=500`, `stack_overflow_recovery=False`,
 `syntax_error_stack_depth=0`, `verbosity=0`,
-`ast_preallocation_ratio=-1.0`, `ast_preallocation_cap=0`.
-Failures raise `parser.GalleyError`, whose `code` is the raw status code. A parse
-failure's `diagnostic` is the frozen `parser.Diagnostic` of where the parse stopped; every other failure's is `None`. `session.diagnostic()` returns the last diagnostic.
+`ast_preallocation_ratio=-1.0`, `ast_preallocation_cap=0`. A value outside
+its domain (a negative `max_errors`, `recovery_window`, or `verbosity`, or a
+non-finite `ast_preallocation_ratio`) raises `GalleyError` with
+`ERROR_INVALID_ARGUMENT` at construction.
+`syntax_error_stack_depth` and `ast_preallocation_cap` are unsigned counts:
+`0` selects the build default, and a negative value is reinterpreted as
+unsigned (wrapped modulo 2^32 / 2^64) rather than refused.
+Failures raise `parser.GalleyError`, whose `code` is the raw status code. A
+failure carries the session's diagnostic exactly when its status is one of
+`ERROR_SYNTAX`, `ERROR_SEMANTIC`, `ERROR_INDENTATION`,
+`ERROR_STACK_OVERFLOW`, `ERROR_AST_CAPACITY_EXCEEDED`,
+`ERROR_UNTERMINATED_RAW_STRING`, `ERROR_OUT_OF_MEMORY` and
+`ERROR_HOOK_FAILED` — the statuses that end a parse that ran, whose frozen
+`parser.Diagnostic` of where the parse stopped then belongs to the attempt.
+A failure built from any other status carries `diagnostic is None`.
+`session.diagnostic()` returns the last diagnostic.
 
 `Session` is a context manager (`with parser.Session() as s:` closes on exit)
 and `close()` is idempotent. Every session method that takes a node takes
@@ -342,10 +363,15 @@ directly from the node. Editing helpers are available both ways:
 `remove_children_at`)
 live on `Session` and take `Node`. Missing links return `None`.
 `session.diagnostics()` returns every recorded diagnostic as a tuple of
-snapshots. Nodes compare by identity (`==` checks same session, parse
+snapshots, each carrying the same fields as `session.diagnostic()`. Nodes
+compare by identity (`==` checks same session, parse
 generation, and address), hash consistently with that, and expose
 `node.address` for display; `session.snapshot().node(index)` is the one
 conversion from a stored address back to a node.
+`session.symbol_name_at(index)`, `session.variable_name_at(index)` and
+`session.symbol_is_terminal(index)` read the grammar's tables; an index at
+or past the table's count raises `GalleyError` with `ERROR_OUT_OF_RANGE`
+rather than answering for a name that is not there.
 
 `session.diagnostic()` returns a frozen snapshot (`parser.Diagnostic`)
 with `kind`, `offset` (byte offset in the input), `line`, `column` (0, 0 when it has none), `message`, `message_ansi`,

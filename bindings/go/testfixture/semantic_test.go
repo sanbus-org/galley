@@ -17,7 +17,10 @@ func TestSemanticErrorsAggregateAndFail(t *testing.T) {
 	if _, err := session.Parse([]byte("alpha:1,beta:2000,gamma:3000")); !errors.Is(err, galley.ErrSemantic) {
 		t.Fatalf("expected ErrSemantic, got %v", err)
 	}
-	diagnostic, ok := session.Diagnostic()
+	diagnostic, ok, err := session.Diagnostic()
+	if err != nil {
+		t.Fatalf("diagnostic: %v", err)
+	}
 	if !ok {
 		t.Fatal("expected a diagnostic")
 	}
@@ -30,7 +33,10 @@ func TestSemanticErrorsAggregateAndFail(t *testing.T) {
 	if diagnostic.Semantic.Variable != "Number" || diagnostic.Semantic.Message != "value out of range" {
 		t.Fatalf("unexpected semantic fields: %+v", diagnostic.Semantic)
 	}
-	recorded := session.Diagnostics()
+	recorded, err := session.Diagnostics()
+	if err != nil {
+		t.Fatalf("diagnostics: %v", err)
+	}
 	if len(recorded) != 2 {
 		t.Fatalf("expected 2 recorded diagnostics, got %d", len(recorded))
 	}
@@ -49,7 +55,7 @@ func TestCleanParseAfterSemanticFailure(t *testing.T) {
 	if _, err := session.Parse([]byte("alpha:12")); err != nil {
 		t.Fatalf("clean parse: %v", err)
 	}
-	if _, ok := session.Diagnostic(); ok {
-		t.Fatal("expected no diagnostic after clean parse")
+	if _, ok, err := session.Diagnostic(); err != nil || ok {
+		t.Fatalf("expected no diagnostic after clean parse, got ok=%v err=%v", ok, err)
 	}
 }

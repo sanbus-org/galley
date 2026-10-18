@@ -94,6 +94,35 @@ func TestWalkSkipChildrenPrunesSubtree(t *testing.T) {
 	}
 }
 
+// The end of a walk is the no-node answer, not a status: a finished walk
+// keeps answering (_, false, nil) while its generation is live, and the
+// answer turns stale only when a later parse replaces the tree.
+func TestWalkEndIsAnAnswerUntilTheTreeGoesStale(t *testing.T) {
+	session, root := walkSession(t, "alpha:12")
+	walker := session.Walk(root, false)
+	for {
+		_, ok, err := walker.Next()
+		if err != nil {
+			t.Fatalf("walk step: %v", err)
+		}
+		if !ok {
+			break
+		}
+	}
+	for repeat := 0; repeat < 3; repeat++ {
+		step, ok, err := walker.Next()
+		if ok || err != nil || step != (galley.WalkStep{}) {
+			t.Fatalf("step %d past the end = (%+v, %v, %v), want the zero step, false, nil", repeat, step, ok, err)
+		}
+	}
+	if _, err := session.Parse([]byte("alpha:12,beta:3")); err != nil {
+		t.Fatalf("second parse: %v", err)
+	}
+	if _, ok, err := walker.Next(); ok || err != galley.ErrStaleTree {
+		t.Fatalf("finished walker after a later parse = (ok %v, err %v), want ErrStaleTree", ok, err)
+	}
+}
+
 // A walker over a parse-1 root refuses at its first step once a second parse
 // has published.
 func TestWalkOfAStaleRootFailsAtTheFirstStep(t *testing.T) {

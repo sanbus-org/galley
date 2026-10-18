@@ -68,7 +68,9 @@ static GalleySession *make_session(void) {
     const GalleyCOptions options = {
         .max_errors = 10,
     };
-    return galley_session_create_ex(&options);
+    GalleySession *session = NULL;
+    if (galley_session_create(&options, &session) != galley_ok) return NULL;
+    return session;
 }
 
 /* One error is the limit: the parser raises at its first syntax error
@@ -77,7 +79,9 @@ static GalleySession *make_strict_session(void) {
     const GalleyCOptions options = {
         .max_errors = 1,
     };
-    return galley_session_create_ex(&options);
+    GalleySession *session = NULL;
+    if (galley_session_create(&options, &session) != galley_ok) return NULL;
+    return session;
 }
 
 static void test_version(void) {
@@ -117,7 +121,8 @@ static void test_session_lifetime(void) {
     /* Destroying nothing is a no-op that reports ok, like free(NULL), so a
      * repeated close stays harmless. */
     CHECK(galley_session_destroy(NULL) == galley_ok);
-    session = galley_session_create_ex(NULL);
+    session = NULL;
+    CHECK(galley_session_create(NULL, &session) == galley_ok);
     CHECK(session != NULL);
     CHECK(galley_session_destroy(session) == galley_ok);
 }
@@ -130,14 +135,88 @@ static void test_symbol_table(void) {
     size_t len = 0;
     CHECK(galley_symbol_name(session, 0, &data, &len) == galley_ok);
     CHECK(data != NULL && len > 0);
-    CHECK(galley_symbol_is_terminal(session, 0) == 0 ||
-          galley_symbol_is_terminal(session, 0) == 1);
-    CHECK(galley_symbol_name(session, count, &data, &len) != galley_ok);
+    int is_terminal = -1;
+    CHECK(galley_symbol_is_terminal(session, 0, &is_terminal) == galley_ok);
+    CHECK(is_terminal == 0 || is_terminal == 1);
+    /* An index at or past the table is out of range, and a refused read
+     * leaves the outputs untouched. */
+    data = NULL;
+    len = 0;
+    CHECK(galley_symbol_name(session, count, &data, &len) == galley_error_out_of_range);
+    CHECK(data == NULL && len == 0);
+    CHECK(galley_symbol_is_terminal(session, count, &is_terminal) == galley_error_out_of_range);
     CHECK(galley_variable_count() > 0);
-    /* Symbol names live in static storage: no session needed. */
-    CHECK(galley_symbol_name(NULL, 0, &data, &len) == galley_ok);
+    CHECK(galley_variable_name(session, 0, &data, &len) == galley_ok);
     CHECK(data != NULL && len > 0);
+    CHECK(galley_variable_name(session, galley_variable_count(), &data, &len) ==
+          galley_error_out_of_range);
+    /* Symbol names live in static storage, but every accessor validates its
+     * session handle. */
+    CHECK(galley_symbol_name(NULL, 0, &data, &len) == galley_error_null_argument);
+    CHECK(galley_symbol_is_terminal(NULL, 0, &is_terminal) == galley_error_null_argument);
     galley_session_destroy(session);
+}
+
+/* Option and argument validation: out-of-domain values are
+ * galley_error_invalid_argument, argument errors come before the gate, and
+ * out-parameters are written only on success. */
+static void test_invalid_arguments(void) {
+    GalleySession *live = NULL;
+    CHECK(galley_session_create(NULL, &live) == galley_ok);
+    CHECK(live != NULL);
+
+    GalleySession *out = live;
+    CHECK(galley_session_create(NULL, NULL) == galley_error_null_argument);
+    GalleyCOptions options;
+    memset(&options, 0, sizeof options);
+    options.max_errors = -1;
+    CHECK(galley_session_create(&options, &out) == galley_error_invalid_argument);
+    memset(&options, 0, sizeof options);
+    options.recovery_window = -1;
+    CHECK(galley_session_create(&options, &out) == galley_error_invalid_argument);
+    memset(&options, 0, sizeof options);
+    options.verbosity = -1;
+    CHECK(galley_session_create(&options, &out) == galley_error_invalid_argument);
+    memset(&options, 0, sizeof options);
+    options.ast_preallocation_ratio = 1.0 / 0.0;
+    CHECK(galley_session_create(&options, &out) == galley_error_invalid_argument);
+    CHECK(out == live);
+    /* A negative ratio selects the default instead. */
+    memset(&options, 0, sizeof options);
+    options.ast_preallocation_ratio = -1.0;
+    CHECK(galley_session_create(&options, &out) == galley_ok);
+    CHECK(galley_session_destroy(out) == galley_ok);
+
+    /* Hook flags: a count that does not match galley_hooks_count is an
+     * invalid argument; a NULL flag array with a nonzero count is a null
+     * argument; NULL with zero enables none. */
+    unsigned char flag = 0;
+    size_t hook_count = galley_hooks_count();
+    CHECK(galley_session_set_hooks(live, NULL, NULL, &flag, hook_count + 1) ==
+          galley_error_invalid_argument);
+    CHECK(galley_session_set_hooks(live, NULL, NULL, NULL, 1) == galley_error_null_argument);
+    CHECK(galley_session_set_hooks(live, NULL, NULL, NULL, 0) == galley_ok);
+    CHECK(galley_session_set_hooks(NULL, NULL, NULL, NULL, 0) == galley_error_null_argument);
+
+    /* Hook names: a NULL output refuses first; an index at or past the
+     * count is out of range and leaves both outputs untouched. */
+    const char *name = NULL;
+    size_t name_len = 0;
+    CHECK(galley_hooks_name(hook_count, NULL, &name_len) == galley_error_null_argument);
+    CHECK(galley_hooks_name(hook_count, &name, &name_len) == galley_error_out_of_range);
+    CHECK(name == NULL && name_len == 0);
+    if (hook_count > 0) {
+        CHECK(galley_hooks_name(0, &name, &name_len) == galley_ok);
+        CHECK(name != NULL && name_len > 0);
+    }
+
+    /* has_diagnostic writes only on success. */
+    int has = -1;
+    CHECK(galley_has_diagnostic(NULL, &has) == galley_error_null_argument);
+    CHECK(galley_has_diagnostic(live, NULL) == galley_error_null_argument);
+    CHECK(galley_has_diagnostic(live, &has) == galley_ok);
+    CHECK(has == 0);
+    galley_session_destroy(live);
 }
 
 static void test_valid_parse(void) {
@@ -204,7 +283,8 @@ static void test_walker(void) {
     unsigned long long visited = 0;
     int saw_root_at_zero = 0;
     long long status = 0;
-    while ((status = galley_walk_next(session, &cursor)) == 1) {
+    while ((status = galley_walk_next(session, &cursor)) == galley_ok &&
+           cursor.current != GALLEY_INVALID_NODE) {
         ++visited;
         if (cursor.current == root && cursor.depth == 0) saw_root_at_zero = 1;
         const char *name_data = NULL;
@@ -216,16 +296,19 @@ static void test_walker(void) {
             break;
         }
     }
-    CHECK(status == 0); /* ended by exhaustion, not by an error */
+    CHECK(status == galley_ok); /* ended by exhaustion, not by an error */
+    CHECK(cursor.current == GALLEY_INVALID_NODE);
     CHECK(saw_root_at_zero);
     CHECK(visited == 33);
-    CHECK(galley_walk_next(session, &cursor) == 0);
-    CHECK(galley_walk_next(session, &cursor) == 0);
+    CHECK(galley_walk_next(session, &cursor) == galley_ok);
+    CHECK(cursor.current == GALLEY_INVALID_NODE);
+    CHECK(galley_walk_next(session, &cursor) == galley_ok);
+    CHECK(cursor.current == GALLEY_INVALID_NODE);
 
     /* Null arguments and malformed cursor bytes are refused, and a failed
      * step leaves the cursor where it was: fixing the bytes walks the whole
-     * tree again. The cursor still holds the finished walk; reset it first,
-     * because a done cursor answers 0 before any session check. */
+     * tree again. The cursor still holds the finished walk, so reset it for
+     * the malformed-bytes cases. */
     memset(&cursor, 0, sizeof cursor);
     CHECK(galley_walk_next(NULL, &cursor) == galley_error_null_argument);
     CHECK(galley_walk_next(session, NULL) == galley_error_null_argument);
@@ -254,12 +337,34 @@ static void test_walker(void) {
     CHECK(galley_walk_next(session, &cursor) == galley_error_invalid_node);
     cursor.depth = 0;
 
+    /* The done state is validated like every other: option bits and root
+     * are still checked before a finished walk answers done. */
+    cursor.state = GALLEY_WALK_STATE_DONE;
+    cursor.options = 0x04;
+    CHECK(galley_walk_next(session, &cursor) == galley_error_invalid_node);
+    cursor.options = 0;
+    cursor.root = count;
+    CHECK(galley_walk_next(session, &cursor) == galley_error_invalid_node);
+    cursor.root = root;
+    CHECK(galley_walk_next(session, &cursor) == galley_ok);
+    CHECK(cursor.current == GALLEY_INVALID_NODE);
+
+    /* A finished walk carries no position: its position fields are not
+     * checked, and the step answers done regardless. */
+    cursor.current = count + 7;
+    cursor.depth = 0xFFFFFFFFu;
+    CHECK(galley_walk_next(session, &cursor) == galley_ok);
+    CHECK(cursor.current == GALLEY_INVALID_NODE);
+
     cursor.state = GALLEY_WALK_STATE_NOT_STARTED;
     cursor.current = 0;
     cursor.depth = 0;
     visited = 0;
-    while ((status = galley_walk_next(session, &cursor)) == 1) ++visited;
-    CHECK(status == 0);
+    while ((status = galley_walk_next(session, &cursor)) == galley_ok &&
+           cursor.current != GALLEY_INVALID_NODE) {
+        ++visited;
+    }
+    CHECK(status == galley_ok);
     CHECK(visited == 33);
     galley_session_destroy(session);
 }
@@ -278,11 +383,13 @@ static void test_walk_skip_children(void) {
     memset(&cursor, 0, sizeof cursor);
     cursor.generation = generation;
     cursor.root = root;
-    CHECK(galley_walk_next(session, &cursor) == 1);
+    CHECK(galley_walk_next(session, &cursor) == galley_ok);
     CHECK(cursor.current == root && cursor.depth == 0);
     cursor.state = GALLEY_WALK_STATE_YIELDED_SKIP_CHILDREN;
-    CHECK(galley_walk_next(session, &cursor) == 0);
-    CHECK(galley_walk_next(session, &cursor) == 0);
+    CHECK(galley_walk_next(session, &cursor) == galley_ok);
+    CHECK(cursor.current == GALLEY_INVALID_NODE);
+    CHECK(galley_walk_next(session, &cursor) == galley_ok);
+    CHECK(cursor.current == GALLEY_INVALID_NODE);
 
     /* Mid-tree: walk to the first interior node below the root and skip
      * it. Pair nodes always have children here, so one exists. */
@@ -290,7 +397,8 @@ static void test_walk_skip_children(void) {
     cursor.generation = generation;
     cursor.root = root;
     int found = 0;
-    while (galley_walk_next(session, &cursor) == 1) {
+    while (galley_walk_next(session, &cursor) == galley_ok &&
+           cursor.current != GALLEY_INVALID_NODE) {
         if (cursor.depth >= 1 &&
             value_of(galley_node_first_child(session, generation, cursor.current)) !=
                 GALLEY_INVALID_NODE) {
@@ -307,14 +415,17 @@ static void test_walk_skip_children(void) {
         cursor.state = GALLEY_WALK_STATE_YIELDED_SKIP_CHILDREN;
         long long status = galley_walk_next(session, &cursor);
         if (next_sibling != GALLEY_INVALID_NODE) {
-            CHECK(status == 1);
+            CHECK(status == galley_ok);
             CHECK(cursor.current == next_sibling);
             CHECK(cursor.depth == interior_depth);
         } else {
-            CHECK(status == 0);
+            CHECK(status == galley_ok);
+            CHECK(cursor.current == GALLEY_INVALID_NODE);
         }
-        while ((status = galley_walk_next(session, &cursor)) == 1) {}
-        CHECK(status == 0);
+        while ((status = galley_walk_next(session, &cursor)) == galley_ok &&
+               cursor.current != GALLEY_INVALID_NODE) {
+        }
+        CHECK(status == galley_ok);
     }
     galley_session_destroy(session);
 }
@@ -378,23 +489,58 @@ static void test_snapshot(void) {
     walk_cursor.generation = generation;
     walk_cursor.root = root;
     long long walk_status = 0;
-    while ((walk_status = galley_walk_next(session, &walk_cursor)) == 1) {
+    while ((walk_status = galley_walk_next(session, &walk_cursor)) == galley_ok &&
+           walk_cursor.current != GALLEY_INVALID_NODE) {
         CHECK(((walk_cursor.flags & GALLEY_WALK_FLAG_SEMANTIC_ERROR) != 0) ==
               (is_semantic_error[walk_cursor.current] != 0));
         CHECK(((walk_cursor.flags & GALLEY_WALK_FLAG_RECOVERED) != 0) ==
               (is_recovered[walk_cursor.current] != 0));
     }
-    CHECK(walk_status == 0);
+    CHECK(walk_status == galley_ok);
     CHECK(galley_tree_snapshot(NULL, generation, parent, first_child, next, child_count,
                                   NULL, NULL, NULL, is_semantic_error, is_recovered,
                                   count) == galley_error_null_argument);
     galley_session_destroy(session);
 }
 
+/* A read failure is io whether the path cannot be opened or opens and
+ * cannot be read (a directory): a refusal that ran no parse, so the
+ * previous parse's diagnostic survives untouched. */
+static void test_parse_file_read_failure_is_io(void) {
+    GalleySession *session = make_session();
+    CHECK(galley_parse_sentinel(session, broken_sample) == galley_error_syntax);
+    int has = 0;
+    CHECK(galley_has_diagnostic(session, &has) == galley_ok);
+    CHECK(has == 1);
+    const char *message = NULL;
+    CHECK(galley_diagnostic_message(session, &message) == galley_ok);
+    CHECK(message != NULL && message[0] != '\0');
+
+    /* The open fails: io, before any parse. */
+    CHECK(galley_parse_file(session, "no-such-file-here.kv") == galley_error_io);
+    CHECK(galley_has_diagnostic(session, &has) == galley_ok);
+    CHECK(has == 1);
+    const char *after = NULL;
+    CHECK(galley_diagnostic_message(session, &after) == galley_ok);
+    CHECK(after != NULL && strcmp(after, message) == 0);
+
+    /* The open succeeds and the read fails: io too, and still no parse. */
+    CHECK(galley_parse_file(session, ".") == galley_error_io);
+    CHECK(galley_has_diagnostic(session, &has) == galley_ok);
+    CHECK(has == 1);
+    after = NULL;
+    CHECK(galley_diagnostic_message(session, &after) == galley_ok);
+    CHECK(after != NULL && strcmp(after, message) == 0);
+
+    galley_session_destroy(session);
+}
+
 static void test_syntax_diagnostic(void) {
     GalleySession *session = make_session();
     CHECK(galley_parse_sentinel(session, broken_sample) == galley_error_syntax);
-    CHECK(galley_has_diagnostic(session));
+    int has = 0;
+    CHECK(galley_has_diagnostic(session, &has) == galley_ok);
+    CHECK(has == 1);
     CHECK(galley_diagnostic_kind(session) == galley_diagnostic_kind_syntax);
     unsigned long long offset = 0;
     unsigned int line = 0, column = 0;
@@ -410,11 +556,23 @@ static void test_syntax_diagnostic(void) {
     size_t token_len = 0;
     CHECK(galley_diagnostic_expected_at(session, 0, &token_data, &token_len) == galley_ok);
     CHECK(token_data != NULL && token_len > 0);
-    CHECK(galley_diagnostic_context_count(session) > 0);
+    /* One past the table refuses out_of_range and writes nothing. */
+    token_data = (const char *)"sentinel";
+    token_len = 1234;
+    CHECK(galley_diagnostic_expected_at(session, (unsigned long long)expected_count,
+                                        &token_data, &token_len) == galley_error_out_of_range);
+    CHECK(token_data == (const char *)"sentinel" && token_len == 1234);
+    long long context_count = galley_diagnostic_context_count(session);
+    CHECK(context_count > 0);
     const char *context_data = NULL;
     size_t context_len = 0;
     CHECK(galley_diagnostic_context_at(session, 0, &context_data, &context_len) == galley_ok);
     CHECK(context_data != NULL && context_len > 0);
+    context_data = (const char *)"sentinel";
+    context_len = 1234;
+    CHECK(galley_diagnostic_context_at(session, (unsigned long long)context_count,
+                                       &context_data, &context_len) == galley_error_out_of_range);
+    CHECK(context_data == (const char *)"sentinel" && context_len == 1234);
     galley_session_destroy(session);
 }
 
@@ -470,18 +628,39 @@ static void test_recorded_diagnostics(void) {
     CHECK(galley_recorded_unexpected_token(session, 0, &unexpected_data,
                                            &unexpected_len) == galley_ok);
     CHECK(unexpected_len == 1 && unexpected_data[0] == 'x');
+    /* Past-the-table reads inside a real record refuse out_of_range. */
+    {
+        long long expected_count = galley_recorded_expected_count(session, 0);
+        CHECK(expected_count >= 0);
+        const char *expected_data = NULL;
+        size_t expected_len = 0;
+        CHECK(galley_recorded_expected_token(session, 0, (unsigned long long)expected_count,
+                                             &expected_data, &expected_len) ==
+              galley_error_out_of_range);
+        long long context_count = galley_recorded_context_count(session, 0);
+        CHECK(context_count >= 0);
+        const char *context_data = NULL;
+        size_t context_len = 0;
+        CHECK(galley_recorded_context_name(session, 0, (unsigned long long)context_count,
+                                           &context_data, &context_len) ==
+              galley_error_out_of_range);
+    }
     const char *message = NULL;
     CHECK(galley_recorded_diagnostic_message(session, 0, &message) == galley_ok);
     CHECK(message != NULL && message[0] != '\0');
     CHECK(galley_recorded_diagnostic_kind(session, (unsigned long long)recorded) ==
-          galley_diagnostic_kind_none);
+          galley_error_no_diagnostic);
+    CHECK(galley_recorded_diagnostic_recovery_kind(session, (unsigned long long)recorded) ==
+          galley_error_no_diagnostic);
     galley_session_destroy(session);
 }
 
 static void test_semantic_error(void) {
     GalleySession *session = make_session();
     CHECK(galley_parse_sentinel(session, "alpha:1,beta:2000") == galley_error_semantic);
-    CHECK(galley_has_diagnostic(session));
+    int has = 0;
+    CHECK(galley_has_diagnostic(session, &has) == galley_ok);
+    CHECK(has == 1);
     CHECK(galley_diagnostic_kind(session) == galley_diagnostic_kind_semantic);
     CHECK(galley_semantic_error_count(session) == 1);
     const char *variable = NULL;
@@ -493,9 +672,16 @@ static void test_semantic_error(void) {
     CHECK(variable_len == strlen("Number") && memcmp(variable, "Number", variable_len) == 0);
     CHECK(message_len == strlen("value out of range") &&
           memcmp(message, "value out of range", message_len) == 0);
+    /* A null output is a null argument, and the refused call writes nothing. */
+    variable = (const char *)0x1234;
+    variable_len = 99;
+    CHECK(galley_diagnostic_semantic(session, &variable, &variable_len, NULL, &message_len) ==
+          galley_error_null_argument);
+    CHECK(variable == (const char *)0x1234 && variable_len == 99);
     /* In-range values parse cleanly with no diagnostic. */
     CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
-    CHECK(!galley_has_diagnostic(session));
+    CHECK(galley_has_diagnostic(session, &has) == galley_ok);
+    CHECK(has == 0);
     galley_session_destroy(session);
 }
 
@@ -506,9 +692,17 @@ static void test_error_paths(void) {
     unsigned long long generation = 0, count = 0;
     GalleyNodeAddress root = GALLEY_INVALID_NODE;
     CHECK(galley_node_count(NULL, 0) == galley_error_null_argument);
+    /* A refused root_node leaves the out-parameters exactly as the caller
+     * left them: never the "nothing published" answer of a call that did
+     * not succeed. */
+    root = (GalleyNodeAddress)0x1234;
+    generation = 99;
     CHECK(galley_root_node(NULL, &root, &generation) == galley_error_null_argument);
+    CHECK(root == (GalleyNodeAddress)0x1234 && generation == 99);
     CHECK(galley_root_node(session, NULL, &generation) == galley_error_null_argument);
+    CHECK(generation == 99);
     CHECK(galley_root_node(session, &root, NULL) == galley_error_null_argument);
+    CHECK(root == (GalleyNodeAddress)0x1234);
     CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
     CHECK(galley_root_node(session, &root, &generation) == galley_ok);
     count = value_of(galley_node_count(session, generation));
@@ -851,6 +1045,11 @@ unsigned long long fixture_gate_hook(void);
 int fixture_hook_probe_calls(void);
 long long fixture_hook_probe_current(int which);
 long long fixture_hook_null_output_status(int call);
+int fixture_no_rule_calls(void);
+int fixture_no_rule_present(void);
+long long fixture_no_rule_present_status(void);
+long long fixture_no_rule_reader_status(int reader);
+void fixture_forget_no_rule(void);
 void fixture_arm_gate(void);
 int fixture_gate_entered(void);
 void fixture_release_gate(void);
@@ -891,6 +1090,26 @@ static void test_hook_door(void) {
     galley_session_destroy(session);
 }
 
+/* A hook can run without a rule: a terminal match runs the general
+ * `reduction` hook with args.rule = null. The four rule readers refuse such
+ * a hook — and the refusal is an argument it cannot accept, because a hook
+ * without a rule addresses no tree position, so galley_error_invalid_argument
+ * and never galley_error_invalid_node. rule_present stays the "is there
+ * one" probe: it writes 0 and answers galley_ok. */
+static void test_rule_readers_without_a_rule(void) {
+    GalleySession *session = make_session();
+    fixture_forget_no_rule();
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+    CHECK(fixture_no_rule_calls() > 0);
+    CHECK(fixture_no_rule_present_status() == galley_ok);
+    CHECK(fixture_no_rule_present() == 0);
+    CHECK(fixture_no_rule_reader_status(0) == galley_error_invalid_argument);
+    CHECK(fixture_no_rule_reader_status(1) == galley_error_invalid_argument);
+    CHECK(fixture_no_rule_reader_status(2) == galley_error_invalid_argument);
+    CHECK(fixture_no_rule_reader_status(3) == galley_error_invalid_argument);
+    CHECK(galley_session_destroy(session) == galley_ok);
+}
+
 /* The core checks every galley_procedure_* call: the ticket of a hook that has
  * returned is refused with galley_error_stale_hook, from a later hook of the
  * same parse and after the parse alike, and a hook's own ticket is served. A
@@ -917,6 +1136,12 @@ static void test_procedure_tickets(void) {
     const char *message = "late";
     CHECK(galley_procedure_door(session, first, &door) == galley_error_stale_hook);
     CHECK(galley_procedure_current_node(session, first) == galley_error_stale_hook);
+    {
+        int present = 0;
+        CHECK(galley_procedure_rule_present(session, first, &present) == galley_error_stale_hook);
+        CHECK(galley_procedure_rule_present(NULL, first, &present) == galley_error_null_argument);
+        CHECK(galley_procedure_rule_present(session, first, NULL) == galley_error_null_argument);
+    }
     CHECK(galley_procedure_drop_if_empty(session, first) == galley_error_stale_hook);
     CHECK(galley_procedure_report_semantic_error(session, first, message, 4) == galley_error_stale_hook);
     CHECK(galley_procedure_set_current_node(session, first, 1, GALLEY_INVALID_NODE) == galley_error_stale_hook);
@@ -1021,7 +1246,9 @@ static void test_generations(void) {
     CHECK(fixture_hook_generation_status() == galley_ok);
     CHECK(first >= 1);
     CHECK(fixture_stashed_published_status() == galley_error_session_in_use);
-    CHECK(fixture_stashed_published_generation() == 0);
+    /* The stash's sentinel generation (1) and invalid root are overwritten
+     * only by a successful call. */
+    CHECK(fixture_stashed_published_generation() == 1);
     CHECK(fixture_stashed_root() == GALLEY_INVALID_NODE);
     CHECK(galley_root_node(session, &root, &published) == galley_ok);
     CHECK(published == first);
@@ -1059,7 +1286,8 @@ static void test_walk_stale(void) {
     memset(&cursor, 0, sizeof cursor);
     cursor.generation = generation;
     cursor.root = root;
-    CHECK(galley_walk_next(session, &cursor) == 1);
+    CHECK(galley_walk_next(session, &cursor) == galley_ok);
+    CHECK(cursor.current == root);
 
     /* A later successful parse retires the cursor. */
     CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
@@ -1085,10 +1313,13 @@ static void test_walk_stale(void) {
     memset(&cursor, 0, sizeof cursor);
     cursor.generation = live;
     cursor.root = live_root;
-    while (galley_walk_next(session, &cursor) == 1) {
+    while (galley_walk_next(session, &cursor) == galley_ok &&
+           cursor.current != GALLEY_INVALID_NODE) {
     }
     CHECK(cursor.state == GALLEY_WALK_STATE_DONE);
-    CHECK(galley_walk_next(session, &cursor) == 0);
+    CHECK(cursor.current == GALLEY_INVALID_NODE);
+    CHECK(galley_walk_next(session, &cursor) == galley_ok);
+    CHECK(cursor.current == GALLEY_INVALID_NODE);
     CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
     CHECK(galley_walk_next(session, &cursor) == galley_error_stale_tree);
     CHECK(cursor.state == GALLEY_WALK_STATE_DONE);
@@ -1112,7 +1343,8 @@ static void test_walk_removed_current(void) {
     cursor.root = root;
     /* Walk to the first childless node below the root. */
     int found = 0;
-    while (galley_walk_next(session, &cursor) == 1) {
+    while (galley_walk_next(session, &cursor) == galley_ok &&
+           cursor.current != GALLEY_INVALID_NODE) {
         if (cursor.depth >= 1 &&
             galley_node_first_child(session, generation, cursor.current) ==
                 (long long)GALLEY_INVALID_NODE) {
@@ -1154,20 +1386,22 @@ static void test_walk_sees_edits(void) {
     memset(&cursor, 0, sizeof cursor);
     cursor.generation = generation;
     cursor.root = root;
-    while ((status = galley_walk_next(session, &cursor)) == 1) {
+    while ((status = galley_walk_next(session, &cursor)) == galley_ok &&
+           cursor.current != GALLEY_INVALID_NODE) {
         if (total == 64) break;
         baseline[total].node = cursor.current;
         baseline[total].depth = cursor.depth;
         ++total;
     }
-    CHECK(status == 0);
+    CHECK(status == galley_ok);
     CHECK(total == 33);
 
     /* Remove the root's first child between steps. */
     memset(&cursor, 0, sizeof cursor);
     cursor.generation = generation;
     cursor.root = root;
-    CHECK(galley_walk_next(session, &cursor) == 1); /* root */
+    CHECK(galley_walk_next(session, &cursor) == galley_ok); /* root */
+    CHECK(cursor.current == root);
     GalleyNodeAddress removed = value_of(galley_node_first_child(session, generation, root));
     CHECK(removed != GALLEY_INVALID_NODE);
     CHECK(removed == baseline[1].node);
@@ -1181,7 +1415,8 @@ static void test_walk_sees_edits(void) {
     while (skip < total && baseline[skip].depth > baseline[1].depth) ++skip;
     int walked = 0;
     int identical = 1;
-    while ((status = galley_walk_next(session, &cursor)) == 1) {
+    while ((status = galley_walk_next(session, &cursor)) == galley_ok &&
+           cursor.current != GALLEY_INVALID_NODE) {
         if (walked + skip >= total ||
             baseline[skip + walked].node != cursor.current ||
             baseline[skip + walked].depth != cursor.depth) {
@@ -1189,7 +1424,7 @@ static void test_walk_sees_edits(void) {
         }
         ++walked;
     }
-    CHECK(status == 0);
+    CHECK(status == galley_ok);
     CHECK(identical);
     CHECK(walked == total - skip);
 
@@ -1201,11 +1436,12 @@ static void test_walk_sees_edits(void) {
     cursor.root = root;
     int saw_removed = 0;
     int restored = 0;
-    while ((status = galley_walk_next(session, &cursor)) == 1) {
+    while ((status = galley_walk_next(session, &cursor)) == galley_ok &&
+           cursor.current != GALLEY_INVALID_NODE) {
         if (cursor.current == removed) saw_removed = 1;
         ++restored;
     }
-    CHECK(status == 0);
+    CHECK(status == galley_ok);
     CHECK(restored == total);
     CHECK(saw_removed);
     galley_session_destroy(session);
@@ -1252,7 +1488,8 @@ static void test_walk_in_use(void) {
     memset(&cursor, 0, sizeof cursor);
     cursor.generation = generation;
     cursor.root = root;
-    CHECK(galley_walk_next(session, &cursor) == 1);
+    CHECK(galley_walk_next(session, &cursor) == galley_ok);
+    CHECK(cursor.current == root);
 
     fixture_arm_gate();
     GatedParse gated = {session, 0};
@@ -1282,6 +1519,8 @@ static void test_walk_in_use(void) {
         unsigned long long mid_generation = 99;
         CHECK(galley_root_node(session, &mid_root, &mid_generation) ==
               galley_error_session_in_use);
+        /* The refusal writes nothing. */
+        CHECK(mid_root == 0 && mid_generation == 99);
     }
     fixture_release_gate();
     CHECK(pthread_join(parser, NULL) == 0);
@@ -1503,7 +1742,8 @@ static void test_walk_in_hook(void) {
     int index = 0;
     int identical = 1;
     long long status;
-    while ((status = galley_walk_next(session, &cursor)) == 1) {
+    while ((status = galley_walk_next(session, &cursor)) == galley_ok &&
+           cursor.current != GALLEY_INVALID_NODE) {
         if (index >= hook_count ||
             fixture_hook_walk_node(index) != cursor.current ||
             fixture_hook_walk_depth(index) != cursor.depth) {
@@ -1511,7 +1751,7 @@ static void test_walk_in_hook(void) {
         }
         ++index;
     }
-    CHECK(status == 0);
+    CHECK(status == galley_ok);
     CHECK(identical);
     CHECK(index == hook_count);
     galley_session_destroy(session);
@@ -1555,7 +1795,8 @@ static int collect_walk(GalleySession *session, unsigned char options, Visit *vi
     cursor.generation = generation;
     cursor.root = root;
     cursor.options = options;
-    while (galley_walk_next(session, &cursor) == 1 && count < capacity) {
+    while (galley_walk_next(session, &cursor) == galley_ok &&
+           cursor.current != GALLEY_INVALID_NODE && count < capacity) {
         const char *name = NULL;
         size_t name_length = 0;
         Visit *visit = &visits[count++];
@@ -1769,11 +2010,13 @@ int main(void) {
     test_status_strings();
     test_session_lifetime();
     test_symbol_table();
+    test_invalid_arguments();
     test_valid_parse();
     test_buffer_parse();
     test_walker();
     test_snapshot();
     test_syntax_diagnostic();
+    test_parse_file_read_failure_is_io();
     test_message_override();
     test_recorded_diagnostics();
     test_override_reaches_recorded_messages();
@@ -1786,6 +2029,7 @@ int main(void) {
     test_tree_edit();
     test_tree_edit_range();
     test_hook_door();
+    test_rule_readers_without_a_rule();
     test_procedure_tickets();
     test_hook_refusals();
     test_null_outputs_before_the_gate();

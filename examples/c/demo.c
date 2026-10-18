@@ -17,7 +17,8 @@ static int print_tree(GalleySession *session, GalleyNodeAddress root,
     cursor.generation = generation;
     cursor.root = root;
     long long status;
-    while ((status = galley_walk_next(session, &cursor)) > 0) {
+    while ((status = galley_walk_next(session, &cursor)) == galley_ok &&
+           cursor.current != GALLEY_INVALID_NODE) {
         const GalleyNodeAddress node = cursor.current;
         const unsigned int depth = cursor.depth;
         const char *name_data = NULL;
@@ -43,8 +44,8 @@ int main(int argc, char **argv) {
     const GalleyCOptions options = {
         .max_errors = 10, /* explicit; zero selects the same default */
     };
-    GalleySession *session = galley_session_create_ex(&options);
-    if (session == NULL) {
+    GalleySession *session = NULL;
+    if (galley_session_create(&options, &session) != galley_ok) {
         fprintf(stderr, "failed to create a parser session\n");
         return 1;
     }

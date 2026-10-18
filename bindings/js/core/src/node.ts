@@ -33,9 +33,11 @@ export interface NodeDoor {
   variableIndex(generation: number, address: bigint): number | null;
   /**
    * One step of a walk over the host-owned 40-byte cursor, which carries
-   * its own generation: 1 yields a node, 0 ends the walk (and keeps ending
-   * it while its tree is live), negative is a failure (stale tree, session
-   * in use, malformed cursor bytes).
+   * its own generation: every step that runs answers `Status.Ok` — a
+   * yielded node is in `current`, a finished walk leaves `INVALID_NODE`
+   * there (and every further step keeps answering it while its tree is
+   * live). Negative is a failure (stale tree, session in use, malformed
+   * cursor bytes).
    */
   walkNext(cursor: ArrayBuffer): number;
   /** Head of the detached chain; `INVALID_NODE` when there were no children. */

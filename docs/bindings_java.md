@@ -240,6 +240,9 @@ snapshot carries `getKind() == DiagnosticKind.SEMANTIC` and
 the failure is created: later parses cannot mutate the `Diagnostic` carried
 by a `GalleyException`.
 
+The hook-door diagnostic family is intentionally unbound in Java: a host hook
+cannot read diagnostics live, and nothing fabricates one.
+
 ## Tree Walking
 
 `node.walk(skipSemanticErrors, skipRecovered)` returns a pre-order `Walker`
@@ -251,7 +254,9 @@ closed and takes no try-with-resources. The walker is bound to the parse
 generation that created it: stepping after the session parses again throws
 `StaleTreeException` (after it closes, `GalleyClosedException`) instead of
 reading stale storage, so parsing with an abandoned walker still succeeds and
-the walker fails at its next step. `walk()` itself does not throw for a stale
+the walker fails at its next step. A finished walk is answered the same way:
+stepping it again keeps answering "done" while its generation is live, and
+throws once the session parses again. `walk()` itself does not throw for a stale
 node; the first step does. `skipChildren()` prunes the last
 yielded node's children host-side, without a native call. Steps follow
 the live links, so edits between steps are visible, and a step whose
@@ -325,9 +330,12 @@ try (Session session = parser.openSession(SessionOptions.builder()
 ```
 
 A parse failure's `getDiagnostic()` is the frozen `Diagnostic` of where the
-parse stopped; every other failure's is `null`.
+parse stopped, carried exactly on the statuses that end a parse that ran:
+syntax, semantic, indentation, stack overflow, AST capacity, unterminated
+raw string, out of memory, and hook failure. A failure built from any other
+status carries none.
 
-Parsing entry points: `parse(byte[])`, `parse(ByteBuffer)`, `parse(String)`, `parseSentinel(String|byte[]|ByteBuffer)`, and `parseFile(String|File)`. `ByteBuffer` honors `position`/`remaining`/`arrayOffset`; direct buffers are passed by pointer with `Reference.reachabilityFence`.
+Parsing entry points: `parse(byte[])`, `parse(ByteBuffer)`, `parse(String)`, `parseSentinel(String|byte[]|ByteBuffer)`, and `parseFile(String|File)`. `ByteBuffer` honors `position`/`remaining`/`arrayOffset`; direct buffers are passed by pointer, and no reachability fence is needed because the segment `MemorySegment.ofBuffer` returns keeps the buffer — and its backing memory — reachable for the call.
 
 Sessions own their IO backend and allocator and are not safe for concurrent
 use — keep one per thread or guard it externally. Node handles, text slices,
@@ -358,11 +366,17 @@ parser.errorRecoveryMode();                  // RecoveryMode (DISABLED / AUTOMAT
 parser.symbolCount();                        // long
 parser.variableCount();
 parser.statusString(StatusCode.ERROR_SYNTAX); // "syntax error" / null
-session.symbolNameAt(0);                     // String / null
-session.symbolNameAtBytes(0);                // byte[] / null
-session.symbolIsTerminal(0);
-session.variableNameAt(0);                   // String / null
+session.symbolNameAt(0);                     // String; an out-of-range index throws ERROR_OUT_OF_RANGE
+session.symbolNameAtBytes(0);                // byte[]; an out-of-range index throws ERROR_OUT_OF_RANGE
+session.symbolIsTerminal(0);                 // boolean; an out-of-range index throws ERROR_OUT_OF_RANGE
+session.variableNameAt(0);                   // String; an out-of-range index throws ERROR_OUT_OF_RANGE
+session.variableNameAtBytes(0);              // byte[]; an out-of-range index throws ERROR_OUT_OF_RANGE
 ```
+
+A parser built without AST construction still publishes its parse: `rootNode()`
+is null, `nodeCount()` answers 0, `snapshot()` is empty, and every read that
+addresses a node throws `ERROR_INVALID_NODE`; the generation check still runs
+first, so a stale generation throws `StaleTreeException` instead.
 
 ## Development builds
 

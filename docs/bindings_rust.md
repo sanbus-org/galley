@@ -75,14 +75,19 @@ core refuses every call made with the ticket of a hook that has returned
 (`Error::StaleHook`). A door
 read returns the same types as the session's: `Result<_, Error>`, with the
 core refusing a handle of an earlier parse as `Error::StaleTree` and an
-address outside the parse as `Error::InvalidNode`.
+address outside the parse as `Error::InvalidNode`. `arguments.rule()` is
+the rule the hook runs for, `None` when it runs for none;
+`rule_right_hand_side()` and `rule_rhs_index_slice()` read its symbols and
+index text, `None` when the hook has no rule.
 
 Reduction hooks keep their `reduction_<VariableName>` names (plus the
 general `reduction`); author-defined grammar hooks are declared as
 `hook_<name>`. Each hook fires after the corresponding variable is reduced.
 The helper compiles `procedures.rs` with `panic=abort`, so a panic inside a
 hook aborts rather than unwinding through generated parser code. Semantic
-payloads are unavailable through bindings.
+payloads are unavailable through bindings. Hook-door diagnostics are not
+bound either, and a parse failure carries no attached snapshot: diagnostics
+are read from the session afterwards.
 
 ## Semantic Errors
 
@@ -98,9 +103,23 @@ if value > 999 {
 }
 ```
 
-Read them through `Session::diagnostic` / `Session::diagnostics`; the
-snapshot carries `kind == DiagnosticKind::Semantic` and
+Read them through `Session::diagnostic` (`Ok(None)` when the last parse
+recorded none), `Session::diagnostics` / `Session::diagnostic_at(index)` for
+every record in recording order, or `Session::has_diagnostic()` to ask
+whether any was recorded. The snapshot carries the parse's
+`syntax_error_count` / `semantic_error_count` totals, and for a semantic
+error `kind == DiagnosticKind::Semantic` with
 `semantic == Some((variable, message))`.
+
+## Grammar Tables
+
+`galley::symbol_count()` and `galley::variable_count()` size the grammar's
+symbol and variable tables; `Session::symbol_name_at(index)`,
+`Session::symbol_is_terminal(index)`, and `Session::variable_name_at(index)`
+read them. `galley::hooks_count()` and `galley::hooks_name(index)` list the
+hooks the library forwards to a host shim; a library built with compiled
+hooks — Rust hooks included — forwards none. Every index at or past its
+table's count fails with `Error::OutOfRange`.
 
 ## Tree Walking
 
@@ -112,7 +131,8 @@ owns no native resource: one host-side cursor, nothing dropped, and its
 borrow of the session keeps a parse from starting mid-walk. A failed step
 comes back as `Err(Error::InvalidNode)` — an invalid root, or a position
 no longer inside the walk's root (removed, or moved elsewhere) — and ends
-the iteration; steps otherwise follow the live links, so edits between
+the iteration; the end of the subtree ends it with nothing yielded, not an
+error. Steps otherwise follow the live links, so edits between
 steps are visible. `skip_children` prunes the last
 yielded node's children host-side; the two booleans of `walk` prune
 semantic-error subtrees and recovered subtrees (the nodes syntax-error
@@ -120,7 +140,11 @@ recovery kept in place of damaged input). A parse that fails after running to
 its end — semantic errors only, or syntax errors the parser recovered from —
 publishes its tree like a success, `parse` still returning the failure, and
 `last_input()` is that input; `TreeSnapshot` carries `is_recovered` beside
-`is_semantic_error`. A parse that publishes nothing counts as a later parse:
+`is_semantic_error`. A parser built without AST construction
+(`galley::has_ast()` is false) has a published tree with no nodes:
+`root_node` and `info` answer `None`, and `node_count` and `snapshot`
+answer 0 and an empty snapshot once a parse publishes. A parse that
+publishes nothing counts as a later parse:
 `Session::snapshot`, `Session::node_count`, `Session::info`, `last_input()`
 and every node accessor return `Err(Error::StaleTree)` until a parse
 publishes, and so do they before the first parse. `last_input()` returns a
@@ -234,7 +258,7 @@ if let Some(root) = session.root_node().expect("root read") {
 
 // Diagnostics on failure.
 if session.parse_sentinel("bad input").is_err() {
-    if let Some(d) = session.diagnostic() {
+    if let Some(d) = session.diagnostic().expect("diagnostic read") {
         eprintln!("{}:{} {}", d.line, d.column, d.message);
     }
 }
@@ -270,6 +294,8 @@ let opts = SessionOptions {
     recovery_window: 1000,
     stack_overflow_recovery: true,
     syntax_error_stack_depth: 3,
+    message_overrides: Vec::new(),
+    ..Default::default()
 };
 let mut session = Session::with_options(opts).expect("session");
 ```

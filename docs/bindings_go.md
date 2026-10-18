@@ -138,6 +138,10 @@ process under *your* Go runtime — the shared library stays runtime-free,
 which is what keeps loading it from Go programs safe (embedding a second
 Go runtime via c-archive segfaults on linux/amd64). Each hook fires after
 the corresponding variable is reduced; unregistered slots are no-ops.
+Because the hooks are installed at generation time, a Go-hooked library
+reports zero host hooks (`HooksCount() == 0`) and has no hook-name list:
+the C ABI's host-hook surface addresses shim libraries (such as the JS
+and Python ones), not compiled-in hooks.
 Reduction hooks keep their `reduction_<VariableName>` names (plus the
 general `reduction`); author-defined grammar hooks are declared as
 `hook_<name>`. Semantic payloads are unavailable through bindings. Tree
@@ -190,7 +194,66 @@ if value > 999 {
 
 Read them through `Session.Diagnostic` / `Session.Diagnostics`; the
 snapshot carries `Kind == DiagnosticKindSemantic` and a `Semantic`
-`{Variable, Message}` pair.
+`{Variable, Message}` pair. Both return an error rather than a zero
+answer when the core refuses the read: `ErrSessionInUse` while a parse is
+in flight (hook code reads the running parse through
+`HookDoor.Diagnostic`) and `ErrNullArgument` after `Close`.
+
+## Diagnostics
+
+Every parse leg returns a `*ParseError` on failure: `Status` is the
+negative status (`errors.Is(err, galley.ErrSyntax)` holds), and
+`Diagnostic` is a snapshot of the diagnostic the parse stopped at, frozen
+into Go when the failure is created.
+
+A failure carries a snapshot exactly when its status is one of the statuses
+that ended a parse that ran: `ErrSyntax`, `ErrSemantic`, `ErrIndentation`,
+`ErrStackOverflow`, `ErrASTCapacityExceeded`, `ErrUnterminatedRawString`,
+`ErrOutOfMemory`, and `ErrHookFailed`. A failure built from any other
+status carries none, `ErrIO` included — a file-read failure carries no
+snapshot whether it happened before the parse began or, in a streaming
+build, during it.
+
+```go
+parsed, err := session.Parse(input)
+var failure *galley.ParseError
+if errors.As(err, &failure) && failure.Diagnostic != nil {
+    fmt.Fprintf(os.Stderr, "%d:%d: %s\n",
+        failure.Diagnostic.Line, failure.Diagnostic.Column, failure.Diagnostic.Message)
+}
+```
+
+Post-parse readers return the core's refusals instead of empty answers:
+`Diagnostic()` (the most recent diagnostic; a parse that succeeded
+answers present=false), `Diagnostics()` (all recorded diagnostics, in
+recording order; nil after a success), `HasDiagnostic()`,
+`SyntaxErrorCount()`, and `SemanticErrorCount()`. A read while a parse is
+in flight is `ErrSessionInUse`; after `Close` it is `ErrNullArgument`.
+Attaching the snapshot runs only for the statuses above: a refused read
+there returns the failure without a snapshot on `ErrSessionInUse` and
+replaces the failure otherwise.
+
+Every `Diagnostic` — the failure's snapshot, `Diagnostic()`'s, each of
+`Diagnostics()`'s, and a hook door's twin — carries the parse's error
+totals: `SyntaxErrorCount` and `SemanticErrorCount` describe the parse,
+not one diagnostic, so every diagnostic of one parse carries the same
+counts. A hook-door snapshot reports the running parse's totals so far,
+read through the hook door's twins while the session's own readers are
+`ErrSessionInUse`.
+
+Grammar introspection: `SymbolCount()`, `SymbolNameAt(index)`,
+`SymbolIsTerminal(index)`, and `VariableNameAt(index)` describe the
+generated grammar's symbol table; `HooksCount()` and `HookName(index)`
+list the host hooks a library forwards — zero for a Go-hooked library
+(its hooks are installed at generation time; see Procedures). An index at
+or past a table's count is `ErrOutOfRange`; a closed session refuses the
+session-handled reads with `ErrNullArgument`.
+
+The shared statuses include `ErrOutOfRange` (-17, "out of range") and
+`ErrInvalidArgument` (-18, "invalid argument"). Option values are
+validated by the core alone: a negative `MaxErrors`, `RecoveryWindow`, or
+`Verbosity`, or a non-finite `ASTPreallocationRatio`, comes back from
+`WithOptions` as `ErrInvalidArgument`.
 
 ## Tree Walking
 
@@ -199,7 +262,10 @@ yielding one `WalkStep{Node, Depth, IsSemanticError}` per step with the root
 at depth 0 — the shared runtime walker, so order and depths match every
 other binding. The walker owns no native resource: there is nothing to
 close, and a walker left behind by a later parse answers `ErrStaleTree`
-at its next step instead of reading stale storage. `SkipChildren` prunes
+at its next step instead of reading stale storage. The end of a walk is
+an answer, not an error: further `Next` calls keep answering
+`(WalkStep{}, false, nil)` while the walker's generation is live, and
+only a later parse turns them into `ErrStaleTree`. `SkipChildren` prunes
 the last yielded node's children host-side; `Walk(root, true)` prunes
 semantic-error subtrees. Steps follow the live links, so edits between
 steps are visible, and a step whose position is no longer inside the
@@ -217,8 +283,9 @@ for {
 
 `door.Walk(root, skip)` — `door` from a hook's `galley.Args(session, uint64(hook)).Door()` —
 is the hook-door twin: it walks the running parse's in-flight tree through
-`galley_hook_walk_next`, bound to the root's generation, and reproduces the
-post-parse walk once the parse publishes. Every `HookDoor` read checks the
+`galley_hook_walk_next`, bound to the root's generation, with the same
+steps and end contract, and reproduces the post-parse walk once the parse
+publishes. Every `HookDoor` read checks the
 node's generation in the core like the session's: a node of an earlier parse
 is `ErrStaleTree`, an address outside the parse `ErrInvalidNode`, never an
 empty answer.
@@ -247,8 +314,8 @@ the same session or `Close`. A parse that fails after running to its end —
 semantic errors only, or syntax errors the parser recovered from — publishes
 its tree like a success, `Parse` still returning the failure, and
 `LastInput()` is that input; the damaged regions are nodes spanning the input
-recovery skipped (`WalkStep.IsSemanticError` flags semantic errors; the
-recovered flag and the snapshot's flag columns are not in Go yet). A failed
+recovery skipped (`WalkStep.IsSemanticError` flags semantic errors, and the
+failure's `ParseError.Diagnostic` carries the diagnostic snapshot). A failed
 parse that publishes nothing counts as a later parse: `Snapshot()`,
 `NodeCount()`, `LastInput()`, `Info()`, and every node read return
 `ErrStaleTree` until a parse publishes, and so do they before the first parse.
@@ -256,12 +323,21 @@ parse that publishes nothing counts as a later parse: `Snapshot()`,
 probe: it answers `(root, true, nil)` for a published tree, `(_, false, nil)`
 when nothing is published, and an error when the core refuses
 (`ErrSessionInUse` while a parse runs). There is no validity
-probe — a real read is the answer, and it fails. A `Node` carries the
+probe — a real read is the answer, and it fails. In a build without AST
+construction a successful parse still publishes a generation, with no root:
+`NodeCount()` and `Snapshot()` answer 0 and an empty snapshot — a live tree
+with no nodes — while every read that addresses a node refuses
+`ErrInvalidNode`, with the generation check still first. A `Node` carries the
 core's parse generation and its address, and every read and edit hands that
 generation to the core, which refuses one it no longer holds with
 `ErrStaleTree`. `RootNode()` reports the generation with the root, a
-`Snapshot` stamps its own (`Snapshot.Node(index)` makes a handle of that
-parse), and links and walk steps carry their source's. Nothing is cached, so
+`Snapshot` stamps its own, and links and walk steps carry their source's.
+`Snapshot.Node(index)` is the one conversion from a stored column address
+back to a handle: the invalid-node constant answers the empty `Node`
+(really empty — no parse has generation 0 — so every use is
+`ErrStaleTree`), an index at or past `Snapshot.Count` panics with the
+host's index error at the call, and every other address is a node of that
+parse. Nothing is cached, so
 no host-side reading can disagree with the core.
 
 ## Development builds

@@ -73,7 +73,15 @@ static PyObject *hook_indexes = NULL;
 static size_t hook_count = 0;
 static PyTypeObject ProcedureArgs_Type;
 
-static PyObject *build_diagnostic(GalleySession *session);
+/* Where a Diagnostic snapshot's fields come from: the session's current
+ * diagnostic, or the record at `index` of the most recent parse. */
+typedef struct {
+    GalleySession *session;
+    int recorded;
+    unsigned long long index;
+} DiagnosticSource;
+
+static PyObject *build_diagnostic(const DiagnosticSource *source);
 
 /* Defined after Diagnostic_Type; new reference to the snapshot's rendered
  * message, or NULL when it is not a unicode string. */
@@ -310,6 +318,8 @@ static int run_hook(SessionObject *session, unsigned int index, unsigned long lo
     return 0;
 }
 
+static void set_error_from_status(long long status);
+
 /* The dispatch callback of every session (the handle is its SessionObject,
  * alive because the parse runs inside one of its own method calls). A parse
  * releases the GIL, so the hook takes it back for the length of its call.
@@ -324,11 +334,19 @@ static int py_dispatch_impl(void *handle, unsigned int index, unsigned long long
     if (session->parse_door == NULL) {
         GalleyHookDoor *door = NULL;
         unsigned long long generation = 0;
-        if (galley_procedure_door(session->session, hook, &door) == galley_ok &&
-            galley_hook_generation(door, &generation) == galley_ok) {
-            session->parse_generation = generation;
-            session->parse_door = door;
+        long long status = galley_procedure_door(session->session, hook, &door);
+        if (status == galley_ok)
+            status = galley_hook_generation(door, &generation);
+        if (status != galley_ok) {
+            /* The door is the hook's only live-tree capability: running
+             * without it would refuse every read, so the hook fails. */
+            set_error_from_status(status);
+            keep_hook_failure(session);
+            PyGILState_Release(gil);
+            return 1;
         }
+        session->parse_generation = generation;
+        session->parse_door = door;
     }
     if (session->parse_door != NULL) {
         session->dispatch_thread = PyThread_get_thread_ident();
@@ -340,11 +358,34 @@ static int py_dispatch_impl(void *handle, unsigned int index, unsigned long long
     return failed ? 1 : 0;
 }
 
+/* Whether a failure carries the session's diagnostic is a property of the
+ * status: a failure carries one exactly when the status is one of these
+ * eight, the statuses that end a parse that ran. Any other status carries
+ * none — a file read that failed included, whether before the parse began
+ * or, in a streaming build, during it. */
+static int status_carries_diagnostic(long long status)
+{
+    switch (status) {
+    case galley_error_syntax:
+    case galley_error_semantic:
+    case galley_error_indentation:
+    case galley_error_stack_overflow:
+    case galley_error_ast_capacity_exceeded:
+    case galley_error_unterminated_raw_string:
+    case galley_error_out_of_memory:
+    case galley_error_hook_failed:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
 /* Sets ErrorException from a negative galley status code. The instance
  * carries the raw code as its `code` attribute and, when a session is
- * supplied, a snapshot of its current diagnostic as `diagnostic`. The
- * exception text is the rendered diagnostic message when there is one,
- * falling back to the status string. */
+ * supplied and the status carries a diagnostic, a snapshot of its current
+ * diagnostic as `diagnostic`. The exception text is the rendered
+ * diagnostic message when there is one, falling back to the status
+ * string. */
 static void set_error_from_status_with_session(long long status, GalleySession *session)
 {
     const char *description = galley_status_string(status);
@@ -353,11 +394,23 @@ static void set_error_from_status_with_session(long long status, GalleySession *
     PyObject *code = NULL;
     PyObject *diagnostic = NULL;
 
-    if (session != NULL && galley_has_diagnostic(session)) {
-        diagnostic = build_diagnostic(session);
-        if (diagnostic == NULL)
+    if (session != NULL && status_carries_diagnostic(status)) {
+        int has = 0;
+        long long probe = galley_has_diagnostic(session, &has);
+        if (probe == galley_error_session_in_use) {
+            /* A hook that parses its own session is refused while the outer
+             * parse still holds the session, so no diagnostic can be read
+             * here; the failure carries the status string alone. */
+        } else if (probe != galley_ok) {
+            set_error_from_status(probe);
             return;
-        message = diagnostic_rendered_message(diagnostic);
+        } else if (has) {
+            DiagnosticSource source = {session, 0, 0};
+            diagnostic = build_diagnostic(&source);
+            if (diagnostic == NULL)
+                return;
+            message = diagnostic_rendered_message(diagnostic);
+        }
     }
     if (message == NULL) {
         if (description == NULL)
@@ -453,7 +506,9 @@ typedef struct WalkerObject {
     PyObject_HEAD
     PyObject *session_obj;
     /* The whole walk: host-owned cursor, no native resource, one native
-     * call per step (galley_walk_next or its hook twin). */
+     * call per step (galley_walk_next or its hook twin), which answers
+     * galley_ok for every step that runs and leaves GALLEY_INVALID_NODE in
+     * current once the walk is done. */
     GalleyWalkCursor cursor;
 } WalkerObject;
 
@@ -868,7 +923,7 @@ static int Session_init(SessionObject *self, PyObject *args, PyObject *keywords)
     double ast_preallocation_ratio = -1.0;
     unsigned long long ast_preallocation_cap = 0;
     GalleyCOptions options;
-    GalleySession *session;
+    GalleySession *session = NULL;
 
     static char *list[] = {
         "max_errors", "recovery_window", "stack_overflow_recovery",
@@ -903,9 +958,9 @@ static int Session_init(SessionObject *self, PyObject *args, PyObject *keywords)
     Py_DECREF(live_defaults);
     if (defaults == NULL)
         return -1;
-    session = galley_session_create_ex(&options);
-    if (session == NULL) {
-        set_error_from_status(galley_error_out_of_memory);
+    /* The core owns the options' domain: a refused value raises with the
+     * core's status, never a host-side default. */
+    if (check_status(galley_session_create(&options, &session)) < 0) {
         Py_DECREF(defaults);
         return -1;
     }
@@ -1193,9 +1248,11 @@ static PyObject *Session_parse_file(PyObject *self, PyObject *path)
 PyDoc_STRVAR(node_count_doc,
 "node_count()\n"
 "\n"
-"Returns the number of AST nodes of the published tree (always 0 when the\n"
-"parser was built without AST construction). Raises StaleTreeError when no\n"
-"tree is published: read root_node() and use its generation instead.");
+"Returns the number of AST nodes of the published tree. A live tree of a\n"
+"parser built without AST construction has no nodes, so the count answers\n"
+"0; every call that addresses a node then raises GalleyError (invalid\n"
+"node). Raises StaleTreeError when no tree is published (read root_node()\n"
+"and use its generation instead).");
 
 static PyObject *Session_node_count(PyObject *self, PyObject *Py_UNUSED(ignored))
 {
@@ -1257,9 +1314,10 @@ PyDoc_STRVAR(root_node_doc,
 "root_node()\n"
 "\n"
 "Returns the root node of the most recent successful parse, or None when\n"
-"there is none. Raises GalleyError (session in use) while a parse runs.\n"
-"The node carries the core parse generation it belongs to, which every\n"
-"later read of it passes back to the core.");
+"there is none (a parser built without AST construction has no root, but\n"
+"a published parse is still published). Raises GalleyError (session in\n"
+"use) while a parse runs. The node carries the core parse generation it\n"
+"belongs to, which every later read of it passes back to the core.");
 
 static PyObject *Session_root_node(PyObject *self, PyObject *Py_UNUSED(ignored))
 {
@@ -1518,7 +1576,10 @@ PyDoc_STRVAR(snapshot_doc,
 "``parent``, ``first_child``, ``next``, ``child_count``, ``variable``,\n"
 "``span_start``, ``span_len``, ``is_semantic_error`` and\n"
 "``is_recovered`` (the flags a walk step carries). Missing links and\n"
-"variables are None. Raises StaleTreeError when nothing is published. The columns\n"
+"variables are None. A live tree of a parser built without AST\n"
+"construction has no nodes: the columns answer empty with count 0, and\n"
+"every call that addresses a node raises GalleyError (invalid node).\n"
+"Raises StaleTreeError when nothing is published. The columns\n"
 "are read-only; ``snapshot.node(index)`` is the one conversion from a\n"
 "column address back to a node, and only for the parse these columns\n"
 "describe.\n"
@@ -1794,14 +1855,19 @@ static PyObject *Session_last_position(PyObject *self, PyObject *Py_UNUSED(ignor
 PyDoc_STRVAR(has_diagnostic_doc,
 "has_diagnostic()\n"
 "\n"
-"Returns whether the previous parse produced a diagnostic.");
+"Returns whether the previous parse produced a diagnostic. Raises\n"
+"GalleyError (session in use) while a parse runs.");
 
 static PyObject *Session_has_diagnostic(PyObject *self, PyObject *Py_UNUSED(ignored))
 {
     GalleySession *session = require_session(self);
+    int has = 0;
+
     if (session == NULL)
         return NULL;
-    return PyBool_FromLong(galley_has_diagnostic(session));
+    if (check_status(galley_has_diagnostic(session, &has)) < 0)
+        return NULL;
+    return PyBool_FromLong(has);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1920,13 +1986,208 @@ static PyObject *diagnostic_rendered_message(PyObject *diagnostic)
     return NULL;
 }
 
-/* Builds the read-only Diagnostic snapshot of the current diagnostic, or
- * returns a new reference to None when there is none. Every C accessor is
- * guarded: fields that do not apply stay None (empty tuples for the list
- * fields). */
-static PyObject *build_diagnostic(GalleySession *session)
+/* The one source of every Diagnostic field read: the session door's
+ * current-diagnostic calls, or their galley_recorded_* twins (the same
+ * shape plus the record's index). A conditional field's
+ * galley_error_no_diagnostic means the diagnostic does not carry the field
+ * -- a real absence, like the snapshot's None -- while any other refusal
+ * raises. Kind, position, message and the parse's error counts belong to
+ * every diagnostic, so a no_diagnostic there is a contradiction that
+ * raises like any other status. */
+
+static long long diagnostic_source_kind(const DiagnosticSource *source)
+{
+    return source->recorded
+               ? galley_recorded_diagnostic_kind(source->session, source->index)
+               : galley_diagnostic_kind(source->session);
+}
+
+static long long diagnostic_source_position(const DiagnosticSource *source,
+                                            unsigned long long *out_offset,
+                                            unsigned int *out_line,
+                                            unsigned int *out_column)
+{
+    return source->recorded
+               ? galley_recorded_diagnostic_position(source->session, source->index,
+                                                     out_offset, out_line, out_column)
+               : galley_diagnostic_position(source->session,
+                                            out_offset, out_line, out_column);
+}
+
+static long long diagnostic_source_message(const DiagnosticSource *source,
+                                           const char **out)
+{
+    return source->recorded
+               ? galley_recorded_diagnostic_message(source->session, source->index, out)
+               : galley_diagnostic_message(source->session, out);
+}
+
+static long long diagnostic_source_message_ansi(const DiagnosticSource *source,
+                                                const char **out)
+{
+    return source->recorded
+               ? galley_recorded_diagnostic_message_ansi(source->session, source->index, out)
+               : galley_diagnostic_message_ansi(source->session, out);
+}
+
+static long long diagnostic_source_unexpected_token(const DiagnosticSource *source,
+                                                    const char **out_data,
+                                                    size_t *out_len)
+{
+    return source->recorded
+               ? galley_recorded_unexpected_token(source->session, source->index,
+                                                  out_data, out_len)
+               : galley_diagnostic_unexpected_token(source->session,
+                                                    out_data, out_len);
+}
+
+static long long diagnostic_source_expected_count(const DiagnosticSource *source)
+{
+    return source->recorded
+               ? galley_recorded_expected_count(source->session, source->index)
+               : galley_diagnostic_expected_count(source->session);
+}
+
+static long long diagnostic_source_expected_at(const DiagnosticSource *source,
+                                               unsigned long long token_index,
+                                               const char **out_data,
+                                               size_t *out_len)
+{
+    return source->recorded
+               ? galley_recorded_expected_token(source->session, source->index,
+                                                token_index, out_data, out_len)
+               : galley_diagnostic_expected_at(source->session, token_index,
+                                               out_data, out_len);
+}
+
+static long long diagnostic_source_context_count(const DiagnosticSource *source)
+{
+    return source->recorded
+               ? galley_recorded_context_count(source->session, source->index)
+               : galley_diagnostic_context_count(source->session);
+}
+
+static long long diagnostic_source_context_at(const DiagnosticSource *source,
+                                              unsigned long long context_index,
+                                              const char **out_data,
+                                              size_t *out_len)
+{
+    return source->recorded
+               ? galley_recorded_context_name(source->session, source->index,
+                                              context_index, out_data, out_len)
+               : galley_diagnostic_context_at(source->session, context_index,
+                                              out_data, out_len);
+}
+
+static long long diagnostic_source_semantic(const DiagnosticSource *source,
+                                            const char **out_variable,
+                                            size_t *out_variable_len,
+                                            const char **out_message,
+                                            size_t *out_message_len)
+{
+    return source->recorded
+               ? galley_recorded_semantic(source->session, source->index,
+                                          out_variable, out_variable_len,
+                                          out_message, out_message_len)
+               : galley_diagnostic_semantic(source->session,
+                                            out_variable, out_variable_len,
+                                            out_message, out_message_len);
+}
+
+static long long diagnostic_source_indentation(const DiagnosticSource *source,
+                                               unsigned int *out_spaces,
+                                               unsigned int *out_width)
+{
+    return source->recorded
+               ? galley_recorded_indentation(source->session, source->index,
+                                             out_spaces, out_width)
+               : galley_diagnostic_indentation(source->session,
+                                               out_spaces, out_width);
+}
+
+static long long diagnostic_source_recovery_kind(const DiagnosticSource *source)
+{
+    return source->recorded
+               ? galley_recorded_diagnostic_recovery_kind(source->session, source->index)
+               : galley_diagnostic_recovery_kind(source->session);
+}
+
+static long long diagnostic_source_recovery_terminal(const DiagnosticSource *source,
+                                                     const char **out_data,
+                                                     size_t *out_len)
+{
+    return source->recorded
+               ? galley_recorded_recovery_terminal(source->session, source->index,
+                                                   out_data, out_len)
+               : galley_diagnostic_recovery_terminal(source->session,
+                                                     out_data, out_len);
+}
+
+static long long diagnostic_source_recovery_resume(const DiagnosticSource *source,
+                                                   long long *out)
+{
+    return source->recorded
+               ? galley_recorded_recovery_resume(source->session, source->index, out)
+               : galley_diagnostic_recovery_resume(source->session, out);
+}
+
+static long long diagnostic_source_recovery_lhs_variable(const DiagnosticSource *source,
+                                                         const char **out_data,
+                                                         size_t *out_len)
+{
+    return source->recorded
+               ? galley_recorded_recovery_lhs_variable(source->session, source->index,
+                                                       out_data, out_len)
+               : galley_diagnostic_recovery_lhs_variable(source->session,
+                                                         out_data, out_len);
+}
+
+static long long diagnostic_source_recovery_production(const DiagnosticSource *source,
+                                                       const char **out_variable,
+                                                       size_t *out_variable_len,
+                                                       unsigned int *out_rhs_index)
+{
+    return source->recorded
+               ? galley_recorded_recovery_production(source->session, source->index,
+                                                     out_variable, out_variable_len,
+                                                     out_rhs_index)
+               : galley_diagnostic_recovery_production(source->session,
+                                                       out_variable, out_variable_len,
+                                                       out_rhs_index);
+}
+
+static long long diagnostic_source_recovery_occurrence(const DiagnosticSource *source,
+                                                       const char **out_parent_variable,
+                                                       size_t *out_parent_variable_len,
+                                                       unsigned int *out_rhs_index,
+                                                       unsigned int *out_symbol_index,
+                                                       const char **out_variable,
+                                                       size_t *out_variable_len)
+{
+    return source->recorded
+               ? galley_recorded_recovery_occurrence(source->session, source->index,
+                                                     out_parent_variable, out_parent_variable_len,
+                                                     out_rhs_index, out_symbol_index,
+                                                     out_variable, out_variable_len)
+               : galley_diagnostic_recovery_occurrence(source->session,
+                                                       out_parent_variable, out_parent_variable_len,
+                                                       out_rhs_index, out_symbol_index,
+                                                       out_variable, out_variable_len);
+}
+
+/* Builds the read-only Diagnostic snapshot of the source's diagnostic, or a
+ * new reference to None when the source is the current diagnostic and there
+ * is none. One builder for every source: each field crosses through the
+ * source's form of the call, a conditional field's no_diagnostic is the
+ * field's absence, and every other refusal raises instead of becoming an
+ * empty field. */
+static PyObject *build_diagnostic(const DiagnosticSource *source)
 {
     DiagnosticObject *diagnostic;
+    long long kind;
+    long long status;
+    long long count;
+    long long value;
     unsigned long long offset = 0;
     unsigned int line = 0;
     unsigned int column = 0;
@@ -1934,17 +2195,20 @@ static PyObject *build_diagnostic(GalleySession *session)
     unsigned int second = 0;
     const char *text = NULL;
     size_t length = 0;
-    long long count;
-    long long value;
     unsigned long long index;
 
-    if (galley_has_diagnostic(session) == 0)
+    kind = diagnostic_source_kind(source);
+    if (kind < 0) {
+        set_error_from_status(kind);
+        return NULL;
+    }
+    if (kind == galley_diagnostic_kind_none && !source->recorded)
         Py_RETURN_NONE;
 
     diagnostic = PyObject_New(DiagnosticObject, &Diagnostic_Type);
     if (diagnostic == NULL)
         return NULL;
-    diagnostic->kind = galley_diagnostic_kind_none;
+    diagnostic->kind = (long)kind;
     diagnostic->offset = 0;
     diagnostic->line = 0;
     diagnostic->column = 0;
@@ -1966,34 +2230,63 @@ static PyObject *build_diagnostic(GalleySession *session)
     if (diagnostic->expected_tokens == NULL || diagnostic->context == NULL)
         goto fail;
 
-    diagnostic->kind = (long)galley_diagnostic_kind(session);
-    if (galley_diagnostic_position(session, &offset, &line, &column) == galley_ok) {
-        diagnostic->offset = offset;
-        diagnostic->line = (long)line;
-        diagnostic->column = (long)column;
-    }
-    if (galley_diagnostic_message(session, &text) == galley_ok &&
-        text != NULL) {
+    /* Position and rendered messages belong to every diagnostic. */
+    status = diagnostic_source_position(source, &offset, &line, &column);
+    if (status != galley_ok)
+        goto refuse;
+    diagnostic->offset = offset;
+    diagnostic->line = (long)line;
+    diagnostic->column = (long)column;
+    status = diagnostic_source_message(source, &text);
+    if (status != galley_ok)
+        goto refuse;
+    if (text != NULL) {
         PyObject *rendered = PyUnicode_FromString(text);
         if (rendered == NULL)
             goto fail;
         Py_SETREF(diagnostic->message, rendered);
     }
-    if (galley_diagnostic_message_ansi(session, &text) == galley_ok &&
-        text != NULL) {
+    status = diagnostic_source_message_ansi(source, &text);
+    if (status != galley_ok)
+        goto refuse;
+    if (text != NULL) {
         PyObject *rendered = PyUnicode_FromString(text);
         if (rendered == NULL)
             goto fail;
         Py_SETREF(diagnostic->message_ansi, rendered);
     }
-    if (galley_diagnostic_unexpected_token(session, &text, &length) ==
-        galley_ok) {
+
+    /* The error counts describe the parse, not one diagnostic, so every
+     * diagnostic of the parse carries them. */
+    count = galley_syntax_error_count(source->session);
+    if (count < 0) {
+        status = count;
+        goto refuse;
+    }
+    diagnostic->syntax_error_count = (long)count;
+    count = galley_semantic_error_count(source->session);
+    if (count < 0) {
+        status = count;
+        goto refuse;
+    }
+    diagnostic->semantic_error_count = (long)count;
+
+    /* Conditional fields: no_diagnostic is the field's absence. */
+    status = diagnostic_source_unexpected_token(source, &text, &length);
+    if (status == galley_ok) {
         PyObject *token = bytes_from_pair(text, length);
         if (token == NULL)
             goto fail;
         Py_SETREF(diagnostic->unexpected_token, token);
+    } else if (status != galley_error_no_diagnostic) {
+        goto refuse;
     }
-    count = galley_diagnostic_expected_count(session);
+
+    count = diagnostic_source_expected_count(source);
+    if (count < 0 && count != galley_error_no_diagnostic) {
+        status = count;
+        goto refuse;
+    }
     if (count > 0) {
         PyObject *tokens = PyTuple_New((Py_ssize_t)count);
         if (tokens == NULL)
@@ -2001,16 +2294,21 @@ static PyObject *build_diagnostic(GalleySession *session)
         Py_SETREF(diagnostic->expected_tokens, tokens);
         for (index = 0; index < (unsigned long long)count; ++index) {
             PyObject *token;
-            if (galley_diagnostic_expected_at(session, index, &text,
-                                              &length) != galley_ok)
-                text = NULL; /* Unreachable in practice; keeps the tuple dense. */
+            status = diagnostic_source_expected_at(source, index, &text, &length);
+            if (status != galley_ok)
+                goto refuse;
             token = bytes_from_pair(text, length);
             if (token == NULL)
                 goto fail;
             PyTuple_SET_ITEM(tokens, (Py_ssize_t)index, token);
         }
     }
-    count = galley_diagnostic_context_count(session);
+
+    count = diagnostic_source_context_count(source);
+    if (count < 0 && count != galley_error_no_diagnostic) {
+        status = count;
+        goto refuse;
+    }
     if (count > 0) {
         PyObject *context = PyTuple_New((Py_ssize_t)count);
         if (context == NULL)
@@ -2018,34 +2316,34 @@ static PyObject *build_diagnostic(GalleySession *session)
         Py_SETREF(diagnostic->context, context);
         for (index = 0; index < (unsigned long long)count; ++index) {
             PyObject *name;
-            if (galley_diagnostic_context_at(session, index, &text,
-                                             &length) != galley_ok)
-                text = NULL; /* Unreachable in practice; keeps the tuple dense. */
+            status = diagnostic_source_context_at(source, index, &text, &length);
+            if (status != galley_ok)
+                goto refuse;
             name = bytes_from_pair(text, length);
             if (name == NULL)
                 goto fail;
             PyTuple_SET_ITEM(context, (Py_ssize_t)index, name);
         }
     }
-    count = galley_syntax_error_count(session);
-    if (count >= 0)
-        diagnostic->syntax_error_count = (long)count;
-    count = galley_semantic_error_count(session);
-    if (count >= 0)
-        diagnostic->semantic_error_count = (long)count;
+
     {
         const char *variable = NULL;
         size_t variable_len = 0;
         const char *message = NULL;
         size_t message_len = 0;
-        if (galley_diagnostic_semantic(session, &variable, &variable_len, &message, &message_len) == galley_ok) {
+        status = diagnostic_source_semantic(source, &variable, &variable_len,
+                                            &message, &message_len);
+        if (status == galley_ok) {
             PyObject *pair = PyTuple_New(2);
             PyObject *variable_obj;
             PyObject *message_obj;
             if (pair == NULL)
                 goto fail;
-            variable_obj = PyBytes_FromStringAndSize(variable ? variable : "", variable ? (Py_ssize_t)variable_len : 0);
-            message_obj = PyUnicode_FromStringAndSize(message ? message : "", message ? (Py_ssize_t)message_len : 0);
+            variable_obj = PyBytes_FromStringAndSize(
+                variable ? variable : "",
+                variable ? (Py_ssize_t)variable_len : 0);
+            message_obj = PyUnicode_FromStringAndSize(
+                message ? message : "", message ? (Py_ssize_t)message_len : 0);
             if (variable_obj == NULL || message_obj == NULL) {
                 Py_XDECREF(variable_obj);
                 Py_XDECREF(message_obj);
@@ -2055,46 +2353,64 @@ static PyObject *build_diagnostic(GalleySession *session)
             PyTuple_SET_ITEM(pair, 0, variable_obj);
             PyTuple_SET_ITEM(pair, 1, message_obj);
             Py_SETREF(diagnostic->semantic, pair);
+        } else if (status != galley_error_no_diagnostic) {
+            goto refuse;
         }
     }
-    if (galley_diagnostic_indentation(session, &first, &second) ==
-        galley_ok) {
+
+    status = diagnostic_source_indentation(source, &first, &second);
+    if (status == galley_ok) {
         PyObject *pair = Py_BuildValue("II", first, second);
         if (pair == NULL)
             goto fail;
         Py_SETREF(diagnostic->indentation, pair);
+    } else if (status != galley_error_no_diagnostic) {
+        goto refuse;
     }
 
-    value = galley_diagnostic_recovery_kind(session);
-    if (value >= 0) {
+    /* Recovery: target none is the absence of recovery, and a field the
+     * applied target does not carry reads as absent. */
+    value = diagnostic_source_recovery_kind(source);
+    if (value < 0) {
+        status = value;
+        goto refuse;
+    }
+    if (value > 0) {
         PyObject *boxed = PyLong_FromLong(value);
         if (boxed == NULL)
             goto fail;
         Py_SETREF(diagnostic->recovery_kind, boxed);
     }
-    if (galley_diagnostic_recovery_terminal(session, &text, &length) ==
-        galley_ok) {
+    status = diagnostic_source_recovery_terminal(source, &text, &length);
+    if (status == galley_ok) {
         PyObject *terminal = bytes_from_pair(text, length);
         if (terminal == NULL)
             goto fail;
         Py_SETREF(diagnostic->recovery_terminal, terminal);
+    } else if (status != galley_error_no_diagnostic) {
+        goto refuse;
     }
-    if (galley_diagnostic_recovery_resume(session, &value) == galley_ok &&
-        value >= 0) {
-        PyObject *boxed = PyLong_FromLong(value);
-        if (boxed == NULL)
+    status = diagnostic_source_recovery_resume(source, &count);
+    if (status == galley_ok) {
+        PyObject *resume = PyLong_FromLongLong(count);
+        if (resume == NULL)
             goto fail;
-        Py_SETREF(diagnostic->recovery_resume, boxed);
+        Py_SETREF(diagnostic->recovery_resume, resume);
+    } else if (status != galley_error_no_diagnostic) {
+        goto refuse;
     }
-    if (galley_diagnostic_recovery_lhs_variable(session, &text, &length) ==
-        galley_ok) {
+    status = diagnostic_source_recovery_lhs_variable(source, &text, &length);
+    if (status == galley_ok) {
         PyObject *name = bytes_from_pair(text, length);
         if (name == NULL)
             goto fail;
         Py_SETREF(diagnostic->recovery_lhs_variable, name);
+    } else if (status != galley_error_no_diagnostic) {
+        goto refuse;
     }
-    if (galley_diagnostic_recovery_production(session, &text, &length,
-                                              &first) == galley_ok) {
+    status = diagnostic_source_recovery_production(source, &text, &length,
+                                                   &first);
+    if (status == galley_ok) {
         PyObject *name = bytes_from_pair(text, length);
         PyObject *pair;
         if (name == NULL)
@@ -2105,15 +2421,19 @@ static PyObject *build_diagnostic(GalleySession *session)
             goto fail;
         }
         Py_SETREF(diagnostic->recovery_production, pair);
+    } else if (status != galley_error_no_diagnostic) {
+        goto refuse;
     }
+
     {
         const char *parent_text = NULL;
         const char *variable_text = NULL;
         size_t parent_length = 0;
         size_t variable_length = 0;
-        if (galley_diagnostic_recovery_occurrence(
-                session, &parent_text, &parent_length, &first, &second,
-                &variable_text, &variable_length) == galley_ok) {
+        status = diagnostic_source_recovery_occurrence(
+            source, &parent_text, &parent_length, &first, &second,
+            &variable_text, &variable_length);
+        if (status == galley_ok) {
             PyObject *parent_name =
                 bytes_from_pair(parent_text, parent_length);
             PyObject *variable_name =
@@ -2132,10 +2452,14 @@ static PyObject *build_diagnostic(GalleySession *session)
                 goto fail;
             }
             Py_SETREF(diagnostic->recovery_occurrence, quadruple);
+        } else if (status != galley_error_no_diagnostic) {
+            goto refuse;
         }
     }
     return (PyObject *)diagnostic;
 
+refuse:
+    set_error_from_status(status);
 fail:
     Py_DECREF(diagnostic);
     return NULL;
@@ -2146,137 +2470,20 @@ PyDoc_STRVAR(diagnostic_doc,
 "\n"
 "Returns a read-only Diagnostic snapshot describing the failure of the\n"
 "most recent parse, or None when it succeeded. The snapshot stays valid\n"
-"forever; it does not track later parses.");
+"forever; it does not track later parses. Raises GalleyError (session in\n"
+"use) while a parse runs.");
 
 static PyObject *Session_diagnostic(PyObject *self, PyObject *Py_UNUSED(ignored))
 {
     GalleySession *session = require_session(self);
+    DiagnosticSource source;
+
     if (session == NULL)
         return NULL;
-    return build_diagnostic(session);
-}
-
-static PyObject *build_recorded_diagnostic(GalleySession *session, unsigned long long index)
-{
-    DiagnosticObject *diagnostic;
-    unsigned long long offset = 0;
-    unsigned int line = 0;
-    unsigned int column = 0;
-    const char *text = NULL;
-    size_t length = 0;
-    long long count;
-    unsigned long long i;
-
-    diagnostic = PyObject_New(DiagnosticObject, &Diagnostic_Type);
-    if (diagnostic == NULL)
-        return NULL;
-    diagnostic->kind = (long)galley_recorded_diagnostic_kind(session, index);
-    diagnostic->offset = 0;
-    diagnostic->line = 0;
-    diagnostic->column = 0;
-    diagnostic->syntax_error_count = 0;
-    diagnostic->semantic_error_count = 0;
-    diagnostic->semantic = Py_NewRef(Py_None);
-    diagnostic->message = Py_NewRef(Py_None);
-    diagnostic->message_ansi = Py_NewRef(Py_None);
-    diagnostic->unexpected_token = Py_NewRef(Py_None);
-    diagnostic->expected_tokens = PyTuple_New(0);
-    diagnostic->context = PyTuple_New(0);
-    diagnostic->indentation = Py_NewRef(Py_None);
-    diagnostic->recovery_kind = Py_NewRef(Py_None);
-    diagnostic->recovery_terminal = Py_NewRef(Py_None);
-    diagnostic->recovery_resume = Py_NewRef(Py_None);
-    diagnostic->recovery_lhs_variable = Py_NewRef(Py_None);
-    diagnostic->recovery_production = Py_NewRef(Py_None);
-    diagnostic->recovery_occurrence = Py_NewRef(Py_None);
-    if (diagnostic->expected_tokens == NULL || diagnostic->context == NULL)
-        goto fail;
-
-    if (galley_recorded_diagnostic_position(session, index, &offset, &line, &column) == galley_ok) {
-        diagnostic->offset = offset;
-        diagnostic->line = (long)line;
-        diagnostic->column = (long)column;
-    }
-    if (galley_recorded_diagnostic_message(session, index, &text) == galley_ok && text != NULL) {
-        PyObject *rendered = PyUnicode_FromString(text);
-        if (rendered == NULL)
-            goto fail;
-        Py_SETREF(diagnostic->message, rendered);
-    }
-    if (galley_recorded_diagnostic_message_ansi(session, index, &text) == galley_ok && text != NULL) {
-        PyObject *rendered = PyUnicode_FromString(text);
-        if (rendered == NULL)
-            goto fail;
-        Py_SETREF(diagnostic->message_ansi, rendered);
-    }
-    if (galley_recorded_unexpected_token(session, index, &text, &length) == galley_ok) {
-        PyObject *token = bytes_from_pair(text, length);
-        if (token == NULL)
-            goto fail;
-        Py_SETREF(diagnostic->unexpected_token, token);
-    }
-    count = galley_recorded_expected_count(session, index);
-    if (count > 0) {
-        PyObject *tokens = PyTuple_New((Py_ssize_t)count);
-        if (tokens == NULL)
-            goto fail;
-        Py_SETREF(diagnostic->expected_tokens, tokens);
-        for (i = 0; i < (unsigned long long)count; ++i) {
-            PyObject *token;
-            if (galley_recorded_expected_token(session, index, i, &text, &length) != galley_ok)
-                text = NULL;
-            token = bytes_from_pair(text, length);
-            if (token == NULL)
-                goto fail;
-            PyTuple_SET_ITEM(tokens, (Py_ssize_t)i, token);
-        }
-    }
-    count = galley_recorded_context_count(session, index);
-    if (count > 0) {
-        PyObject *context = PyTuple_New((Py_ssize_t)count);
-        if (context == NULL)
-            goto fail;
-        Py_SETREF(diagnostic->context, context);
-        for (i = 0; i < (unsigned long long)count; ++i) {
-            const char *name = NULL;
-            size_t name_len = 0;
-            PyObject *item;
-            if (galley_recorded_context_name(session, index, i, &name, &name_len) != galley_ok)
-                name = NULL;
-            item = PyBytes_FromStringAndSize(name ? name : "", name ? (Py_ssize_t)name_len : 0);
-            if (item == NULL)
-                goto fail;
-            PyTuple_SET_ITEM(context, (Py_ssize_t)i, item);
-        }
-    }
-    {
-        const char *variable = NULL;
-        size_t variable_len = 0;
-        const char *message = NULL;
-        size_t message_len = 0;
-        if (galley_recorded_semantic(session, index, &variable, &variable_len, &message, &message_len) == galley_ok) {
-            PyObject *pair = PyTuple_New(2);
-            PyObject *variable_obj;
-            PyObject *message_obj;
-            if (pair == NULL)
-                goto fail;
-            variable_obj = PyBytes_FromStringAndSize(variable ? variable : "", variable ? (Py_ssize_t)variable_len : 0);
-            message_obj = PyUnicode_FromStringAndSize(message ? message : "", message ? (Py_ssize_t)message_len : 0);
-            if (variable_obj == NULL || message_obj == NULL) {
-                Py_XDECREF(variable_obj);
-                Py_XDECREF(message_obj);
-                Py_DECREF(pair);
-                goto fail;
-            }
-            PyTuple_SET_ITEM(pair, 0, variable_obj);
-            PyTuple_SET_ITEM(pair, 1, message_obj);
-            Py_SETREF(diagnostic->semantic, pair);
-        }
-    }
-    return (PyObject *)diagnostic;
-fail:
-    Py_XDECREF(diagnostic);
-    return NULL;
+    source.session = session;
+    source.recorded = 0;
+    source.index = 0;
+    return build_diagnostic(&source);
 }
 
 PyDoc_STRVAR(diagnostics_doc,
@@ -2303,7 +2510,8 @@ static PyObject *Session_diagnostics(PyObject *self, PyObject *Py_UNUSED(ignored
     if (tuple == NULL)
         return NULL;
     for (i = 0; i < (unsigned long long)count; ++i) {
-        PyObject *diag = build_recorded_diagnostic(session, i);
+        DiagnosticSource source = {session, 1, i};
+        PyObject *diag = build_diagnostic(&source);
         if (diag == NULL) {
             Py_DECREF(tuple);
             return NULL;
@@ -2563,64 +2771,76 @@ static PyObject *Session_remove_children_at(PyObject *self,
 PyDoc_STRVAR(symbol_name_at_doc,
 "symbol_name_at(index)\n"
 "\n"
-"Returns the name of the grammar symbol at index as bytes, or None when\n"
-"the index is out of range.");
+"Returns the name of the grammar symbol at index as bytes. Raises\n"
+"GalleyError with the core's status (out of range for an index at or\n"
+"past symbol_count) instead of answering for an index outside the table.");
 
 static PyObject *Session_symbol_name_at(PyObject *self, PyObject *index)
 {
     GalleySession *session = require_session(self);
     unsigned long long position;
-    const char *data;
-    size_t length;
+    const char *data = NULL;
+    size_t length = 0;
+    long long status;
 
     if (session == NULL)
         return NULL;
     position = PyLong_AsUnsignedLongLong(index);
     if (position == (unsigned long long)-1 && PyErr_Occurred())
         return NULL;
-    if (galley_symbol_name(session, position, &data, &length) != galley_ok)
-        Py_RETURN_NONE;
+    status = galley_symbol_name(session, position, &data, &length);
+    if (check_status(status) < 0)
+        return NULL;
     return bytes_from_pair(data, length);
 }
 
 PyDoc_STRVAR(symbol_is_terminal_doc,
 "symbol_is_terminal(index)\n"
 "\n"
-"Returns whether the grammar symbol at index is a terminal.");
+"Returns whether the grammar symbol at index is a terminal. Raises\n"
+"GalleyError with the core's status (out of range for an index at or\n"
+"past symbol_count) instead of answering for an index outside the table.");
 
 static PyObject *Session_symbol_is_terminal(PyObject *self, PyObject *index)
 {
     GalleySession *session = require_session(self);
     unsigned long long position;
+    int is_terminal = 0;
 
     if (session == NULL)
         return NULL;
     position = PyLong_AsUnsignedLongLong(index);
     if (position == (unsigned long long)-1 && PyErr_Occurred())
         return NULL;
-    return PyBool_FromLong(galley_symbol_is_terminal(session, position));
+    if (check_status(galley_symbol_is_terminal(session, position, &is_terminal)) < 0)
+        return NULL;
+    return PyBool_FromLong(is_terminal);
 }
 
 PyDoc_STRVAR(variable_name_at_doc,
 "variable_name_at(index)\n"
 "\n"
-"Returns the name of the grammar variable at index as bytes, or None\n"
-"when the index is out of range.");
+"Returns the name of the grammar variable at index as bytes. Raises\n"
+"GalleyError with the core's status (out of range for an index at or\n"
+"past variable_count) instead of answering for an index outside the\n"
+"table.");
 
 static PyObject *Session_variable_name_at(PyObject *self, PyObject *index)
 {
     GalleySession *session = require_session(self);
     unsigned long long position;
-    const char *data;
-    size_t length;
+    const char *data = NULL;
+    size_t length = 0;
+    long long status;
 
     if (session == NULL)
         return NULL;
     position = PyLong_AsUnsignedLongLong(index);
     if (position == (unsigned long long)-1 && PyErr_Occurred())
         return NULL;
-    if (galley_variable_name(session, position, &data, &length) != galley_ok)
-        Py_RETURN_NONE;
+    status = galley_variable_name(session, position, &data, &length);
+    if (check_status(status) < 0)
+        return NULL;
     return bytes_from_pair(data, length);
 }
 
@@ -2968,16 +3188,27 @@ static int init_hook_indexes(void)
     if (indexes == NULL)
         return -1;
     for (size_t index = 0; index < count; index++) {
-        PyObject *key = PyUnicode_FromStringAndSize(
-            galley_hooks_name_data(index),
-            (Py_ssize_t)galley_hooks_name_length(index));
-        PyObject *value = PyLong_FromSize_t(index);
-        int status = (key == NULL || value == NULL)
-                         ? -1
-                         : PyDict_SetItem(indexes, key, value);
+        const char *name_data = NULL;
+        size_t name_len = 0;
+        PyObject *key;
+        PyObject *value;
+        long long status = galley_hooks_name(index, &name_data, &name_len);
+        int item_status;
+
+        if (status != galley_ok) {
+            set_error_from_status(status);
+            Py_DECREF(indexes);
+            return -1;
+        }
+        key = PyUnicode_FromStringAndSize(name_data ? name_data : "",
+                                          (Py_ssize_t)name_len);
+        value = PyLong_FromSize_t(index);
+        item_status = (key == NULL || value == NULL)
+                          ? -1
+                          : PyDict_SetItem(indexes, key, value);
         Py_XDECREF(key);
         Py_XDECREF(value);
-        if (status < 0) {
+        if (item_status < 0) {
             Py_DECREF(indexes);
             return -1;
         }
@@ -3824,7 +4055,10 @@ static PyObject *Walker_iternext(WalkerObject *self)
         set_error_from_status(status);
         return NULL;
     }
-    if (status == 0)
+    /* Done detection is the cursor's own answer: every step that runs is
+     * galley_ok, and a finished walk leaves the no-node sentinel (state
+     * DONE) there, step after step, while its generation is live. */
+    if ((unsigned long long)self->cursor.current == GALLEY_INVALID_NODE)
         return NULL; /* walk done */
     node_obj = make_node(self->session_obj, self->cursor.generation,
                          self->cursor.current);
@@ -4271,7 +4505,9 @@ static int add_binding_enums(PyObject *module)
         "ERROR_SESSION_IN_USE",
         "ERROR_STALE_TREE",
         "ERROR_STALE_HOOK",
-        "ERROR_HOOK_FAILED"};
+        "ERROR_HOOK_FAILED",
+        "ERROR_OUT_OF_RANGE",
+        "ERROR_INVALID_ARGUMENT"};
     static const long long status_values[] = {
         galley_ok,
         galley_error_null_argument,
@@ -4289,7 +4525,9 @@ static int add_binding_enums(PyObject *module)
         galley_error_session_in_use,
         galley_error_stale_tree,
         galley_error_stale_hook,
-        galley_error_hook_failed};
+        galley_error_hook_failed,
+        galley_error_out_of_range,
+        galley_error_invalid_argument};
 
     ENUM_ARRAYS_MATCH(parser_type);
     ENUM_ARRAYS_MATCH(recovery_mode);

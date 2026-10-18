@@ -85,6 +85,17 @@ pub extern "C" fn fixture_hook_live_reads() -> u32 {
 static FIRST_PAIR: Mutex<Vec<(usize, u64)>> = Mutex::new(Vec::new());
 static STALE_HOOK_DURING: AtomicU32 = AtomicU32::new(0);
 
+// What the tests/hook_arguments.rs suite checks about rule reads: a Pair
+// reduction hook finds its reducing rule through `ProcedureArguments::rule()`.
+static PAIR_RULE_PRESENT: AtomicU32 = AtomicU32::new(0);
+
+// What the tests/hook_arguments.rs suite checks about hooks that run for no
+// rule: a terminal match runs the general `reduction` hook with no reducing
+// rule, and each rule reader answers "no rule" (`None`) rather than a
+// refusal. Counts follow the reader order `rule()`,
+// `rule_right_hand_side()`, `rule_rhs_index_slice()`.
+static NO_RULE_READS: [AtomicU32; 3] = [AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0)];
+
 fn stale_hook_refusals(session: usize, hook: u64) -> u32 {
     let stale = Err(procedure::Error::StaleHook);
     unsafe {
@@ -97,6 +108,7 @@ fn stale_hook_refusals(session: usize, hook: u64) -> u32 {
                 arguments.current_node().map(drop) == stale,
                 arguments.current_line().map(drop) == stale,
                 arguments.current_column().map(drop) == stale,
+                arguments.rule().map(drop) == stale,
                 arguments.set_current_node(None) == stale,
             ]
             .iter()
@@ -113,7 +125,7 @@ pub extern "C" fn fixture_stale_hook_during() -> u32 {
     STALE_HOOK_DURING.load(Ordering::SeqCst)
 }
 
-/// The same calls, made now, after the parse (8 are made).
+/// The same calls, made now, after the parse (9 are made).
 #[no_mangle]
 pub extern "C" fn fixture_stale_hook_after() -> u32 {
     match FIRST_PAIR.lock().unwrap().last() {
@@ -122,11 +134,38 @@ pub extern "C" fn fixture_stale_hook_after() -> u32 {
     }
 }
 
+/// Whether the last recorded Pair hook found its reducing rule through
+/// `ProcedureArguments::rule()`.
+#[no_mangle]
+pub extern "C" fn fixture_pair_rule_present() -> u32 {
+    PAIR_RULE_PRESENT.load(Ordering::SeqCst)
+}
+
 /// Forgets the recorded hook, so the next parse records its own.
 #[no_mangle]
 pub extern "C" fn fixture_forget_first_pair() {
     FIRST_PAIR.lock().unwrap().clear();
     STALE_HOOK_DURING.store(0, Ordering::SeqCst);
+    PAIR_RULE_PRESENT.store(0, Ordering::SeqCst);
+}
+
+/// How many times each no-rule reader answered "no rule" during the parses
+/// so far, in the order `rule()`, `rule_right_hand_side()`,
+/// `rule_rhs_index_slice()`.
+#[no_mangle]
+pub extern "C" fn fixture_no_rule_reads(reader: u32) -> u32 {
+    match reader {
+        0..=2 => NO_RULE_READS[reader as usize].load(Ordering::SeqCst),
+        _ => 0,
+    }
+}
+
+/// Forgets the no-rule counts, so the next parse records its own.
+#[no_mangle]
+pub extern "C" fn fixture_forget_no_rule_reads() {
+    for count in &NO_RULE_READS {
+        count.store(0, Ordering::SeqCst);
+    }
 }
 
 fn probe_hook_door(arguments: &mut ProcedureArguments, node: NodeHandle) {
@@ -190,7 +229,28 @@ fn probe_hook_door(arguments: &mut ProcedureArguments, node: NodeHandle) {
 }
 
 #[no_mangle]
-pub extern "C" fn reduction(_session: *mut c_void, _hook: u64) {}
+pub extern "C" fn reduction(session: *mut c_void, hook: u64) {
+    unsafe {
+        ProcedureArguments::with(session, hook, |arguments| {
+            // A hook can run for no rule — a terminal match: every rule
+            // reader answers "no rule" for it, never a refusal.
+            let answers = [
+                arguments.rule().map(|rule| rule.is_none()),
+                arguments
+                    .rule_right_hand_side()
+                    .map(|sides| sides.is_none()),
+                arguments
+                    .rule_rhs_index_slice()
+                    .map(|index| index.is_none()),
+            ];
+            for (count, answer) in NO_RULE_READS.iter().zip(answers) {
+                if answer == Ok(true) {
+                    count.fetch_add(1, Ordering::SeqCst);
+                }
+            }
+        })
+    }
+}
 
 #[no_mangle]
 pub extern "C" fn reduction_Key(_session: *mut c_void, _hook: u64) {}
@@ -282,6 +342,9 @@ pub extern "C" fn reduction_Pair(session: *mut c_void, hook: u64) {
     }
     unsafe {
         ProcedureArguments::with(session, hook, |arguments| {
+            if matches!(arguments.rule(), Ok(Some(_))) {
+                PAIR_RULE_PRESENT.store(1, Ordering::SeqCst);
+            }
             let Ok(door) = arguments.door() else {
                 return;
             };

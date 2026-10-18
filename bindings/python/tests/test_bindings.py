@@ -13,6 +13,7 @@ concurrency tests.
 
 from __future__ import annotations
 
+import ctypes
 import functools
 import gc
 import operator
@@ -142,6 +143,14 @@ class ParserSurfaceTests(unittest.TestCase):
         assert rendered is not None
         self.assertIn("syntax", rendered.lower())
         self.assertIsNone(grammar.status_string(999999))
+
+    def test_status_enum_carries_the_refusals(self):
+        # The ABI's statuses and their texts, in both the enum and the
+        # status-string mapping.
+        self.assertEqual(grammar.Status.ERROR_OUT_OF_RANGE, -17)
+        self.assertEqual(grammar.Status.ERROR_INVALID_ARGUMENT, -18)
+        self.assertEqual(grammar.status_string(-17), "out of range")
+        self.assertEqual(grammar.status_string(-18), "invalid argument")
 
     def test_diagnostic_type_is_not_directly_constructible(self):
         with self.assertRaises(TypeError):
@@ -873,6 +882,24 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(diagnostic.context[0], b"Number")
         self.assertIsInstance(diagnostic.syntax_error_count, int)
 
+    def test_a_refused_parse_file_carries_no_diagnostic(self):
+        # A file that cannot be opened is refused before any parse runs: the
+        # failure carries no diagnostic, never a snapshot, while the session
+        # keeps the previous parse's diagnostic untouched.
+        with self.assertRaises(grammar.GalleyError):
+            self.session.parse("alpha:")
+        previous = self.session.diagnostic()
+        self.assertIsNotNone(previous)
+        assert previous is not None
+        missing = os.path.join(
+            tempfile.mkdtemp(prefix="galley-missing-file-"), "absent.kv"
+        )
+        with self.assertRaises(grammar.GalleyError) as raised:
+            self.session.parse_file(missing)
+        self.assertEqual(raised.exception.code, grammar.Status.ERROR_IO)
+        self.assertIsNone(raised.exception.diagnostic)
+        self.assertIsNotNone(self.session.diagnostic())
+
     def test_diagnostic_resets_after_successful_parse(self):
         session = grammar.Session()
         try:
@@ -953,6 +980,9 @@ class SemanticErrorTests(unittest.TestCase):
         self.assertTrue(
             all(item.semantic == (b"Number", "value out of range") for item in recorded)
         )
+        # A recorded snapshot reads the parse's counts like the current one.
+        self.assertTrue(all(item.semantic_error_count == 2 for item in recorded))
+        self.assertTrue(all(item.syntax_error_count == 0 for item in recorded))
 
     def test_counts_reset_after_successful_parse(self) -> None:
         def reduction_Number(args: grammar.ProcedureArguments) -> None:
@@ -1023,6 +1053,29 @@ class HookDispatchTests(unittest.TestCase):
             fired[0].text()
         with self.assertRaises(grammar.StaleTreeError):
             earlier.text()
+
+    def test_session_diagnostic_reads_refuse_inside_a_hook(self) -> None:
+        # A running parse holds the session: its own diagnostic calls are
+        # refusals like every other session-door call, never folded to
+        # False/None.
+        refusals: list[int] = []
+
+        def reduction_Number(args: grammar.ProcedureArguments) -> None:
+            for read in (
+                self.session.has_diagnostic,
+                self.session.diagnostic,
+                self.session.diagnostics,
+            ):
+                with self.assertRaises(grammar.GalleyError) as raised:
+                    read()
+                refusals.append(raised.exception.code)
+
+        self.session.install_procedure("reduction_Number", reduction_Number)
+        try:
+            self.session.parse("alpha:12")
+        finally:
+            self.session.clear_procedures()
+        self.assertEqual(refusals, [grammar.Status.ERROR_SESSION_IN_USE] * 3)
 
     def test_hook_failure_after_a_recovered_syntax_error_reports_the_hook(self) -> None:
         # The message belongs to the failure's own diagnostic: the syntax
@@ -2060,15 +2113,18 @@ class WalkTests(unittest.TestCase):
         self.assertNotIn((key_alpha.address, old_depth), steps)
         self.assertIn((key_alpha.address, new_depth), steps)
 
-    def test_completed_walk_raises_stale_tree_after_a_reparse(self) -> None:
+    def test_a_finished_walk_stays_finished_until_a_reparse(self) -> None:
         if not grammar.has_ast():
             self.skipTest("no AST build")
         root = self.session.root_node()
         assert root is not None
         walker = root.walk()
         self.assertGreater(len(list(walker)), 0)
-        with self.assertRaises(StopIteration):
-            next(walker)
+        # Done is the walk's own answer: the step after the last node raises
+        # StopIteration and keeps raising it while the generation is live.
+        for _ in range(2):
+            with self.assertRaises(StopIteration):
+                next(walker)
         # A walker belongs to the parse of the tree it was created over: the
         # generation check comes before "done", so a reparse turns even a
         # finished walk into a stale-tree error, and it stays one.
@@ -2777,8 +2833,299 @@ class SymbolTableTests(unittest.TestCase):
         self.assertIsInstance(self.session.symbol_is_terminal(0), bool)
         variable_name = self.session.variable_name_at(0)
         self.assertIsInstance(variable_name, bytes)
-        self.assertIsNone(self.session.symbol_name_at(10**9))
-        self.assertIsNone(self.session.variable_name_at(10**9))
+
+    def test_indexes_past_the_tables_raise_out_of_range(self):
+        # An index outside a table is a refusal, never a fabricated answer:
+        # the core's status carries the `out of range` code.
+        for read in (
+            lambda: self.session.symbol_name_at(10**9),
+            lambda: self.session.symbol_name_at(grammar.symbol_count()),
+            lambda: self.session.symbol_is_terminal(10**9),
+            lambda: self.session.symbol_is_terminal(grammar.symbol_count()),
+            lambda: self.session.variable_name_at(10**9),
+            lambda: self.session.variable_name_at(grammar.variable_count()),
+        ):
+            with self.assertRaises(grammar.GalleyError) as raised:
+                read()
+            self.assertEqual(raised.exception.code, grammar.Status.ERROR_OUT_OF_RANGE)
+            self.assertIsNone(raised.exception.diagnostic)
+
+
+class RawAbiRefusalTests(unittest.TestCase):
+    """The frozen C ABI through ctypes: a refusal carries its status and
+    never touches an out-parameter.
+
+    The extension exports the ``galley_*`` symbols, so this reaches the
+    same artifact the importable fixture wraps; sessions here are raw
+    handles from ``galley_session_create``, independent of
+    ``grammar.Session``, so the checks stay below the wrapper that would
+    otherwise fold or raise first.
+    """
+
+    _SENTINEL_BYTES = b"sentinel"
+    _SENTINEL_LENGTH = 777
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.lib = ctypes.CDLL(str(_fixture_impl_file()))
+        lib = cls.lib
+        lib.galley_session_create.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_void_p),
+        ]
+        lib.galley_session_create.restype = ctypes.c_longlong
+        lib.galley_session_destroy.argtypes = [ctypes.c_void_p]
+        lib.galley_session_destroy.restype = ctypes.c_longlong
+        lib.galley_parse_sentinel.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        lib.galley_parse_sentinel.restype = ctypes.c_longlong
+        lib.galley_has_diagnostic.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_int),
+        ]
+        lib.galley_has_diagnostic.restype = ctypes.c_longlong
+        lib.galley_symbol_name.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_ulonglong,
+            ctypes.POINTER(ctypes.c_char_p),
+            ctypes.POINTER(ctypes.c_size_t),
+        ]
+        lib.galley_symbol_name.restype = ctypes.c_longlong
+        lib.galley_symbol_is_terminal.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_ulonglong,
+            ctypes.POINTER(ctypes.c_int),
+        ]
+        lib.galley_symbol_is_terminal.restype = ctypes.c_longlong
+        lib.galley_variable_name.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_ulonglong,
+            ctypes.POINTER(ctypes.c_char_p),
+            ctypes.POINTER(ctypes.c_size_t),
+        ]
+        lib.galley_variable_name.restype = ctypes.c_longlong
+        lib.galley_hooks_count.argtypes = []
+        lib.galley_hooks_count.restype = ctypes.c_size_t
+        lib.galley_hooks_name.argtypes = [
+            ctypes.c_size_t,
+            ctypes.POINTER(ctypes.c_char_p),
+            ctypes.POINTER(ctypes.c_size_t),
+        ]
+        lib.galley_hooks_name.restype = ctypes.c_longlong
+        lib.galley_recorded_diagnostic_count.argtypes = [ctypes.c_void_p]
+        lib.galley_recorded_diagnostic_count.restype = ctypes.c_longlong
+        lib.galley_recorded_diagnostic_kind.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_ulonglong,
+        ]
+        lib.galley_recorded_diagnostic_kind.restype = ctypes.c_longlong
+        lib.galley_session_set_hooks.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_ubyte),
+            ctypes.c_size_t,
+        ]
+        lib.galley_session_set_hooks.restype = ctypes.c_longlong
+
+    def setUp(self) -> None:
+        self.session = ctypes.c_void_p()
+        self.assertEqual(
+            self.lib.galley_session_create(None, ctypes.byref(self.session)),
+            grammar.Status.OK,
+        )
+
+    def tearDown(self) -> None:
+        if self.session.value:
+            self.lib.galley_session_destroy(self.session)
+
+    def _pair(self) -> tuple[ctypes.c_char_p, ctypes.c_size_t]:
+        return (
+            ctypes.c_char_p(self._SENTINEL_BYTES),
+            ctypes.c_size_t(self._SENTINEL_LENGTH),
+        )
+
+    def _assert_pair_untouched(
+        self, data: ctypes.c_char_p, length: ctypes.c_size_t
+    ) -> None:
+        self.assertEqual(data.value, self._SENTINEL_BYTES)
+        self.assertEqual(length.value, self._SENTINEL_LENGTH)
+
+    def test_grammar_table_indexes_are_refused_past_their_counts(self) -> None:
+        lib = self.lib
+        data = ctypes.c_char_p()
+        length = ctypes.c_size_t(0)
+        self.assertEqual(
+            lib.galley_symbol_name(
+                self.session, 0, ctypes.byref(data), ctypes.byref(length)
+            ),
+            grammar.Status.OK,
+        )
+        self.assertTrue(data.value)
+        self.assertGreater(length.value, 0)
+        flag = ctypes.c_int(-1)
+        self.assertEqual(
+            lib.galley_symbol_is_terminal(self.session, 0, ctypes.byref(flag)),
+            grammar.Status.OK,
+        )
+        self.assertIn(flag.value, (0, 1))
+
+        data, length = self._pair()
+        self.assertEqual(
+            lib.galley_symbol_name(
+                self.session,
+                grammar.symbol_count(),
+                ctypes.byref(data),
+                ctypes.byref(length),
+            ),
+            grammar.Status.ERROR_OUT_OF_RANGE,
+        )
+        self._assert_pair_untouched(data, length)
+
+        flag = ctypes.c_int(2)
+        self.assertEqual(
+            lib.galley_symbol_is_terminal(
+                self.session, grammar.symbol_count(), ctypes.byref(flag)
+            ),
+            grammar.Status.ERROR_OUT_OF_RANGE,
+        )
+        self.assertEqual(flag.value, 2)
+
+        data, length = self._pair()
+        self.assertEqual(
+            lib.galley_variable_name(
+                self.session,
+                grammar.variable_count(),
+                ctypes.byref(data),
+                ctypes.byref(length),
+            ),
+            grammar.Status.ERROR_OUT_OF_RANGE,
+        )
+        self._assert_pair_untouched(data, length)
+
+    def test_null_session_refuses_without_touching_outs(self) -> None:
+        lib = self.lib
+        null = ctypes.c_void_p(None)
+        data, length = self._pair()
+        self.assertEqual(
+            lib.galley_symbol_name(null, 0, ctypes.byref(data), ctypes.byref(length)),
+            grammar.Status.ERROR_NULL_ARGUMENT,
+        )
+        self._assert_pair_untouched(data, length)
+        flag = ctypes.c_int(2)
+        self.assertEqual(
+            lib.galley_symbol_is_terminal(null, 0, ctypes.byref(flag)),
+            grammar.Status.ERROR_NULL_ARGUMENT,
+        )
+        self.assertEqual(flag.value, 2)
+        has = ctypes.c_int(-1)
+        self.assertEqual(
+            lib.galley_has_diagnostic(null, ctypes.byref(has)),
+            grammar.Status.ERROR_NULL_ARGUMENT,
+        )
+        self.assertEqual(has.value, -1)
+
+    def test_hook_names_list_and_refuse_past_the_table(self) -> None:
+        lib = self.lib
+        count = lib.galley_hooks_count()
+        self.assertGreater(count, 0)
+        names: list[bytes] = []
+        for index in range(count):
+            data = ctypes.c_char_p()
+            length = ctypes.c_size_t(0)
+            self.assertEqual(
+                lib.galley_hooks_name(index, ctypes.byref(data), ctypes.byref(length)),
+                grammar.Status.OK,
+            )
+            self.assertTrue(data.value)
+            self.assertEqual(len(data.value), length.value)
+            names.append(data.value)
+        self.assertEqual(len(set(names)), count)
+        self.assertIn(b"reduction_Pair", names)
+        # The artifact validates installs against this table; the index past
+        # it is a refusal, not an empty name.
+        data, length = self._pair()
+        self.assertEqual(
+            lib.galley_hooks_name(count, ctypes.byref(data), ctypes.byref(length)),
+            grammar.Status.ERROR_OUT_OF_RANGE,
+        )
+        self._assert_pair_untouched(data, length)
+
+    def test_has_diagnostic_writes_its_out_param(self) -> None:
+        lib = self.lib
+        has = ctypes.c_int(-1)
+        self.assertEqual(
+            lib.galley_has_diagnostic(self.session, ctypes.byref(has)),
+            grammar.Status.OK,
+        )
+        self.assertEqual(has.value, 0)
+        self.assertEqual(
+            lib.galley_parse_sentinel(self.session, b"alpha:"),
+            grammar.Status.ERROR_SYNTAX,
+        )
+        has = ctypes.c_int(-1)
+        self.assertEqual(
+            lib.galley_has_diagnostic(self.session, ctypes.byref(has)),
+            grammar.Status.OK,
+        )
+        self.assertEqual(has.value, 1)
+
+    def test_a_recorded_index_past_the_records_is_no_diagnostic(self) -> None:
+        lib = self.lib
+        self.assertEqual(
+            lib.galley_parse_sentinel(self.session, b"alpha:"),
+            grammar.Status.ERROR_SYNTAX,
+        )
+        recorded = lib.galley_recorded_diagnostic_count(self.session)
+        self.assertGreaterEqual(recorded, 1)
+        self.assertEqual(
+            lib.galley_recorded_diagnostic_kind(self.session, 0), grammar.Kind.SYNTAX
+        )
+        self.assertEqual(
+            lib.galley_recorded_diagnostic_kind(self.session, recorded),
+            grammar.Status.ERROR_NO_DIAGNOSTIC,
+        )
+
+    def test_out_of_domain_options_fail_creation(self) -> None:
+        class Options(ctypes.Structure):
+            _fields_ = [
+                ("max_errors", ctypes.c_int),
+                ("recovery_window", ctypes.c_int),
+                ("stack_overflow_recovery", ctypes.c_int),
+                ("syntax_error_stack_depth", ctypes.c_uint),
+                ("verbosity", ctypes.c_int),
+                ("ast_preallocation_ratio", ctypes.c_double),
+                ("ast_preallocation_cap", ctypes.c_ulonglong),
+            ]
+
+        for options in (
+            Options(max_errors=-1),
+            Options(recovery_window=-1),
+            Options(verbosity=-1),
+            Options(ast_preallocation_ratio=float("nan")),
+        ):
+            out = ctypes.c_void_p(0x5E551)
+            self.assertEqual(
+                self.lib.galley_session_create(
+                    ctypes.byref(options), ctypes.byref(out)
+                ),
+                grammar.Status.ERROR_INVALID_ARGUMENT,
+            )
+            # The session handle is written only on success.
+            self.assertEqual(out.value, 0x5E551)
+
+    def test_set_hooks_count_mismatch_is_invalid_argument(self) -> None:
+        lib = self.lib
+        count = lib.galley_hooks_count()
+        enabled = (ctypes.c_ubyte * (count + 1))()
+        self.assertEqual(
+            lib.galley_session_set_hooks(self.session, None, None, enabled, count + 1),
+            grammar.Status.ERROR_INVALID_ARGUMENT,
+        )
+        # A null enable set with a nonzero count is the null-argument case.
+        self.assertEqual(
+            lib.galley_session_set_hooks(self.session, None, None, None, count + 1),
+            grammar.Status.ERROR_NULL_ARGUMENT,
+        )
 
 
 class ReservationTests(unittest.TestCase):
@@ -2836,6 +3183,21 @@ class LifetimeTests(unittest.TestCase):
             self.assertGreater(session.parse("alpha:12"), 0)
         finally:
             session.close()
+
+    def test_out_of_domain_options_raise_invalid_argument(self):
+        # The core owns the options' domain: a refused value raises with
+        # its own status, never a silently defaulted session.
+        for options in (
+            {"max_errors": -1},
+            {"recovery_window": -1},
+            {"verbosity": -1},
+            {"ast_preallocation_ratio": float("nan")},
+        ):
+            with self.assertRaises(grammar.GalleyError) as raised:
+                grammar.Session(**options)
+            self.assertEqual(
+                raised.exception.code, grammar.Status.ERROR_INVALID_ARGUMENT
+            )
 
 
 def _package_files() -> list[str]:
@@ -3288,7 +3650,9 @@ class GeneratedPackageInitTests(unittest.TestCase):
             import helperlang  # noqa: F401
 
         messages = [str(warning.message) for warning in caught]
-        self.assertEqual(messages, ["galley: no hooks wired from helperlang.procedures"])
+        self.assertEqual(
+            messages, ["galley: no hooks wired from helperlang.procedures"]
+        )
         self.assertIs(caught[0].category, RuntimeWarning)
 
 
@@ -3610,6 +3974,67 @@ with parser.Session() as session:
             text=True,
         )
         self.assertEqual(check.returncode, 0, check.stdout + check.stderr)
+
+
+class NoAstArtifactTests(unittest.TestCase):
+    """A parser built with ``ast = false``: no node storage exists.
+
+    The tree probes report absence — no root, and zero counts with empty
+    snapshot columns — and a read that addresses a node refuses with
+    ``invalid node``: there is nothing to address. Everything independent
+    of the tree — parses, retained input, diagnostics, the symbol table —
+    still works. The build runs as a subprocess like the suite's own
+    fixture builds; the check loads the artifact through ``galley.load``
+    in this interpreter.
+    """
+
+    def test_no_ast_artifact_answers_zero_counts_and_refuses_every_node_address(
+        self,
+    ) -> None:
+        workdir = Path(tempfile.gettempdir()) / "galley-python-test" / "noast"
+        workdir.mkdir(parents=True, exist_ok=True)
+        for name in ("ll.grm", "config.zig"):
+            shutil.copyfile(FIXTURE_DIRECTORY / name, workdir / name)
+        config = workdir / "config.zig"
+        source = config.read_text()
+        self.assertIn("pub const ast = true;", source)
+        config.write_text(
+            source.replace("pub const ast = true;", "pub const ast = false;", 1)
+        )
+
+        build = subprocess.run(
+            [sys.executable, "-m", "galley", str(workdir)],
+            env=os.environ.copy(),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(build.returncode, 0, build.stdout + build.stderr)
+        impl = workdir / f"galley_impl{sysconfig.get_config_var('EXT_SUFFIX')}"
+        self.assertTrue(impl.is_file(), f"the build produced no artifact at {impl}")
+
+        parser = galley.load(impl)
+        self.assertFalse(parser.has_ast())
+        sample = "alpha:12,beta:3"
+        with parser.Session() as session:
+            self.assertEqual(session.parse(sample), len(sample))
+            # A published parse without AST construction is a live tree with
+            # no nodes: no root, counts and columns answer 0 and empty, and
+            # a read that addresses a node refuses with invalid node.
+            self.assertIsNone(session.root_node())
+            self.assertEqual(session.node_count(), 0)
+            snapshot = session.snapshot()
+            self.assertEqual(snapshot.count, 0)
+            self.assertEqual(snapshot.parent, ())
+            self.assertEqual(snapshot.first_child, ())
+            with self.assertRaises(IndexError):
+                snapshot.node(0)
+            # Input, positions, diagnostics and the symbol table are
+            # independent of node storage.
+            self.assertEqual(session.last_input(), sample.encode())
+            self.assertEqual(session.last_position(), (1, len(sample) + 2))
+            self.assertFalse(session.has_diagnostic())
+            self.assertIsNone(session.diagnostic())
+            self.assertIsInstance(session.symbol_name_at(0), bytes)
 
 
 class _Worker:
@@ -3980,6 +4405,37 @@ class PublishedFailureTests(unittest.TestCase):
         self.assertEqual(
             flagged, [entry[3].node.address for entry in full if entry[3].is_recovered]
         )
+
+        # A recorded snapshot reads the same diagnostic through the
+        # galley_recorded_* twins: kind, counts and conditional recovery
+        # fields, field for field.
+        recorded = self.session.diagnostics()
+        self.assertEqual(len(recorded), 1)
+        current = self.session.diagnostic()
+        assert current is not None
+        entry = recorded[0]
+        self.assertEqual(entry.kind, grammar.Kind.SYNTAX)
+        self.assertEqual(entry.syntax_error_count, 1)
+        self.assertEqual(entry.semantic_error_count, 0)
+        for field in (
+            "offset",
+            "line",
+            "column",
+            "message",
+            "message_ansi",
+            "unexpected_token",
+            "expected_tokens",
+            "context",
+            "semantic",
+            "indentation",
+            "recovery_kind",
+            "recovery_terminal",
+            "recovery_resume",
+            "recovery_lhs_variable",
+            "recovery_production",
+            "recovery_occurrence",
+        ):
+            self.assertEqual(getattr(entry, field), getattr(current, field), field)
 
         self.assertEqual(self.session.last_input(), self.RECOVERED.encode())
         self.assertIsNotNone(self.session.last_position())

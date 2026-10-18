@@ -85,9 +85,10 @@ public final class Walker implements Iterator<Walker.WalkStep>, Iterable<Walker.
     public boolean hasNext() {
         if (session.isClosed()) throw new GalleyClosedException("walker's session");
         if (next != null) return true;
-        // A finished walk asks the core again: it answers "done" while its
-        // tree is live and raises the stale-tree failure once it is not, so
-        // the walker keeps no finished flag of its own.
+        // A finished walk asks the core again: it answers the no-node
+        // sentinel in the cursor while its tree is live and raises the
+        // stale-tree failure once it is not, so the walker keeps no
+        // finished flag of its own.
         next = session.walkerStep(cursor, generation);
         return next != null;
     }

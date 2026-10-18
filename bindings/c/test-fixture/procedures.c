@@ -81,9 +81,29 @@ static void count_pairs(GalleyHookDoor *door, unsigned long long generation, Gal
     }
 }
 
+/* What reduction() records for a hook that has no rule: a terminal match
+ * runs the general reduction hook with args.rule = null. The suite resets
+ * these and checks what each reader answered. */
+static int no_rule_calls = 0;
+static int no_rule_present = -1;
+static long long no_rule_present_status = galley_ok;
+static long long no_rule_reader_status[4] = {galley_ok, galley_ok, galley_ok, galley_ok};
+
 void reduction(GalleySession *session, unsigned long long hook) {
-    (void)session;
-    (void)hook;
+    int present = 1;
+    const long long present_status = galley_procedure_rule_present(session, hook, &present);
+    if (present_status != galley_ok || present != 0)
+        return; /* a variable reduction owns a rule */
+    const unsigned short *right_hand_side = NULL;
+    const char *index_text = NULL;
+    size_t length = 0;
+    ++no_rule_calls;
+    no_rule_present = present;
+    no_rule_present_status = present_status;
+    no_rule_reader_status[0] = galley_procedure_rule_header(session, hook);
+    no_rule_reader_status[1] = galley_procedure_rule_rhs_index(session, hook);
+    no_rule_reader_status[2] = galley_procedure_rule_right_hand_side(session, hook, &right_hand_side, &length);
+    no_rule_reader_status[3] = galley_procedure_rule_rhs_index_slice(session, hook, &index_text, &length);
 }
 
 void reduction_KeyTail(GalleySession *session, unsigned long long hook) { galley_procedure_drop_if_empty(session, hook); }
@@ -368,6 +388,7 @@ void fixture_stash_session(GalleySession *session) {
     hook_generation = 0;
     hook_generation_status = galley_ok;
     stashed_root = GALLEY_INVALID_NODE;
+    /* Sentinel: a refused read must leave it, a successful one overwrites it. */
     stashed_published_generation = 1;
     stashed_published_status = galley_ok;
     hook_walk_root = GALLEY_INVALID_NODE;
@@ -393,6 +414,28 @@ long long fixture_own_hook_status(int call) {
     return own_hook_status[call];
 }
 
+/* What reduction() recorded for hooks that have no rule: how many it saw,
+ * what galley_procedure_rule_present wrote, and what each of the four rule
+ * readers answered (header, rhs_index, right_hand_side, rhs_index_slice). */
+int fixture_no_rule_calls(void) { return no_rule_calls; }
+
+int fixture_no_rule_present(void) { return no_rule_present; }
+
+long long fixture_no_rule_present_status(void) { return no_rule_present_status; }
+
+long long fixture_no_rule_reader_status(int reader) {
+    if (reader < 0 || reader >= 4) return galley_ok;
+    return no_rule_reader_status[reader];
+}
+
+void fixture_forget_no_rule(void) {
+    no_rule_calls = 0;
+    no_rule_present = -1;
+    no_rule_present_status = galley_ok;
+    no_rule_reader_status[0] = no_rule_reader_status[1] = galley_ok;
+    no_rule_reader_status[2] = no_rule_reader_status[3] = galley_ok;
+}
+
 /* Every galley_procedure_* call made with one hook's ticket, in the order the
  * suite expects. The calls that change the parse run only for a ticket the
  * suite expects to be refused (`mutating`); a live ticket records 0 there. */
@@ -404,7 +447,11 @@ static void procedure_calls(GalleySession *session, unsigned long long hook, lon
     int i = 0;
     out[i++] = galley_procedure_door(session, hook, &door);
     out[i++] = galley_procedure_current_node(session, hook);
-    out[i++] = galley_procedure_rule_present(session, hook);
+    {
+        int rule_present = 0;
+        const long long status = galley_procedure_rule_present(session, hook, &rule_present);
+        out[i++] = status == galley_ok ? rule_present : status;
+    }
     out[i++] = galley_procedure_rule_header(session, hook);
     out[i++] = galley_procedure_rule_right_hand_side(session, hook, &right_hand_side, &length);
     out[i++] = galley_procedure_context_line(session, hook);
@@ -549,7 +596,7 @@ void reduction_Document(GalleySession *session, unsigned long long hook) {
             walk.root = node;
             for (;;) {
                 hook_walk_status = galley_hook_walk_next(door, &walk);
-                if (hook_walk_status != 1) break;
+                if (hook_walk_status != galley_ok || walk.current == GALLEY_INVALID_NODE) break;
                 if (hook_walk_count < FIXTURE_WALK_CAPACITY) {
                     hook_walk_node[hook_walk_count] = walk.current;
                     hook_walk_depth[hook_walk_count] = walk.depth;
@@ -561,7 +608,8 @@ void reduction_Document(GalleySession *session, unsigned long long hook) {
             walk.root = node;
             walk.options = GALLEY_WALK_SKIP_SEMANTIC_ERRORS;
             for (;;) {
-                if (galley_hook_walk_next(door, &walk) != 1) break;
+                if (galley_hook_walk_next(door, &walk) != galley_ok ||
+                    walk.current == GALLEY_INVALID_NODE) break;
                 ++hook_walk_skipped;
             }
         }

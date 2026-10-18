@@ -83,8 +83,8 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    GalleySession *session = galley_session_create();
-    if (session == NULL) {
+    GalleySession *session = NULL;
+    if (galley_session_create(NULL, &session) != galley_ok) {
         fprintf(stderr, "failed to create a parser session\n");
         free(input);
         return 1;

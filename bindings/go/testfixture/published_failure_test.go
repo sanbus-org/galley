@@ -10,9 +10,10 @@ import (
 
 // A parse that fails after running to its end publishes its tree: semantic
 // errors mark nodes, recovered syntax errors leave nodes over the damaged
-// input, and Parse still raises. Go reads the semantic-error flag; the
-// recovered flag and the snapshot's flag columns arrive with the rest of the
-// shared surface.
+// input, and Parse still raises with the diagnostic snapshot on the
+// *ParseError. The walk reports the semantic-error flag; the fixture's
+// grammar declares no explicit recovery points, so recovered diagnostics
+// carry no recovery target.
 
 func publishedSession(t *testing.T, options galley.SessionOptions) *galley.Session {
 	t.Helper()
@@ -123,7 +124,10 @@ func TestRecoveryReportsEachDamagedValue(t *testing.T) {
 	if _, err := session.Parse([]byte("alpha:x,beta:y,gamma:z")); !errors.Is(err, galley.ErrSyntax) {
 		t.Fatalf("expected ErrSyntax, got %v", err)
 	}
-	diagnostics := session.Diagnostics()
+	diagnostics, err := session.Diagnostics()
+	if err != nil {
+		t.Fatalf("diagnostics: %v", err)
+	}
 	want := []struct {
 		column     uint32
 		unexpected string

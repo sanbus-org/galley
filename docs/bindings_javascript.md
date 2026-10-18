@@ -204,6 +204,11 @@ they do before the first parse. `rootNode()` is the one "is there a tree
 here" probe: it returns `null` when nothing is published. There is no validity probe — a real
 read is the answer, and it raises.
 
+A parser built without AST construction still publishes, into a tree that
+holds no nodes: `nodeCount()` answers 0, `snapshot()` is empty, and
+`rootNode()` is `null`. Node reads then answer `Status.ErrorInvalidNode`
+rather than a stale-tree refusal, because the parse's generation is live.
+
 ## Procedures
 
 Set `pub const procedures = true;` in your grammar's `config.zig` and
@@ -251,9 +256,11 @@ export function hook_print(args: ProcedureArguments): void {
 `ProcedureArguments` is valid only while its hook runs: the core refuses every call made with
 the arguments of a hook that has returned, and the object keeps no expiry state of its own, so a kept
 reference throws a `GalleyError` with code `Status.ErrorStaleHook`, from a later hook of the same
-parse and after the parse alike. `nodeCapacity()`, `nodeCount()`, `snapshot()`, `lastInput()` and
-`lastPosition()` throw `GalleyError` with `Status.ErrorSessionInUse` inside a hook, never an empty
-answer; a walker belongs to the parse of the tree it was created over, so stepping it after a re-parse
+parse and after the parse alike. `nodeCapacity()`, `nodeCount()`, `snapshot()`, `lastInput()`,
+`lastPosition()` and the recorded `diagnostics()` throw `GalleyError` with
+`Status.ErrorSessionInUse` inside a hook, never an empty answer — while `diagnostic()` and
+`hasDiagnostic()` answer the in-flight parse's current diagnostic through the hook's own door; a
+walker belongs to the parse of the tree it was created over, so stepping it after a re-parse
 throws `StaleTreeError`, even if it had already finished. Text and input the core returns are borrowed
 until the next parse, and every adapter copies them out before returning.
 The nodes it yields belong to the parse: a hook may keep one for later hooks
@@ -360,7 +367,10 @@ yielding one `{ node, depth, isSemanticError, isRecovered }` per step with the n
 itself at depth 0 — the shared runtime walker. The walker is iterable and
 owns no native resource: no `close` and no `using`; a step after the
 session reparses raises `StaleTreeError` and one after it closes raises
-`SessionClosedError`, instead of either reading stale storage. `skipChildren()`
+`SessionClosedError`, instead of either reading stale storage. Exhausting
+the walk leaves the cursor's no-node sentinel; every step that runs answers
+`ok`, and every further step keeps answering `done` while the tree is live.
+`skipChildren()`
 prunes the last yielded node's children host-side, without a native call.
 Pass `true` to `walk` to prune semantic-error subtrees, and a second `true`
 (`walk(false, true)`) to prune the recovered ones — the nodes syntax-error
@@ -408,15 +418,24 @@ Options mirror the runtime defaults: `maxErrors: 10`,
 `recoveryWindow: 500`, `stackOverflowRecovery: false`,
 `syntaxErrorStackDepth: 0`, `verbosity: 0`,
 `astPreallocationRatio: -1.0`, `astPreallocationCap: 0`.
-Overrides register per session through the method:
+The library validates them when the session opens: a negative count field or a
+non-finite ratio throws a `GalleyError` with `Status.ErrorInvalidArgument`
+(-18) before anything is created. Overrides register per session through the
+method:
 
 ```ts
 session.setMessageOverride("Number", "expected a number at {line}:{column}");
 ```
 
-Failures throw `GalleyError`, whose `code` is the raw status code. A parse
-failure's `diagnostic` is the frozen `Diagnostic` of where the parse stopped;
-every other failure's is `null`. `session.diagnostic()` returns the last
+Failures throw `GalleyError`, whose `code` is the raw status code. A
+failure carries the frozen `Diagnostic` of where the parse stopped exactly
+when its status is one of `Status.ErrorSyntax`, `Status.ErrorSemantic`,
+`Status.ErrorIndentation`, `Status.ErrorStackOverflow`,
+`Status.ErrorAstCapacityExceeded`, `Status.ErrorUnterminatedRawString`,
+`Status.ErrorOutOfMemory` and `Status.ErrorHookFailed` — the statuses that
+end a parse that ran, whose diagnostic then belongs to that attempt. A
+failure built from any other status carries none.
+`session.diagnostic()` returns the last
 diagnostic. Use after close throws `SessionClosedError` instead.
 
 `Session` implements `Symbol.dispose` so `using`/`await using` closes on
@@ -450,7 +469,10 @@ conversion from a stored address back to a node.
 `offset` (byte offset in the input), `line`, `column` (0, 0 when it has none), `message`, `messageAnsi`,
 `unexpectedToken`, `expectedTokens`, `context`, `syntaxErrorCount`,
 indentation details, and the full structured recovery information — or
-`null` when the last parse succeeded.
+`null` when the last parse succeeded. A symbol or variable read with an index
+at or past its table — `symbolNameAt`, `symbolIsTerminal`, `variableNameAt` —
+throws a `GalleyError` with `Status.ErrorOutOfRange` (-17), never `null` or
+`false`; a closed session throws `SessionClosedError` first.
 
 ## Appendix: backends
 

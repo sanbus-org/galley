@@ -128,9 +128,11 @@ export interface NodeFamily {
   nodeVariableIndex(handle: Handle, generation: number, node: bigint): number | null;
   /**
    * One step of a walk over the host-owned 40-byte cursor, which carries
-   * its own generation: 1 yields a node, 0 ends the walk (and keeps ending
-   * it while its tree is live), negative is a failure (stale tree, session
-   * in use, malformed cursor bytes).
+   * its own generation: every step that runs answers `Status.Ok` — a
+   * yielded node is in `current`, a finished walk leaves `INVALID_NODE`
+   * there (and every further step keeps answering it while its tree is
+   * live). Negative is a failure (stale tree, session in use, malformed
+   * cursor bytes).
    */
   walkNext(handle: Handle, cursor: ArrayBuffer): number;
   // Tree edits. A call with a second node passes each node's own generation;
@@ -181,11 +183,73 @@ export interface NodeFamily {
   ): { status: number; head: bigint };
 }
 
+/**
+ * One door's current-diagnostic calls: the `galley_diagnostic_*` family over
+ * a session handle, or its `galley_hook_diagnostic_*` twin over a parse's
+ * hook door. The two families take the same handle-shaped first argument and
+ * answer the same way, so an adapter instantiates each capability twice,
+ * once per prefix.
+ *
+ * Every refusal travels as a negative status `number` wherever the C call
+ * answers with one — never folded to `null`, `0` or `""`; the core
+ * (`session.ts`) is the one place a status becomes a host failure. The
+ * conditional-field reads (unexpected token, semantic pair, indentation,
+ * recovery fields) answer `galley_error_no_diagnostic` when the diagnostic
+ * is absent or of another kind, which the core maps to the field's absence
+ * (never null for a refusal).
+ */
+export interface CurrentDiagnosticFamily {
+  /** Out-parameter form: the flag, or the refusal as a negative Number. */
+  hasDiagnostic(handle: Handle): boolean | number;
+  /** The diagnostic kind (0 = none), or the refusal as a negative Number. */
+  diagnosticKind(handle: Handle): number;
+  diagnosticMessage(handle: Handle): string | number;
+  diagnosticMessageAnsi(handle: Handle): string | number;
+  /** `[offset, line, column]`, or the refusal as a negative Number. */
+  diagnosticPosition(handle: Handle): [number, number, number] | number;
+  diagnosticUnexpectedToken(handle: Handle): Uint8Array | number;
+  /** Expected-token count, or the refusal as a negative Number. */
+  diagnosticExpectedCount(handle: Handle): number;
+  diagnosticExpectedAt(handle: Handle, index: number): Uint8Array | number;
+  diagnosticContextCount(handle: Handle): number;
+  diagnosticContextAt(handle: Handle, index: number): Uint8Array | number;
+  /** Running syntax-error total, or the refusal as a negative Number. */
+  syntaxErrorCount(handle: Handle): number;
+  /** Running semantic-error total, or the refusal as a negative Number. */
+  semanticErrorCount(handle: Handle): number;
+  /** `(variable, message)`, or the refusal as a negative Number. */
+  diagnosticSemantic(handle: Handle): [string, string] | number;
+  /** `(spaces, width)`, or the refusal as a negative Number. */
+  diagnosticIndentation(handle: Handle): [number, number] | number;
+  /** Recovery target (0 = none), or the refusal as a negative Number. */
+  diagnosticRecoveryKind(handle: Handle): number;
+  diagnosticRecoveryTerminal(handle: Handle): Uint8Array | number;
+  /** Resume side value, or the refusal as a negative Number. */
+  diagnosticRecoveryResume(handle: Handle): number;
+  diagnosticRecoveryLhsVariable(handle: Handle): string | number;
+  /** `(variable, rhs_index)`, or the refusal as a negative Number. */
+  diagnosticRecoveryProduction(handle: Handle): [string, number] | number;
+  /** `(parent, rhs, symbol, variable)`, or the refusal as a negative Number. */
+  diagnosticRecoveryOccurrence(handle: Handle): [string, number, number, string] | number;
+}
+
 export interface FfiPort {
   /** The session door's node and tree calls; the handle is a session. */
   readonly session: NodeFamily;
   /** The hook door's twins; the handle is the parse's door (`procDoor`). */
   readonly hook: NodeFamily;
+  /**
+   * The session door's current-diagnostic family: the previous parse's
+   * diagnostic. Inside a hook that door refuses with `session in use`;
+   * hook code uses {@link FfiPort.hookDiagnostics}.
+   */
+  readonly diagnostics: CurrentDiagnosticFamily;
+  /**
+   * The hook door's current-diagnostic twin, over a parse's door
+   * (`procDoor`): the in-progress parse's diagnostic. The recorded-*
+   * family has no hook twin; it is post-parse only.
+   */
+  readonly hookDiagnostics: CurrentDiagnosticFamily;
 
   // -- parser metadata (mirror galley.h; sessions expose these per artifact) --
   version(): string;
@@ -203,8 +267,14 @@ export interface FfiPort {
   statusString(status: number): string | null;
 
   // -- sessions ---------------------------------------------------------
-  /** Null handle on initialization failure (most commonly allocation failure). */
-  createSession(options: SessionCOptions | null): Handle;
+  /**
+   * Creates the parser's session. The status is the call's `galley_ok` or
+   * its negative refusal (an option value outside its domain,
+   * `galley_error_invalid_argument`); the handle is present exactly when the
+   * status is `galley_ok`. Passing null options crosses as a NULL pointer
+   * (the library's defaults), never as a zeroed struct.
+   */
+  createSession(options: SessionCOptions | null): { status: number; handle: Handle | null };
   /**
    * Destroys the session: `galley_ok` (0) when it is gone, or the core's
    * negative status when a parse holds it — then nothing was freed.
@@ -244,7 +314,10 @@ export interface FfiPort {
   //
   // Node and tree calls live on `session` and `hook` (see NodeFamily); what
   // stays here names no node, or reads the published tree as a whole.
-  /** Node count of the tree `generation` names. */
+  /**
+   * Node count of the tree `generation` names: 0 for a parser built without
+   * AST construction, where a live tree has no nodes.
+   */
   nodeCount(handle: Handle, generation: number): number;
   /** Negative status on failure (e.g. capacity exceeded). */
   reserveNodes(handle: Handle, capacity: bigint): number;
@@ -257,7 +330,10 @@ export interface FfiPort {
    * is published; a negative status is a refusal (session in use).
    */
   rootNode(handle: Handle): { status: number; root: bigint; generation: number };
-  /** Flat bulk read of the published tree (see `SnapshotColumns`). */
+  /**
+   * Flat bulk read of the published tree (see `SnapshotColumns`): an empty
+   * read (`count` 0) for a parser built without AST construction.
+   */
   treeSnapshot(handle: Handle, generation: number): SnapshotColumns | number;
 
   // -- walking ------------------------------------------------------------
@@ -268,59 +344,47 @@ export interface FfiPort {
    */
   readonly walkCursorLittleEndian: boolean;
   // -- symbol tables -------------------------------------------------------
-  symbolNameAt(handle: Handle, index: number): Uint8Array | null;
-  symbolIsTerminal(handle: Handle, index: number): boolean;
-  variableNameAt(handle: Handle, index: number): Uint8Array | null;
-
-  // -- diagnostics ---------------------------------------------------------
-  hasDiagnostic(handle: Handle): boolean;
-  diagnosticKind(handle: Handle): number;
-  diagnosticMessage(handle: Handle): string | null;
-  diagnosticMessageAnsi(handle: Handle): string | null;
-  /** `[offset, line, column]`: line and column are 0, 0 when the diagnostic has none. */
-  diagnosticPosition(handle: Handle): [number, number, number] | null;
-  diagnosticUnexpectedToken(handle: Handle): Uint8Array | null;
-  diagnosticExpectedCount(handle: Handle): number;
-  diagnosticExpectedAt(handle: Handle, index: number): Uint8Array | null;
-  diagnosticContextCount(handle: Handle): number;
-  diagnosticContextAt(handle: Handle, index: number): Uint8Array | null;
-  syntaxErrorCount(handle: Handle): number;
-  semanticErrorCount(handle: Handle): number;
-  /** (variable, message); null when there is no semantic diagnostic. */
-  diagnosticSemantic(handle: Handle): [string, string] | null;
-  /** (spaces, width); null when not an indentation diagnostic. */
-  diagnosticIndentation(handle: Handle): [number, number] | null;
-
-  // -- recovery, current diagnostic ------------------------------------------
-  diagnosticRecoveryKind(handle: Handle): number;
-  diagnosticRecoveryTerminal(handle: Handle): Uint8Array | null;
-  diagnosticRecoveryResume(handle: Handle): number | null;
-  diagnosticRecoveryLhsVariable(handle: Handle): string | null;
-  diagnosticRecoveryProduction(handle: Handle): [string, number] | null;
-  diagnosticRecoveryOccurrence(handle: Handle): [string, number, number, string] | null;
+  /**
+   * The symbol name at `index`: bytes, or the refusal as a negative Number
+   * (`galley_error_out_of_range` at or past `symbolCount()`).
+   */
+  symbolNameAt(handle: Handle, index: number): Uint8Array | number;
+  /**
+   * The terminal flag of the symbol at `index`: the boolean, or the refusal
+   * as a negative Number.
+   */
+  symbolIsTerminal(handle: Handle, index: number): boolean | number;
+  /**
+   * The variable name at `index`: bytes, or the refusal as a negative Number
+   * (`galley_error_out_of_range` at or past `variableCount()`).
+   */
+  variableNameAt(handle: Handle, index: number): Uint8Array | number;
 
   // -- recovery, recorded diagnostics ------------------------------------------
+  // Each recorded accessor answers with its value or the refusal as a
+  // negative Number; an index at or past `recordedDiagnosticCount` is
+  // `galley_error_no_diagnostic`.
   recordedDiagnosticCount(handle: Handle): number;
   recordedDiagnosticKind(handle: Handle, diagIndex: number): number;
-  recordedDiagnosticPosition(handle: Handle, diagIndex: number): [number, number, number] | null;
-  recordedUnexpectedToken(handle: Handle, diagIndex: number): Uint8Array | null;
-  recordedDiagnosticMessage(handle: Handle, diagIndex: number): string | null;
-  recordedDiagnosticMessageAnsi(handle: Handle, diagIndex: number): string | null;
-  recordedIndentation(handle: Handle, diagIndex: number): [number, number] | null;
-  recordedSemantic(handle: Handle, diagIndex: number): [string, string] | null;
+  recordedDiagnosticPosition(handle: Handle, diagIndex: number): [number, number, number] | number;
+  recordedUnexpectedToken(handle: Handle, diagIndex: number): Uint8Array | number;
+  recordedDiagnosticMessage(handle: Handle, diagIndex: number): string | number;
+  recordedDiagnosticMessageAnsi(handle: Handle, diagIndex: number): string | number;
+  recordedIndentation(handle: Handle, diagIndex: number): [number, number] | number;
+  recordedSemantic(handle: Handle, diagIndex: number): [string, string] | number;
   recordedExpectedCount(handle: Handle, diagIndex: number): number;
-  recordedExpectedToken(handle: Handle, diagIndex: number, tokenIndex: number): Uint8Array | null;
+  recordedExpectedToken(handle: Handle, diagIndex: number, tokenIndex: number): Uint8Array | number;
   recordedContextCount(handle: Handle, diagIndex: number): number;
-  recordedContextName(handle: Handle, diagIndex: number, contextIndex: number): Uint8Array | null;
+  recordedContextName(handle: Handle, diagIndex: number, contextIndex: number): Uint8Array | number;
   recordedRecoveryKind(handle: Handle, diagIndex: number): number;
-  recordedRecoveryTerminal(handle: Handle, diagIndex: number): Uint8Array | null;
-  recordedRecoveryResume(handle: Handle, diagIndex: number): number | null;
-  recordedRecoveryLhsVariable(handle: Handle, diagIndex: number): string | null;
-  recordedRecoveryProduction(handle: Handle, diagIndex: number): [string, number] | null;
+  recordedRecoveryTerminal(handle: Handle, diagIndex: number): Uint8Array | number;
+  recordedRecoveryResume(handle: Handle, diagIndex: number): number;
+  recordedRecoveryLhsVariable(handle: Handle, diagIndex: number): string | number;
+  recordedRecoveryProduction(handle: Handle, diagIndex: number): [string, number] | number;
   recordedRecoveryOccurrence(
     handle: Handle,
     diagIndex: number,
-  ): [string, number, number, string] | null;
+  ): [string, number, number, string] | number;
 
   // -- procedure hooks (per-hook state) ------------------------------------------
   // A hook is named by its session and ticket. Every call below answers with
@@ -356,7 +420,9 @@ export interface FfiPort {
   /**
    * Hook names in hook-index order, from the library's own list; empty
    * for a library that forwards no hooks to a host. Queried once and
-   * cached by the adapter.
+   * cached by the adapter. A refused name read raises the host's failure
+   * (it cannot happen for an index below the count) rather than silently
+   * shortening the table.
    */
   hookNames(): string[];
   /**

@@ -18,6 +18,7 @@ import type {
   Handle,
   StagedHandle,
   NodeFamily,
+  CurrentDiagnosticFamily,
   HookTicket,
   DispatchHandler,
   SessionCOptions,
@@ -82,12 +83,51 @@ type AddonDoorNames<Door extends "" | "hook_"> = {
 };
 
 /**
+ * The current-diagnostic calls both doors expose, keyed by the C name after
+ * `galley_`: the session door's `galley_<name>` over a session handle, the
+ * hook door's `galley_hook_<name>` over a parse's door. Every twin matches
+ * its session signature. A refusal arrives as a negative Number — never
+ * folded to null, 0 or "".
+ */
+interface AddonDiagnosticCalls {
+  has_diagnostic(handle: bigint): boolean | number;
+  diagnostic_kind(handle: bigint): bigint | number;
+  diagnostic_message(handle: bigint): string | number;
+  diagnostic_message_ansi(handle: bigint): string | number;
+  diagnostic_position(handle: bigint): [number, number, number] | number;
+  diagnostic_unexpected_token(handle: bigint): Buffer | number;
+  diagnostic_expected_count(handle: bigint): bigint | number;
+  diagnostic_expected_at(handle: bigint, index: bigint): Buffer | number;
+  diagnostic_context_count(handle: bigint): bigint | number;
+  diagnostic_context_at(handle: bigint, index: bigint): Buffer | number;
+  syntax_error_count(handle: bigint): bigint | number;
+  semantic_error_count(handle: bigint): bigint | number;
+  diagnostic_semantic(handle: bigint): [string, string] | number;
+  diagnostic_indentation(handle: bigint): [number, number] | number;
+  diagnostic_recovery_kind(handle: bigint): bigint | number;
+  diagnostic_recovery_terminal(handle: bigint): Buffer | number;
+  diagnostic_recovery_resume(handle: bigint): number;
+  diagnostic_recovery_lhs_variable(handle: bigint): string | number;
+  diagnostic_recovery_production(handle: bigint): [string, number] | number;
+  diagnostic_recovery_occurrence(handle: bigint): [string, number, number, string] | number;
+}
+
+/** `AddonDiagnosticCalls` under one door's C names. */
+type AddonDiagnosticNames<Door extends "" | "hook_"> = {
+  [Name in keyof AddonDiagnosticCalls as `galley_${Door}${Name & string}`]: AddonDiagnosticCalls[Name];
+};
+
+/**
  * One bound parser library: every `galley_*` function as a direct call
  * returning NAPI-natural values (bigint for 64-bit, number for 32-bit and
  * below, Buffer for byte pairs, string for text, tuples for scalar outs).
  * Optional JS-shim entries are null on libraries that predate them.
  */
-export interface AddonApi extends AddonDoorNames<""> , AddonDoorNames<"hook_"> {
+export interface AddonApi
+  extends AddonDoorNames<"">,
+    AddonDoorNames<"hook_">,
+    AddonDiagnosticNames<"">,
+    AddonDiagnosticNames<"hook_"> {
   // version / metadata
   galley_version(): string | null;
   galley_parser_type(): bigint;
@@ -104,13 +144,12 @@ export interface AddonApi extends AddonDoorNames<""> , AddonDoorNames<"hook_"> {
   galley_status_string(status: bigint): string | null;
 
   // symbol table
-  galley_symbol_name(session: bigint, index: bigint): Buffer | null;
-  galley_symbol_is_terminal(session: bigint, index: bigint): number;
-  galley_variable_name(session: bigint, index: bigint): Buffer | null;
+  galley_symbol_name(session: bigint, index: bigint): Buffer | number;
+  galley_symbol_is_terminal(session: bigint, index: bigint): boolean | number;
+  galley_variable_name(session: bigint, index: bigint): Buffer | number;
 
   // session
-  galley_session_create(): bigint;
-  galley_session_create_ex(options: SessionCOptionsOut): bigint;
+  galley_session_create(options: SessionCOptions | null): { status: number; handle: bigint | null };
   galley_session_destroy(session: bigint): bigint;
   galley_session_set_message_override(
     session: bigint,
@@ -121,9 +160,9 @@ export interface AddonApi extends AddonDoorNames<""> , AddonDoorNames<"hook_"> {
   // parse
   galley_parse(session: bigint, data: Uint8Array, len: number): bigint;
   galley_parse_file(session: bigint, filePath: string): bigint;
-  // A negative Number is the core's refusal; empty input is a buffer-less null.
-  galley_last_input(session: bigint): Uint8Array | number | null;
-  galley_last_position(session: bigint): [number, number] | number | null;
+  // A negative Number is the core's refusal; empty input is an empty Buffer.
+  galley_last_input(session: bigint): Uint8Array | number;
+  galley_last_position(session: bigint): [number, number] | number;
 
   // node / tree
   //
@@ -150,72 +189,49 @@ export interface AddonApi extends AddonDoorNames<""> , AddonDoorNames<"hook_"> {
     capacity: bigint,
   ): number;
 
-  // diagnostics (singular)
-  galley_has_diagnostic(session: bigint): number;
-  galley_diagnostic_kind(session: bigint): bigint;
-  galley_diagnostic_message(session: bigint): string | null;
-  galley_diagnostic_message_ansi(session: bigint): string | null;
-  galley_diagnostic_position(session: bigint): [number, number, number] | null;
-  galley_diagnostic_unexpected_token(session: bigint): Buffer | null;
-  galley_diagnostic_expected_count(session: bigint): bigint;
-  galley_diagnostic_expected_at(session: bigint, index: bigint): Buffer | null;
-  galley_diagnostic_context_count(session: bigint): bigint;
-  galley_diagnostic_context_at(session: bigint, index: bigint): Buffer | null;
-  galley_diagnostic_indentation(session: bigint): [number, number] | null;
-  galley_syntax_error_count(session: bigint): bigint;
-  galley_semantic_error_count(session: bigint): bigint;
-  galley_diagnostic_semantic(session: bigint): [string, string] | null;
-  galley_diagnostic_recovery_kind(session: bigint): bigint;
-  galley_diagnostic_recovery_terminal(session: bigint): Buffer | null;
-  galley_diagnostic_recovery_resume(session: bigint): number | null;
-  galley_diagnostic_recovery_lhs_variable(session: bigint): string | null;
-  galley_diagnostic_recovery_production(session: bigint): [string, number] | null;
-  galley_diagnostic_recovery_occurrence(
-    session: bigint,
-  ): [string, number, number, string] | null;
-
-  // recorded
+  // recorded diagnostics: post-parse only (the singular family is the mapped
+  // AddonDiagnosticNames groups above)
   galley_recorded_diagnostic_count(session: bigint): bigint;
-  galley_recorded_diagnostic_kind(session: bigint, index: bigint): bigint;
+  galley_recorded_diagnostic_kind(session: bigint, index: bigint): bigint | number;
   galley_recorded_diagnostic_position(
     session: bigint,
     index: bigint,
-  ): [number, number, number] | null;
-  galley_recorded_unexpected_token(session: bigint, index: bigint): Buffer | null;
-  galley_recorded_diagnostic_message(session: bigint, index: bigint): string | null;
-  galley_recorded_diagnostic_message_ansi(session: bigint, index: bigint): string | null;
-  galley_recorded_indentation(session: bigint, index: bigint): [number, number] | null;
-  galley_recorded_semantic(session: bigint, index: bigint): [string, string] | null;
-  galley_recorded_expected_count(session: bigint, index: bigint): bigint;
+  ): [number, number, number] | number;
+  galley_recorded_unexpected_token(session: bigint, index: bigint): Buffer | number;
+  galley_recorded_diagnostic_message(session: bigint, index: bigint): string | number;
+  galley_recorded_diagnostic_message_ansi(session: bigint, index: bigint): string | number;
+  galley_recorded_indentation(session: bigint, index: bigint): [number, number] | number;
+  galley_recorded_semantic(session: bigint, index: bigint): [string, string] | number;
+  galley_recorded_expected_count(session: bigint, index: bigint): bigint | number;
   galley_recorded_expected_token(
     session: bigint,
     index: bigint,
     tokenIndex: bigint,
-  ): Buffer | null;
-  galley_recorded_context_count(session: bigint, index: bigint): bigint;
+  ): Buffer | number;
+  galley_recorded_context_count(session: bigint, index: bigint): bigint | number;
   galley_recorded_context_name(
     session: bigint,
     index: bigint,
     contextIndex: bigint,
-  ): Buffer | null;
-  galley_recorded_diagnostic_recovery_kind(session: bigint, index: bigint): bigint;
-  galley_recorded_recovery_terminal(session: bigint, index: bigint): Buffer | null;
-  galley_recorded_recovery_resume(session: bigint, index: bigint): number | null;
-  galley_recorded_recovery_lhs_variable(session: bigint, index: bigint): string | null;
+  ): Buffer | number;
+  galley_recorded_diagnostic_recovery_kind(session: bigint, index: bigint): bigint | number;
+  galley_recorded_recovery_terminal(session: bigint, index: bigint): Buffer | number;
+  galley_recorded_recovery_resume(session: bigint, index: bigint): number;
+  galley_recorded_recovery_lhs_variable(session: bigint, index: bigint): string | number;
   galley_recorded_recovery_production(
     session: bigint,
     index: bigint,
-  ): [string, number] | null;
+  ): [string, number] | number;
   galley_recorded_recovery_occurrence(
     session: bigint,
     index: bigint,
-  ): [string, number, number, string] | null;
+  ): [string, number, number, string] | number;
 
   // host hooks: the addon's one callback per library, and the per-session
   // hook state (see galley_session_set_hooks in galley.h)
   install_dispatch(callback: (hookHandle: number, hookIndex: number, hook: bigint) => number): void;
   galley_hooks_count(): number;
-  galley_hooks_name(index: number): string | null;
+  galley_hooks_name(index: number): Buffer | number;
   galley_session_set_hooks(session: bigint, hookHandle: number, enabled: Uint8Array): bigint;
 
   // procedure-hook state; node reads use the galley_hook_* twins below
@@ -232,17 +248,6 @@ export interface AddonApi extends AddonDoorNames<""> , AddonDoorNames<"hook_"> {
   galley_procedure_report_semantic_error(session: bigint, hook: bigint, message: string): number;
   galley_hook_generation(door: bigint): [number, number];
   /** [status, generation] of the published tree (0 when none or stale). */
-}
-
-/** Option fields as the addon reads them (camelCase mirrors SessionCOptions). */
-export interface SessionCOptionsOut {
-  maxErrors: number;
-  recoveryWindow: number;
-  stackOverflowRecovery: number;
-  syntaxErrorStackDepth: number;
-  verbosity: number;
-  astPreallocationRatio: number;
-  astPreallocationCap: bigint;
 }
 
 export interface GalleyFFI {
@@ -423,6 +428,61 @@ function addonFamily(api: AddonApi, door: "" | "hook_"): NodeFamily {
   };
 }
 
+/**
+ * One door's current-diagnostic family, bound from the addon's twin
+ * registrations exactly like {@link addonFamily}: `galley_<name>` for the
+ * session door, `galley_hook_<name>` for the hook door. Counts and kinds
+ * normalize to Numbers; a refusal stays a negative Number for the core,
+ * which is the one place it becomes a host failure.
+ */
+function diagFamily(api: AddonApi, door: "" | "hook_"): CurrentDiagnosticFamily {
+  const calls = api as unknown as Record<string, unknown>;
+  const bound = <Name extends keyof AddonDiagnosticCalls>(name: Name): AddonDiagnosticCalls[Name] =>
+    calls[`galley_${door}${name}`] as AddonDiagnosticCalls[Name];
+  const hasDiagnostic = bound("has_diagnostic");
+  const kind = bound("diagnostic_kind");
+  const message = bound("diagnostic_message");
+  const messageAnsi = bound("diagnostic_message_ansi");
+  const position = bound("diagnostic_position");
+  const unexpectedToken = bound("diagnostic_unexpected_token");
+  const expectedCount = bound("diagnostic_expected_count");
+  const expectedAt = bound("diagnostic_expected_at");
+  const contextCount = bound("diagnostic_context_count");
+  const contextAt = bound("diagnostic_context_at");
+  const syntaxErrorCount = bound("syntax_error_count");
+  const semanticErrorCount = bound("semantic_error_count");
+  const semantic = bound("diagnostic_semantic");
+  const indentation = bound("diagnostic_indentation");
+  const recoveryKind = bound("diagnostic_recovery_kind");
+  const recoveryTerminal = bound("diagnostic_recovery_terminal");
+  const recoveryResume = bound("diagnostic_recovery_resume");
+  const recoveryLhsVariable = bound("diagnostic_recovery_lhs_variable");
+  const recoveryProduction = bound("diagnostic_recovery_production");
+  const recoveryOccurrence = bound("diagnostic_recovery_occurrence");
+  return {
+    hasDiagnostic: (handle) => hasDiagnostic(handle as bigint),
+    diagnosticKind: (handle) => toNumber(kind(handle as bigint)),
+    diagnosticMessage: (handle) => message(handle as bigint),
+    diagnosticMessageAnsi: (handle) => messageAnsi(handle as bigint),
+    diagnosticPosition: (handle) => position(handle as bigint),
+    diagnosticUnexpectedToken: (handle) => unexpectedToken(handle as bigint),
+    diagnosticExpectedCount: (handle) => toNumber(expectedCount(handle as bigint)),
+    diagnosticExpectedAt: (handle, index) => expectedAt(handle as bigint, BigInt(index)),
+    diagnosticContextCount: (handle) => toNumber(contextCount(handle as bigint)),
+    diagnosticContextAt: (handle, index) => contextAt(handle as bigint, BigInt(index)),
+    syntaxErrorCount: (handle) => toNumber(syntaxErrorCount(handle as bigint)),
+    semanticErrorCount: (handle) => toNumber(semanticErrorCount(handle as bigint)),
+    diagnosticSemantic: (handle) => semantic(handle as bigint),
+    diagnosticIndentation: (handle) => indentation(handle as bigint),
+    diagnosticRecoveryKind: (handle) => toNumber(recoveryKind(handle as bigint)),
+    diagnosticRecoveryTerminal: (handle) => recoveryTerminal(handle as bigint),
+    diagnosticRecoveryResume: (handle) => recoveryResume(handle as bigint),
+    diagnosticRecoveryLhsVariable: (handle) => recoveryLhsVariable(handle as bigint),
+    diagnosticRecoveryProduction: (handle) => recoveryProduction(handle as bigint),
+    diagnosticRecoveryOccurrence: (handle) => recoveryOccurrence(handle as bigint),
+  };
+}
+
 
 /**
  * Node's {@link FfiPort}: normalizes the addon's direct returns into the
@@ -434,6 +494,8 @@ export class NodePort implements FfiPort {
   readonly libraryPath: string;
   readonly session: NodeFamily;
   readonly hook: NodeFamily;
+  readonly diagnostics: CurrentDiagnosticFamily;
+  readonly hookDiagnostics: CurrentDiagnosticFamily;
   hookDispatch: DispatchHandler | null = null;
 
   constructor(ffi: GalleyFFI) {
@@ -441,6 +503,8 @@ export class NodePort implements FfiPort {
     this.libraryPath = ffi.libPath;
     this.session = addonFamily(ffi.api, "");
     this.hook = addonFamily(ffi.api, "hook_");
+    this.diagnostics = diagFamily(ffi.api, "");
+    this.hookDiagnostics = diagFamily(ffi.api, "hook_");
   }
 
   private get api(): AddonApi {
@@ -503,23 +567,9 @@ export class NodePort implements FfiPort {
 
   // -- sessions ---------------------------------------------------------
 
-  createSession(options: SessionCOptions | null): Handle {
-    let handle: bigint;
-    if (options === null) {
-      handle = this.api.galley_session_create();
-    } else {
-      handle = this.api.galley_session_create_ex({
-        maxErrors: options.maxErrors,
-        recoveryWindow: options.recoveryWindow,
-        stackOverflowRecovery: options.stackOverflowRecovery,
-        syntaxErrorStackDepth: options.syntaxErrorStackDepth,
-        verbosity: options.verbosity,
-        astPreallocationRatio: options.astPreallocationRatio,
-        astPreallocationCap: options.astPreallocationCap,
-      });
-    }
-    if (handle === 0n || handle === null || handle === undefined) return null;
-    return handle;
+  createSession(options: SessionCOptions | null): { status: number; handle: Handle | null } {
+    const { status, handle } = this.api.galley_session_create(options);
+    return { status, handle: handle === 0n ? null : handle };
   }
 
   destroySession(handle: Handle): number {
@@ -559,11 +609,11 @@ export class NodePort implements FfiPort {
   }
 
   lastPosition(handle: Handle): [number, number] | number {
-    return this.api.galley_last_position(handle as bigint) ?? [0, 0];
+    return this.api.galley_last_position(handle as bigint);
   }
 
   lastInput(handle: Handle): Uint8Array | number {
-    return this.api.galley_last_input(handle as bigint) ?? new Uint8Array(0);
+    return this.api.galley_last_input(handle as bigint);
   }
 
   // -- arena and navigation ----------------------------------------------
@@ -622,99 +672,23 @@ export class NodePort implements FfiPort {
 
   // -- node accessors -----------------------------------------------------
 
-  symbolNameAt(handle: Handle, index: number): Uint8Array | null {
+  symbolNameAt(handle: Handle, index: number): Uint8Array | number {
     return this.api.galley_symbol_name(handle as bigint, BigInt(index));
   }
 
-  symbolIsTerminal(handle: Handle, index: number): boolean {
-    return this.api.galley_symbol_is_terminal(handle as bigint, BigInt(index)) !== 0;
+  symbolIsTerminal(handle: Handle, index: number): boolean | number {
+    return this.api.galley_symbol_is_terminal(handle as bigint, BigInt(index));
   }
 
-  variableNameAt(handle: Handle, index: number): Uint8Array | null {
+  variableNameAt(handle: Handle, index: number): Uint8Array | number {
     return this.api.galley_variable_name(handle as bigint, BigInt(index));
   }
 
   // -- diagnostics ---------------------------------------------------------
-
-  hasDiagnostic(handle: Handle): boolean {
-    return this.api.galley_has_diagnostic(handle as bigint) !== 0;
-  }
-
-  diagnosticKind(handle: Handle): number {
-    return toNumber(this.api.galley_diagnostic_kind(handle as bigint));
-  }
-
-  diagnosticMessage(handle: Handle): string | null {
-    return this.api.galley_diagnostic_message(handle as bigint);
-  }
-
-  diagnosticMessageAnsi(handle: Handle): string | null {
-    return this.api.galley_diagnostic_message_ansi(handle as bigint);
-  }
-
-  diagnosticPosition(handle: Handle): [number, number, number] | null {
-    return this.api.galley_diagnostic_position(handle as bigint);
-  }
-
-  diagnosticUnexpectedToken(handle: Handle): Uint8Array | null {
-    return this.api.galley_diagnostic_unexpected_token(handle as bigint);
-  }
-
-  diagnosticExpectedCount(handle: Handle): number {
-    return toNumber(this.api.galley_diagnostic_expected_count(handle as bigint));
-  }
-
-  diagnosticExpectedAt(handle: Handle, index: number): Uint8Array | null {
-    return this.api.galley_diagnostic_expected_at(handle as bigint, BigInt(index));
-  }
-
-  diagnosticContextCount(handle: Handle): number {
-    return toNumber(this.api.galley_diagnostic_context_count(handle as bigint));
-  }
-
-  diagnosticContextAt(handle: Handle, index: number): Uint8Array | null {
-    return this.api.galley_diagnostic_context_at(handle as bigint, BigInt(index));
-  }
-
-  syntaxErrorCount(handle: Handle): number {
-    return toNumber(this.api.galley_syntax_error_count(handle as bigint));
-  }
-
-  semanticErrorCount(handle: Handle): number {
-    return toNumber(this.api.galley_semantic_error_count(handle as bigint));
-  }
-
-  diagnosticSemantic(handle: Handle): [string, string] | null {
-    return this.api.galley_diagnostic_semantic(handle as bigint);
-  }
-
-  diagnosticIndentation(handle: Handle): [number, number] | null {
-    return this.api.galley_diagnostic_indentation(handle as bigint);
-  }
-
-  diagnosticRecoveryKind(handle: Handle): number {
-    return toNumber(this.api.galley_diagnostic_recovery_kind(handle as bigint));
-  }
-
-  diagnosticRecoveryTerminal(handle: Handle): Uint8Array | null {
-    return this.api.galley_diagnostic_recovery_terminal(handle as bigint);
-  }
-
-  diagnosticRecoveryResume(handle: Handle): number | null {
-    return this.api.galley_diagnostic_recovery_resume(handle as bigint);
-  }
-
-  diagnosticRecoveryLhsVariable(handle: Handle): string | null {
-    return this.api.galley_diagnostic_recovery_lhs_variable(handle as bigint);
-  }
-
-  diagnosticRecoveryProduction(handle: Handle): [string, number] | null {
-    return this.api.galley_diagnostic_recovery_production(handle as bigint);
-  }
-
-  diagnosticRecoveryOccurrence(handle: Handle): [string, number, number, string] | null {
-    return this.api.galley_diagnostic_recovery_occurrence(handle as bigint);
-  }
+  //
+  // The current-diagnostic family lives on `diagnostics` (session door) and
+  // `hookDiagnostics` (hook door), built once in the constructor; the
+  // recorded family below is flat and post-parse only.
 
   recordedDiagnosticCount(handle: Handle): number {
     return toNumber(this.api.galley_recorded_diagnostic_count(handle as bigint));
@@ -724,27 +698,27 @@ export class NodePort implements FfiPort {
     return toNumber(this.api.galley_recorded_diagnostic_kind(handle as bigint, BigInt(diagIndex)));
   }
 
-  recordedDiagnosticPosition(handle: Handle, diagIndex: number): [number, number, number] | null {
+  recordedDiagnosticPosition(handle: Handle, diagIndex: number): [number, number, number] | number {
     return this.api.galley_recorded_diagnostic_position(handle as bigint, BigInt(diagIndex));
   }
 
-  recordedUnexpectedToken(handle: Handle, diagIndex: number): Uint8Array | null {
+  recordedUnexpectedToken(handle: Handle, diagIndex: number): Uint8Array | number {
     return this.api.galley_recorded_unexpected_token(handle as bigint, BigInt(diagIndex));
   }
 
-  recordedDiagnosticMessage(handle: Handle, diagIndex: number): string | null {
+  recordedDiagnosticMessage(handle: Handle, diagIndex: number): string | number {
     return this.api.galley_recorded_diagnostic_message(handle as bigint, BigInt(diagIndex));
   }
 
-  recordedDiagnosticMessageAnsi(handle: Handle, diagIndex: number): string | null {
+  recordedDiagnosticMessageAnsi(handle: Handle, diagIndex: number): string | number {
     return this.api.galley_recorded_diagnostic_message_ansi(handle as bigint, BigInt(diagIndex));
   }
 
-  recordedIndentation(handle: Handle, diagIndex: number): [number, number] | null {
+  recordedIndentation(handle: Handle, diagIndex: number): [number, number] | number {
     return this.api.galley_recorded_indentation(handle as bigint, BigInt(diagIndex));
   }
 
-  recordedSemantic(handle: Handle, diagIndex: number): [string, string] | null {
+  recordedSemantic(handle: Handle, diagIndex: number): [string, string] | number {
     return this.api.galley_recorded_semantic(handle as bigint, BigInt(diagIndex));
   }
 
@@ -752,7 +726,7 @@ export class NodePort implements FfiPort {
     return toNumber(this.api.galley_recorded_expected_count(handle as bigint, BigInt(diagIndex)));
   }
 
-  recordedExpectedToken(handle: Handle, diagIndex: number, tokenIndex: number): Uint8Array | null {
+  recordedExpectedToken(handle: Handle, diagIndex: number, tokenIndex: number): Uint8Array | number {
     return this.api.galley_recorded_expected_token(
       handle as bigint, BigInt(diagIndex), BigInt(tokenIndex),
     );
@@ -762,7 +736,7 @@ export class NodePort implements FfiPort {
     return toNumber(this.api.galley_recorded_context_count(handle as bigint, BigInt(diagIndex)));
   }
 
-  recordedContextName(handle: Handle, diagIndex: number, contextIndex: number): Uint8Array | null {
+  recordedContextName(handle: Handle, diagIndex: number, contextIndex: number): Uint8Array | number {
     return this.api.galley_recorded_context_name(
       handle as bigint, BigInt(diagIndex), BigInt(contextIndex),
     );
@@ -772,26 +746,26 @@ export class NodePort implements FfiPort {
     return toNumber(this.api.galley_recorded_diagnostic_recovery_kind(handle as bigint, BigInt(diagIndex)));
   }
 
-  recordedRecoveryTerminal(handle: Handle, diagIndex: number): Uint8Array | null {
+  recordedRecoveryTerminal(handle: Handle, diagIndex: number): Uint8Array | number {
     return this.api.galley_recorded_recovery_terminal(handle as bigint, BigInt(diagIndex));
   }
 
-  recordedRecoveryResume(handle: Handle, diagIndex: number): number | null {
+  recordedRecoveryResume(handle: Handle, diagIndex: number): number {
     return this.api.galley_recorded_recovery_resume(handle as bigint, BigInt(diagIndex));
   }
 
-  recordedRecoveryLhsVariable(handle: Handle, diagIndex: number): string | null {
+  recordedRecoveryLhsVariable(handle: Handle, diagIndex: number): string | number {
     return this.api.galley_recorded_recovery_lhs_variable(handle as bigint, BigInt(diagIndex));
   }
 
-  recordedRecoveryProduction(handle: Handle, diagIndex: number): [string, number] | null {
+  recordedRecoveryProduction(handle: Handle, diagIndex: number): [string, number] | number {
     return this.api.galley_recorded_recovery_production(handle as bigint, BigInt(diagIndex));
   }
 
   recordedRecoveryOccurrence(
     handle: Handle,
     diagIndex: number,
-  ): [string, number, number, string] | null {
+  ): [string, number, number, string] | number {
     return this.api.galley_recorded_recovery_occurrence(handle as bigint, BigInt(diagIndex));
   }
 
@@ -852,8 +826,12 @@ export class NodePort implements FfiPort {
     const total = this.api.galley_hooks_count();
     for (let index = 0; index < total; index++) {
       const name = this.api.galley_hooks_name(index);
-      if (name === null) break;
-      table.push(name);
+      if (typeof name === "number") {
+        // Cannot happen below galley_hooks_count; raising beats silently
+        // shortening the table.
+        throw new GalleyError(this.statusString(name) ?? `status ${name}`, name as Status);
+      }
+      table.push(bytesToString(name));
     }
     this.#hookNameTable = table;
     return table;

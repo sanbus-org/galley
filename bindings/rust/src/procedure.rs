@@ -13,7 +13,7 @@
 // runs, and the core refuses every call made with the ticket of a hook that has
 // returned (`Error::StaleHook`).
 
-use std::ffi::{c_char, c_void};
+use std::ffi::{c_char, c_int, c_void};
 
 /// `GALLEY_INVALID_NODE`: no node at that position. Non-negative like every
 /// address.
@@ -64,6 +64,13 @@ pub enum Error {
     StaleTree,
     /// A call made with the arguments of a hook that has returned.
     StaleHook,
+    /// A host hook's dispatch reported failure and the parse stopped. Only a
+    /// library built with a host shim returns it; Rust hooks cannot fail.
+    HookFailed,
+    /// An index outside the table it was read from.
+    OutOfRange,
+    /// A value outside its domain.
+    InvalidArgument,
 }
 
 impl Error {
@@ -84,6 +91,9 @@ impl Error {
             -13 => Error::SessionInUse,
             -14 => Error::StaleTree,
             -15 => Error::StaleHook,
+            -16 => Error::HookFailed,
+            -17 => Error::OutOfRange,
+            -18 => Error::InvalidArgument,
             _ => Error::Internal,
         }
     }
@@ -135,7 +145,11 @@ extern "C" {
         generation: u64,
         node: u64,
     ) -> i64;
-    fn galley_procedure_rule_present(session: *mut c_void, hook: u64) -> i64;
+    fn galley_procedure_rule_present(
+        session: *mut c_void,
+        hook: u64,
+        out_present: *mut c_int,
+    ) -> i64;
     fn galley_procedure_rule_header(session: *mut c_void, hook: u64) -> i64;
     fn galley_procedure_rule_rhs_index(session: *mut c_void, hook: u64) -> i64;
     fn galley_procedure_context_line(session: *mut c_void, hook: u64) -> i64;
@@ -242,6 +256,9 @@ impl ProcedureArguments {
     pub fn door(&self) -> Result<&HookDoor, Error> {
         let mut door: *mut c_void = std::ptr::null_mut();
         map_status(unsafe { galley_procedure_door(self.session, self.hook, &mut door) })?;
+        if door.is_null() {
+            return Err(Error::Internal);
+        }
         Ok(unsafe { &*(door as *const HookDoor) })
     }
 
@@ -307,29 +324,33 @@ impl ProcedureArguments {
     /// The reducing rule, `None` when the hook runs for none. A hook that has
     /// returned is [`Error::StaleHook`].
     pub fn rule(&self) -> Result<Option<Rule>, Error> {
-        if value(unsafe { galley_procedure_rule_present(self.session, self.hook) })? != 1 {
+        let mut present = 0;
+        map_status(unsafe {
+            galley_procedure_rule_present(self.session, self.hook, &mut present)
+        })?;
+        if present == 0 {
             return Ok(None);
         }
         let header = value(unsafe { galley_procedure_rule_header(self.session, self.hook) })?;
         let right_hand_side_index =
             value(unsafe { galley_procedure_rule_rhs_index(self.session, self.hook) })?;
-        match (u16::try_from(header), u16::try_from(right_hand_side_index)) {
-            (Ok(header), Ok(right_hand_side_index)) => Ok(Some(Rule {
-                header,
-                right_hand_side_index,
-            })),
-            _ => Ok(None),
-        }
+        Ok(Some(Rule {
+            header: u16::try_from(header).map_err(|_| Error::Internal)?,
+            right_hand_side_index: u16::try_from(right_hand_side_index)
+                .map_err(|_| Error::Internal)?,
+        }))
     }
 
     /// The scanner line, or the core's refusal.
     pub fn current_line(&self) -> Result<u32, Error> {
-        Ok(value(unsafe { galley_procedure_context_line(self.session, self.hook) })? as u32)
+        let line = value(unsafe { galley_procedure_context_line(self.session, self.hook) })?;
+        u32::try_from(line).map_err(|_| Error::Internal)
     }
 
     /// The scanner column, or the core's refusal.
     pub fn current_column(&self) -> Result<u32, Error> {
-        Ok(value(unsafe { galley_procedure_context_column(self.session, self.hook) })? as u32)
+        let column = value(unsafe { galley_procedure_context_column(self.session, self.hook) })?;
+        u32::try_from(column).map_err(|_| Error::Internal)
     }
 
     /// The rule's right-hand-side symbol indexes (static grammar storage),
@@ -340,8 +361,10 @@ impl ProcedureArguments {
         match unsafe {
             galley_procedure_rule_right_hand_side(self.session, self.hook, &mut data, &mut len)
         } {
-            0 if !data.is_null() => Ok(Some(unsafe { std::slice::from_raw_parts(data, len) })),
-            0 | -10 => Ok(None),
+            0 if data.is_null() => Err(Error::Internal),
+            0 => Ok(Some(unsafe { std::slice::from_raw_parts(data, len) })),
+            // galley_error_invalid_argument: the hook has no rule.
+            -18 => Ok(None),
             status => Err(Error::from_status(status)),
         }
     }
@@ -354,8 +377,10 @@ impl ProcedureArguments {
         match unsafe {
             galley_procedure_rule_rhs_index_slice(self.session, self.hook, &mut data, &mut len)
         } {
-            0 if !data.is_null() => Ok(Some(unsafe { std::slice::from_raw_parts(data, len) })),
-            0 | -10 => Ok(None),
+            0 if data.is_null() => Err(Error::Internal),
+            0 => Ok(Some(unsafe { std::slice::from_raw_parts(data, len) })),
+            // galley_error_invalid_argument: the hook has no rule.
+            -18 => Ok(None),
             status => Err(Error::from_status(status)),
         }
     }
@@ -485,10 +510,9 @@ impl HookDoor {
         let index = value(unsafe {
             galley_hook_node_variable_index(self.as_ptr(), node.generation, node.address)
         })?;
-        Ok(if index == NO_VARIABLE as u64 {
-            None
-        } else {
-            u16::try_from(index).ok()
-        })
+        if index == NO_VARIABLE as u64 {
+            return Ok(None);
+        }
+        Ok(Some(u16::try_from(index).map_err(|_| Error::Internal)?))
     }
 }

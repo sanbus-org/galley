@@ -218,107 +218,112 @@ static napi_value make_string_or_null(napi_env env, const char *text) {
 /* lib->fn, resolved from the dlopen probe at load (see method_load). */
 /* ------------------------------------------------------------------ */
 
-typedef long long (*fn_galley_diagnostic_context_at_t)(GalleySession *session, unsigned long long index, const char **out_data, size_t *out_len);
-typedef long long (*fn_galley_diagnostic_context_count_t)(GalleySession *session);
-typedef long long (*fn_galley_diagnostic_expected_at_t)(GalleySession *session, unsigned long long index, const char **out_data, size_t *out_len);
-typedef long long (*fn_galley_diagnostic_expected_count_t)(GalleySession *session);
-typedef long long (*fn_galley_diagnostic_indentation_t)(GalleySession *session, unsigned int *out_spaces, unsigned int *out_indentation_width);
-typedef long long (*fn_galley_diagnostic_kind_t)(GalleySession *session);
-typedef long long (*fn_galley_diagnostic_message_t)(GalleySession *session, const char **out);
-typedef long long (*fn_galley_diagnostic_message_ansi_t)(GalleySession *session, const char **out);
-typedef long long (*fn_galley_diagnostic_position_t)(GalleySession *session, unsigned long long *out_offset, unsigned int *out_line, unsigned int *out_column);
-typedef long long (*fn_galley_diagnostic_recovery_kind_t)(GalleySession *session);
-typedef long long (*fn_galley_diagnostic_recovery_lhs_variable_t)(GalleySession *session, const char **out_data, size_t *out_len);
-typedef long long (*fn_galley_diagnostic_recovery_occurrence_t)(GalleySession *session, const char **out_parent_variable, size_t *out_parent_variable_len, unsigned int *out_rhs_index, unsigned int *out_symbol_index, const char **out_variable, size_t *out_variable_len);
-typedef long long (*fn_galley_diagnostic_recovery_production_t)(GalleySession *session, const char **out_variable, size_t *out_variable_len, unsigned int *out_rhs_index);
-typedef long long (*fn_galley_diagnostic_recovery_resume_t)(GalleySession *session, long long *out);
-typedef long long (*fn_galley_diagnostic_recovery_terminal_t)(GalleySession *session, const char **out_data, size_t *out_len);
-typedef long long (*fn_galley_diagnostic_semantic_t)(GalleySession *session, const char **out_variable, size_t *out_variable_len, const char **out_message, size_t *out_message_len);
-typedef long long (*fn_galley_diagnostic_unexpected_token_t)(GalleySession *session, const char **out_data, size_t *out_len);
-typedef long long (*fn_galley_error_recovery_mode_t)(void);
-typedef int (*fn_galley_has_ast_t)(void);
-typedef int (*fn_galley_has_diagnostic_t)(GalleySession *session);
-typedef int (*fn_galley_has_input_streaming_t)(void);
-typedef int (*fn_galley_has_position_tracking_t)(void);
-typedef int (*fn_galley_has_procedures_t)(void);
-typedef long long (*fn_galley_last_input_t)(GalleySession *session, const char **out_data, size_t *out_len);
-typedef long long (*fn_galley_last_position_t)(GalleySession *session, unsigned int *out_line, unsigned int *out_column);
-typedef long long (*fn_galley_node_capacity_t)(GalleySession *session);
-typedef long long (*fn_galley_node_child_count_t)(void *handle, unsigned long long generation, GalleyNodeAddress node);
-typedef long long (*fn_galley_node_count_t)(GalleySession *session, unsigned long long generation);
-typedef long long (*fn_galley_node_first_child_t)(void *handle, unsigned long long generation, GalleyNodeAddress node);
-typedef long long (*fn_galley_node_last_child_t)(void *handle, unsigned long long generation, GalleyNodeAddress node);
-typedef long long (*fn_galley_node_line_column_t)(void *handle, unsigned long long generation, GalleyNodeAddress node, unsigned int *out_line, unsigned int *out_column);
-typedef long long (*fn_galley_node_next_sibling_t)(void *handle, unsigned long long generation, GalleyNodeAddress node);
-typedef long long (*fn_galley_node_parent_t)(void *handle, unsigned long long generation, GalleyNodeAddress node);
-typedef long long (*fn_galley_node_prior_sibling_t)(void *handle, unsigned long long generation, GalleyNodeAddress node);
-typedef long long (*fn_galley_node_span_t)(void *handle, unsigned long long generation, GalleyNodeAddress node, unsigned long long *out_start, unsigned long long *out_len);
-typedef long long (*fn_galley_node_symbol_name_t)(void *handle, unsigned long long generation, GalleyNodeAddress node, const char **out_data, size_t *out_len);
-typedef long long (*fn_galley_node_text_t)(void *handle, unsigned long long generation, GalleyNodeAddress node, const char **out_data, size_t *out_len);
-typedef long long (*fn_galley_node_variable_index_t)(void *handle, unsigned long long generation, GalleyNodeAddress node);
-typedef long long (*fn_galley_parse_t)(GalleySession *session, const char *data, size_t len);
-typedef long long (*fn_galley_parse_file_t)(GalleySession *session, const char *path);
-typedef long long (*fn_galley_parser_type_t)(void);
-typedef long long (*fn_galley_procedure_context_column_t)(GalleySession *session, unsigned long long hook);
-typedef long long (*fn_galley_procedure_context_line_t)(GalleySession *session, unsigned long long hook);
-typedef long long (*fn_galley_procedure_current_node_t)(GalleySession *session, unsigned long long hook);
-typedef long long (*fn_galley_procedure_drop_children_t)(GalleySession *session, unsigned long long hook);
-typedef long long (*fn_galley_procedure_drop_if_empty_t)(GalleySession *session, unsigned long long hook);
-typedef long long (*fn_galley_procedure_drop_self_t)(GalleySession *session, unsigned long long hook);
-typedef long long (*fn_galley_procedure_report_semantic_error_t)(GalleySession *session, unsigned long long hook, const char *message, size_t message_len);
-typedef long long (*fn_galley_procedure_set_current_node_t)(GalleySession *session, unsigned long long hook, unsigned long long generation, GalleyNodeAddress node);
-typedef long long (*fn_galley_procedure_door_t)(GalleySession *session, unsigned long long hook, void **out_door);
-typedef long long (*fn_galley_hook_generation_t)(void *door, unsigned long long *out_generation);
-typedef long long (*fn_galley_recorded_context_count_t)(GalleySession *session, unsigned long long diag_index);
-typedef long long (*fn_galley_recorded_context_name_t)(GalleySession *session, unsigned long long diag_index, unsigned long long context_index, const char **out_data, size_t *out_len);
-typedef long long (*fn_galley_recorded_diagnostic_count_t)(GalleySession *session);
-typedef long long (*fn_galley_recorded_diagnostic_kind_t)(GalleySession *session, unsigned long long diag_index);
-typedef long long (*fn_galley_recorded_diagnostic_message_t)(GalleySession *session, unsigned long long diag_index, const char **out);
-typedef long long (*fn_galley_recorded_diagnostic_message_ansi_t)(GalleySession *session, unsigned long long diag_index, const char **out);
-typedef long long (*fn_galley_recorded_diagnostic_position_t)(GalleySession *session, unsigned long long diag_index, unsigned long long *out_offset, unsigned int *out_line, unsigned int *out_column);
-typedef long long (*fn_galley_recorded_diagnostic_recovery_kind_t)(GalleySession *session, unsigned long long diag_index);
-typedef long long (*fn_galley_recorded_expected_count_t)(GalleySession *session, unsigned long long diag_index);
-typedef long long (*fn_galley_recorded_expected_token_t)(GalleySession *session, unsigned long long diag_index, unsigned long long token_index, const char **out_data, size_t *out_len);
-typedef long long (*fn_galley_recorded_indentation_t)(GalleySession *session, unsigned long long diag_index, unsigned int *out_spaces, unsigned int *out_indentation_width);
-typedef long long (*fn_galley_recorded_recovery_lhs_variable_t)(GalleySession *session, unsigned long long diag_index, const char **out_data, size_t *out_len);
-typedef long long (*fn_galley_recorded_recovery_occurrence_t)(GalleySession *session, unsigned long long diag_index, const char **out_parent_variable, size_t *out_parent_variable_len, unsigned int *out_rhs_index, unsigned int *out_symbol_index, const char **out_variable, size_t *out_variable_len);
-typedef long long (*fn_galley_recorded_recovery_production_t)(GalleySession *session, unsigned long long diag_index, const char **out_variable, size_t *out_variable_len, unsigned int *out_rhs_index);
-typedef long long (*fn_galley_recorded_recovery_resume_t)(GalleySession *session, unsigned long long diag_index, long long *out);
-typedef long long (*fn_galley_recorded_recovery_terminal_t)(GalleySession *session, unsigned long long diag_index, const char **out_data, size_t *out_len);
-typedef long long (*fn_galley_recorded_semantic_t)(GalleySession *session, unsigned long long diag_index, const char **out_variable, size_t *out_variable_len, const char **out_message, size_t *out_message_len);
-typedef long long (*fn_galley_recorded_unexpected_token_t)(GalleySession *session, unsigned long long diag_index, const char **out_data, size_t *out_len);
-typedef long long (*fn_galley_reserve_nodes_t)(GalleySession *session, unsigned long long capacity);
-typedef long long (*fn_galley_root_node_t)(GalleySession *session, GalleyNodeAddress *out_root, unsigned long long *out_generation);
-typedef long long (*fn_galley_semantic_error_count_t)(GalleySession *session);
-typedef GalleySession * (*fn_galley_session_create_t)(void);
-typedef GalleySession * (*fn_galley_session_create_ex_t)(const GalleyCOptions *options);
-typedef long long (*fn_galley_session_destroy_t)(GalleySession *session);
-typedef size_t (*fn_galley_hooks_count_t)(void);
-typedef const char * (*fn_galley_hooks_name_data_t)(size_t index);
-typedef size_t (*fn_galley_hooks_name_length_t)(size_t index);
-typedef long long (*fn_galley_session_set_hooks_t)(GalleySession *session, GalleyHookDispatch dispatch, void *handle, const unsigned char *enabled, size_t enabled_count);
-typedef long long (*fn_galley_session_set_message_override_t)(GalleySession *session, const char *name, size_t name_len, const char *message, size_t message_len);
-typedef int (*fn_galley_source_retention_enabled_t)(void);
-typedef int (*fn_galley_stack_overflow_recovery_available_t)(void);
-typedef const char * (*fn_galley_status_string_t)(long long status);
-typedef unsigned long long (*fn_galley_symbol_count_t)(void);
-typedef int (*fn_galley_symbol_is_terminal_t)(GalleySession *session, unsigned long long index);
-typedef long long (*fn_galley_symbol_name_t)(GalleySession *session, unsigned long long index, const char **out_data, size_t *out_len);
-typedef long long (*fn_galley_syntax_error_count_t)(GalleySession *session);
-typedef long long (*fn_galley_tree_append_children_t)(void *handle, unsigned long long generation, GalleyNodeAddress parent, unsigned long long first_generation, GalleyNodeAddress first_node);
-typedef long long (*fn_galley_tree_clean_children_t)(void *handle, unsigned long long generation, GalleyNodeAddress node, GalleyNodeAddress *out_head);
-typedef long long (*fn_galley_tree_insert_after_t)(void *handle, unsigned long long generation, GalleyNodeAddress target, unsigned long long first_generation, GalleyNodeAddress first_node);
-typedef long long (*fn_galley_tree_insert_before_t)(void *handle, unsigned long long generation, GalleyNodeAddress target, unsigned long long first_generation, GalleyNodeAddress first_node);
-typedef long long (*fn_galley_tree_insert_children_at_t)(void *handle, unsigned long long generation, GalleyNodeAddress parent, size_t index, unsigned long long first_generation, GalleyNodeAddress first_node);
-typedef long long (*fn_galley_tree_remove_children_at_t)(void *handle, unsigned long long generation, GalleyNodeAddress parent, size_t index, size_t count, GalleyNodeAddress *out_head);
-typedef long long (*fn_galley_tree_remove_self_t)(void *handle, unsigned long long generation, GalleyNodeAddress node, GalleyNodeAddress *out_head);
-typedef long long (*fn_galley_tree_remove_siblings_t)(void *handle, unsigned long long generation, GalleyNodeAddress node, size_t count, GalleyNodeAddress *out_head);
-typedef long long (*fn_galley_tree_snapshot_t)(GalleySession *session, unsigned long long generation, GalleyNodeAddress *out_parent, GalleyNodeAddress *out_first_child, GalleyNodeAddress *out_next, unsigned int *out_child_count, long long *out_variable, unsigned long long *out_span_start, unsigned long long *out_span_len, int *out_is_semantic_error, int *out_is_recovered, unsigned long long capacity);
-typedef int (*fn_galley_uses_verbatim_t)(void);
-typedef unsigned long long (*fn_galley_variable_count_t)(void);
-typedef long long (*fn_galley_variable_name_t)(GalleySession *session, unsigned long long index, const char **out_data, size_t *out_len);
-typedef const char * (*fn_galley_version_t)(void);
-typedef long long (*fn_galley_walk_next_t)(void *handle, GalleyWalkCursor *cursor);
+/* The current-diagnostic family takes a door-shaped handle: a session on the
+ * galley_* calls, a parse's door on the galley_hook_* twins, which take the
+ * same arguments after the handle. One typedef per capability serves both
+ * prefixes (see SHARED_FN_ALIAS); every typedef below derives from the
+ * header's own declaration of that symbol, so a mistyped call cannot compile
+ * and the ABI the addon calls through is the ABI it was built against. */
+typedef __typeof__(&galley_diagnostic_context_at) fn_galley_diagnostic_context_at_t;
+typedef __typeof__(&galley_diagnostic_context_count) fn_galley_diagnostic_context_count_t;
+typedef __typeof__(&galley_diagnostic_expected_at) fn_galley_diagnostic_expected_at_t;
+typedef __typeof__(&galley_diagnostic_expected_count) fn_galley_diagnostic_expected_count_t;
+typedef __typeof__(&galley_diagnostic_indentation) fn_galley_diagnostic_indentation_t;
+typedef __typeof__(&galley_diagnostic_kind) fn_galley_diagnostic_kind_t;
+typedef __typeof__(&galley_diagnostic_message) fn_galley_diagnostic_message_t;
+typedef __typeof__(&galley_diagnostic_message_ansi) fn_galley_diagnostic_message_ansi_t;
+typedef __typeof__(&galley_diagnostic_position) fn_galley_diagnostic_position_t;
+typedef __typeof__(&galley_diagnostic_recovery_kind) fn_galley_diagnostic_recovery_kind_t;
+typedef __typeof__(&galley_diagnostic_recovery_lhs_variable) fn_galley_diagnostic_recovery_lhs_variable_t;
+typedef __typeof__(&galley_diagnostic_recovery_occurrence) fn_galley_diagnostic_recovery_occurrence_t;
+typedef __typeof__(&galley_diagnostic_recovery_production) fn_galley_diagnostic_recovery_production_t;
+typedef __typeof__(&galley_diagnostic_recovery_resume) fn_galley_diagnostic_recovery_resume_t;
+typedef __typeof__(&galley_diagnostic_recovery_terminal) fn_galley_diagnostic_recovery_terminal_t;
+typedef __typeof__(&galley_diagnostic_semantic) fn_galley_diagnostic_semantic_t;
+typedef __typeof__(&galley_diagnostic_unexpected_token) fn_galley_diagnostic_unexpected_token_t;
+typedef __typeof__(&galley_error_recovery_mode) fn_galley_error_recovery_mode_t;
+typedef __typeof__(&galley_has_ast) fn_galley_has_ast_t;
+typedef __typeof__(&galley_has_diagnostic) fn_galley_has_diagnostic_t;
+typedef __typeof__(&galley_hook_has_diagnostic) fn_galley_hook_has_diagnostic_t;
+typedef __typeof__(&galley_has_input_streaming) fn_galley_has_input_streaming_t;
+typedef __typeof__(&galley_has_position_tracking) fn_galley_has_position_tracking_t;
+typedef __typeof__(&galley_has_procedures) fn_galley_has_procedures_t;
+typedef __typeof__(&galley_last_input) fn_galley_last_input_t;
+typedef __typeof__(&galley_last_position) fn_galley_last_position_t;
+typedef __typeof__(&galley_node_capacity) fn_galley_node_capacity_t;
+typedef __typeof__(&galley_node_child_count) fn_galley_node_child_count_t;
+typedef __typeof__(&galley_node_count) fn_galley_node_count_t;
+typedef __typeof__(&galley_node_first_child) fn_galley_node_first_child_t;
+typedef __typeof__(&galley_node_last_child) fn_galley_node_last_child_t;
+typedef __typeof__(&galley_node_line_column) fn_galley_node_line_column_t;
+typedef __typeof__(&galley_node_next_sibling) fn_galley_node_next_sibling_t;
+typedef __typeof__(&galley_node_parent) fn_galley_node_parent_t;
+typedef __typeof__(&galley_node_prior_sibling) fn_galley_node_prior_sibling_t;
+typedef __typeof__(&galley_node_span) fn_galley_node_span_t;
+typedef __typeof__(&galley_node_symbol_name) fn_galley_node_symbol_name_t;
+typedef __typeof__(&galley_node_text) fn_galley_node_text_t;
+typedef __typeof__(&galley_node_variable_index) fn_galley_node_variable_index_t;
+typedef __typeof__(&galley_parse) fn_galley_parse_t;
+typedef __typeof__(&galley_parse_file) fn_galley_parse_file_t;
+typedef __typeof__(&galley_parser_type) fn_galley_parser_type_t;
+typedef __typeof__(&galley_procedure_context_column) fn_galley_procedure_context_column_t;
+typedef __typeof__(&galley_procedure_context_line) fn_galley_procedure_context_line_t;
+typedef __typeof__(&galley_procedure_current_node) fn_galley_procedure_current_node_t;
+typedef __typeof__(&galley_procedure_drop_children) fn_galley_procedure_drop_children_t;
+typedef __typeof__(&galley_procedure_drop_if_empty) fn_galley_procedure_drop_if_empty_t;
+typedef __typeof__(&galley_procedure_drop_self) fn_galley_procedure_drop_self_t;
+typedef __typeof__(&galley_procedure_report_semantic_error) fn_galley_procedure_report_semantic_error_t;
+typedef __typeof__(&galley_procedure_set_current_node) fn_galley_procedure_set_current_node_t;
+typedef __typeof__(&galley_procedure_door) fn_galley_procedure_door_t;
+typedef __typeof__(&galley_hook_generation) fn_galley_hook_generation_t;
+typedef __typeof__(&galley_recorded_context_count) fn_galley_recorded_context_count_t;
+typedef __typeof__(&galley_recorded_context_name) fn_galley_recorded_context_name_t;
+typedef __typeof__(&galley_recorded_diagnostic_count) fn_galley_recorded_diagnostic_count_t;
+typedef __typeof__(&galley_recorded_diagnostic_kind) fn_galley_recorded_diagnostic_kind_t;
+typedef __typeof__(&galley_recorded_diagnostic_message) fn_galley_recorded_diagnostic_message_t;
+typedef __typeof__(&galley_recorded_diagnostic_message_ansi) fn_galley_recorded_diagnostic_message_ansi_t;
+typedef __typeof__(&galley_recorded_diagnostic_position) fn_galley_recorded_diagnostic_position_t;
+typedef __typeof__(&galley_recorded_diagnostic_recovery_kind) fn_galley_recorded_diagnostic_recovery_kind_t;
+typedef __typeof__(&galley_recorded_expected_count) fn_galley_recorded_expected_count_t;
+typedef __typeof__(&galley_recorded_expected_token) fn_galley_recorded_expected_token_t;
+typedef __typeof__(&galley_recorded_indentation) fn_galley_recorded_indentation_t;
+typedef __typeof__(&galley_recorded_recovery_lhs_variable) fn_galley_recorded_recovery_lhs_variable_t;
+typedef __typeof__(&galley_recorded_recovery_occurrence) fn_galley_recorded_recovery_occurrence_t;
+typedef __typeof__(&galley_recorded_recovery_production) fn_galley_recorded_recovery_production_t;
+typedef __typeof__(&galley_recorded_recovery_resume) fn_galley_recorded_recovery_resume_t;
+typedef __typeof__(&galley_recorded_recovery_terminal) fn_galley_recorded_recovery_terminal_t;
+typedef __typeof__(&galley_recorded_semantic) fn_galley_recorded_semantic_t;
+typedef __typeof__(&galley_recorded_unexpected_token) fn_galley_recorded_unexpected_token_t;
+typedef __typeof__(&galley_reserve_nodes) fn_galley_reserve_nodes_t;
+typedef __typeof__(&galley_root_node) fn_galley_root_node_t;
+typedef __typeof__(&galley_semantic_error_count) fn_galley_semantic_error_count_t;
+typedef __typeof__(&galley_session_create) fn_galley_session_create_t;
+typedef __typeof__(&galley_session_destroy) fn_galley_session_destroy_t;
+typedef __typeof__(&galley_hooks_count) fn_galley_hooks_count_t;
+typedef __typeof__(&galley_hooks_name) fn_galley_hooks_name_t;
+typedef __typeof__(&galley_session_set_hooks) fn_galley_session_set_hooks_t;
+typedef __typeof__(&galley_session_set_message_override) fn_galley_session_set_message_override_t;
+typedef __typeof__(&galley_source_retention_enabled) fn_galley_source_retention_enabled_t;
+typedef __typeof__(&galley_stack_overflow_recovery_available) fn_galley_stack_overflow_recovery_available_t;
+typedef __typeof__(&galley_status_string) fn_galley_status_string_t;
+typedef __typeof__(&galley_symbol_count) fn_galley_symbol_count_t;
+typedef __typeof__(&galley_symbol_is_terminal) fn_galley_symbol_is_terminal_t;
+typedef __typeof__(&galley_symbol_name) fn_galley_symbol_name_t;
+typedef __typeof__(&galley_syntax_error_count) fn_galley_syntax_error_count_t;
+typedef __typeof__(&galley_tree_append_children) fn_galley_tree_append_children_t;
+typedef __typeof__(&galley_tree_clean_children) fn_galley_tree_clean_children_t;
+typedef __typeof__(&galley_tree_insert_after) fn_galley_tree_insert_after_t;
+typedef __typeof__(&galley_tree_insert_before) fn_galley_tree_insert_before_t;
+typedef __typeof__(&galley_tree_insert_children_at) fn_galley_tree_insert_children_at_t;
+typedef __typeof__(&galley_tree_remove_children_at) fn_galley_tree_remove_children_at_t;
+typedef __typeof__(&galley_tree_remove_self) fn_galley_tree_remove_self_t;
+typedef __typeof__(&galley_tree_remove_siblings) fn_galley_tree_remove_siblings_t;
+typedef __typeof__(&galley_tree_snapshot) fn_galley_tree_snapshot_t;
+typedef __typeof__(&galley_uses_verbatim) fn_galley_uses_verbatim_t;
+typedef __typeof__(&galley_variable_count) fn_galley_variable_count_t;
+typedef __typeof__(&galley_variable_name) fn_galley_variable_name_t;
+typedef __typeof__(&galley_version) fn_galley_version_t;
+typedef __typeof__(&galley_walk_next) fn_galley_walk_next_t;
 /* The hook twins take the same arguments after the door as the session calls
  * after the session, so one typedef per capability serves both prefixes. */
 #define SHARED_FN_ALIAS(suffix) typedef fn_galley_##suffix##_t fn_galley_hook_##suffix##_t;
@@ -342,13 +347,34 @@ SHARED_FN_ALIAS(tree_remove_self)
 SHARED_FN_ALIAS(tree_clean_children)
 SHARED_FN_ALIAS(tree_insert_children_at)
 SHARED_FN_ALIAS(tree_remove_children_at)
+/* The current-diagnostic twins (the hook door's galley_hook_diagnostic_*
+ * family), whose typedefs above take a door-shaped handle. */
+SHARED_FN_ALIAS(diagnostic_context_at)
+SHARED_FN_ALIAS(diagnostic_context_count)
+SHARED_FN_ALIAS(diagnostic_expected_at)
+SHARED_FN_ALIAS(diagnostic_expected_count)
+SHARED_FN_ALIAS(diagnostic_indentation)
+SHARED_FN_ALIAS(diagnostic_kind)
+SHARED_FN_ALIAS(diagnostic_message)
+SHARED_FN_ALIAS(diagnostic_message_ansi)
+SHARED_FN_ALIAS(diagnostic_position)
+SHARED_FN_ALIAS(diagnostic_recovery_kind)
+SHARED_FN_ALIAS(diagnostic_recovery_lhs_variable)
+SHARED_FN_ALIAS(diagnostic_recovery_occurrence)
+SHARED_FN_ALIAS(diagnostic_recovery_production)
+SHARED_FN_ALIAS(diagnostic_recovery_resume)
+SHARED_FN_ALIAS(diagnostic_recovery_terminal)
+SHARED_FN_ALIAS(diagnostic_semantic)
+SHARED_FN_ALIAS(diagnostic_unexpected_token)
+SHARED_FN_ALIAS(semantic_error_count)
+SHARED_FN_ALIAS(syntax_error_count)
 
 /* Single source for every required parser-library symbol: the slot
  * enum and the probe table below both expand from GALLEY_FN_LIST, so the
  * two can never skew (a skewed slot would call the wrong function through
- * the wrong type). The `fn_<name>_t` typedefs above stay manual —
- * signatures are not derivable from names — and method_load binds each
- * name through BIND_OR_THROW.
+ * the wrong type). Each `fn_<name>_t` above derives from the header's
+ * declaration of that name, and method_load binds each name through
+ * BIND_OR_THROW.
  */
 #define GALLEY_FN_LIST(X) \
   X(galley_diagnostic_context_at) \
@@ -371,8 +397,7 @@ SHARED_FN_ALIAS(tree_remove_children_at)
   X(galley_error_recovery_mode) \
   X(galley_has_ast) \
   X(galley_hooks_count) \
-  X(galley_hooks_name_data) \
-  X(galley_hooks_name_length) \
+  X(galley_hooks_name) \
   X(galley_session_set_hooks) \
   X(galley_has_diagnostic) \
   X(galley_has_input_streaming) \
@@ -399,6 +424,26 @@ SHARED_FN_ALIAS(tree_remove_children_at)
   X(galley_hook_tree_remove_children_at) \
   X(galley_hook_generation) \
   X(galley_hook_walk_next) \
+  X(galley_hook_diagnostic_context_at) \
+  X(galley_hook_diagnostic_context_count) \
+  X(galley_hook_diagnostic_expected_at) \
+  X(galley_hook_diagnostic_expected_count) \
+  X(galley_hook_diagnostic_indentation) \
+  X(galley_hook_diagnostic_kind) \
+  X(galley_hook_diagnostic_message) \
+  X(galley_hook_diagnostic_message_ansi) \
+  X(galley_hook_diagnostic_position) \
+  X(galley_hook_diagnostic_recovery_kind) \
+  X(galley_hook_diagnostic_recovery_lhs_variable) \
+  X(galley_hook_diagnostic_recovery_occurrence) \
+  X(galley_hook_diagnostic_recovery_production) \
+  X(galley_hook_diagnostic_recovery_resume) \
+  X(galley_hook_diagnostic_recovery_terminal) \
+  X(galley_hook_diagnostic_semantic) \
+  X(galley_hook_diagnostic_unexpected_token) \
+  X(galley_hook_has_diagnostic) \
+  X(galley_hook_semantic_error_count) \
+  X(galley_hook_syntax_error_count) \
   X(galley_last_input) \
   X(galley_last_position) \
   X(galley_node_capacity) \
@@ -448,7 +493,6 @@ SHARED_FN_ALIAS(tree_remove_children_at)
   X(galley_root_node) \
   X(galley_semantic_error_count) \
   X(galley_session_create) \
-  X(galley_session_create_ex) \
   X(galley_session_destroy) \
   X(galley_session_set_message_override) \
   X(galley_source_retention_enabled) \
@@ -687,7 +731,7 @@ static bool session_arg(napi_env env, size_t argc, napi_value *argv, GalleySessi
 
 static bool native_handle_arg(napi_env env, size_t argc, napi_value *argv, void **out) {
   if (argc < 1) {
-    napi_throw_type_error(env, NULL, "expected args");
+    napi_throw_type_error(env, NULL, "expected handle");
     return false;
   }
   uint64_t address = 0;
@@ -703,34 +747,50 @@ static napi_value make_null(napi_env env) {
 }
 
 /* The status a refusal travels as: a negative Number, the one shape every
- * node and tree crossing in this addon uses on either door, so the binding
- * can raise the core's own failure instead of reading a null. */
+ * crossing in this addon uses on either door, so the binding can raise the
+ * core's own failure instead of reading a null (or any other value). */
 static napi_value status_or_value(napi_env env, long long status, napi_value value) {
   if (status < 0) return make_number(env, status);
   return value;
 }
 
-/* (data, len) out-pair with a status gate: negative fails, NULL data fails. */
-static napi_value out_bytes(napi_env env, long long status, const char *data, size_t len) {
-  if (status < 0) return make_null(env);
+/* (data, len) out-pair: the bytes, or the refusal as a negative Number. A
+ * NULL pointer on success is the empty byte sequence (no bytes retained). */
+static napi_value bytes_result(napi_env env, long long status, const char *data, size_t len) {
+  if (status < 0) return make_number(env, status);
+  if (data == NULL) {
+    data = "";
+    len = 0;
+  }
   return make_buffer_or_null(env, data, len);
 }
 
-static napi_value out_string(napi_env env, long long status, const char *data, size_t len) {
-  if (status < 0 || data == NULL) return make_null(env);
+static napi_value string_result(napi_env env, long long status, const char *data, size_t len) {
+  if (status < 0) return make_number(env, status);
+  if (data == NULL) return make_null(env);
   napi_value out;
   if (napi_create_string_utf8(env, data, len, &out) != napi_ok) return NULL;
   return out;
 }
 
-/* NUL-terminated out-string with a nonzero-status gate (diagnostic text). */
-static napi_value message_or_null(napi_env env, long long status, const char *text) {
-  if (status != 0) return make_null(env);
-  return make_string_or_null(env, text);
+/* NUL-terminated out-string (diagnostic text): the string, or the refusal
+ * as a negative Number. NULL text on success is "" because the core's
+ * Diagnostic.message is a non-null string (wasm/deno/bun fold it the same). */
+static napi_value message_result(napi_env env, long long status, const char *text) {
+  if (status < 0) return make_number(env, status);
+  return make_string_or_null(env, text == NULL ? "" : text);
 }
 
-static napi_value pair_u64_or_null(napi_env env, long long status, uint64_t first, uint64_t second) {
-  if (status < 0) return make_null(env);
+/* An out-parameter flag: the Boolean, or the refusal as a negative Number. */
+static napi_value boolean_or_status(napi_env env, long long status, int flag) {
+  if (status < 0) return make_number(env, status);
+  napi_value out;
+  if (napi_get_boolean(env, flag != 0, &out) != napi_ok) return NULL;
+  return out;
+}
+
+static napi_value pair_u64_result(napi_env env, long long status, uint64_t first, uint64_t second) {
+  if (status < 0) return make_number(env, status);
   napi_value pair;
   napi_value first_value = make_u64(env, first);
   napi_value second_value = make_u64(env, second);
@@ -741,8 +801,8 @@ static napi_value pair_u64_or_null(napi_env env, long long status, uint64_t firs
   return pair;
 }
 
-static napi_value pair_u32_or_null(napi_env env, long long status, uint32_t first, uint32_t second) {
-  if (status < 0) return make_null(env);
+static napi_value pair_u32_result(napi_env env, long long status, uint32_t first, uint32_t second) {
+  if (status < 0) return make_number(env, status);
   napi_value pair;
   napi_value first_value = make_u32(env, first);
   napi_value second_value = make_u32(env, second);
@@ -753,10 +813,10 @@ static napi_value pair_u32_or_null(napi_env env, long long status, uint32_t firs
   return pair;
 }
 
-/* A diagnostic position as [offset, line, column], or null on a refusal. */
-static napi_value position_or_null(napi_env env, long long status, unsigned long long offset,
-                                   uint32_t line, uint32_t column) {
-  if (status < 0) return make_null(env);
+/* A diagnostic position as [offset, line, column], or the refusal. */
+static napi_value position_result(napi_env env, long long status, unsigned long long offset,
+                                  uint32_t line, uint32_t column) {
+  if (status < 0) return make_number(env, status);
   napi_value position;
   napi_value offset_value;
   napi_value line_value = make_u32(env, line);
@@ -770,9 +830,11 @@ static napi_value position_or_null(napi_env env, long long status, unsigned long
   return position;
 }
 
-static napi_value pair_string_or_null(napi_env env, long long status, const char *variable,
-                                      size_t variable_len, const char *message, size_t message_len) {
-  if (status < 0 || variable == NULL || message == NULL) return make_null(env);
+/* (variable, message) of a semantic diagnostic, or the refusal. */
+static napi_value pair_string_result(napi_env env, long long status, const char *variable,
+                                     size_t variable_len, const char *message, size_t message_len) {
+  if (status < 0) return make_number(env, status);
+  if (variable == NULL || message == NULL) return make_null(env);
   napi_value pair;
   napi_value variable_value;
   napi_value message_value;
@@ -782,6 +844,44 @@ static napi_value pair_string_or_null(napi_env env, long long status, const char
   if (napi_set_element(env, pair, 0, variable_value) != napi_ok) return NULL;
   if (napi_set_element(env, pair, 1, message_value) != napi_ok) return NULL;
   return pair;
+}
+
+/* (variable, rhs_index) of a recovery production, or the refusal. */
+static napi_value pair_variable_rhs_result(napi_env env, long long status, const char *variable,
+                                           size_t variable_len, unsigned int rhs_index) {
+  if (status < 0) return make_number(env, status);
+  if (variable == NULL) return make_null(env);
+  napi_value pair;
+  napi_value variable_value;
+  napi_value index_value = make_u32(env, rhs_index);
+  if (napi_create_string_utf8(env, variable, variable_len, &variable_value) != napi_ok) return NULL;
+  if (index_value == NULL) return NULL;
+  if (napi_create_array_with_length(env, 2, &pair) != napi_ok) return NULL;
+  if (napi_set_element(env, pair, 0, variable_value) != napi_ok) return NULL;
+  if (napi_set_element(env, pair, 1, index_value) != napi_ok) return NULL;
+  return pair;
+}
+
+/* (parent, rhs, symbol, variable) of a recovery occurrence, or the refusal. */
+static napi_value quad_result(napi_env env, long long status, const char *parent,
+                              size_t parent_len, unsigned int rhs, unsigned int sym,
+                              const char *variable, size_t variable_len) {
+  if (status < 0) return make_number(env, status);
+  if (parent == NULL || variable == NULL) return make_null(env);
+  napi_value quad;
+  napi_value parent_value;
+  napi_value rhs_value = make_u32(env, rhs);
+  napi_value sym_value = make_u32(env, sym);
+  napi_value variable_value;
+  if (napi_create_string_utf8(env, parent, parent_len, &parent_value) != napi_ok) return NULL;
+  if (rhs_value == NULL || sym_value == NULL) return NULL;
+  if (napi_create_string_utf8(env, variable, variable_len, &variable_value) != napi_ok) return NULL;
+  if (napi_create_array_with_length(env, 4, &quad) != napi_ok) return NULL;
+  if (napi_set_element(env, quad, 0, parent_value) != napi_ok) return NULL;
+  if (napi_set_element(env, quad, 1, rhs_value) != napi_ok) return NULL;
+  if (napi_set_element(env, quad, 2, sym_value) != napi_ok) return NULL;
+  if (napi_set_element(env, quad, 3, variable_value) != napi_ok) return NULL;
+  return quad;
 }
 
 /* ------------------------------------------------------------------ */
@@ -860,13 +960,6 @@ static bool generation_arg(napi_env env, size_t argc, napi_value *argv,
     return make_i64(env, (int64_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(session));                                           \
   }
 
-#define SESS_INT(cfn)                                                                      \
-  static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
-    GalleySession *session = NULL;                                                         \
-    if (!session_arg(env, argc, argv, &session)) return NULL;                              \
-    return make_i32(env, (int32_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(session));                                           \
-  }
-
 /* A link's answer: the address as a BigInt (GALLEY_INVALID_NODE when the link
  * does not exist), or the core's refusal as a negative Number, so no caller
  * can mistake it for the link. */
@@ -898,19 +991,6 @@ static napi_value count_result(napi_env env, long long count) {
     GalleyNodeAddress node = 0;                                                            \
     if (!session_node_args(env, argc, argv, &session, &generation, &node)) return NULL;    \
     return convert(env, ((fn_##cfn##_t)lib->fn[SLOT_##cfn])(session, generation, node));   \
-  }
-
-#define SESS_NODE_INT(cfn)                                                                 \
-  static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
-    GalleySession *session = NULL;                                                         \
-    if (!session_arg(env, argc, argv, &session)) return NULL;                              \
-    if (argc < 2) {                                                                        \
-      napi_throw_type_error(env, NULL, "expected node");                                   \
-      return NULL;                                                                         \
-    }                                                                                      \
-    uint64_t node = 0;                                                                     \
-    if (!get_u64(env, argv[1], &node)) return NULL;                                        \
-    return make_i32(env, (int32_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(session, (GalleyNodeAddress)node));                  \
   }
 
 #define SESS_INDEX_I64(cfn)                                                                \
@@ -999,16 +1079,193 @@ BOTH_DOORS_VALUE(SESS_GEN_VALUE, node_last_child, link_result)
 BOTH_DOORS_VALUE(SESS_GEN_VALUE, node_next_sibling, link_result)
 BOTH_DOORS_VALUE(SESS_GEN_VALUE, node_prior_sibling, link_result)
 BOTH_DOORS_VALUE(SESS_GEN_VALUE, node_parent, link_result)
-SESS_NODE_INT(galley_symbol_is_terminal)
+/* The symbol table's terminal flag: the out-parameter form, with the
+ * refusal (null session, or an index at or past the count) as a negative
+ * Number. */
+static napi_value method_galley_symbol_is_terminal(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
+  GalleySession *session = NULL;
+  if (!session_arg(env, argc, argv, &session)) return NULL;
+  if (argc < 2) {
+    napi_throw_type_error(env, NULL, "expected index");
+    return NULL;
+  }
+  uint64_t index = 0;
+  if (!get_u64(env, argv[1], &index)) return NULL;
+  int is_terminal = 0;
+  long long status = ((fn_galley_symbol_is_terminal_t)lib->fn[SLOT_galley_symbol_is_terminal])(session, index, &is_terminal);
+  return boolean_or_status(env, status, is_terminal);
+}
+
 BOTH_DOORS_VALUE(SESS_GEN_VALUE, node_child_count, count_result)
 BOTH_DOORS_VALUE(SESS_GEN_VALUE, node_variable_index, variable_index_result)
-SESS_I64(galley_diagnostic_kind)
-SESS_I64(galley_diagnostic_expected_count)
-SESS_I64(galley_diagnostic_context_count)
-SESS_INT(galley_has_diagnostic)
-SESS_I64(galley_syntax_error_count)
-SESS_I64(galley_semantic_error_count)
-SESS_I64(galley_diagnostic_recovery_kind)
+
+/* Current-diagnostic crossings: one wrapper per capability, instantiated for
+ * both doors — galley_<suffix> over a session handle, galley_hook_<suffix>
+ * over a parse's door — with identical arguments and answers. Every one
+ * passes the core's refusal on as a negative Number, never folded to null,
+ * 0 or "". */
+
+#define DEFINE_DIAG_I64(cfn)                                                               \
+  static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
+    void *handle = NULL;                                                                   \
+    if (!native_handle_arg(env, argc, argv, &handle)) return NULL;                         \
+    return make_i64(env, (int64_t)((fn_##cfn##_t)lib->fn[SLOT_##cfn])(handle));            \
+  }
+
+#define DEFINE_DIAG_MESSAGE(cfn)                                                           \
+  static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
+    void *handle = NULL;                                                                   \
+    if (!native_handle_arg(env, argc, argv, &handle)) return NULL;                         \
+    const char *text = NULL;                                                               \
+    long long status = ((fn_##cfn##_t)lib->fn[SLOT_##cfn])(handle, &text);                 \
+    return message_result(env, status, text);                                              \
+  }
+
+#define DEFINE_DIAG_POSITION(cfn)                                                          \
+  static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
+    void *handle = NULL;                                                                   \
+    if (!native_handle_arg(env, argc, argv, &handle)) return NULL;                         \
+    unsigned long long offset = 0;                                                         \
+    unsigned int line = 0;                                                                 \
+    unsigned int column = 0;                                                               \
+    long long status = ((fn_##cfn##_t)lib->fn[SLOT_##cfn])(handle, &offset, &line, &column); \
+    return position_result(env, status, offset, line, column);                             \
+  }
+
+#define DEFINE_DIAG_BYTES(cfn)                                                             \
+  static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
+    void *handle = NULL;                                                                   \
+    if (!native_handle_arg(env, argc, argv, &handle)) return NULL;                         \
+    const char *data = NULL;                                                               \
+    size_t len = 0;                                                                        \
+    long long status = ((fn_##cfn##_t)lib->fn[SLOT_##cfn])(handle, &data, &len);           \
+    return bytes_result(env, status, data, len);                                           \
+  }
+
+#define DEFINE_DIAG_INDEX_BYTES(cfn)                                                       \
+  static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
+    void *handle = NULL;                                                                   \
+    if (!native_handle_arg(env, argc, argv, &handle)) return NULL;                         \
+    if (argc < 2) {                                                                        \
+      napi_throw_type_error(env, NULL, "expected index");                                  \
+      return NULL;                                                                         \
+    }                                                                                      \
+    uint64_t index = 0;                                                                    \
+    if (!get_u64(env, argv[1], &index)) return NULL;                                       \
+    const char *data = NULL;                                                               \
+    size_t len = 0;                                                                        \
+    long long status = ((fn_##cfn##_t)lib->fn[SLOT_##cfn])(handle, index, &data, &len);    \
+    return bytes_result(env, status, data, len);                                           \
+  }
+
+#define DEFINE_DIAG_SEMANTIC(cfn)                                                          \
+  static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
+    void *handle = NULL;                                                                   \
+    if (!native_handle_arg(env, argc, argv, &handle)) return NULL;                         \
+    const char *variable = NULL;                                                           \
+    size_t variable_len = 0;                                                               \
+    const char *message = NULL;                                                            \
+    size_t message_len = 0;                                                                \
+    long long status = ((fn_##cfn##_t)lib->fn[SLOT_##cfn])(handle, &variable, &variable_len, &message, &message_len); \
+    return pair_string_result(env, status, variable, variable_len, message, message_len);  \
+  }
+
+#define DEFINE_DIAG_INDENTATION(cfn)                                                       \
+  static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
+    void *handle = NULL;                                                                   \
+    if (!native_handle_arg(env, argc, argv, &handle)) return NULL;                         \
+    unsigned int spaces = 0;                                                               \
+    unsigned int width = 0;                                                                \
+    long long status = ((fn_##cfn##_t)lib->fn[SLOT_##cfn])(handle, &spaces, &width);       \
+    return pair_u32_result(env, status, spaces, width);                                    \
+  }
+
+#define DEFINE_DIAG_RESUME(cfn)                                                            \
+  static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
+    void *handle = NULL;                                                                   \
+    if (!native_handle_arg(env, argc, argv, &handle)) return NULL;                         \
+    long long value = 0;                                                                   \
+    long long status = ((fn_##cfn##_t)lib->fn[SLOT_##cfn])(handle, &value);                \
+    if (status < 0) return make_number(env, status);                                       \
+    napi_value out;                                                                        \
+    /* Resume targets are 0/1; the port contract is number. */                             \
+    if (napi_create_double(env, (double)value, &out) != napi_ok) return NULL;              \
+    return out;                                                                            \
+  }
+
+#define DEFINE_DIAG_STRING(cfn)                                                            \
+  static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
+    void *handle = NULL;                                                                   \
+    if (!native_handle_arg(env, argc, argv, &handle)) return NULL;                         \
+    const char *data = NULL;                                                               \
+    size_t len = 0;                                                                        \
+    long long status = ((fn_##cfn##_t)lib->fn[SLOT_##cfn])(handle, &data, &len);           \
+    return string_result(env, status, data, len);                                          \
+  }
+
+#define DEFINE_DIAG_PRODUCTION(cfn)                                                        \
+  static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
+    void *handle = NULL;                                                                   \
+    if (!native_handle_arg(env, argc, argv, &handle)) return NULL;                         \
+    const char *variable = NULL;                                                           \
+    size_t variable_len = 0;                                                               \
+    unsigned int rhs_index = 0;                                                            \
+    long long status = ((fn_##cfn##_t)lib->fn[SLOT_##cfn])(handle, &variable, &variable_len, &rhs_index); \
+    return pair_variable_rhs_result(env, status, variable, variable_len, rhs_index);       \
+  }
+
+#define DEFINE_DIAG_OCCURRENCE(cfn)                                                        \
+  static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *argv) {   \
+    void *handle = NULL;                                                                   \
+    if (!native_handle_arg(env, argc, argv, &handle)) return NULL;                         \
+    const char *parent = NULL;                                                             \
+    size_t parent_len = 0;                                                                 \
+    unsigned int rhs = 0;                                                                  \
+    unsigned int sym = 0;                                                                  \
+    const char *variable = NULL;                                                           \
+    size_t variable_len = 0;                                                               \
+    long long status = ((fn_##cfn##_t)lib->fn[SLOT_##cfn])(handle, &parent, &parent_len, &rhs, &sym, &variable, &variable_len); \
+    return quad_result(env, status, parent, parent_len, rhs, sym, variable, variable_len); \
+  }
+
+BOTH_DOORS(DEFINE_DIAG_I64, diagnostic_kind)
+BOTH_DOORS(DEFINE_DIAG_I64, diagnostic_expected_count)
+BOTH_DOORS(DEFINE_DIAG_I64, diagnostic_context_count)
+BOTH_DOORS(DEFINE_DIAG_I64, syntax_error_count)
+BOTH_DOORS(DEFINE_DIAG_I64, semantic_error_count)
+BOTH_DOORS(DEFINE_DIAG_I64, diagnostic_recovery_kind)
+BOTH_DOORS(DEFINE_DIAG_MESSAGE, diagnostic_message)
+BOTH_DOORS(DEFINE_DIAG_MESSAGE, diagnostic_message_ansi)
+BOTH_DOORS(DEFINE_DIAG_POSITION, diagnostic_position)
+BOTH_DOORS(DEFINE_DIAG_BYTES, diagnostic_unexpected_token)
+BOTH_DOORS(DEFINE_DIAG_INDEX_BYTES, diagnostic_expected_at)
+BOTH_DOORS(DEFINE_DIAG_INDEX_BYTES, diagnostic_context_at)
+BOTH_DOORS(DEFINE_DIAG_SEMANTIC, diagnostic_semantic)
+BOTH_DOORS(DEFINE_DIAG_INDENTATION, diagnostic_indentation)
+BOTH_DOORS(DEFINE_DIAG_BYTES, diagnostic_recovery_terminal)
+BOTH_DOORS(DEFINE_DIAG_RESUME, diagnostic_recovery_resume)
+BOTH_DOORS(DEFINE_DIAG_STRING, diagnostic_recovery_lhs_variable)
+BOTH_DOORS(DEFINE_DIAG_PRODUCTION, diagnostic_recovery_production)
+BOTH_DOORS(DEFINE_DIAG_OCCURRENCE, diagnostic_recovery_occurrence)
+
+/* Whether a diagnostic exists, out-parameter form on both doors: both
+ * return the status as long long and share the Boolean conversion. */
+static napi_value method_galley_has_diagnostic(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
+  GalleySession *session = NULL;
+  if (!session_arg(env, argc, argv, &session)) return NULL;
+  int has = 0;
+  long long status = ((fn_galley_has_diagnostic_t)lib->fn[SLOT_galley_has_diagnostic])(session, &has);
+  return boolean_or_status(env, status, has);
+}
+
+static napi_value method_galley_hook_has_diagnostic(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
+  void *handle = NULL;
+  if (!native_handle_arg(env, argc, argv, &handle)) return NULL;
+  int has = 0;
+  long long status = ((fn_galley_hook_has_diagnostic_t)lib->fn[SLOT_galley_hook_has_diagnostic])(handle, &has);
+  return boolean_or_status(env, status, has);
+}
+
 SESS_I64(galley_recorded_diagnostic_count)
 SESS_INDEX_I64(galley_recorded_diagnostic_kind)
 SESS_INDEX_I64(galley_recorded_expected_count)
@@ -1036,7 +1293,7 @@ static napi_value method_galley_procedure_door(napi_env env, Lib *lib, size_t ar
   GalleySession *session = NULL;
   unsigned long long hook = 0;
   if (!hook_args(env, argc, argv, &session, &hook)) return NULL;
-  void *door = NULL;
+  GalleyHookDoor *door = NULL;
   long long status = ((fn_galley_procedure_door_t)lib->fn[SLOT_galley_procedure_door])(session, hook, &door);
   napi_value pair;
   napi_value status_value = make_number(env, status);
@@ -1080,7 +1337,7 @@ static napi_value method_galley_symbol_name(napi_env env, Lib *lib, size_t argc,
   const char *data = NULL;
   size_t len = 0;
   long long status = ((fn_galley_symbol_name_t)lib->fn[SLOT_galley_symbol_name])(session, index, &data, &len);
-  return out_bytes(env, status, data, len);
+  return bytes_result(env, status, data, len);
 }
 
 static napi_value method_galley_variable_name(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
@@ -1095,13 +1352,7 @@ static napi_value method_galley_variable_name(napi_env env, Lib *lib, size_t arg
   const char *data = NULL;
   size_t len = 0;
   long long status = ((fn_galley_variable_name_t)lib->fn[SLOT_galley_variable_name])(session, index, &data, &len);
-  return out_bytes(env, status, data, len);
-}
-
-static napi_value method_galley_session_create(napi_env env, Lib *lib, size_t argc, napi_value *argv) {
-  (void)argc;
-  (void)argv;
-  return make_u64(env, (uint64_t)(uintptr_t)((fn_galley_session_create_t)lib->fn[SLOT_galley_session_create])());
+  return bytes_result(env, status, data, len);
 }
 
 static bool options_arg(napi_env env, napi_value value, GalleyCOptions *out) {
@@ -1140,15 +1391,31 @@ static bool options_arg(napi_env env, napi_value value, GalleyCOptions *out) {
   return true;
 }
 
-static napi_value method_galley_session_create_ex(napi_env env, Lib *lib, size_t argc,
-                                                 napi_value *argv) {
-  if (argc < 1) {
-    napi_throw_type_error(env, NULL, "expected options");
-    return NULL;
+/* galley_session_create(options | null, &session) -> {status, handle}:
+ * the handle is present exactly on galley_ok; null options crosses as a
+ * NULL pointer (the library's defaults), never as a zeroed struct. */
+static napi_value method_galley_session_create(napi_env env, Lib *lib, size_t argc,
+                                               napi_value *argv) {
+  const GalleyCOptions *options = NULL;
+  GalleyCOptions storage;
+  if (argc >= 1) {
+    napi_valuetype type;
+    if (napi_typeof(env, argv[0], &type) != napi_ok) return NULL;
+    if (type != napi_null && type != napi_undefined) {
+      if (!options_arg(env, argv[0], &storage)) return NULL;
+      options = &storage;
+    }
   }
-  GalleyCOptions options;
-  if (!options_arg(env, argv[0], &options)) return NULL;
-  return make_u64(env, (uint64_t)(uintptr_t)((fn_galley_session_create_ex_t)lib->fn[SLOT_galley_session_create_ex])(&options));
+  GalleySession *session = NULL;
+  long long status = ((fn_galley_session_create_t)lib->fn[SLOT_galley_session_create])(options, &session);
+  napi_value result;
+  napi_value status_value = make_number(env, status);
+  napi_value handle_value = session == NULL ? make_null(env) : make_u64(env, (uint64_t)(uintptr_t)session);
+  if (status_value == NULL || handle_value == NULL) return NULL;
+  if (napi_create_object(env, &result) != napi_ok) return NULL;
+  if (napi_set_named_property(env, result, "status", status_value) != napi_ok) return NULL;
+  if (napi_set_named_property(env, result, "handle", handle_value) != napi_ok) return NULL;
+  return result;
 }
 
 static napi_value method_galley_session_destroy(napi_env env, Lib *lib, size_t argc,
@@ -1257,7 +1524,7 @@ static napi_value method_galley_last_input(napi_env env, Lib *lib, size_t argc,
   const char *data = NULL;
   size_t len = 0;
   long long status = ((fn_galley_last_input_t)lib->fn[SLOT_galley_last_input])(session, &data, &len);
-  return status_or_value(env, status, out_bytes(env, status, data, len));
+  return bytes_result(env, status, data, len);
 }
 
 static napi_value method_galley_last_position(napi_env env, Lib *lib, size_t argc,
@@ -1267,7 +1534,7 @@ static napi_value method_galley_last_position(napi_env env, Lib *lib, size_t arg
   unsigned int line = 0;
   unsigned int column = 0;
   long long status = ((fn_galley_last_position_t)lib->fn[SLOT_galley_last_position])(session, &line, &column);
-  return status_or_value(env, status, pair_u32_or_null(env, status, line, column));
+  return pair_u32_result(env, status, line, column);
 }
 
 #define DEFINE_NODE_SPAN(cfn) \
@@ -1279,7 +1546,7 @@ static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, napi_value *
   unsigned long long start = 0; \
   unsigned long long len = 0; \
   long long status = ((fn_##cfn##_t)lib->fn[SLOT_##cfn])(session, generation, node, &start, &len); \
-  return status_or_value(env, status, pair_u64_or_null(env, status, (uint64_t)start, (uint64_t)len)); \
+  return status_or_value(env, status, pair_u64_result(env, status, (uint64_t)start, (uint64_t)len)); \
 }
 BOTH_DOORS(DEFINE_NODE_SPAN, node_span)
 
@@ -1320,7 +1587,7 @@ static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, \
   unsigned int line = 0; \
   unsigned int column = 0; \
   long long status = ((fn_##cfn##_t)lib->fn[SLOT_##cfn])(session, generation, node, &line, &column); \
-  return status_or_value(env, status, pair_u32_or_null(env, status, line, column)); \
+  return status_or_value(env, status, pair_u32_result(env, status, line, column)); \
 }
 BOTH_DOORS(DEFINE_NODE_LINE_COLUMN, node_line_column)
 
@@ -1415,192 +1682,6 @@ static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc, \
 }
 BOTH_DOORS(DEFINE_WALK_NEXT, walk_next)
 
-static napi_value method_galley_diagnostic_message(napi_env env, Lib *lib, size_t argc,
-                                                  napi_value *argv) {
-  GalleySession *session = NULL;
-  if (!session_arg(env, argc, argv, &session)) return NULL;
-  const char *text = NULL;
-  long long status = ((fn_galley_diagnostic_message_t)lib->fn[SLOT_galley_diagnostic_message])(session, &text);
-  return message_or_null(env, status, text);
-}
-
-static napi_value method_galley_diagnostic_message_ansi(napi_env env, Lib *lib, size_t argc,
-                                                       napi_value *argv) {
-  GalleySession *session = NULL;
-  if (!session_arg(env, argc, argv, &session)) return NULL;
-  const char *text = NULL;
-  long long status = ((fn_galley_diagnostic_message_ansi_t)lib->fn[SLOT_galley_diagnostic_message_ansi])(session, &text);
-  return message_or_null(env, status, text);
-}
-
-static napi_value method_galley_diagnostic_position(napi_env env, Lib *lib, size_t argc,
-                                                   napi_value *argv) {
-  GalleySession *session = NULL;
-  if (!session_arg(env, argc, argv, &session)) return NULL;
-  unsigned long long offset = 0;
-  unsigned int line = 0;
-  unsigned int column = 0;
-  long long status = ((fn_galley_diagnostic_position_t)lib->fn[SLOT_galley_diagnostic_position])(session, &offset, &line, &column);
-  return position_or_null(env, status, offset, line, column);
-}
-
-static napi_value method_galley_diagnostic_unexpected_token(napi_env env, Lib *lib, size_t argc,
-                                                           napi_value *argv) {
-  GalleySession *session = NULL;
-  if (!session_arg(env, argc, argv, &session)) return NULL;
-  const char *data = NULL;
-  size_t len = 0;
-  long long status = ((fn_galley_diagnostic_unexpected_token_t)lib->fn[SLOT_galley_diagnostic_unexpected_token])(session, &data, &len);
-  return out_bytes(env, status, data, len);
-}
-
-static napi_value method_galley_diagnostic_expected_at(napi_env env, Lib *lib, size_t argc,
-                                                      napi_value *argv) {
-  GalleySession *session = NULL;
-  if (!session_arg(env, argc, argv, &session)) return NULL;
-  if (argc < 2) {
-    napi_throw_type_error(env, NULL, "expected index");
-    return NULL;
-  }
-  uint64_t index = 0;
-  if (!get_u64(env, argv[1], &index)) return NULL;
-  const char *data = NULL;
-  size_t len = 0;
-  long long status = ((fn_galley_diagnostic_expected_at_t)lib->fn[SLOT_galley_diagnostic_expected_at])(session, index, &data, &len);
-  return out_bytes(env, status, data, len);
-}
-
-static napi_value method_galley_diagnostic_context_at(napi_env env, Lib *lib, size_t argc,
-                                                     napi_value *argv) {
-  GalleySession *session = NULL;
-  if (!session_arg(env, argc, argv, &session)) return NULL;
-  if (argc < 2) {
-    napi_throw_type_error(env, NULL, "expected index");
-    return NULL;
-  }
-  uint64_t index = 0;
-  if (!get_u64(env, argv[1], &index)) return NULL;
-  const char *data = NULL;
-  size_t len = 0;
-  long long status = ((fn_galley_diagnostic_context_at_t)lib->fn[SLOT_galley_diagnostic_context_at])(session, index, &data, &len);
-  return out_bytes(env, status, data, len);
-}
-
-static napi_value method_galley_diagnostic_semantic(napi_env env, Lib *lib, size_t argc,
-                                                   napi_value *argv) {
-  GalleySession *session = NULL;
-  if (!session_arg(env, argc, argv, &session)) return NULL;
-  const char *variable = NULL;
-  size_t variable_len = 0;
-  const char *message = NULL;
-  size_t message_len = 0;
-  long long status = ((fn_galley_diagnostic_semantic_t)lib->fn[SLOT_galley_diagnostic_semantic])(session, &variable, &variable_len, &message,
-                                                &message_len);
-  return pair_string_or_null(env, status, variable, variable_len, message, message_len);
-}
-
-static napi_value method_galley_diagnostic_indentation(napi_env env, Lib *lib, size_t argc,
-                                                      napi_value *argv) {
-  GalleySession *session = NULL;
-  if (!session_arg(env, argc, argv, &session)) return NULL;
-  unsigned int spaces = 0;
-  unsigned int width = 0;
-  long long status = ((fn_galley_diagnostic_indentation_t)lib->fn[SLOT_galley_diagnostic_indentation])(session, &spaces, &width);
-  // Indentation reports nonzero status without an indentation diagnostic.
-  if (status != 0) return make_null(env);
-  return pair_u32_or_null(env, 0, spaces, width);
-}
-
-static napi_value method_galley_diagnostic_recovery_terminal(napi_env env, Lib *lib, size_t argc,
-                                                            napi_value *argv) {
-  GalleySession *session = NULL;
-  if (!session_arg(env, argc, argv, &session)) return NULL;
-  const char *data = NULL;
-  size_t len = 0;
-  long long status = ((fn_galley_diagnostic_recovery_terminal_t)lib->fn[SLOT_galley_diagnostic_recovery_terminal])(session, &data, &len);
-  return out_bytes(env, status, data, len);
-}
-
-static napi_value method_galley_diagnostic_recovery_resume(napi_env env, Lib *lib, size_t argc,
-                                                          napi_value *argv) {
-  GalleySession *session = NULL;
-  if (!session_arg(env, argc, argv, &session)) return NULL;
-  long long value = 0;
-  long long status = ((fn_galley_diagnostic_recovery_resume_t)lib->fn[SLOT_galley_diagnostic_recovery_resume])(session, &value);
-  if (status != 0) return make_null(env);
-  napi_value out;
-  // Resume targets are 0/1; the port contract is number.
-  if (napi_create_double(env, (double)value, &out) != napi_ok) return NULL;
-  return out;
-}
-
-static napi_value method_galley_diagnostic_recovery_lhs_variable(napi_env env, Lib *lib,
-                                                                size_t argc, napi_value *argv) {
-  GalleySession *session = NULL;
-  if (!session_arg(env, argc, argv, &session)) return NULL;
-  const char *data = NULL;
-  size_t len = 0;
-  long long status = ((fn_galley_diagnostic_recovery_lhs_variable_t)lib->fn[SLOT_galley_diagnostic_recovery_lhs_variable])(session, &data, &len);
-  return out_string(env, status, data, len);
-}
-
-static napi_value method_galley_diagnostic_recovery_production(napi_env env, Lib *lib, size_t argc,
-                                                              napi_value *argv) {
-  GalleySession *session = NULL;
-  if (!session_arg(env, argc, argv, &session)) return NULL;
-  const char *variable = NULL;
-  size_t variable_len = 0;
-  unsigned int rhs_index = 0;
-  long long status =
-      ((fn_galley_diagnostic_recovery_production_t)lib->fn[SLOT_galley_diagnostic_recovery_production])(session, &variable, &variable_len, &rhs_index);
-  if (status != 0 || variable == NULL) return make_null(env);
-  napi_value pair;
-  napi_value variable_value;
-  napi_value index_value = make_u32(env, rhs_index);
-  if (napi_create_string_utf8(env, variable, variable_len, &variable_value) != napi_ok) return NULL;
-  if (index_value == NULL) return NULL;
-  if (napi_create_array_with_length(env, 2, &pair) != napi_ok) return NULL;
-  if (napi_set_element(env, pair, 0, variable_value) != napi_ok) return NULL;
-  if (napi_set_element(env, pair, 1, index_value) != napi_ok) return NULL;
-  return pair;
-}
-
-static napi_value quad_or_null(napi_env env, long long status, const char *parent,
-                               size_t parent_len, unsigned int rhs, unsigned int sym,
-                               const char *variable, size_t variable_len) {
-  if (status != 0) return make_null(env);
-  if (parent == NULL || variable == NULL) return make_null(env);
-  napi_value quad;
-  napi_value parent_value;
-  napi_value rhs_value = make_u32(env, rhs);
-  napi_value sym_value = make_u32(env, sym);
-  napi_value variable_value;
-  if (napi_create_string_utf8(env, parent, parent_len, &parent_value) != napi_ok) return NULL;
-  if (rhs_value == NULL || sym_value == NULL) return NULL;
-  if (napi_create_string_utf8(env, variable, variable_len, &variable_value) != napi_ok) return NULL;
-  if (napi_create_array_with_length(env, 4, &quad) != napi_ok) return NULL;
-  if (napi_set_element(env, quad, 0, parent_value) != napi_ok) return NULL;
-  if (napi_set_element(env, quad, 1, rhs_value) != napi_ok) return NULL;
-  if (napi_set_element(env, quad, 2, sym_value) != napi_ok) return NULL;
-  if (napi_set_element(env, quad, 3, variable_value) != napi_ok) return NULL;
-  return quad;
-}
-
-static napi_value method_galley_diagnostic_recovery_occurrence(napi_env env, Lib *lib, size_t argc,
-                                                              napi_value *argv) {
-  GalleySession *session = NULL;
-  if (!session_arg(env, argc, argv, &session)) return NULL;
-  const char *parent = NULL;
-  size_t parent_len = 0;
-  unsigned int rhs = 0;
-  unsigned int sym = 0;
-  const char *variable = NULL;
-  size_t variable_len = 0;
-  long long status = ((fn_galley_diagnostic_recovery_occurrence_t)lib->fn[SLOT_galley_diagnostic_recovery_occurrence])(session, &parent, &parent_len, &rhs,
-                                                           &sym, &variable, &variable_len);
-  return quad_or_null(env, status, parent, parent_len, rhs, sym, variable, variable_len);
-}
-
 /* Recorded diagnostics: one more index argument than the singular forms. */
 
 static bool recorded_arg(napi_env env, size_t argc, napi_value *argv, GalleySession **session,
@@ -1622,7 +1703,7 @@ static napi_value method_galley_recorded_diagnostic_position(napi_env env, Lib *
   unsigned int line = 0;
   unsigned int column = 0;
   long long status = ((fn_galley_recorded_diagnostic_position_t)lib->fn[SLOT_galley_recorded_diagnostic_position])(session, index, &offset, &line, &column);
-  return position_or_null(env, status, offset, line, column);
+  return position_result(env, status, offset, line, column);
 }
 
 static napi_value method_galley_recorded_unexpected_token(napi_env env, Lib *lib, size_t argc,
@@ -1633,7 +1714,7 @@ static napi_value method_galley_recorded_unexpected_token(napi_env env, Lib *lib
   const char *data = NULL;
   size_t len = 0;
   long long status = ((fn_galley_recorded_unexpected_token_t)lib->fn[SLOT_galley_recorded_unexpected_token])(session, index, &data, &len);
-  return out_bytes(env, status, data, len);
+  return bytes_result(env, status, data, len);
 }
 
 static napi_value method_galley_recorded_diagnostic_message(napi_env env, Lib *lib, size_t argc,
@@ -1643,7 +1724,7 @@ static napi_value method_galley_recorded_diagnostic_message(napi_env env, Lib *l
   if (!recorded_arg(env, argc, argv, &session, &index)) return NULL;
   const char *text = NULL;
   long long status = ((fn_galley_recorded_diagnostic_message_t)lib->fn[SLOT_galley_recorded_diagnostic_message])(session, index, &text);
-  return message_or_null(env, status, text);
+  return message_result(env, status, text);
 }
 
 static napi_value method_galley_recorded_diagnostic_message_ansi(napi_env env, Lib *lib, size_t argc,
@@ -1653,7 +1734,7 @@ static napi_value method_galley_recorded_diagnostic_message_ansi(napi_env env, L
   if (!recorded_arg(env, argc, argv, &session, &index)) return NULL;
   const char *text = NULL;
   long long status = ((fn_galley_recorded_diagnostic_message_ansi_t)lib->fn[SLOT_galley_recorded_diagnostic_message_ansi])(session, index, &text);
-  return message_or_null(env, status, text);
+  return message_result(env, status, text);
 }
 
 static napi_value method_galley_recorded_indentation(napi_env env, Lib *lib, size_t argc,
@@ -1664,8 +1745,7 @@ static napi_value method_galley_recorded_indentation(napi_env env, Lib *lib, siz
   unsigned int spaces = 0;
   unsigned int width = 0;
   long long status = ((fn_galley_recorded_indentation_t)lib->fn[SLOT_galley_recorded_indentation])(session, index, &spaces, &width);
-  if (status != 0) return make_null(env);
-  return pair_u32_or_null(env, 0, spaces, width);
+  return pair_u32_result(env, status, spaces, width);
 }
 
 static napi_value method_galley_recorded_semantic(napi_env env, Lib *lib, size_t argc,
@@ -1679,7 +1759,7 @@ static napi_value method_galley_recorded_semantic(napi_env env, Lib *lib, size_t
   size_t message_len = 0;
   long long status =
       ((fn_galley_recorded_semantic_t)lib->fn[SLOT_galley_recorded_semantic])(session, index, &variable, &variable_len, &message, &message_len);
-  return pair_string_or_null(env, status, variable, variable_len, message, message_len);
+  return pair_string_result(env, status, variable, variable_len, message, message_len);
 }
 
 static napi_value method_galley_recorded_expected_token(napi_env env, Lib *lib, size_t argc,
@@ -1696,7 +1776,7 @@ static napi_value method_galley_recorded_expected_token(napi_env env, Lib *lib, 
   const char *data = NULL;
   size_t len = 0;
   long long status = ((fn_galley_recorded_expected_token_t)lib->fn[SLOT_galley_recorded_expected_token])(session, index, token, &data, &len);
-  return out_bytes(env, status, data, len);
+  return bytes_result(env, status, data, len);
 }
 
 static napi_value method_galley_recorded_context_name(napi_env env, Lib *lib, size_t argc,
@@ -1713,7 +1793,7 @@ static napi_value method_galley_recorded_context_name(napi_env env, Lib *lib, si
   const char *data = NULL;
   size_t len = 0;
   long long status = ((fn_galley_recorded_context_name_t)lib->fn[SLOT_galley_recorded_context_name])(session, index, context, &data, &len);
-  return out_bytes(env, status, data, len);
+  return bytes_result(env, status, data, len);
 }
 
 static napi_value method_galley_recorded_recovery_terminal(napi_env env, Lib *lib, size_t argc,
@@ -1724,7 +1804,7 @@ static napi_value method_galley_recorded_recovery_terminal(napi_env env, Lib *li
   const char *data = NULL;
   size_t len = 0;
   long long status = ((fn_galley_recorded_recovery_terminal_t)lib->fn[SLOT_galley_recorded_recovery_terminal])(session, index, &data, &len);
-  return out_bytes(env, status, data, len);
+  return bytes_result(env, status, data, len);
 }
 
 static napi_value method_galley_recorded_recovery_resume(napi_env env, Lib *lib, size_t argc,
@@ -1734,7 +1814,7 @@ static napi_value method_galley_recorded_recovery_resume(napi_env env, Lib *lib,
   if (!recorded_arg(env, argc, argv, &session, &index)) return NULL;
   long long value = 0;
   long long status = ((fn_galley_recorded_recovery_resume_t)lib->fn[SLOT_galley_recorded_recovery_resume])(session, index, &value);
-  if (status != 0) return make_null(env);
+  if (status < 0) return make_number(env, status);
   napi_value out;
   if (napi_create_double(env, (double)value, &out) != napi_ok) return NULL;
   return out;
@@ -1748,7 +1828,7 @@ static napi_value method_galley_recorded_recovery_lhs_variable(napi_env env, Lib
   const char *data = NULL;
   size_t len = 0;
   long long status = ((fn_galley_recorded_recovery_lhs_variable_t)lib->fn[SLOT_galley_recorded_recovery_lhs_variable])(session, index, &data, &len);
-  return out_string(env, status, data, len);
+  return string_result(env, status, data, len);
 }
 
 static napi_value method_galley_recorded_recovery_production(napi_env env, Lib *lib, size_t argc,
@@ -1761,16 +1841,7 @@ static napi_value method_galley_recorded_recovery_production(napi_env env, Lib *
   unsigned int rhs_index = 0;
   long long status =
       ((fn_galley_recorded_recovery_production_t)lib->fn[SLOT_galley_recorded_recovery_production])(session, index, &variable, &variable_len, &rhs_index);
-  if (status != 0 || variable == NULL) return make_null(env);
-  napi_value pair;
-  napi_value variable_value;
-  napi_value index_value = make_u32(env, rhs_index);
-  if (napi_create_string_utf8(env, variable, variable_len, &variable_value) != napi_ok) return NULL;
-  if (index_value == NULL) return NULL;
-  if (napi_create_array_with_length(env, 2, &pair) != napi_ok) return NULL;
-  if (napi_set_element(env, pair, 0, variable_value) != napi_ok) return NULL;
-  if (napi_set_element(env, pair, 1, index_value) != napi_ok) return NULL;
-  return pair;
+  return pair_variable_rhs_result(env, status, variable, variable_len, rhs_index);
 }
 
 static napi_value method_galley_recorded_recovery_occurrence(napi_env env, Lib *lib, size_t argc,
@@ -1786,7 +1857,7 @@ static napi_value method_galley_recorded_recovery_occurrence(napi_env env, Lib *
   size_t variable_len = 0;
   long long status = ((fn_galley_recorded_recovery_occurrence_t)lib->fn[SLOT_galley_recorded_recovery_occurrence])(session, index, &parent, &parent_len,
                                                          &rhs, &sym, &variable, &variable_len);
-  return quad_or_null(env, status, parent, parent_len, rhs, sym, variable, variable_len);
+  return quad_result(env, status, parent, parent_len, rhs, sym, variable, variable_len);
 }
 
 /* Tree editing. */
@@ -2050,12 +2121,10 @@ static napi_value method_galley_hooks_name(napi_env env, Lib *lib, size_t argc, 
   }
   uint64_t index = 0;
   if (!get_u64(env, argv[0], &index)) return NULL;
-  const char *name = ((fn_galley_hooks_name_data_t)lib->fn[SLOT_galley_hooks_name_data])((size_t)index);
-  if (name == NULL) return make_null(env);
-  size_t length = ((fn_galley_hooks_name_length_t)lib->fn[SLOT_galley_hooks_name_length])((size_t)index);
-  napi_value out;
-  if (napi_create_string_utf8(env, name, length, &out) != napi_ok) return NULL;
-  return out;
+  const char *data = NULL;
+  size_t len = 0;
+  long long status = ((fn_galley_hooks_name_t)lib->fn[SLOT_galley_hooks_name])((size_t)index, &data, &len);
+  return bytes_result(env, status, data, len);
 }
 
 /* galley_session_set_hooks(session, hookHandle, enabled): `enabled` is a
@@ -2167,7 +2236,6 @@ static napi_value method_load(napi_env env, napi_callback_info info) {
   BIND_OR_THROW(api, lib, galley_symbol_is_terminal);
   BIND_OR_THROW(api, lib, galley_variable_name);
   BIND_OR_THROW(api, lib, galley_session_create);
-  BIND_OR_THROW(api, lib, galley_session_create_ex);
   BIND_OR_THROW(api, lib, galley_session_destroy);
   BIND_OR_THROW(api, lib, galley_session_set_message_override);
   BIND_OR_THROW(api, lib, galley_parse);
@@ -2231,6 +2299,28 @@ static napi_value method_load(napi_env env, napi_callback_info info) {
   BIND_OR_THROW(api, lib, galley_diagnostic_recovery_lhs_variable);
   BIND_OR_THROW(api, lib, galley_diagnostic_recovery_production);
   BIND_OR_THROW(api, lib, galley_diagnostic_recovery_occurrence);
+  // The current-diagnostic family's hook-door twins, same arguments and
+  // answers over a parse's door (see the DEFINE_DIAG_* block).
+  BIND_OR_THROW(api, lib, galley_hook_has_diagnostic);
+  BIND_OR_THROW(api, lib, galley_hook_diagnostic_kind);
+  BIND_OR_THROW(api, lib, galley_hook_diagnostic_message);
+  BIND_OR_THROW(api, lib, galley_hook_diagnostic_message_ansi);
+  BIND_OR_THROW(api, lib, galley_hook_diagnostic_position);
+  BIND_OR_THROW(api, lib, galley_hook_diagnostic_unexpected_token);
+  BIND_OR_THROW(api, lib, galley_hook_diagnostic_expected_count);
+  BIND_OR_THROW(api, lib, galley_hook_diagnostic_expected_at);
+  BIND_OR_THROW(api, lib, galley_hook_diagnostic_context_count);
+  BIND_OR_THROW(api, lib, galley_hook_diagnostic_context_at);
+  BIND_OR_THROW(api, lib, galley_hook_diagnostic_indentation);
+  BIND_OR_THROW(api, lib, galley_hook_syntax_error_count);
+  BIND_OR_THROW(api, lib, galley_hook_semantic_error_count);
+  BIND_OR_THROW(api, lib, galley_hook_diagnostic_semantic);
+  BIND_OR_THROW(api, lib, galley_hook_diagnostic_recovery_kind);
+  BIND_OR_THROW(api, lib, galley_hook_diagnostic_recovery_terminal);
+  BIND_OR_THROW(api, lib, galley_hook_diagnostic_recovery_resume);
+  BIND_OR_THROW(api, lib, galley_hook_diagnostic_recovery_lhs_variable);
+  BIND_OR_THROW(api, lib, galley_hook_diagnostic_recovery_production);
+  BIND_OR_THROW(api, lib, galley_hook_diagnostic_recovery_occurrence);
   BIND_OR_THROW(api, lib, galley_recorded_diagnostic_count);
   BIND_OR_THROW(api, lib, galley_recorded_diagnostic_kind);
   BIND_OR_THROW(api, lib, galley_recorded_diagnostic_position);
@@ -2272,11 +2362,10 @@ static napi_value method_load(napi_env env, napi_callback_info info) {
   }
   BIND_OR_THROW(api, lib, galley_session_set_hooks);
   // The JS names differ from the probed exports: install_dispatch is
-  // addon-only, and the name list is served by the galley_hooks_name_data /
-  // _length pair.
+  // addon-only.
   if (!bind(env, api, lib, "install_dispatch", method_install_dispatch)) return NULL;
   BIND_OR_THROW(api, lib, galley_hooks_count);
-  if (!bind(env, api, lib, "galley_hooks_name", method_galley_hooks_name)) return NULL;
+  BIND_OR_THROW(api, lib, galley_hooks_name);
   // Resolve every required symbol through this library's own probe
   // handle, so a header/binary skew fails here naming the symbol.
   for (int i = 0; i < SLOT_COUNT; i++) {

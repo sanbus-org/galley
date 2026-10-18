@@ -655,7 +655,11 @@ jobs:
                   fprintf(stderr, "expected an lr library\n");
                   return 1;
               }
-              GalleySession *session = galley_session_create();
+              GalleySession *session = NULL;
+              if (galley_session_create(NULL, &session) != galley_ok || session == NULL) {
+                  fprintf(stderr, "session create failed\n");
+                  return 1;
+              }
               long long parsed = galley_parse_sentinel(session, "alpha:12,beta:3");
               GalleyNodeAddress root = GALLEY_INVALID_NODE;
               unsigned long long generation = 0;
