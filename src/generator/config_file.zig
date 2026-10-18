@@ -110,6 +110,26 @@ pub fn write(
         \\/// Requires indentation_syntax to be enabled.
         \\pub const newline_after_block_end = {};
         \\
+        \\
+    , .{
+        if (options.with_position_tracking) |enabled| if (enabled) "true" else "false" else "null",
+        options.with_input_streaming,
+        indentation_syntax,
+        newline_after_block_end,
+    });
+    try writeBool(writer, "fold_decisions",
+        \\/// Skip a decision an LL parser has already made.
+        \\///
+        \\/// true  - where a rule starts with a variable that has one
+        \\///         non-nullable rule, the decision that selected the rule
+        \\///         selects the variable's rule too, and the variable's parser
+        \\///         skips its own decision.
+        \\/// false - every variable parser makes its own decision.
+        \\///
+        \\/// LR parsers ignore this option.
+        \\
+    , true);
+    try writer.writeAll(
         \\/// Static syntax-error message overrides baked into the generated
         \\/// parser.
         \\///
@@ -119,21 +139,16 @@ pub fn write(
         \\///   or "*" to override every site that has no specific entry.
         \\/// - Non-identifier keys need @"..." quoting, e.g. .@"*".
         \\/// - Values may contain placeholders expanded against each diagnostic:
-        \\///   {{line}}, {{column}}, {{unexpected}}, {{expected}}, {{context}}.
+        \\///   {line}, {column}, {unexpected}, {expected}, {context}.
         \\///   Unknown placeholders are emitted verbatim.
         \\///
         \\/// Dynamic per-session overrides take precedence over these entries;
         \\/// entries here take precedence over the generated default-message
         \\/// hooks.
-        \\pub const error_messages = .{{}};
+        \\pub const error_messages = .{};
         \\
         \\
-    , .{
-        if (options.with_position_tracking) |enabled| if (enabled) "true" else "false" else "null",
-        options.with_input_streaming,
-        indentation_syntax,
-        newline_after_block_end,
-    });
+    );
 }
 
 test "write emits newline_after_block_end from its argument" {

@@ -66,6 +66,14 @@ const Generator = struct {
     /// Which of the current level's occurrence values the code emitted since
     /// the last reset names, so a tail loop declares exactly those.
     occurrence_uses: OccurrenceUses = .{},
+    /// The `_selected` twins call sites name (see `childCallee`), emitted
+    /// after every other parser.
+    selected_parsers: std.ArrayList(SelectedParser) = .empty,
+
+    const SelectedParser = struct {
+        variable: usize,
+        skip_ast_construction: bool,
+    };
 
     fn init(allocator: std.mem.Allocator, options: Options, grammar: *const common.PreparedGrammar, plan: *const LLPlan) Generator {
         return .{
@@ -103,6 +111,11 @@ const Generator = struct {
             self.uses_verbatim,
             self.uses_indentation_terminals,
             true,
+        );
+        try writer.writeAll(
+            \\pub const is_decision_folding_enabled = config.fold_decisions;
+            \\
+            \\
         );
 
         try emitter_common.emitGrammarTables(writer, self.symbols.items, self.variables.items, self.rules.items, self.end_symbol);
@@ -142,6 +155,7 @@ const Generator = struct {
         try self.measureTerminalInlineCosts();
         try self.emitParserFunctions(writer);
         try self.emitAstSuppressedParsers(writer);
+        try self.emitSelectedParsers(writer);
         try self.emitSyntaxErrorHandlers(writer);
         if (self.uses_explicit_recovery) try self.emitExplicitSyntaxDiagnosticFlusher(writer);
         try writer.writeAll(
@@ -383,8 +397,29 @@ const Generator = struct {
         }
         // A loop's levels each have their own occurrence; the caller's is
         // the outermost level's.
-        const parameter_prefix = if (loops) "outer_" else "";
-        try writer.print("fn parse_{s}{s}{s}(context: *data_structures.Context", .{ name, suffix, if (loops) "_loop" else "" });
+        try self.emitVariableParserSignature(writer, variable, skip_ast_construction, if (loops) "_loop" else "", if (loops) "outer_" else "");
+        // A loop body names its own `outer_` parameters.
+        try emitter_common.emitModeGatedBody(Generator, self, writer, VariableParserBody, .{ .variable = variable, .skip_ast_construction = skip_ast_construction }, self.has_occurrence_procedures and !loops, renderVariableParserBody);
+        try writer.writeAll("}\n");
+    }
+
+    /// Emits the `_selected` twins call sites named. A twin's own body may
+    /// name more, which join the list it walks.
+    fn emitSelectedParsers(self: *Generator, writer: *std.Io.Writer) !void {
+        var index: usize = 0;
+        while (index < self.selected_parsers.items.len) : (index += 1) {
+            const selected = self.selected_parsers.items[index];
+            try writer.writeAll("// Parser for Symbol \"");
+            try std.zig.stringEscape(self.symbols.items[selected.variable].id, writer);
+            try writer.print("\" with index {d}, its only rule selected by the caller\n", .{selected.variable});
+            try self.emitVariableParserSignature(writer, selected.variable, selected.skip_ast_construction, "_selected", "");
+            try emitter_common.emitModeGatedBody(Generator, self, writer, VariableParserBody, .{ .variable = selected.variable, .skip_ast_construction = selected.skip_ast_construction, .selected = true }, self.has_occurrence_procedures, renderVariableParserBody);
+            try writer.writeAll("}\n\n");
+        }
+    }
+
+    fn emitVariableParserSignature(self: *Generator, writer: *std.Io.Writer, variable: usize, skip_ast_construction: bool, name_suffix: []const u8, parameter_prefix: []const u8) !void {
+        try writer.print("fn parse_{s}{s}{s}(context: *data_structures.Context", .{ try self.parserName(variable), if (skip_ast_construction) "_" else "", name_suffix });
         if (self.has_occurrence_procedures) {
             try writer.print(", {s}occurrence_procedures: ?*const ProcedureSequenceNode", .{parameter_prefix});
         }
@@ -395,15 +430,48 @@ const Generator = struct {
             try writer.writeAll(", root_reduction: *RootReduction");
         }
         try writer.print(") anyerror!nodeReturnType({d}, {s}) {{\n", .{ variable, if (skip_ast_construction) "true" else "false" });
-        // A loop body names its own `outer_` parameters.
-        try emitter_common.emitModeGatedBody(Generator, self, writer, VariableParserBody, .{ .variable = variable, .skip_ast_construction = skip_ast_construction }, self.has_occurrence_procedures and !loops, renderVariableParserBody);
-        try writer.writeAll("}\n");
     }
 
     const VariableParserBody = struct {
         variable: usize,
         skip_ast_construction: bool,
+        /// The caller's decision already selected the variable's only rule
+        /// (see `foldsDecision`), so the body parses it without a decision.
+        selected: bool = false,
     };
+
+    /// The only rule of `variable` when every decision that selects a rule
+    /// starting with the variable also proves that rule's selection: the
+    /// variable is non-nullable, so a decision selects such a rule only on a
+    /// byte of its FIRST set, which is the variable's, and that one rule is
+    /// what the variable's own decision would select on it.
+    fn foldableRule(self: *Generator, variable: usize) ?usize {
+        if (self.plan.nullable_rules[variable] != null) return null;
+        var only: ?usize = null;
+        for (self.rules.items, 0..) |rule, rule_index| {
+            if (rule.header != variable) continue;
+            if (only != null) return null;
+            only = rule_index;
+        }
+        return only;
+    }
+
+    /// Whether `variable` can have a `_selected` parser: a decision-free twin
+    /// of its ordinary parser for callers whose decision selected its rule.
+    fn hasSelectedParser(self: *Generator, variable: usize, skip_ast_construction: bool) EmitError!bool {
+        const symbol = self.symbols.items[variable];
+        if (symbol.kind != .variable or symbol.synthetic_transparent or variable == self.plan.augmented_start) return false;
+        if (try self.tailLoopEnabled(variable, skip_ast_construction)) return false;
+        return self.foldableRule(variable) != null;
+    }
+
+    /// Whether the call to `rule`'s child at `child_index` goes to the
+    /// child's `_selected` parser: the decision that selected `rule` selects
+    /// the child's rule as well.
+    fn foldsDecision(self: *Generator, rule: Rule, child_index: usize, child_skips_ast_construction: bool) EmitError!bool {
+        if (child_index != 0 or rule.rhs_annotations.items[0].verbatim) return false;
+        return self.hasSelectedParser(rule.rhs.items[0], child_skips_ast_construction);
+    }
 
     fn renderVariableParserBody(self: *Generator, writer: *std.Io.Writer, params: VariableParserBody) !void {
         const variable = params.variable;
@@ -436,8 +504,17 @@ const Generator = struct {
         var dispatch = std.Io.Writer.Allocating.init(self.allocator);
         const outer_recovery_use = self.occurrence_uses.recovery;
         self.occurrence_uses.recovery = false;
-        try self.emitVariableDispatch(&dispatch.writer, variable, "    ", skip_ast_construction);
-        if (self.uses_explicit_recovery and !self.occurrence_uses.recovery) try writer.writeAll("    _ = occurrence_recovery;\n");
+        if (params.selected) {
+            // The caller's decision matched the head byte against this rule's
+            // FIRST set, which proves a single-byte first terminal whole.
+            const rule_index = self.foldableRule(variable).?;
+            self.proven_first_terminal_rule = if (self.singleByteFirstTerminal(rule_index) != null) rule_index else null;
+            defer self.proven_first_terminal_rule = null;
+            try self.emitRuleBody(&dispatch.writer, rule_index, variable, "    ", skip_ast_construction);
+        } else {
+            try self.emitVariableDispatch(&dispatch.writer, variable, "    ", skip_ast_construction);
+        }
+        if (self.uses_explicit_recovery and !self.occurrence_uses.recovery) try writer.writeAll("    _ = &occurrence_recovery;\n");
         self.occurrence_uses.recovery = outer_recovery_use or self.occurrence_uses.recovery;
         try writer.writeAll(dispatch.written());
         if (returns_node) {
@@ -1371,7 +1448,27 @@ const Generator = struct {
         try writer.print("// {s}Parser for Symbol \"", .{if (skip_ast_construction) "AST-Suppressed " else ""});
         try self.emitSymbolRepr(writer, terminal_index);
         try writer.print("\" with index {d}\n", .{terminal_index});
-        try writer.print("inline fn parse_{s}{s}(context: *data_structures.Context", .{ name, if (skip_ast_construction) "_" else "" });
+        try self.emitTerminalParserSignature(writer, name, terminal_index, skip_ast_construction, "");
+        try emitter_common.emitModeGatedBody(Generator, self, writer, TerminalParserBody, .{
+            .terminal_index = terminal_index,
+            .skip_ast_construction = skip_ast_construction,
+        }, self.has_occurrence_procedures, renderTerminalParserBody);
+        try writer.writeAll("}\n");
+        // A rule whose decision matched this terminal's byte still calls a
+        // parser when it keeps the terminal's node or runs its hooks.
+        if (self.singleByteTerminalBytes(terminal_index) == null) return;
+        try self.emitTerminalParserSignature(writer, name, terminal_index, skip_ast_construction, "_proven");
+        if (self.uses_explicit_recovery) try writer.writeAll("    _ = &occurrence_recovery;\n");
+        try emitter_common.emitModeGatedBody(Generator, self, writer, TerminalParserBody, .{
+            .terminal_index = terminal_index,
+            .skip_ast_construction = skip_ast_construction,
+            .proven = true,
+        }, self.has_occurrence_procedures, renderTerminalParserBody);
+        try writer.writeAll("}\n");
+    }
+
+    fn emitTerminalParserSignature(self: *Generator, writer: *std.Io.Writer, name: []const u8, terminal_index: usize, skip_ast_construction: bool, name_suffix: []const u8) !void {
+        try writer.print("inline fn parse_{s}{s}{s}(context: *data_structures.Context", .{ name, if (skip_ast_construction) "_" else "", name_suffix });
         if (self.has_occurrence_procedures) {
             try writer.writeAll(", occurrence_procedures: ?*const ProcedureSequenceNode");
         }
@@ -1379,16 +1476,14 @@ const Generator = struct {
             try writer.writeAll(", occurrence_recovery: ?*const ExplicitRecoveryScope");
         }
         try writer.print(") anyerror!nodeReturnType({d}, {s}) {{\n", .{ terminal_index, if (skip_ast_construction) "true" else "false" });
-        try emitter_common.emitModeGatedBody(Generator, self, writer, TerminalParserBody, .{
-            .terminal_index = terminal_index,
-            .skip_ast_construction = skip_ast_construction,
-        }, self.has_occurrence_procedures, renderTerminalParserBody);
-        try writer.writeAll("}\n");
     }
 
     const TerminalParserBody = struct {
         terminal_index: usize,
         skip_ast_construction: bool,
+        /// The caller's decision already matched the terminal's one byte, so
+        /// the body releases it instead of checking it again.
+        proven: bool = false,
     };
 
     fn renderTerminalParserBody(self: *Generator, writer: *std.Io.Writer, params: TerminalParserBody) !void {
@@ -1405,8 +1500,12 @@ const Generator = struct {
             }
         }
 
-        const decision = self.plan.parserDecision(terminal_index, skip_ast_construction);
-        try self.emitTerminalSwitch(writer, decision.tree, 0, "    ");
+        if (params.proven) {
+            try writer.writeAll("    context.releaseToken(1);\n");
+        } else {
+            const decision = self.plan.parserDecision(terminal_index, skip_ast_construction);
+            try self.emitTerminalSwitch(writer, decision.tree, 0, "    ");
+        }
         try writer.writeByte('\n');
         if (returns_node) {
             if (self.options.with_ast) {
@@ -1612,7 +1711,7 @@ const Generator = struct {
                 }
                 try writer.writeAll("    }\n");
             } else {
-                try writer.writeAll("    _ = occurrence_recovery;\n");
+                try writer.writeAll("    _ = &occurrence_recovery;\n");
             }
             try writer.writeAll("    return error.ExplicitSyntaxRecovery;\n");
             return;
@@ -1764,6 +1863,18 @@ const Generator = struct {
         }
     }
 
+    /// The parser a rule's child calls: `parser`, or, where the rule's
+    /// decision also selected the child's rule (see `foldsDecision`), its
+    /// `_selected` twin when the build folds decisions.
+    fn childCallee(self: *Generator, rule: Rule, child_index: usize, child_skips_ast_construction: bool, parser: []const u8) EmitError![]const u8 {
+        if (!try self.foldsDecision(rule, child_index, child_skips_ast_construction)) return parser;
+        const selected: SelectedParser = .{ .variable = rule.rhs.items[child_index], .skip_ast_construction = child_skips_ast_construction };
+        for (self.selected_parsers.items) |existing| {
+            if (std.meta.eql(existing, selected)) break;
+        } else try self.selected_parsers.append(self.allocator, selected);
+        return std.fmt.allocPrint(self.allocator, "(if (is_decision_folding_enabled) {s}_selected else {s})", .{ parser, parser });
+    }
+
     fn emitChildParseLine(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, parent_variable: usize, rule: Rule, child_index: usize, parent: ?[]const u8, parent_address: ?[]const u8, indent: []const u8, skip_ast_construction: bool, slot_index: usize) !void {
         const proven_first_terminal_rule = self.proven_first_terminal_rule;
         self.proven_first_terminal_rule = null;
@@ -1823,6 +1934,9 @@ const Generator = struct {
             }
             return;
         }
+        // A terminal whose byte the decision matched needs no check, but its
+        // parser still runs when the rule keeps its node.
+        var proven_terminal_node = false;
         if (proven_first_terminal_rule) |proven| {
             const proven_rule = self.rules.items[proven];
             const is_proven_child = child_index == 0 and proven_rule.header == rule.header and std.mem.eql(u8, proven_rule.rhs_index, rule.rhs_index);
@@ -1831,17 +1945,21 @@ const Generator = struct {
                 try writer.print("{s}context.releaseToken(1); // child {d}, matched by the decision\n", .{ indent, child_index });
                 return;
             }
+            proven_terminal_node = is_proven_child and !verbatim;
         }
         if (child.kind != .variable) self.inline_call_cost += self.terminal_inline_costs[symbol_index];
         const call_name = if (symbol_index == parent_variable and !planning.isTailLoopPosition(rule, child_index))
             try std.fmt.allocPrint(self.allocator, "{s}_{s}_{d}", .{ name, rule.rhs_index, child_index })
+        else if (proven_terminal_node)
+            try std.fmt.allocPrint(self.allocator, "{s}_proven", .{name})
         else
             name;
+        const callee = try self.childCallee(rule, child_index, child_skips_ast_construction, try std.fmt.allocPrint(self.allocator, "parse_{s}{s}", .{ call_name, if (child_skips_ast_construction) "_" else "" }));
         if (verbatim) try self.emitVerbatimTerminatorStart(writer, symbol_index, indent);
         if (parent != null) {
             if (child_returns_node) {
                 if (!self.options.with_ast) {
-                    try writer.print("{s}{{\n{s}    {s} child_node = {s}parse_{s}(context", .{ indent, indent, if (verbatim) "var" else "const", if (explicit_recovery) "" else "try ", call_name });
+                    try writer.print("{s}{{\n{s}    {s} child_node = {s}{s}(context", .{ indent, indent, if (verbatim) "var" else "const", if (explicit_recovery) "" else "try ", callee });
                     try self.emitChildOccurrenceArgument(writer, rule, child_index, child_returns_node);
                     if (explicit_recovery) {
                         try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent, inner_level);
@@ -1873,7 +1991,7 @@ const Generator = struct {
                     , .{ indent, indent, parent_address.?, slot_index, indent, parent.?, parent_address.?, slot_index, indent, indent });
                     return;
                 }
-                try writer.print("{s}{{\n{s}    const child_node = {s}parse_{s}(context", .{ indent, indent, if (explicit_recovery) "" else "try ", call_name });
+                try writer.print("{s}{{\n{s}    const child_node = {s}{s}(context", .{ indent, indent, if (explicit_recovery) "" else "try ", callee });
                 try self.emitChildOccurrenceArgument(writer, rule, child_index, child_returns_node);
                 if (explicit_recovery) {
                     try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent, inner_level);
@@ -1898,7 +2016,7 @@ const Generator = struct {
                     \\
                 , .{ indent, indent, parent_address.?, parent_address.?, child_index, indent, indent });
             } else {
-                try writer.print("{s}_ = {s}parse_{s}{s}(context", .{ indent, if (explicit_recovery) "" else "try ", call_name, if (child_skips_ast_construction) "_" else "" });
+                try writer.print("{s}_ = {s}{s}(context", .{ indent, if (explicit_recovery) "" else "try ", callee });
                 try self.emitChildOccurrenceArgument(writer, rule, child_index, false);
                 if (explicit_recovery) {
                     try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent, inner_level);
@@ -1909,7 +2027,7 @@ const Generator = struct {
                 if (verbatim) try self.emitVerbatimCapture(writer, symbol_index, indent);
             }
         } else if (child_returns_node) {
-            try writer.print("{s}{s} = {s}parse_{s}(context", .{ indent, parent_address orelse "_", if (explicit_recovery) "" else "try ", call_name });
+            try writer.print("{s}{s} = {s}{s}(context", .{ indent, parent_address orelse "_", if (explicit_recovery) "" else "try ", callee });
             try self.emitChildOccurrenceArgument(writer, rule, child_index, true);
             if (explicit_recovery) {
                 try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent, inner_level);
@@ -1926,7 +2044,7 @@ const Generator = struct {
                 }
             }
         } else {
-            try writer.print("{s}_ = {s}parse_{s}{s}(context", .{ indent, if (explicit_recovery) "" else "try ", call_name, if (child_skips_ast_construction) "_" else "" });
+            try writer.print("{s}_ = {s}{s}(context", .{ indent, if (explicit_recovery) "" else "try ", callee });
             try self.emitChildOccurrenceArgument(writer, rule, child_index, false);
             if (explicit_recovery) {
                 try self.emitExplicitRuleCatch(writer, rule, parent_variable, skip_ast_construction, indent, inner_level);
@@ -2096,27 +2214,39 @@ const Generator = struct {
         defer self.occurrence_uses.recovery = outer_recovery_use or self.occurrence_uses.recovery;
         const selected = try self.emitDecision(writer, .rule, variable, decision, "    ", skip_ast_construction);
         try writer.print("    _ = {s};\n", .{selected});
-        if (self.uses_explicit_recovery and !self.occurrence_uses.recovery) try writer.writeAll("    _ = occurrence_recovery;\n");
+        if (self.uses_explicit_recovery and !self.occurrence_uses.recovery) try writer.writeAll("    _ = &occurrence_recovery;\n");
+    }
+
+    /// The bytes `symbol_index` matches when it is a terminal whose every
+    /// member is one byte: matching one of them matches the terminal whole.
+    fn singleByteTerminalBytes(self: *Generator, symbol_index: usize) ?[256]bool {
+        const terminal = self.symbols.items[symbol_index];
+        if (terminal.kind != .terminal and terminal.kind != .generative_terminal) return null;
+        if (terminal.terminals.items.len == 0) return null;
+        var accepted: [256]bool = @splat(false);
+        for (terminal.terminals.items) |member| {
+            if (member.len != 1) return null;
+            accepted[member[0]] = true;
+        }
+        return accepted;
+    }
+
+    /// The bytes of `rule_index`'s first symbol when it is a single-byte
+    /// terminal (see `singleByteTerminalBytes`) with no occurrence annotations.
+    fn singleByteFirstTerminal(self: *Generator, rule_index: usize) ?[256]bool {
+        const rule = self.rules.items[rule_index];
+        if (rule.rhs.items.len == 0) return null;
+        if (!planning.annotationsEmpty(rule.rhs_annotations.items[0])) return null;
+        return self.singleByteTerminalBytes(rule.rhs.items[0]);
     }
 
     /// Whether every path of `node` that selects `rule_index` matched a first
-    /// byte the rule's first symbol accepts, and that symbol is a terminal of
-    /// single bytes with no occurrence annotations. The terminal's own check
-    /// would then repeat the decision's, so the rule body only releases the
-    /// byte. A decision that maps a leftover 0x03 to `\n` only selects a rule
-    /// whose terminal accepts `\n`, and that terminal maps it the same way.
+    /// byte the rule's single-byte first terminal accepts. The terminal's own
+    /// check would then repeat the decision's, so the rule body only releases
+    /// the byte. A decision that maps a leftover 0x03 to `\n` only selects a
+    /// rule whose terminal accepts `\n`, and that terminal maps it the same way.
     fn decisionProvesFirstTerminal(self: *Generator, node: *const switch_planning.Node, rule_index: usize) bool {
-        const rule = self.rules.items[rule_index];
-        if (rule.rhs.items.len == 0) return false;
-        if (!planning.annotationsEmpty(rule.rhs_annotations.items[0])) return false;
-        const terminal = self.symbols.items[rule.rhs.items[0]];
-        if (terminal.kind != .terminal and terminal.kind != .generative_terminal) return false;
-        if (terminal.terminals.items.len == 0) return false;
-        var accepted: [256]bool = @splat(false);
-        for (terminal.terminals.items) |member| {
-            if (member.len != 1) return false;
-            accepted[member[0]] = true;
-        }
+        const accepted = self.singleByteFirstTerminal(rule_index) orelse return false;
         // An `else` that selects the rule matched no byte at all.
         if (node.fallback == rule_index) return false;
         for (node.groups.items) |group| {

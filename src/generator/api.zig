@@ -490,6 +490,65 @@ test "generateParserAlloc releases a first terminal its decision already matched
     try expectNotContains(multi_byte, proven_marker);
 }
 
+test "generateParserAlloc folds the decision of a single-rule variable that starts a rule" {
+    const source =
+        \\Start
+        \\| Pair Pair Tail Single
+        \\
+        \\Single
+        \\| "s"
+        \\
+        \\Pair
+        \\| "(" Atom ")"
+        \\
+        \\Atom
+        \\| "a"
+        \\| "b"
+        \\
+        \\Tail
+        \\| Rest
+        \\
+        \\Rest
+        \\| "z"
+        \\|
+        \\
+    ;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const output = try generateParserAlloc(arena.allocator(), source, .ll, .{ .with_procedures = false });
+    _ = try expectContains(output, "pub const is_decision_folding_enabled = config.fold_decisions;");
+    const selected = try generatedFunction(output, "fn parse_Pair_selected(");
+    // The caller's decision matched "(", so the twin neither decides nor checks it.
+    try expectNotContains(selected, "switch (");
+    _ = try expectContains(selected, "context.releaseToken(1); // child 0, matched by the decision");
+    // Only the child that starts the rule shares its rule's decision.
+    _ = try expectContains(output, "(if (is_decision_folding_enabled) parse_Pair_selected else parse_Pair)(context); // child 0");
+    _ = try expectContains(output, "try parse_Pair(context); // child 1");
+    // Several rules need a decision, and so does a nullable rule.
+    try expectNotContains(output, "fn parse_Atom_selected(");
+    try expectNotContains(output, "fn parse_Tail_selected(");
+    // No rule starts with Single, so nothing would call its twin.
+    try expectNotContains(output, "fn parse_Single_selected(");
+}
+
+test "generateParserAlloc keeps a matched first terminal's node without checking its byte again" {
+    const proven_call = "_proven(context); // child 0";
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const options: Options = .{ .with_procedures = false, .ast_for_terminals = true };
+    const matched = try generateParserAlloc(arena.allocator(), "Start\n| \"a\" Start\n| \"b\"\n", .ll, options);
+    _ = try expectContains(matched, proven_call);
+    const proven = try generatedFunction(matched, "inline fn parse_terminal_a_proven(");
+    _ = try expectContains(proven, "context.releaseToken(1);");
+    try expectNotContains(proven, "switch (");
+
+    // A multi-byte terminal checks more than the decision's first byte.
+    const multi_byte = try generateParserAlloc(arena.allocator(), "Start\n| \"ab\"\n| \"cd\"\n", .ll, options);
+    try expectNotContains(multi_byte, proven_call);
+}
+
 test "generateParserAlloc skips leftover through skipLeftoverBlockEndNewlines on 1-byte decisions" {
     const source =
         \\Start
@@ -1707,7 +1766,7 @@ test "generateParserAlloc emits position-based LL recovery" {
     _ = try expectContains(output, "fn llRecoveryOffset(");
     _ = try expectContains(output, "context.recoveryCandidateMatches(");
     _ = try expectContains(output, "const report_syntax_error = context.beginSyntaxRecovery();");
-    _ = try expectContains(output, "try parse_Item(context)");
+    _ = try expectContains(output, "try (if (is_decision_folding_enabled) parse_Item_selected else parse_Item)(context)");
     _ = try expectContains(output, "return ll_syntax_error_");
     _ = try expectContains(output, "context.skipRecoveryInput(recovery_offset);");
     _ = try expectContains(output, "context.finishSyntaxRecovery();");

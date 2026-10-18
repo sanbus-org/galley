@@ -72,6 +72,17 @@ pub const indentation_syntax = false;
 /// Requires indentation_syntax to be enabled.
 pub const newline_after_block_end = false;
 
+/// Skip a decision an LL parser has already made.
+///
+/// true  - where a rule starts with a variable that has one
+///         non-nullable rule, the decision that selected the rule
+///         selects the variable's rule too, and the variable's parser
+///         skips its own decision.
+/// false - every variable parser makes its own decision.
+///
+/// LR parsers ignore this option.
+pub const fold_decisions = false;
+
 /// Static syntax-error message overrides baked into the generated
 /// parser.
 ///
