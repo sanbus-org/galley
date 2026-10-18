@@ -770,10 +770,11 @@ jobs:
           - name: json-base
             grammar: json
             # configure-benchmarks.sh only edits the fields the row's flags
-            # name, so naming inline-parsers keeps the c/cpp/rust/go
+            # name, so naming the inlining cap keeps the c/cpp/rust/go
             # benchmark grammars in lockstep with languages/json: every
-            # binding row runs the parser zig runs.
-            flags: --no-ast --no-procedures --no-error-recovery --no-indentation-syntax --no-newline-after-block-end --inline-parsers
+            # binding row runs the parser zig runs (1500 is the cap
+            # languages/json commits).
+            flags: --no-ast --no-procedures --no-error-recovery --no-indentation-syntax --no-newline-after-block-end --inlining-cap 1500
             bindings: true
           - name: json-ast
             grammar: json
@@ -1100,7 +1101,7 @@ jobs:
             },
             "devDependencies": {
               "vite": "7.3.6",
-              "webpack": "5.110.3",
+              "webpack": "5.112.0",
               "webpack-cli": "6.0.1"
             }
           }

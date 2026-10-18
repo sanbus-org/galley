@@ -48,6 +48,7 @@ pub const string_utilities = @import("string.zig");
 pub const stack_overflow_utilities = @import("stack-overflow.zig");
 pub const data_structures = @import("data-structures/data-structures.zig");
 pub const standard_procedures = @import("standard-procedures.zig");
+pub const parser_inlining = @import("parser-inlining.zig");
 pub const read_chunk_size = 64 * 1024;
 pub const input_padding_size = @max(parser.longest_terminal_length, 1);
 pub const input_window_size = read_chunk_size;

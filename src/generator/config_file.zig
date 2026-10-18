@@ -129,21 +129,24 @@ pub fn write(
         \\/// LR parsers ignore this option.
         \\
     , true);
-    try writeBool(writer, "inline_parsers",
-        \\/// Force LL variable parsers inline into their callers.
-        \\///
-        \\/// true  - variable parsers inline, so a parse makes fewer calls. On a
-        \\///         recursion cycle, the few rules chosen to break it keep their
-        \\///         own functions, so one nesting level costs one frame. Builds
-        \\///         take longer and parsers grow. Debug builds keep every
-        \\///         parser a function, since unoptimized inlined parsers cost
-        \\///         far more stack.
-        \\/// false - every variable parser is a function.
-        \\///
-        \\/// LR parsers ignore this option.
-        \\
-    , false);
     try writer.writeAll(
+        \\/// How much code forcing an LL variable parser inline into its callers
+        \\/// may add, in the generator's units of about one decision prong or rule
+        \\/// symbol.
+        \\///
+        \\/// 0        - every variable parser stays a function.
+        \\/// a number - a parser is forced inline when its copies beyond the first,
+        \\///            one per caller, add less code than this. A parser with
+        \\///            one caller adds none.
+        \\/// null     - every parser is forced inline.
+        \\///
+        \\/// Inlined parsers make fewer calls, but many copies of a large parser
+        \\/// can slow a parser down. On a recursion cycle, the few rules chosen to
+        \\/// break it keep their own functions, so one nesting level costs one
+        \\/// frame. Debug builds keep every parser a function, since unoptimized
+        \\/// inlined parsers cost far more stack. LR parsers ignore this option.
+        \\pub const inlining_cap: ?usize = 1500;
+        \\
         \\/// Static syntax-error message overrides baked into the generated
         \\/// parser.
         \\///

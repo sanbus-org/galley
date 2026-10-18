@@ -8,6 +8,7 @@ comptime {
     _ = @import("data-structures/context.zig");
     _ = @import("data-structures/offsets.zig");
     _ = @import("string.zig");
+    _ = @import("parser-inlining.zig");
     _ = @import("session-lock.zig");
 }
 

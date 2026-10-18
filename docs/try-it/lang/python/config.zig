@@ -87,18 +87,22 @@ pub const newline_after_block_end = true;
 /// LR parsers ignore this option.
 pub const fold_decisions = true;
 
-/// Force LL variable parsers inline into their callers.
+/// How much code forcing an LL variable parser inline into its callers
+/// may add, in the generator's units of about one decision prong or rule
+/// symbol.
 ///
-/// true  - variable parsers inline, so a parse makes fewer calls. On a
-///         recursion cycle, the few rules chosen to break it keep their
-///         own functions, so one nesting level costs one frame. Builds
-///         take longer and parsers grow. Debug builds keep every
-///         parser a function, since unoptimized inlined parsers cost
-///         far more stack.
-/// false - every variable parser is a function.
+/// 0        - every variable parser stays a function.
+/// a number - a parser is forced inline when its copies beyond the first,
+///            one per caller, add less code than this. A parser with
+///            one caller adds none.
+/// null     - every parser is forced inline.
 ///
-/// LR parsers ignore this option.
-pub const inline_parsers = false;
+/// Inlined parsers make fewer calls, but many copies of a large parser
+/// can slow a parser down. On a recursion cycle, the few rules chosen to
+/// break it keep their own functions, so one nesting level costs one
+/// frame. Debug builds keep every parser a function, since unoptimized
+/// inlined parsers cost far more stack. LR parsers ignore this option.
+pub const inlining_cap: ?usize = 0;
 
 /// Static syntax-error message overrides baked into the generated
 /// parser.

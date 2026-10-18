@@ -1,5 +1,5 @@
 # Each shape below has a call an inlined parser could make into its own
-# expansion. Built with inline_parsers on and outside Debug, any such call
+# expansion. Built outside Debug with parsers forced inline, any such call
 # that is forced inline fails the build.
 Start
 | "1" Bracket

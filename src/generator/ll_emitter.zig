@@ -45,8 +45,6 @@ const Generator = struct {
     /// Comptime branch budget spent so far in the body being rendered by
     /// calls to inline terminal parsers (see `functionBodyBranchQuota`).
     inline_call_cost: usize = 0,
-    /// Whether the body being rendered has a call that may be forced inline.
-    body_forces_inlining: bool = false,
     /// Comptime branch budget one call to each terminal parser spends in its
     /// caller, indexed by symbol; filled before any parser is emitted.
     terminal_inline_costs: []usize = &.{},
@@ -89,6 +87,9 @@ const Generator = struct {
     cycle_frames: std.ArrayList(usize) = .empty,
     /// The breaker rule functions the parser bodies call.
     rule_functions: std.ArrayList(RuleFunction) = .empty,
+    /// Every variable parser that may be forced inline, each after the ones
+    /// it calls (see `planInliningOrder`).
+    inlining_order: std.ArrayList(InliningEntry) = .empty,
 
     /// The `_selected` twins call sites name (see `childCallee`), emitted
     /// after every other parser.
@@ -103,6 +104,15 @@ const Generator = struct {
     /// component that needs more gets a greedy set instead, which may be
     /// larger than the smallest one.
     const exhaustive_breaker_search_limit = 3;
+
+    /// An entry of the generated `inlining_entries` (see
+    /// `parser_inlining.Entry` in the runtime).
+    const InliningEntry = struct {
+        variable: usize,
+        size: usize,
+        callees: []const usize,
+        fixed_calls: usize,
+    };
 
     /// A breaker rule's body, moved to its own function.
     const RuleFunction = struct {
@@ -153,7 +163,7 @@ const Generator = struct {
         );
         try writer.writeAll(
             \\pub const is_decision_folding_enabled = config.fold_decisions;
-            \\pub const is_parser_inlining_enabled = config.inline_parsers;
+            \\pub const inlining_cap: ?usize = config.inlining_cap;
             \\
             \\
         );
@@ -357,6 +367,85 @@ const Generator = struct {
             for (breakers) |rule_index| self.breaker_cycle_of_rule[rule_index] = cycle;
             try self.cycle_frames.append(self.allocator, try self.shortestNestingCycle(component_of, component, breakers));
         }
+        try self.planInliningOrder();
+    }
+
+    /// Fills `inlining_order` with every variable parser that is not on an
+    /// unbroken cycle. Without self-calls and breaker rules the calls between
+    /// them form no cycle, so each can follow the ones it calls.
+    fn planInliningOrder(self: *Generator) EmitError!void {
+        const count = self.symbols.items.len;
+        const state = try self.allocator.alloc(InliningVisit, count);
+        for (state, 0..) |*visit, symbol_index| {
+            const symbol = self.symbols.items[symbol_index];
+            const candidate = symbol.kind == .variable and !symbol.synthetic_transparent and symbol_index != self.plan.augmented_start and !self.in_unbroken_cycle[symbol_index];
+            visit.* = if (candidate) .pending else .excluded;
+        }
+        // Calls from breaker rule functions and from parsers never forced
+        // inline appear once whatever else inlines.
+        const fixed_calls = try self.allocator.alloc(usize, count);
+        @memset(fixed_calls, 0);
+        for (self.rules.items, 0..) |rule, rule_index| {
+            if (self.symbols.items[rule.header].synthetic_transparent) continue;
+            if (state[rule.header] != .excluded and self.breaker_cycle_of_rule[rule_index] == null) continue;
+            for (self.rule_targets[rule_index]) |target| fixed_calls[target] += 1;
+        }
+        for (self.variables.items) |variable| try self.appendInliningEntry(state, fixed_calls, variable);
+    }
+
+    const InliningVisit = enum { excluded, pending, visiting, done };
+
+    fn appendInliningEntry(self: *Generator, state: []InliningVisit, fixed_calls: []const usize, variable: usize) EmitError!void {
+        if (state[variable] != .pending) return;
+        state[variable] = .visiting;
+        var size = self.estimatedOwnSize(variable);
+        var callees: std.ArrayList(usize) = .empty;
+        for (self.rules_by_header[variable].items) |rule_index| {
+            // A breaker rule's body has its own function whenever the
+            // variable's parser is forced inline.
+            if (self.breaker_cycle_of_rule[rule_index] != null) {
+                size += 1;
+                continue;
+            }
+            for (self.rule_targets[rule_index]) |target| {
+                if (state[target] == .excluded) {
+                    size += 1;
+                    continue;
+                }
+                try self.appendInliningEntry(state, fixed_calls, target);
+                std.debug.assert(state[target] == .done);
+                try callees.append(self.allocator, target);
+            }
+        }
+        state[variable] = .done;
+        try self.inlining_order.append(self.allocator, .{ .variable = variable, .size = size, .callees = callees.items, .fixed_calls = fixed_calls[variable] });
+    }
+
+    /// A variable's own code, in the units of `InliningEntry`: its decision's
+    /// prongs and its rules' symbols, transparent helpers expanded into it
+    /// included.
+    fn estimatedOwnSize(self: *Generator, symbol_index: usize) usize {
+        if (self.symbols.items[symbol_index].kind != .variable) return 0;
+        var size: usize = 1;
+        for (self.plan.parser_decisions.items) |*decision| {
+            if (decision.symbol_index == symbol_index and !decision.skip_ast_construction) size += decisionSize(decision.tree);
+        }
+        for (self.rules_by_header[symbol_index].items) |rule_index| {
+            const rule = self.rules.items[rule_index];
+            size += 1 + rule.rhs.items.len;
+            for (rule.rhs.items) |child| {
+                if (child != symbol_index and self.symbols.items[child].synthetic_transparent) size += self.estimatedOwnSize(child);
+            }
+        }
+        return size;
+    }
+
+    /// One unit per prong: a prong's byte values compile to a few range
+    /// checks however many there are.
+    fn decisionSize(node: *const switch_planning.Node) usize {
+        var size: usize = 1;
+        for (node.groups.items) |group| size += 1 + decisionSize(group.child);
+        return size;
     }
 
     /// Fills `parser_variable`. Factoring refers to a helper only from rules
@@ -536,7 +625,8 @@ const Generator = struct {
         try writer.writeAll(
             \\/// The fewest frames one nesting level of a recursion cycle must cost,
             \\/// while every variable parser is a function, for the cycle to break
-            \\/// when `inline_parsers` is set. A level costs at least two frames.
+            \\/// where its parsers are forced inline. A level costs at least two
+            \\/// frames.
             \\const cycle_breaking_minimum_frames = 2;
             \\/// Indexed by recursion cycle: the frames one nesting level costs while
             \\/// every variable parser is a function.
@@ -549,14 +639,11 @@ const Generator = struct {
             \\/// unoptimized, each parser inlined into a breaker rule function keeps
             \\/// its own stack slots, which can cost hundreds of kilobytes of stack
             \\/// per nesting level.
-            \\const is_parser_inlining_forced = is_parser_inlining_enabled and builtin.mode != .debug;
-            \\/// Forced inlining makes a body analyze every parser inlined into it,
-            \\/// which the generator does not measure.
-            \\const inlined_body_branch_quota = 100_000_000;
-            \\/// Whether `cycle`'s breaker rules are functions, so its variable
-            \\/// parsers inline.
+            \\const is_parser_inlining_forced = builtin.mode != .debug;
+            \\/// Whether `cycle`'s breaker rules are functions where their variable's
+            \\/// parser is forced inline, so the cycle's parsers inline.
             \\fn cycleBreaks(comptime cycle: usize) bool {
-            \\    return is_parser_inlining_enabled and cycle_frames[cycle] >= cycle_breaking_minimum_frames;
+            \\    return cycle_frames[cycle] >= cycle_breaking_minimum_frames;
             \\}
             \\/// What a breaker rule function takes from its variable's parser: the
             \\/// node it builds, by address or by value, if it builds one.
@@ -567,6 +654,26 @@ const Generator = struct {
             \\
             \\
         );
+        try self.emitInliningSupport(writer);
+    }
+
+    /// `inlining_order` as the entries `parser_inlining.inlinedVariables`
+    /// reads.
+    fn emitInliningSupport(self: *Generator, writer: *std.Io.Writer) !void {
+        try writer.writeAll("const inlining_entries = [_]root.parser_inlining.Entry{\n");
+        for (self.inlining_order.items) |entry| {
+            try writer.print("    .{{ .variable = {d}, .size = {d}, .callees = &.{{", .{ entry.variable, entry.size });
+            for (entry.callees, 0..) |callee, i| try writer.print("{s}{d}", .{ if (i == 0) " " else ", ", callee });
+            try writer.print("{s}, .fixed_calls = {d} }},\n", .{ if (entry.callees.len == 0) "}" else " }", entry.fixed_calls });
+        }
+        try writer.print(
+            \\}};
+            \\/// Indexed by symbol: whether the variable's parser is forced inline
+            \\/// when the build forces inlining.
+            \\const inlined_variables = root.parser_inlining.inlinedVariables({d}, &inlining_entries, inlining_cap);
+            \\
+            \\
+        , .{self.symbols.items.len});
     }
 
     fn emitRuleFunctions(self: *Generator, writer: *std.Io.Writer) !void {
@@ -612,9 +719,9 @@ const Generator = struct {
     fn callModifier(self: *Generator, symbol_index: usize) EmitError!?[]const u8 {
         if (self.symbols.items[symbol_index].kind != .variable or self.in_unbroken_cycle[symbol_index]) return null;
         if (self.cycle_of_variable[symbol_index]) |cycle| {
-            return try std.fmt.allocPrint(self.allocator, "if (is_parser_inlining_forced and cycleBreaks({d})) .always_inline else .auto", .{cycle});
+            return try std.fmt.allocPrint(self.allocator, "if (is_parser_inlining_forced and cycleBreaks({d}) and inlined_variables[{d}]) .always_inline else .auto", .{ cycle, symbol_index });
         }
-        return "if (is_parser_inlining_forced) .always_inline else .auto";
+        return try std.fmt.allocPrint(self.allocator, "if (is_parser_inlining_forced and inlined_variables[{d}]) .always_inline else .auto", .{symbol_index});
     }
 
     /// `callModifier` for the call to `rule`'s child at `child_index`, or null
@@ -628,11 +735,9 @@ const Generator = struct {
 
     /// Opens a call of `callee` with the context as its first argument and
     /// returns the text that closes it: through `@call` with `modifier`, or a
-    /// plain call without one. Every call that may be forced inline opens
-    /// here, so the body's branch quota knows of it.
-    fn emitCallOpen(self: *Generator, writer: *std.Io.Writer, modifier: ?[]const u8, callee: []const u8) EmitError![]const u8 {
+    /// plain call without one.
+    fn emitCallOpen(writer: *std.Io.Writer, modifier: ?[]const u8, callee: []const u8) EmitError![]const u8 {
         if (modifier) |text| {
-            self.body_forces_inlining = true;
             try writer.print("@call({s}, {s}, .{{context", .{ text, callee });
             return "})";
         }
@@ -753,7 +858,6 @@ const Generator = struct {
     pub fn beginFunctionBody(self: *Generator) void {
         self.decision_count = 0;
         self.inline_call_cost = 0;
-        self.body_forces_inlining = false;
     }
 
     /// Comptime branch budget each `(` in a generated body may spend on the
@@ -764,22 +868,15 @@ const Generator = struct {
     /// (`head` through the lexer, about five calls).
     const branch_quota_per_call = 8;
 
-    /// The `@setEvalBranchQuota` argument a rendered function body needs, or
-    /// null when Zig's default suffices. Zig charges every inline call,
-    /// including those inside inlined bodies, against the analyzing
-    /// function's budget (1000 by default). Every call site in the text gets
-    /// `branch_quota_per_call`, and each call to an inline terminal parser
-    /// also carries that parser's whole cost. A body that may force variable
-    /// parsers inline gets `inlined_body_branch_quota` when the build does.
-    pub fn functionBodyBranchQuota(self: *Generator, text: []const u8) EmitError!?[]const u8 {
+    /// The `@setEvalBranchQuota` a rendered function body needs. Zig charges
+    /// every inline call, including those inside inlined bodies, against the
+    /// analyzing function's budget (1000 by default). Every call site in the
+    /// text gets `branch_quota_per_call`, and each call to an inline terminal
+    /// parser also carries that parser's whole cost.
+    pub fn functionBodyBranchQuota(self: *Generator, text: []const u8) usize {
         const quota = branch_quota_per_call * std.mem.count(u8, text, "(") + self.inline_call_cost;
         self.largest_body_branch_quota = @max(self.largest_body_branch_quota, quota);
-        const base = @max(quota, emitter_common.default_branch_quota);
-        if (self.body_forces_inlining) {
-            return try std.fmt.allocPrint(self.allocator, "if (is_parser_inlining_forced) inlined_body_branch_quota else {d}", .{base});
-        }
-        if (quota <= emitter_common.default_branch_quota) return null;
-        return try std.fmt.allocPrint(self.allocator, "{d}", .{quota});
+        return quota;
     }
 
     /// Terminal parsers are `inline fn`, so every call spends the callee's
@@ -829,7 +926,7 @@ const Generator = struct {
             try writer.print(") anyerror!nodeReturnType({d}, {s}) {{\n", .{ variable, if (skip_ast_construction) "true" else "false" });
             const modifier = try std.fmt.allocPrint(self.allocator, "if (symbolReturnsNodeSuppressed({d}, {s})) .never_inline else {s}", .{ variable, if (skip_ast_construction) "true" else "false", (try self.callModifier(variable)) orelse ".auto" });
             try writer.writeAll("    return ");
-            const close = try self.emitCallOpen(writer, modifier, try std.fmt.allocPrint(self.allocator, "parse_{s}{s}_loop", .{ name, suffix }));
+            const close = try emitCallOpen(writer, modifier, try std.fmt.allocPrint(self.allocator, "parse_{s}{s}_loop", .{ name, suffix }));
             if (self.has_occurrence_procedures) try writer.writeAll(", occurrence_procedures");
             if (self.uses_explicit_recovery) try writer.writeAll(", occurrence_recovery");
             try writer.print("{s};\n}}\n", .{close});
@@ -2236,7 +2333,7 @@ const Generator = struct {
         const name = try std.fmt.allocPrint(self.allocator, "parse_{s}{s}_rule_{d}", .{ try self.parserName(parent_variable), if (skip_ast_construction) "_" else "", rule_index });
         // `if (true)` keeps the code after the rule switch reachable to the
         // compiler when every rule is a breaker.
-        try writer.print("{s}if (comptime cycleBreaks({d})) {{\n{s}    if (true) return try {s}(context", .{ indent, cycle, indent, name });
+        try writer.print("{s}if (comptime cycleBreaks({d}) and inlined_variables[{d}]) {{\n{s}    if (true) return try {s}(context", .{ indent, cycle, parent_variable, indent, name });
         if (self.has_occurrence_procedures) try writer.print(", {s}", .{self.occurrenceProceduresName()});
         if (self.uses_explicit_recovery) try writer.print(", {s}", .{self.occurrenceRecoveryName()});
         const node_argument = if (!self.symbolReturnsNode(parent_variable, skip_ast_construction)) "{}" else if (self.options.with_ast) "node_address" else "node";
@@ -2385,7 +2482,7 @@ const Generator = struct {
     /// returns the text that closes it: through `@call` where `callModifier`
     /// gives the call a modifier.
     fn emitChildCallOpen(self: *Generator, writer: *std.Io.Writer, rule: Rule, child_index: usize, child_skips_ast_construction: bool, parser: []const u8) EmitError![]const u8 {
-        return self.emitCallOpen(writer, try self.childCallModifier(rule, child_index), try self.childCallee(rule, child_index, child_skips_ast_construction, parser));
+        return emitCallOpen(writer, try self.childCallModifier(rule, child_index), try self.childCallee(rule, child_index, child_skips_ast_construction, parser));
     }
 
     fn emitChildParseLine(self: *Generator, writer: *std.Io.Writer, symbol_index: usize, parent_variable: usize, rule: Rule, child_index: usize, parent: ?[]const u8, parent_address: ?[]const u8, indent: []const u8, skip_ast_construction: bool, slot_index: usize) !void {
@@ -2436,7 +2533,7 @@ const Generator = struct {
             } else {
                 try writer.print("{s}_ = {s}", .{ indent, if (explicit_recovery) "" else "try " });
             }
-            const close = try self.emitCallOpen(writer, try self.childCallModifier(rule, child_index), try std.fmt.allocPrint(self.allocator, "parse_{s}_flattened", .{name}));
+            const close = try emitCallOpen(writer, try self.childCallModifier(rule, child_index), try std.fmt.allocPrint(self.allocator, "parse_{s}_flattened", .{name}));
             try writer.print(", {s}", .{target});
             if (explicit_recovery) {
                 try self.emitExplicitRuleCatch(writer, close, rule, parent_variable, skip_ast_construction, indent, inner_level);

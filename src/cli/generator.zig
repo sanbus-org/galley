@@ -31,7 +31,8 @@ const ConfigEdits = struct {
     indentation_syntax: ?bool = null,
     newline_after_block_end: ?bool = null,
     fold_decisions: ?bool = null,
-    inline_parsers: ?bool = null,
+    /// The `inlining_cap` value as written: a number, or `null`.
+    inlining_cap: ?[]const u8 = null,
 
     fn apply(self: ConfigEdits, init: std.process.Init, gpa: std.mem.Allocator, language_dir: []const u8) !void {
         const path = try std.fs.path.join(gpa, &.{ language_dir, "config.zig" });
@@ -57,14 +58,14 @@ const ConfigEdits = struct {
             .{ "indentation_syntax", self.indentation_syntax },
             .{ "newline_after_block_end", self.newline_after_block_end },
             .{ "fold_decisions", self.fold_decisions },
-            .{ "inline_parsers", self.inline_parsers },
+            .{ "inlining_cap", self.inlining_cap },
         }) |edit| {
             if (edit[1]) |value| {
                 const next = try generator.config_file.editedConstantSource(
                     gpa,
                     updated orelse existing,
                     edit[0],
-                    if (value) "true" else "false",
+                    if (@TypeOf(value) == bool) (if (value) "true" else "false") else value,
                 );
                 if (updated) |previous| gpa.free(previous);
                 updated = next;
@@ -124,6 +125,13 @@ pub fn main(init: std.process.Init) !void {
     }
 }
 
+/// The `inlining_cap` value `--inlining-cap` writes for `argument`.
+fn inliningCapValue(argument: []const u8) []const u8 {
+    if (std.mem.eql(u8, argument, "unlimited")) return "null";
+    _ = std.fmt.parseInt(usize, argument, 10) catch fatal("error: --inlining-cap takes a number or unlimited, not {s}\n", .{argument});
+    return argument;
+}
+
 fn parseArgs(init: std.process.Init) !CliOptions {
     var result = CliOptions{};
 
@@ -157,10 +165,10 @@ fn parseArgs(init: std.process.Init) !CliOptions {
             result.edits.fold_decisions = true;
         } else if (std.mem.eql(u8, arg, "--no-fold-decisions")) {
             result.edits.fold_decisions = false;
-        } else if (std.mem.eql(u8, arg, "--inline-parsers")) {
-            result.edits.inline_parsers = true;
-        } else if (std.mem.eql(u8, arg, "--no-inline-parsers")) {
-            result.edits.inline_parsers = false;
+        } else if (std.mem.eql(u8, arg, "--inlining-cap")) {
+            result.edits.inlining_cap = inliningCapValue(args.next() orelse fatal("error: --inlining-cap requires a number or unlimited\n", .{}));
+        } else if (std.mem.startsWith(u8, arg, "--inlining-cap=")) {
+            result.edits.inlining_cap = inliningCapValue(arg["--inlining-cap=".len..]);
         } else if (std.mem.eql(u8, arg, "--with-procedures")) {
             result.edits.procedures = true;
         } else if (std.mem.eql(u8, arg, "--no-procedures")) {
@@ -253,8 +261,9 @@ fn printUsage(init: std.process.Init) !void {
         \\                             Writes `newline_after_block_end = false`.
         \\      --fold-decisions       Writes `fold_decisions = true`.
         \\      --no-fold-decisions    Writes `fold_decisions = false`.
-        \\      --inline-parsers       Writes `inline_parsers = true`.
-        \\      --no-inline-parsers    Writes `inline_parsers = false`.
+        \\      --inlining-cap <N|unlimited>
+        \\                             Writes `inlining_cap = N` (0 inlines no
+        \\                             parser) or, for unlimited, `null`.
         \\      --fill-error-messages  Append missing default syntax error hooks.
         \\      --emit-metadata        Write metadata.json and procedures.zig
         \\                             next to the generated parser(s); the
@@ -1224,13 +1233,15 @@ test "every constant written by config_file.write stays editable" {
         "indentation_syntax",
         "newline_after_block_end",
         "fold_decisions",
-        "inline_parsers",
     }) |name| {
         const edited_true = try generator.config_file.editedConstantSource(arena.allocator(), fresh, name, "true");
         const edited_false = try generator.config_file.editedConstantSource(arena.allocator(), fresh, name, "false");
         _ = edited_true;
         _ = edited_false;
     }
+
+    const edited_cap = try generator.config_file.editedConstantSource(arena.allocator(), fresh, "inlining_cap", "null");
+    try std.testing.expect(std.mem.indexOf(u8, edited_cap, "pub const inlining_cap: ?usize = null;") != null);
 
     // The annotated constant keeps its type through the edit.
     const edited_position = try generator.config_file.editedConstantSource(arena.allocator(), fresh, "position_tracking", "true");

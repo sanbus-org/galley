@@ -13,7 +13,7 @@ fn parseAll(input: []const u8) !void {
 }
 
 test "inline cycles: the build forces parsers inline" {
-    try std.testing.expect(parser.parser.is_parser_inlining_enabled and builtin.mode != .debug);
+    try std.testing.expect(parser.parser.inlining_cap != 0 and builtin.mode != .debug);
 }
 
 test "inline cycles: a cycle breaks at a rule that consumes before it recurses" {

@@ -1592,16 +1592,18 @@ fn addTailLoopTests(
     return b.addRunArtifact(tests);
 }
 
-/// Forced inlining with nodes in the AST, without nodes, and with recovery.
+/// Every parser forced inline with nodes in the AST, without nodes, and with
+/// recovery, and a cap that keeps the largest copied parser a function.
 const inline_cycles_variants = [_]TailLoopVariant{
-    .{ .name = "ast", .flags = &.{ "--with-ast", "--with-procedures" } },
-    .{ .name = "no-ast", .flags = &.{ "--no-ast", "--no-procedures" } },
-    .{ .name = "recovery", .flags = &.{ "--no-ast", "--no-procedures", "--with-error-recovery" } },
+    .{ .name = "ast", .flags = &.{ "--with-ast", "--with-procedures", "--inlining-cap", "unlimited" } },
+    .{ .name = "no-ast", .flags = &.{ "--no-ast", "--no-procedures", "--inlining-cap", "unlimited" } },
+    .{ .name = "recovery", .flags = &.{ "--no-ast", "--no-procedures", "--with-error-recovery", "--inlining-cap", "unlimited" } },
+    .{ .name = "capped", .flags = &.{ "--no-ast", "--no-procedures", "--inlining-cap", "20" } },
 };
 
-/// LL parsers with `inline_parsers` on, built in ReleaseSafe whatever the
-/// suite's mode: Debug forces nothing inline, so only an optimized build
-/// rejects a forced call into its own expansion.
+/// LL parsers that force variable parsers inline, built in ReleaseSafe
+/// whatever the suite's mode: Debug forces nothing inline, so only an
+/// optimized build rejects a forced call into its own expansion.
 fn addInlineCyclesTests(
     b: *std.Build,
     options: Options,
@@ -1621,7 +1623,6 @@ fn addInlineCyclesTests(
     const generated_parser_path = generate_parser.addOutputFileArg(b.fmt("{s}-parser.zig", .{parser_name}));
     generate_parser.addArg("--config-output");
     const generated_config_path = generate_parser.addOutputFileArg(b.fmt("{s}-config.zig", .{parser_name}));
-    generate_parser.addArg("--inline-parsers");
     generate_parser.addArgs(variant.flags);
     generate_parser.stdio = .inherit;
 

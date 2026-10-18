@@ -422,7 +422,7 @@ fn emitMinimizedCondition(writer: *std.Io.Writer, onSetMask: MintermMask, uses_e
 }
 
 /// Zig's default `@setEvalBranchQuota`.
-pub const default_branch_quota = 1000;
+const default_branch_quota = 1000;
 
 /// Renders one generated function body under every configuration that
 /// `config.zig` can select, deduplicates identical texts, and emits them
@@ -495,10 +495,10 @@ pub fn emitModeGatedBody(
         else
             "";
         // Zig's default comptime branch quota is 1000; a body that needs more
-        // states its own, an expression from the emitter that rendered it.
-        const quota = if (comptime @hasDecl(Generator, "functionBodyBranchQuota")) try generator.functionBodyBranchQuota(rendered) else null;
-        const text = if (quota) |argument|
-            try std.fmt.allocPrint(generator.allocator, "    @setEvalBranchQuota({s});\n{s}{s}", .{ argument, occurrence_prefix, rendered })
+        // states its own, computed by the emitter that rendered it.
+        const quota = if (comptime @hasDecl(Generator, "functionBodyBranchQuota")) generator.functionBodyBranchQuota(rendered) else 0;
+        const text = if (quota > default_branch_quota)
+            try std.fmt.allocPrint(generator.allocator, "    @setEvalBranchQuota({d});\n{s}{s}", .{ quota, occurrence_prefix, rendered })
         else
             try std.fmt.allocPrint(generator.allocator, "{s}{s}", .{ occurrence_prefix, rendered });
         var duplicate_index: ?usize = null;

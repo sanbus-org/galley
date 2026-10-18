@@ -550,18 +550,20 @@ test "generateParserAlloc breaks a recursion cycle at a rule that consumes befor
     defer arena.deinit();
 
     const output = try generateParserAlloc(arena.allocator(), source, .ll, .{ .with_procedures = false });
-    _ = try expectContains(output, "pub const is_parser_inlining_enabled = config.inline_parsers;");
+    _ = try expectContains(output, "pub const inlining_cap: ?usize = config.inlining_cap;");
+    _ = try expectContains(output, "const inlined_variables = root.parser_inlining.inlinedVariables(");
     // Debug builds break the cycle but inline nothing.
-    _ = try expectContains(output, "const is_parser_inlining_forced = is_parser_inlining_enabled and builtin.mode != .debug;");
+    _ = try expectContains(output, "const is_parser_inlining_forced = builtin.mode != .debug;");
     // Value -> List -> Value costs two frames per level.
     _ = try expectContains(output, "const cycle_frames = [_]usize{ 2, };");
     // The bracket rule consumes "[" before it recurses, so it breaks the
-    // cycle and keeps its own function; the cycle's parsers inline.
+    // cycle and keeps its own function where Value (1) inlines; the cycle's
+    // parsers inline where the cap lets them.
     _ = try expectContains(output, "noinline fn parse_Value_rule_");
-    _ = try expectContains(output, "if (comptime cycleBreaks(0)) {");
-    _ = try expectContains(output, "@call(if (is_parser_inlining_forced and cycleBreaks(0)) .always_inline else .auto, parse_List, .{context})");
+    _ = try expectContains(output, "if (comptime cycleBreaks(0) and inlined_variables[1]) {");
+    _ = try expectContains(output, "@call(if (is_parser_inlining_forced and cycleBreaks(0) and inlined_variables[3]) .always_inline else .auto, parse_List, .{context})");
     // Start is on no cycle.
-    _ = try expectContains(output, "@call(if (is_parser_inlining_forced) .always_inline else .auto, (if (is_decision_folding_enabled) parse_Start_selected else parse_Start), .{context");
+    _ = try expectContains(output, "@call(if (is_parser_inlining_forced and inlined_variables[0]) .always_inline else .auto, (if (is_decision_folding_enabled) parse_Start_selected else parse_Start), .{context");
 }
 
 test "generateParserAlloc breaks a cycle outside a variable whose factored rules loop" {
@@ -607,7 +609,7 @@ test "generateParserAlloc keeps a helper's call of its variable's parser plain" 
     const output = try generateParserAlloc(arena.allocator(), source, .ll, .{ .with_ast = false, .with_procedures = false, .with_error_recovery = false });
     _ = try expectContains(output, "try (if (is_decision_folding_enabled) parse_V_selected else parse_V)(context);");
     // Start's call of V still inlines.
-    _ = try expectContains(output, "@call(if (is_parser_inlining_forced) .always_inline else .auto, (if (is_decision_folding_enabled) parse_V_selected else parse_V), .{context});");
+    _ = try expectContains(output, "@call(if (is_parser_inlining_forced and inlined_variables[1]) .always_inline else .auto, (if (is_decision_folding_enabled) parse_V_selected else parse_V), .{context});");
 }
 
 test "generateParserAlloc keeps the parsers of a cycle it cannot break as functions" {
@@ -1126,11 +1128,7 @@ test "LL bodies beyond Zig's default branch quota state a computed one" {
     const start = fnBody(output, "fn parse_Start(") orelse return error.TestUnexpectedStructure;
     const quota_at = std.mem.indexOf(u8, start, quota_marker) orelse return error.TestExpectedEqual;
     const digits = start[quota_at + quota_marker.len ..];
-    const argument = digits[0..std.mem.indexOf(u8, digits, ");").?];
-    // `Start` may force `Small` inline, so builds that do get a larger quota.
-    const prefix = "if (is_parser_inlining_forced) inlined_body_branch_quota else ";
-    try std.testing.expect(std.mem.startsWith(u8, argument, prefix));
-    const quota = try std.fmt.parseInt(usize, argument[prefix.len..], 10);
+    const quota = try std.fmt.parseInt(usize, digits[0..std.mem.indexOfScalar(u8, digits, ')').?], 10);
     try std.testing.expect(quota > 1000);
     try std.testing.expect(quota >= std.mem.count(u8, start, "parse_terminal_"));
 }
@@ -1875,7 +1873,7 @@ test "generateParserAlloc emits position-based LL recovery" {
     _ = try expectContains(output, "fn llRecoveryOffset(");
     _ = try expectContains(output, "context.recoveryCandidateMatches(");
     _ = try expectContains(output, "const report_syntax_error = context.beginSyntaxRecovery();");
-    _ = try expectContains(output, "try @call(if (is_parser_inlining_forced) .always_inline else .auto, (if (is_decision_folding_enabled) parse_Item_selected else parse_Item), .{context})");
+    _ = try expectContains(output, "]) .always_inline else .auto, (if (is_decision_folding_enabled) parse_Item_selected else parse_Item), .{context})");
     _ = try expectContains(output, "return ll_syntax_error_");
     _ = try expectContains(output, "context.skipRecoveryInput(recovery_offset);");
     _ = try expectContains(output, "context.finishSyntaxRecovery();");
