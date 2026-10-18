@@ -292,7 +292,6 @@ use galley::SessionOptions;
 let opts = SessionOptions {
     max_errors: 20,
     recovery_window: 1000,
-    stack_overflow_recovery: true,
     syntax_error_stack_depth: 3,
     message_overrides: Vec::new(),
     ..Default::default()

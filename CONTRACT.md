@@ -160,7 +160,7 @@ No input can make a parser corrupt memory or use resources without limit. Every 
 4. Except in ReleaseFast and ReleaseSmall builds, a tree edit that would corrupt the tree is detected and stops the program.
 5. Through the C ABI, a tree edit with an index or count outside the tree is refused with an error in every build.
 6. A parse that runs out of memory, runs out of tree storage, or fails to read its input fails its call and publishes no tree and no result.
-7. Input nested deeper than its thread's stack can hold ends the process, unless the experimental [stack-overflow recovery](docs/architecture.md#optional-stack-overflow-recovery) is enabled on a platform that has it.
+7. Input nested deeper than its thread's stack can hold ends the process, unless the [stack-overflow recovery](docs/architecture.md#optional-stack-overflow-recovery) debugging aid is enabled on a platform that has it.
 
 ## 12. Core interface
 

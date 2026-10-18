@@ -64,7 +64,7 @@ See [Grammar Guidelines §8](/grammar_guidelines#8-verbatim-raw-capture) for the
 
 ## Optional Stack-Overflow Recovery
 
-Generated parsers use the native call stack, so excessive recursive nesting can exhaust the stack available to the calling thread. On Linux and macOS, Galley can run a parse inside a protected signal-recovery scope that converts a fault at the thread's stack boundary into `ParseError.StackOverflow`.
+Generated parsers use the native call stack, so excessive recursive nesting can exhaust the stack available to the calling thread. Stack-overflow recovery is a debugging aid: on Linux and macOS, Galley can run a parse inside a protected signal-recovery scope that converts a fault at the thread's stack boundary into `ParseError.StackOverflow` and prints where it happened to stderr.
 
 Recovery is disabled by default because establishing that scope adds fixed setup and teardown work to every protected parse call. Runtime callers opt in with `ParseOptions.stack_overflow_recovery = true`.
 

@@ -190,8 +190,10 @@ long long galley_variable_name(GalleySession *session, unsigned long long index,
                                const char **out_data, size_t *out_len);
 
 /* Session creation options; zero fields select runtime defaults. A negative
- * max_errors, recovery_window, or verbosity, or a non-finite
- * ast_preallocation_ratio, is rejected with galley_error_invalid_argument.
+ * max_errors, recovery_window, or verbosity, a non-finite
+ * ast_preallocation_ratio, a syntax_error_stack_depth above 64, or a nonzero
+ * stack_overflow_recovery where galley_stack_overflow_recovery_available() is
+ * 0, is rejected with galley_error_invalid_argument.
  * A negative ast_preallocation_ratio selects the default. */
 typedef struct GalleyCOptions {
     int max_errors;                        /* default 10 */

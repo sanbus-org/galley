@@ -988,10 +988,12 @@ fn recordedSyntaxDiagnostic(door: *const Door, diag_index: u64) ?root.SyntaxDiag
 /// zero fields of a non-null options struct. Fails with
 /// `galley_error_null_argument` for a null `out_session`,
 /// `galley_error_invalid_argument` for an option value outside its domain (a
-/// negative `max_errors`, `recovery_window`, or `verbosity`, or a non-finite
-/// `ast_preallocation_ratio`), and `galley_error_out_of_memory` when
-/// initialization fails; `*out_session` is written only on success. Destroy
-/// the session with `galley_session_destroy`.
+/// negative `max_errors`, `recovery_window`, or `verbosity`, a non-finite
+/// `ast_preallocation_ratio`, a `syntax_error_stack_depth` above 64, or
+/// `stack_overflow_recovery` where the platform does not support it), and
+/// `galley_error_out_of_memory` when initialization fails; `*out_session` is
+/// written only on success. Destroy the session with
+/// `galley_session_destroy`.
 export fn galley_session_create(options: ?*const GalleyCOptions, out_session: ?*?*GalleySession) i64 {
     const out = out_session orelse return galley_error_null_argument;
     var parse_options: root.ParseOptions = .{};
@@ -1165,6 +1167,8 @@ fn statusForError(err: anyerror) i64 {
         // No result, or a result from a dead parse: either way there are no
         // live nodes in the session's current storage to address.
         error.StaleParseResult, error.NoParseResult => galley_error_invalid_node,
+        // A session option this library cannot accept.
+        error.InvalidSyntaxErrorStackDepth, error.StackOverflowRecoveryUnsupported => galley_error_invalid_argument,
         else => galley_error_internal,
     };
 }

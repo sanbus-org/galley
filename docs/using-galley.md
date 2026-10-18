@@ -347,9 +347,9 @@ parser could not recover from publishes nothing.
 `tryDeinit()` similarly returns `error.SessionInUse`; `deinit()` reports
 incorrect active-guard destruction with a clear panic.
 
-Stack-overflow recovery is disabled by default so ordinary parses pay no
-signal-recovery setup cost. Enable it for inputs that may contain excessive
-recursive nesting:
+Stack-overflow recovery is a debugging aid, disabled by default so ordinary
+parses pay no signal-recovery setup cost. While debugging inputs nested deeper
+than the thread's stack, enable it:
 
 ```zig
 var session = try parser.Session.init(io, allocator, .{

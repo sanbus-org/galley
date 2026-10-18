@@ -180,6 +180,9 @@ static void test_invalid_arguments(void) {
     memset(&options, 0, sizeof options);
     options.ast_preallocation_ratio = 1.0 / 0.0;
     CHECK(galley_session_create(&options, &out) == galley_error_invalid_argument);
+    memset(&options, 0, sizeof options);
+    options.syntax_error_stack_depth = 65;
+    CHECK(galley_session_create(&options, &out) == galley_error_invalid_argument);
     CHECK(out == live);
     /* A negative ratio selects the default instead. */
     memset(&options, 0, sizeof options);
