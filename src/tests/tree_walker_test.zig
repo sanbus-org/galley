@@ -641,11 +641,11 @@ test "walker storage generation follows the session generation" {
     try std.testing.expectEqual(@as(u64, session.generation), session.node_allocator.generation);
 }
 
-test "a parse that fails before rewinding the storage still retires the walkers of the previous tree" {
-    // The non-streaming file path frees the previous input and reads the new
-    // one before it prepares node storage, so a read failure leaves the old
-    // nodes in place over freed text. The session still considers that tree
-    // dead, and so must its walkers.
+test "a refused file parse keeps the previous tree, its walkers, and the generation" {
+    // The non-streaming file path reads its input — the whole file, into a
+    // buffer of its own — before the session changes, so a read failure is
+    // a refusal: the generation still stamps the previous tree, its
+    // storage is untouched, and its walkers keep walking.
     if (parser.input_streaming_enabled) return error.SkipZigTest;
 
     var tmp = std.testing.tmpDir(.{});
@@ -656,14 +656,25 @@ test "a parse that fails before rewinding the storage still retires the walkers 
     var session = try parser.Session.init(std.testing.io, std.testing.allocator, .{});
     defer session.deinit();
     const first = try session.parseBytes("aa", null);
+    const generation = session.generation;
     const node_count = session.node_allocator.counter;
     var walker = Walker.init(&session.node_allocator, first.ast_root orelse return error.MissingAstRoot, .{});
     _ = (try walker.next()) orelse return error.TooFewSteps;
 
     try std.testing.expectError(error.ReadFailed, session.parseFile(directory, null));
-    // The storage was never rewound: only the generation retired the walker.
+    // The refusal changed nothing: the generation, the storage, and the
+    // walker over the tree are as they were.
+    try std.testing.expectEqual(generation, session.generation);
     try std.testing.expectEqual(node_count, session.node_allocator.counter);
-    try std.testing.expectError(error.StaleTree, walker.next());
+    var visited: usize = 1;
+    while (try walker.next()) |_| visited += 1;
+    try std.testing.expect(visited > 1);
+    // And the session still serves the tree it published before.
+    var guard = try session.readCurrent();
+    defer guard.deinit();
+    try std.testing.expectEqual(generation, guard.generation());
+    try std.testing.expectEqual(first.ast_root, guard.result.ast_root);
+    try std.testing.expectEqual(first.parsed_bytes, guard.result.parsed_bytes);
 }
 
 test "a refused parse leaves the walkers of the live tree valid" {

@@ -728,8 +728,10 @@ pub const ParseFailure = error{ SyntaxError, SemanticError };
 
 /// The parse lease: the exclusive door held from parse acquisition until
 /// the caller has finished whatever must land together with the result.
-/// Every leased parse entry funnels through `Session.acquireParse`, which
-/// stamps the generation, and the session publishes the result itself
+/// Every leased parse entry takes the lease with
+/// `Session.acquireParseLock` — which changes nothing — settles whatever
+/// can be refused, and only then stamps the generation with
+/// `Session.beginParseLocked`, and the session publishes the result itself
 /// (`Session.published_result`) inside that same exclusive hold. A host that
 /// pairs the result with state of its own — the C ABI retains the parsed
 /// input — writes that state before `deinit`, so no reader observes the
@@ -1028,15 +1030,33 @@ pub const Session = struct {
         try self.message_overrides.put(self.allocator, owned_name, owned_message);
     }
 
-    /// Single parse-acquire site. Every parse entry funnels through here so
-    /// the lock and generation cannot disagree. The nested-recovery gate
-    /// runs first, before the lock, so a rejected nested parse leaves
-    /// generation, node storage, and `owned_input` untouched.
-    fn acquireParse(self: *Session) SessionError!void {
+    /// The single lease-taking site of a parse start: every parse entry
+    /// funnels through here so the lock and generation cannot disagree. It
+    /// changes nothing — the nested-recovery gate runs first, before the
+    /// lock, so a rejected nested parse leaves generation, node storage,
+    /// and `owned_input` untouched — and a caller that returns before
+    /// `beginParseLocked` releases with `abandonParseLock`, leaving no
+    /// trace of the call: not the generation, not the published tree, not
+    /// the diagnostic or its rendered strings.
+    fn acquireParseLock(self: *Session) SessionError!void {
         if (stack_overflow_utilities.isActive() and !self.stack_overflow_recovery) {
             return error.NestedParseDuringStackOverflowRecovery;
         }
         if (!self.session_lock.tryLock()) return error.SessionInUse;
+    }
+
+    /// Releases a lease whose parse never began — the refusal half of a
+    /// parse start, between `acquireParseLock` and `beginParseLocked`. A
+    /// begun parse releases with `releaseParse` instead.
+    fn abandonParseLock(self: *Session) void {
+        self.session_lock.unlock();
+    }
+
+    /// The session-changing half of a parse start. From here on the
+    /// previous tree is retired and only a parse attempt's failures remain,
+    /// so everything that can be refused — reading input, sizing buffers —
+    /// happens before this point.
+    fn beginParseLocked(self: *Session) void {
         // Plain safety-checked addition: a wrapped generation would make a
         // dead parse's nodes live again, and at 64 bits the overflow state is
         // unreachable (millions of years at 10k parses/s).
@@ -1128,7 +1148,8 @@ pub const Session = struct {
     /// C ABI) holds the lease while it writes that state; one that only
     /// needs the result uses `parseBytes`, which releases on return.
     pub fn parseBytesLeased(self: *Session, input: []const u8, input_path: ?[]const u8) !ParseLease {
-        try self.acquireParse();
+        try self.acquireParseLock();
+        self.beginParseLocked();
         errdefer self.releaseParse();
         const completed = try self.parseBytesUnlocked(input, input_path);
         return .{ .session = self, .result = completed.result, .failure = completed.failure };
@@ -1155,7 +1176,8 @@ pub const Session = struct {
 
     /// The leased entry for NUL-terminated input; see `parseBytesLeased`.
     pub fn parseSentinelBytesLeased(self: *Session, input: [:0]const u8, input_path: ?[]const u8) !ParseLease {
-        try self.acquireParse();
+        try self.acquireParseLock();
+        self.beginParseLocked();
         errdefer self.releaseParse();
         const completed = try self.parseSentinelBytesUnlocked(input, input_path);
         return .{ .session = self, .result = completed.result, .failure = completed.failure };
@@ -1186,11 +1208,33 @@ pub const Session = struct {
         return try self._parseContextUnlocked(&context_value);
     }
 
+    /// What a file parse holds before the session changes: either the whole
+    /// file, read and zero-padded, ready to become the session's retained
+    /// input, or a marker to read from the open file as the parse runs
+    /// (with the length a trusted stat supplied, when there was one).
+    const FileInput = union(enum) {
+        materialized: []u8,
+        streamed: ?usize,
+    };
+
     /// The leased entry for file input; see `parseBytesLeased`.
+    ///
+    /// Everything a file parse can be refused for is settled under the
+    /// lease but before the session changes: the input is acquired between
+    /// `acquireParseLock` and `beginParseLocked`, so a read failure — an
+    /// unreadable path, a size that does not fit, an allocation failure —
+    /// leaves the generation, the published tree, the diagnostic, and the
+    /// retained input exactly as they were. Only reads a streaming parse
+    /// makes while it runs can still fail after its parse began.
     pub fn parseFileLeased(self: *Session, file: std.Io.File, input_path: ?[]const u8) !ParseLease {
-        try self.acquireParse();
+        try self.acquireParseLock();
+        const input = self.acquireFileInput(file) catch |err| {
+            self.abandonParseLock();
+            return err;
+        };
+        self.beginParseLocked();
         errdefer self.releaseParse();
-        const completed = try self.parseFileUnlocked(file, input_path);
+        const completed = try self.parseFileUnlocked(file, input, input_path);
         return .{ .session = self, .result = completed.result, .failure = completed.failure };
     }
 
@@ -1201,60 +1245,88 @@ pub const Session = struct {
         return lease.result;
     }
 
-    fn parseFileUnlocked(self: *Session, file: std.Io.File, input_path: ?[]const u8) !Completed {
-        self.input_length = null;
+    /// Reads what a file parse needs before the session changes. A refusal
+    /// here happens while the session is untouched, so it stays that way:
+    /// the caller abandons the lease.
+    fn acquireFileInput(self: *Session, file: std.Io.File) !FileInput {
         if (comptime !input_streaming_enabled) {
-            if (self.owned_input) |owned_input| {
-                self.allocator.free(owned_input);
-                self.owned_input = null;
-            }
-
-            var reader = file.reader(self.io, self.reader_buffer);
-            const input = input: {
-                var complete_input = try reader.interface.allocRemaining(self.allocator, .unlimited);
-                errdefer self.allocator.free(complete_input);
-
-                const input_length = complete_input.len;
-                self.input_length = input_length;
-                try self.prepareASTCapacity(input_length);
-                complete_input = try self.allocator.realloc(complete_input, input_length + input_padding_size);
-                @memset(complete_input[input_length..], 0);
-                break :input complete_input;
-            };
-            self.owned_input = input;
-
-            var context_value = self._makeContext(.{ .bytes = .{ .input = input } }, input_path);
-            return try self._parseContextUnlocked(&context_value);
+            return .{ .materialized = try self.readWholeFile(file) };
         }
 
-        const known_retained_file_length: ?usize = if (comptime source_retention_enabled) known: {
+        // The stat is only a hint — the retained length and, for the parse
+        // that follows, its capacity estimate — and failing to read it is
+        // not failing to parse: the whole-file read settles the input
+        // instead.
+        const known_length: ?usize = if (comptime source_retention_enabled) known: {
             const stat = file.stat(self.io) catch break :known null;
             if (stat.kind != .file) break :known null;
-
-            const file_length = std.math.cast(usize, stat.size) orelse return error.InputTooLarge;
-            if (comptime parser.is_ast_enabled) try self.prepareASTCapacity(file_length);
-            break :known file_length;
+            break :known std.math.cast(usize, stat.size) orelse return error.InputTooLarge;
         } else null;
 
-        if (comptime input_streaming_enabled and !config.indentation_syntax and source_retention_enabled) {
-            const file_length = known_retained_file_length orelse {
-                var reader = file.reader(self.io, self.reader_buffer);
-                const input = try reader.interface.allocRemaining(self.allocator, .unlimited);
-                defer self.allocator.free(input);
-                return try self.parseBytesUnlocked(input, input_path);
-            };
-
-            self.input_length = file_length;
-            const input = try self.ensureOwnedInputCapacity(file_length + input_padding_size);
-            @memset(input[file_length..], 0);
-
-            var context_value = self._makeContext(.{ .file = file.reader(self.io, self.reader_buffer) }, input_path);
-            context_value.file_input = input;
-            context_value.input_end = file_length;
-            return try self._parseContextUnlocked(&context_value);
+        if (comptime !config.indentation_syntax and source_retention_enabled) {
+            const file_length = known_length orelse
+                return .{ .materialized = try self.readWholeFile(file) };
+            return .{ .streamed = file_length };
         }
-        var context_value = self._makeContext(.{ .file = file.reader(self.io, self.reader_buffer) }, input_path);
-        return try self._parseContextUnlocked(&context_value);
+        return .{ .streamed = known_length };
+    }
+
+    /// Reads the whole file into a fresh buffer and zero-pads it for the
+    /// lexer's lookahead. The buffer is not the session's yet: it becomes
+    /// `owned_input` only after `beginParseLocked`, so a failed read leaves
+    /// the previous retained input in place.
+    fn readWholeFile(self: *Session, file: std.Io.File) ![]u8 {
+        var reader = file.reader(self.io, self.reader_buffer);
+        const input = try reader.interface.allocRemaining(self.allocator, .unlimited);
+        const padded = self.allocator.realloc(input, input.len + input_padding_size) catch |err| {
+            self.allocator.free(input);
+            return err;
+        };
+        @memset(padded[input.len..], 0);
+        return padded;
+    }
+
+    /// Runs the parse half of a file parse, under the lease and after
+    /// `beginParseLocked`, from what `acquireFileInput` read before the
+    /// session changed. Takes ownership of a materialized buffer: installs
+    /// it as the session's retained input, or frees it when the parse
+    /// cannot begin.
+    fn parseFileUnlocked(self: *Session, file: std.Io.File, input: FileInput, input_path: ?[]const u8) !Completed {
+        self.input_length = null;
+        switch (input) {
+            .materialized => |buffer| {
+                const input_length = buffer.len - input_padding_size;
+                self.input_length = input_length;
+                self.prepareASTCapacity(input_length) catch |err| {
+                    self.allocator.free(buffer);
+                    return err;
+                };
+                if (self.owned_input) |owned_input| self.allocator.free(owned_input);
+                self.owned_input = buffer;
+
+                var context_value = self._makeContext(.{ .bytes = .{ .input = buffer } }, input_path);
+                return try self._parseContextUnlocked(&context_value);
+            },
+            .streamed => |known_length| {
+                if (comptime input_streaming_enabled and !config.indentation_syntax and source_retention_enabled) {
+                    // This path only runs with a length: `acquireFileInput`
+                    // materializes the file when no trusted stat supplied one.
+                    const file_length = known_length.?;
+                    try self.prepareASTCapacity(file_length);
+                    self.input_length = file_length;
+                    const owned_input = try self.ensureOwnedInputCapacity(file_length + input_padding_size);
+                    @memset(owned_input[file_length..], 0);
+
+                    var context_value = self._makeContext(.{ .file = file.reader(self.io, self.reader_buffer) }, input_path);
+                    context_value.file_input = owned_input;
+                    context_value.input_end = file_length;
+                    return try self._parseContextUnlocked(&context_value);
+                }
+                if (known_length) |file_length| try self.prepareASTCapacity(file_length);
+                var context_value = self._makeContext(.{ .file = file.reader(self.io, self.reader_buffer) }, input_path);
+                return try self._parseContextUnlocked(&context_value);
+            },
+        }
     }
 
     pub fn _makeContext(self: *Session, source: data_structures.Context.Source, input_path: ?[]const u8) data_structures.Context {
@@ -1281,7 +1353,8 @@ pub const Session = struct {
     }
 
     pub fn _parseContext(self: *Session, context_value: *data_structures.Context) !ParseResult {
-        try self.acquireParse();
+        try self.acquireParseLock();
+        self.beginParseLocked();
         defer self.releaseParse();
         const completed = try self._parseContextUnlocked(context_value);
         if (completed.failure) |failure| return failure;

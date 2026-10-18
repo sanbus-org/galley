@@ -93,9 +93,11 @@ typedef unsigned long long GalleyNodeAddress;
  * of galley_error_syntax, galley_error_semantic, galley_error_indentation,
  * galley_error_stack_overflow, galley_error_ast_capacity_exceeded,
  * galley_error_unterminated_raw_string, galley_error_out_of_memory, and
- * galley_error_hook_failed. Those are the statuses that end a parse that
- * ran, and the session's diagnostic then belongs to that attempt; a failure
- * built from any other status carries none. */
+ * galley_error_hook_failed; a failure built from any other status carries
+ * none. A parse call refused with such a status is turned away before its
+ * parse runs and changes nothing in the session: the generation, the
+ * published tree, the diagnostic, and the strings it rendered are as they
+ * were. */
 // >>> generated: statuses (bindings/abi_values.zon; regenerate: zig build abi-values)
 enum {
     /* Success: the call ran to its end (a parse answers the number of bytes

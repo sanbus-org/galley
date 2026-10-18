@@ -534,6 +534,68 @@ static void test_parse_file_read_failure_is_io(void) {
     galley_session_destroy(session);
 }
 
+/* The (root, generation) pair, the retained input, and a node of the tree
+ * all still answer after a refusal: nothing of the published parse was
+ * touched. */
+static void check_published_parse_untouched(GalleySession *session,
+                                            unsigned long long generation,
+                                            GalleyNodeAddress root,
+                                            const char *input,
+                                            size_t input_length) {
+    unsigned long long after_generation = 0;
+    GalleyNodeAddress after_root = GALLEY_INVALID_NODE;
+    CHECK(galley_root_node(session, &after_root, &after_generation) == galley_ok);
+    CHECK(after_generation == generation);
+    CHECK(after_root == root);
+    /* The node addresses the same tree the generation does: not stale. */
+    CHECK(galley_node_child_count(session, generation, root) >= 0);
+    const char *after_input = NULL;
+    size_t after_length = 0;
+    CHECK(galley_last_input(session, &after_input, &after_length) == galley_ok);
+    CHECK(after_input == input && after_length == input_length);
+}
+
+/* Every parse call refused with a status outside the eight that end a
+ * parse that ran changes nothing in the session: the previous tree keeps
+ * its root and generation, its input, and the node reads that address it.
+ * (The diagnostic and its rendered strings are covered by
+ * test_parse_file_read_failure_is_io.) */
+static void test_parse_refusals_change_nothing(void) {
+    GalleySession *session = make_session();
+    CHECK(galley_parse_sentinel(session, valid_sample) >= 0);
+
+    unsigned long long generation = 0;
+    GalleyNodeAddress root = GALLEY_INVALID_NODE;
+    CHECK(galley_root_node(session, &root, &generation) == galley_ok);
+    CHECK(generation >= 1);
+    CHECK(root != GALLEY_INVALID_NODE);
+    const char *input = NULL;
+    size_t input_length = 0;
+    CHECK(galley_last_input(session, &input, &input_length) == galley_ok);
+    CHECK(input_length == strlen(valid_sample));
+
+    /* A null session, input, or path: nothing reaches the session. */
+    CHECK(galley_parse(NULL, valid_sample, strlen(valid_sample)) == galley_error_null_argument);
+    check_published_parse_untouched(session, generation, root, input, input_length);
+    CHECK(galley_parse_sentinel(session, NULL) == galley_error_null_argument);
+    check_published_parse_untouched(session, generation, root, input, input_length);
+    CHECK(galley_parse(session, NULL, 1) == galley_error_null_argument);
+    check_published_parse_untouched(session, generation, root, input, input_length);
+    CHECK(galley_parse_file(session, NULL) == galley_error_null_argument);
+    check_published_parse_untouched(session, generation, root, input, input_length);
+
+    /* An open failure: io, before any parse step. */
+    CHECK(galley_parse_file(session, "no-such-file-here.kv") == galley_error_io);
+    check_published_parse_untouched(session, generation, root, input, input_length);
+
+    /* An open that succeeds and a read that fails (a directory): io, and
+     * still no parse. */
+    CHECK(galley_parse_file(session, ".") == galley_error_io);
+    check_published_parse_untouched(session, generation, root, input, input_length);
+
+    galley_session_destroy(session);
+}
+
 static void test_syntax_diagnostic(void) {
     GalleySession *session = make_session();
     CHECK(galley_parse_sentinel(session, broken_sample) == galley_error_syntax);
@@ -2016,6 +2078,7 @@ int main(void) {
     test_snapshot();
     test_syntax_diagnostic();
     test_parse_file_read_failure_is_io();
+    test_parse_refusals_change_nothing();
     test_message_override();
     test_recorded_diagnostics();
     test_override_reaches_recorded_messages();
