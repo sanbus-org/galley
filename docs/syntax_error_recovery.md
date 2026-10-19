@@ -30,7 +30,8 @@ Normal automatic-mode LL child calls retain the same `try parse_child(...)` shap
 
 Recovery-enabled parsers stop after 10 syntax errors by default. Runtime callers
 configure the limit and search window through `ParseOptions.max_errors` and
-`ParseOptions.recovery_window`.
+`ParseOptions.recovery_window`. Both must be at least 1; `0` is refused
+(`error.InvalidMaxErrors`, `error.InvalidRecoveryWindow`).
 
 ### Recovered Trees
 
@@ -110,9 +111,10 @@ return.
 
 The depth is also configurable per parsing session through
 `ParseOptions.syntax_error_stack_depth` (`0` inherits the generated parser's
-constant). A session value never adds instrumentation that the build does not
-compile in, so in a release build without the build option a session cannot
-turn the stack on.
+constant). A value above 64 is refused with `error.InvalidSyntaxErrorStackDepth`.
+A session value never adds instrumentation that the build does not compile in,
+so in a release build without the build option a session cannot turn the stack
+on.
 
 The rendered message joins the captured variables innermost-first with ` <~ `:
 

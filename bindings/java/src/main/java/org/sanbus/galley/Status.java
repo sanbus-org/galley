@@ -109,11 +109,15 @@ public enum Status {
      */
     ERROR_OUT_OF_RANGE(-17),
     /**
-     * A value in {@code GalleyCOptions} is outside its domain (a negative
-     * {@code max_errors}, {@code recovery_window}, or {@code verbosity}, or a
-     * non-finite {@code ast_preallocation_ratio}), or the enable-flag count
-     * passed to {@code galley_session_set_hooks} does not match
-     * {@code galley_hooks_count()}.
+     * A value passed to a {@code galley_options_set_*} call is outside its
+     * option's domain: {@code max_errors} or {@code recovery_window} below 1,
+     * a negative {@code verbosity}, a {@code syntax_error_stack_depth} above
+     * 64, {@code stack_overflow_recovery} where
+     * {@code galley_stack_overflow_recovery_available()} is 0, a negative or
+     * non-finite {@code ast_preallocation_ratio}, or an
+     * {@code ast_preallocation_cap} the target cannot hold. It is also the
+     * enable-flag count passed to {@code galley_session_set_hooks} not
+     * matching {@code galley_hooks_count()}.
      */
     ERROR_INVALID_ARGUMENT(-18),
     /**

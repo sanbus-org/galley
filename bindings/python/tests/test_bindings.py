@@ -3077,34 +3077,6 @@ class RawAbiRefusalTests(unittest.TestCase):
             grammar.Status.ERROR_NO_DIAGNOSTIC,
         )
 
-    def test_out_of_domain_options_fail_creation(self) -> None:
-        class Options(ctypes.Structure):
-            _fields_ = [
-                ("max_errors", ctypes.c_int),
-                ("recovery_window", ctypes.c_int),
-                ("stack_overflow_recovery", ctypes.c_int),
-                ("syntax_error_stack_depth", ctypes.c_uint),
-                ("verbosity", ctypes.c_int),
-                ("ast_preallocation_ratio", ctypes.c_double),
-                ("ast_preallocation_cap", ctypes.c_ulonglong),
-            ]
-
-        for options in (
-            Options(max_errors=-1),
-            Options(recovery_window=-1),
-            Options(verbosity=-1),
-            Options(ast_preallocation_ratio=float("nan")),
-        ):
-            out = ctypes.c_void_p(0x5E551)
-            self.assertEqual(
-                self.lib.galley_session_create(
-                    ctypes.byref(options), ctypes.byref(out)
-                ),
-                grammar.Status.ERROR_INVALID_ARGUMENT,
-            )
-            # The session handle is written only on success.
-            self.assertEqual(out.value, 0x5E551)
-
     def test_set_hooks_count_mismatch_is_invalid_argument(self) -> None:
         lib = self.lib
         count = lib.galley_hooks_count()
@@ -3129,6 +3101,81 @@ class ReservationTests(unittest.TestCase):
             self.assertGreaterEqual(session.node_capacity(), capacity + 1024)
         finally:
             session.close()
+
+
+class SessionOptionTests(unittest.TestCase):
+    """The public option surface of ``Session``.
+
+    Every option keyword is optional, and ``None`` leaves it at the core
+    default. The host owns no option values of its own, so accept/refuse is
+    what these tests can observe through the public API: a refused value
+    raises before a session exists, and an accepted set opens a session
+    that parses.
+    """
+
+    def test_unset_and_none_options_open_and_parse(self) -> None:
+        sessions = [
+            grammar.Session(),
+            grammar.Session(max_errors=None),
+            grammar.Session(
+                max_errors=None,
+                recovery_window=None,
+                stack_overflow_recovery=None,
+                syntax_error_stack_depth=None,
+                verbosity=None,
+                ast_preallocation_ratio=None,
+                ast_preallocation_cap=None,
+            ),
+        ]
+        for session in sessions:
+            with session:
+                self.assertGreater(session.parse("alpha:12"), 0)
+
+    def test_explicit_options_open_and_parse(self) -> None:
+        with grammar.Session(
+            max_errors=3,
+            recovery_window=100,
+            stack_overflow_recovery=False,
+            syntax_error_stack_depth=8,
+            verbosity=0,
+            ast_preallocation_ratio=0.0,
+            ast_preallocation_cap=4096,
+        ) as session:
+            self.assertGreater(session.parse("alpha:12"), 0)
+
+    def test_out_of_domain_options_raise_invalid_argument(self) -> None:
+        # The core owns each option's domain: a refused value raises with
+        # its own status, never a silently defaulted session.
+        refusals: list[dict[str, Any]] = [
+            {"max_errors": 0},
+            {"max_errors": -1},
+            {"recovery_window": 0},
+            {"recovery_window": -1},
+            {"verbosity": -1},
+            {"syntax_error_stack_depth": 65},
+            {"ast_preallocation_ratio": -1.0},
+            {"ast_preallocation_ratio": float("nan")},
+            {"ast_preallocation_ratio": float("inf")},
+        ]
+        if not grammar.stack_overflow_recovery_available():
+            refusals.append({"stack_overflow_recovery": 1})
+        for options in refusals:
+            with self.assertRaises(grammar.GalleyError) as raised:
+                grammar.Session(**options)
+            self.assertEqual(
+                raised.exception.code, grammar.Status.ERROR_INVALID_ARGUMENT
+            )
+
+    def test_option_argument_errors_stay_type_errors(self) -> None:
+        # The keyword set and its conversions are unchanged: an unknown
+        # keyword and a wrongly typed value are TypeErrors, raised before
+        # the core sees anything.
+        with self.assertRaises(TypeError):
+            grammar.Session(max_errors="many")
+        with self.assertRaises(TypeError):
+            grammar.Session(nonexistent_option=1)
+        with self.assertRaises(TypeError):
+            grammar.Session(nonexistent_option=None)
 
 
 class LifetimeTests(unittest.TestCase):
@@ -3160,36 +3207,6 @@ class LifetimeTests(unittest.TestCase):
             next(walker)
         with self.assertRaises(ValueError):
             walker.skip_children()
-
-    def test_options_round_trip(self):
-        session = grammar.Session(
-            max_errors=3,
-            recovery_window=100,
-            stack_overflow_recovery=False,
-            syntax_error_stack_depth=8,
-            verbosity=0,
-            ast_preallocation_ratio=2.0,
-            ast_preallocation_cap=4096,
-        )
-        try:
-            self.assertGreater(session.parse("alpha:12"), 0)
-        finally:
-            session.close()
-
-    def test_out_of_domain_options_raise_invalid_argument(self):
-        # The core owns the options' domain: a refused value raises with
-        # its own status, never a silently defaulted session.
-        for options in (
-            {"max_errors": -1},
-            {"recovery_window": -1},
-            {"verbosity": -1},
-            {"ast_preallocation_ratio": float("nan")},
-        ):
-            with self.assertRaises(grammar.GalleyError) as raised:
-                grammar.Session(**options)
-            self.assertEqual(
-                raised.exception.code, grammar.Status.ERROR_INVALID_ARGUMENT
-            )
 
 
 def _package_files() -> list[str]:

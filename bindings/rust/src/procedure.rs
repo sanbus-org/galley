@@ -111,10 +111,14 @@ pub enum Error {
     /// its diagnostic's table. An address outside the live node storage is
     /// `galley_error_invalid_node` instead.
     OutOfRange,
-    /// A value in `GalleyCOptions` is outside its domain (a negative
-    /// `max_errors`, `recovery_window`, or `verbosity`, or a non-finite
-    /// `ast_preallocation_ratio`), or the enable-flag count passed to
-    /// `galley_session_set_hooks` does not match `galley_hooks_count()`.
+    /// A value passed to a `galley_options_set_*` call is outside its option's
+    /// domain: `max_errors` or `recovery_window` below 1, a negative
+    /// `verbosity`, a `syntax_error_stack_depth` above 64,
+    /// `stack_overflow_recovery` where
+    /// `galley_stack_overflow_recovery_available()` is 0, a negative or
+    /// non-finite `ast_preallocation_ratio`, or an `ast_preallocation_cap` the
+    /// target cannot hold. It is also the enable-flag count passed to
+    /// `galley_session_set_hooks` not matching `galley_hooks_count()`.
     InvalidArgument,
 }
 

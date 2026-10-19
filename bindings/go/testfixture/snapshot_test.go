@@ -132,9 +132,7 @@ func TestSnapshotMatchesPerNodeAccessors(t *testing.T) {
 // refused too until a successful re-parse reopens the door. One error is the
 // limit, so the failing parse raises instead of recovering.
 func TestSnapshotAfterAParseThatPublishesNothingRefuses(t *testing.T) {
-	options := galley.DefaultOptions()
-	options.MaxErrors = 1
-	session, err := galley.WithOptions(options)
+	session, err := galley.WithOptions(galley.SessionOptions{MaxErrors: ptr(int32(1))})
 	if err != nil {
 		t.Fatalf("session: %v", err)
 	}

@@ -419,14 +419,15 @@ try {
 }
 ```
 
-Options mirror the runtime defaults: `maxErrors: 10`,
-`recoveryWindow: 500`, `stackOverflowRecovery: false`,
-`syntaxErrorStackDepth: 0`, `verbosity: 0`,
-`astPreallocationRatio: -1.0`, `astPreallocationCap: 0`.
-The library validates them when the session opens: a negative count field or a
-non-finite ratio throws a `GalleyError` with `Status.ErrorInvalidArgument`
-(-18) before anything is created. Overrides register per session through the
-method:
+Every option is optional: an option left out keeps the core's default, which
+this binding neither copies nor restates — see
+[configuration.md](configuration.md#runtime-api-options) for the seven
+tunables, their defaults, and their domains. Each value given crosses to the
+core's own setter, and a value outside its option's domain throws a
+`GalleyError` with `Status.ErrorInvalidArgument` (-18) before anything is
+created.
+
+Message overrides register per session through the method:
 
 ```ts
 session.setMessageOverride("Number", "expected a number at {line}:{column}");

@@ -235,6 +235,41 @@ pub const ParseOptions = struct {
     message_overrides: []const MessageOverride = &.{},
 };
 
+// One option's whole domain, in one place: `Session.init` and the C ABI's
+// option setters both come through these, so a rule is never written twice.
+// Each takes the option's `ParseOptions` field and returns the value to
+// store; the refusal is the option's own core error. A rule that is only a
+// boundary conversion (a negative C `int` cannot become a `usize`, a
+// 64-bit cap cannot become a 32-bit one) stays at that boundary.
+
+pub fn validateMaxErrors(value: usize) error{InvalidMaxErrors}!usize {
+    if (value == 0) return error.InvalidMaxErrors;
+    return value;
+}
+
+pub fn validateRecoveryWindow(value: usize) error{InvalidRecoveryWindow}!usize {
+    if (value == 0) return error.InvalidRecoveryWindow;
+    return value;
+}
+
+pub fn validateSyntaxErrorStackDepth(value: usize) error{InvalidSyntaxErrorStackDepth}!usize {
+    if (value > data_structures.max_syntax_error_stack_depth) return error.InvalidSyntaxErrorStackDepth;
+    return value;
+}
+
+pub fn validateStackOverflowRecovery(value: bool) error{StackOverflowRecoveryUnsupported}!bool {
+    if (value and !stack_overflow_recovery_available) return error.StackOverflowRecoveryUnsupported;
+    return value;
+}
+
+/// The ratio counts nodes per input byte, so a negative or non-finite one is
+/// refused in every build: the option's domain does not depend on whether a
+/// build reads it.
+pub fn validateAstPreallocationRatio(value: f64) error{InvalidASTPreallocationRatio}!f64 {
+    if (!std.math.isFinite(value) or value < 0) return error.InvalidASTPreallocationRatio;
+    return value;
+}
+
 pub const SyntaxErrorMessageArgs = struct {
     allocator: std.mem.Allocator,
     context: *data_structures.Context,
@@ -856,20 +891,13 @@ pub const Session = struct {
     /// survive across parses.
     message_overrides: std.StringHashMapUnmanaged([]const u8) = .empty,
 
-    pub fn init(io: std.Io, allocator: std.mem.Allocator, options: ParseOptions) !Session {
-        if (options.max_errors == 0) return error.InvalidMaxErrors;
-        if (options.recovery_window == 0) return error.InvalidRecoveryWindow;
-        if (options.syntax_error_stack_depth > data_structures.max_syntax_error_stack_depth) {
-            return error.InvalidSyntaxErrorStackDepth;
-        }
-        if (options.stack_overflow_recovery and !stack_overflow_recovery_available) {
-            return error.StackOverflowRecoveryUnsupported;
-        }
-        if (parser.is_ast_enabled and
-            (!std.math.isFinite(options.ast_preallocation_ratio) or options.ast_preallocation_ratio < 0))
-        {
-            return error.InvalidASTPreallocationRatio;
-        }
+    pub fn init(io: std.Io, allocator: std.mem.Allocator, options_in: ParseOptions) !Session {
+        var options = options_in;
+        options.max_errors = try validateMaxErrors(options.max_errors);
+        options.recovery_window = try validateRecoveryWindow(options.recovery_window);
+        options.syntax_error_stack_depth = try validateSyntaxErrorStackDepth(options.syntax_error_stack_depth);
+        options.stack_overflow_recovery = try validateStackOverflowRecovery(options.stack_overflow_recovery);
+        options.ast_preallocation_ratio = try validateAstPreallocationRatio(options.ast_preallocation_ratio);
 
         var arena = std.heap.ArenaAllocator.init(allocator);
         errdefer arena.deinit();

@@ -33,7 +33,8 @@ def print_tree(node: parser.Node, depth: int) -> None:
 def main() -> int:
     print(f"galley version: {parser.version()}")
     try:
-        # max_errors is explicit; zero would select the same default.
+        # Options are the core's (docs/configuration.md, "Runtime API
+        # options"); this one bounds the recorded errors.
         session = parser.Session(max_errors=10)
     except parser.GalleyError:
         print("failed to create a parser session", file=sys.stderr)

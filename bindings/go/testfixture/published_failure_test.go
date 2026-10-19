@@ -26,7 +26,7 @@ func publishedSession(t *testing.T, options galley.SessionOptions) *galley.Sessi
 }
 
 func TestSemanticOnlyFailurePublishesItsTree(t *testing.T) {
-	session := publishedSession(t, galley.DefaultOptions())
+	session := publishedSession(t, galley.SessionOptions{})
 	input := []byte("alpha:1,beta:2000")
 	if _, err := session.Parse(input); !errors.Is(err, galley.ErrSemantic) {
 		t.Fatalf("expected ErrSemantic, got %v", err)
@@ -78,7 +78,7 @@ func TestSemanticOnlyFailurePublishesItsTree(t *testing.T) {
 }
 
 func TestRecoveredSyntaxErrorPublishesItsTree(t *testing.T) {
-	session := publishedSession(t, galley.DefaultOptions())
+	session := publishedSession(t, galley.SessionOptions{})
 	input := []byte("alpha:x,beta:2")
 	if _, err := session.Parse(input); !errors.Is(err, galley.ErrSyntax) {
 		t.Fatalf("expected ErrSyntax, got %v", err)
@@ -120,7 +120,7 @@ func TestRecoveredSyntaxErrorPublishesItsTree(t *testing.T) {
 func TestRecoveryReportsEachDamagedValue(t *testing.T) {
 	// Each bad value is its own error: recovery resumes at the `,` after it,
 	// so the next pair parses and reports its own damage.
-	session := publishedSession(t, galley.DefaultOptions())
+	session := publishedSession(t, galley.SessionOptions{})
 	if _, err := session.Parse([]byte("alpha:x,beta:y,gamma:z")); !errors.Is(err, galley.ErrSyntax) {
 		t.Fatalf("expected ErrSyntax, got %v", err)
 	}
@@ -144,9 +144,7 @@ func TestRecoveryReportsEachDamagedValue(t *testing.T) {
 
 func TestUnrecoveredSyntaxErrorPublishesNothing(t *testing.T) {
 	// One error is the limit, so the parse raises instead of recovering.
-	options := galley.DefaultOptions()
-	options.MaxErrors = 1
-	session := publishedSession(t, options)
+	session := publishedSession(t, galley.SessionOptions{MaxErrors: ptr(int32(1))})
 	if _, err := session.Parse([]byte("alpha:x,beta:2")); !errors.Is(err, galley.ErrSyntax) {
 		t.Fatalf("expected ErrSyntax, got %v", err)
 	}
@@ -165,7 +163,7 @@ func TestUnrecoveredSyntaxErrorPublishesNothing(t *testing.T) {
 }
 
 func TestLastInputAndInfoRefuseBeforeAnyParse(t *testing.T) {
-	session := publishedSession(t, galley.DefaultOptions())
+	session := publishedSession(t, galley.SessionOptions{})
 	if input, err := session.LastInput(); err != galley.ErrStaleTree || input != nil {
 		t.Fatalf("last input = (%q, %v), want (nil, ErrStaleTree)", input, err)
 	}

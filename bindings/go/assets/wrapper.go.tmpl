@@ -122,10 +122,13 @@ const (
 	// diagnostic's table. An address outside the live node storage is
 	// galley_error_invalid_node instead.
 	ErrOutOfRange            Error = -17
-	// ErrInvalidArgument: A value in GalleyCOptions is outside its domain (a negative max_errors,
-	// recovery_window, or verbosity, or a non-finite ast_preallocation_ratio), or
-	// the enable-flag count passed to galley_session_set_hooks does not match
-	// galley_hooks_count().
+	// ErrInvalidArgument: A value passed to a galley_options_set_* call is outside its option's
+	// domain: max_errors or recovery_window below 1, a negative verbosity, a
+	// syntax_error_stack_depth above 64, stack_overflow_recovery where
+	// galley_stack_overflow_recovery_available() is 0, a negative or non-finite
+	// ast_preallocation_ratio, or an ast_preallocation_cap the target cannot hold.
+	// It is also the enable-flag count passed to galley_session_set_hooks not
+	// matching galley_hooks_count().
 	ErrInvalidArgument       Error = -18
 )
 // <<< generated: statuses
@@ -150,6 +153,13 @@ func Version() string {
 // HasAST reports whether the library was built with AST construction.
 func HasAST() bool {
 	return C.galley_has_ast() != 0
+}
+
+// StackOverflowRecoveryAvailable reports whether the platform supports the
+// StackOverflowRecovery session option. Where it does not, setting the
+// option is refused with ErrInvalidArgument.
+func StackOverflowRecoveryAvailable() bool {
+	return C.galley_stack_overflow_recovery_available() != 0
 }
 
 // SymbolCount returns the number of grammar symbols: the generated
@@ -187,35 +197,23 @@ func HookName(index uint64) ([]byte, error) {
 	return C.GoBytes(unsafe.Pointer(data), C.int(length)), nil
 }
 
-// SessionOptions selects session behavior; zero fields select library
-// defaults, the ones DefaultOptions spells out. A negative MaxErrors,
-// RecoveryWindow, or Verbosity, or a non-finite ASTPreallocationRatio, is
-// rejected by the core with ErrInvalidArgument.
+// SessionOptions selects session behavior. A nil field keeps the core's
+// default for that option; the defaults live with the runtime API options
+// (docs/configuration.md#runtime-api-options). The core owns validation: a
+// value outside its option's domain comes back from WithOptions as
+// ErrInvalidArgument, leaving no session.
 type SessionOptions struct {
-	MaxErrors               int32
-	RecoveryWindow          int32
-	StackOverflowRecovery   bool
-	SyntaxErrorStackDepth   uint32
-	Verbosity               int32
-	ASTPreallocationRatio   float64
-	ASTPreallocationCap     uint64
+	MaxErrors              *int32
+	RecoveryWindow         *int32
+	StackOverflowRecovery  *bool
+	SyntaxErrorStackDepth  *uint32
+	Verbosity              *int32
+	ASTPreallocationRatio  *float64
+	ASTPreallocationCap    *uint64
 	// MessageOverrides registers syntax-error message overrides: when a
 	// site's resolution chain contains the name, it reports the message
 	// verbatim, ahead of grammar hooks and the built-in renderer.
 	MessageOverrides map[string]string
-}
-
-// DefaultOptions mirrors the defaults of the C and Rust consumers.
-func DefaultOptions() SessionOptions {
-	return SessionOptions{
-		MaxErrors:             10,
-		RecoveryWindow:        500,
-		StackOverflowRecovery: false,
-		SyntaxErrorStackDepth: 0,
-		Verbosity:             0,
-		ASTPreallocationRatio: -1,
-		ASTPreallocationCap:   0,
-	}
 }
 
 // Session wraps one parsing session. Sessions own their IO backend and
@@ -247,29 +245,79 @@ func (s *Session) parseEnded() {
 	}
 }
 
-// New creates a session with default options.
-func New() (*Session, error) {
-	return WithOptions(DefaultOptions())
+// setOptionValues copies the caller's options into the object, one setter
+// per non-nil field in the core's option order. The first refusal stops the
+// copy and is returned; an unset field makes no setter call, so the object
+// keeps the core's default for it.
+func setOptionValues(cOptions *C.GalleyOptions, options SessionOptions) error {
+	if options.MaxErrors != nil {
+		if status := C.galley_options_set_max_errors(cOptions, C.int(*options.MaxErrors)); status < 0 {
+			return Error(int32(status))
+		}
+	}
+	if options.RecoveryWindow != nil {
+		if status := C.galley_options_set_recovery_window(cOptions, C.int(*options.RecoveryWindow)); status < 0 {
+			return Error(int32(status))
+		}
+	}
+	if options.StackOverflowRecovery != nil {
+		if status := C.galley_options_set_stack_overflow_recovery(cOptions, boolToCInt(*options.StackOverflowRecovery)); status < 0 {
+			return Error(int32(status))
+		}
+	}
+	if options.SyntaxErrorStackDepth != nil {
+		if status := C.galley_options_set_syntax_error_stack_depth(cOptions, C.uint(*options.SyntaxErrorStackDepth)); status < 0 {
+			return Error(int32(status))
+		}
+	}
+	if options.Verbosity != nil {
+		if status := C.galley_options_set_verbosity(cOptions, C.int(*options.Verbosity)); status < 0 {
+			return Error(int32(status))
+		}
+	}
+	if options.ASTPreallocationRatio != nil {
+		if status := C.galley_options_set_ast_preallocation_ratio(cOptions, C.double(*options.ASTPreallocationRatio)); status < 0 {
+			return Error(int32(status))
+		}
+	}
+	if options.ASTPreallocationCap != nil {
+		if status := C.galley_options_set_ast_preallocation_cap(cOptions, C.ulonglong(*options.ASTPreallocationCap)); status < 0 {
+			return Error(int32(status))
+		}
+	}
+	return nil
 }
 
-// WithOptions creates a session with explicit options. The core owns every
-// check: a negative MaxErrors, RecoveryWindow, or Verbosity, or a
-// non-finite ASTPreallocationRatio, comes back as ErrInvalidArgument, and an
-// initialization failure as ErrOutOfMemory.
+// New creates a session whose every option stays at the core's default.
+func New() (*Session, error) {
+	return WithOptions(SessionOptions{})
+}
+
+// WithOptions creates a session with explicit options. A nil field keeps
+// that option at the core's default; the defaults live with the runtime API
+// options (docs/configuration.md#runtime-api-options). The core owns every
+// check: an out-of-domain value comes back as ErrInvalidArgument, leaving no
+// session, and an initialization failure as ErrOutOfMemory.
 func WithOptions(options SessionOptions) (*Session, error) {
-	cOptions := &C.GalleyCOptions{
-		max_errors:                C.int(options.MaxErrors),
-		recovery_window:           C.int(options.RecoveryWindow),
-		stack_overflow_recovery:   boolToCInt(options.StackOverflowRecovery),
-		syntax_error_stack_depth:  C.uint(options.SyntaxErrorStackDepth),
-		verbosity:                 C.int(options.Verbosity),
-		ast_preallocation_ratio:   C.double(options.ASTPreallocationRatio),
-		ast_preallocation_cap:     C.ulonglong(options.ASTPreallocationCap),
+	var cOptions *C.GalleyOptions
+	if status := C.galley_options_create(&cOptions); status < 0 {
+		return nil, Error(int32(status))
 	}
-	// Every create refusal is the status the core mapped, never a
-	// reinterpretation: a rejected option value reads invalid argument.
+	if cOptions == nil {
+		return nil, ErrOutOfMemory
+	}
+	// The object exists now: every path below destroys it, whether the
+	// option copy or the session creation succeeds.
+	if err := setOptionValues(cOptions, options); err != nil {
+		_ = C.galley_options_destroy(cOptions)
+		return nil, err
+	}
 	var ptr *C.GalleySession
-	if status := C.galley_session_create(cOptions, &ptr); status < 0 {
+	status := C.galley_session_create(cOptions, &ptr)
+	// The session copies what the object holds, so it is destroyed here on
+	// either outcome (destroying NULL is a no-op).
+	_ = C.galley_options_destroy(cOptions)
+	if status < 0 {
 		return nil, Error(int32(status))
 	}
 	if ptr == nil {

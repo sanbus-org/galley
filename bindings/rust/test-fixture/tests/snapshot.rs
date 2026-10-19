@@ -98,7 +98,7 @@ fn snapshot_after_a_parse_that_publishes_nothing_refuses() {
     // One error is the limit, so the failing parse raises instead of
     // recovering and publishes nothing.
     let mut session = Session::with_options(SessionOptions {
-        max_errors: 1,
+        max_errors: Some(1),
         ..SessionOptions::default()
     })
     .expect("session");

@@ -896,14 +896,14 @@ static PyObject *session_defaults(PyTypeObject *type);
 
 static int Session_init(SessionObject *self, PyObject *args, PyObject *keywords)
 {
-    int max_errors = 10;
-    int recovery_window = 500;
+    int max_errors = 0;
+    int recovery_window = 0;
     int stack_overflow_recovery = 0;
     unsigned int syntax_error_stack_depth = 0;
     int verbosity = 0;
-    double ast_preallocation_ratio = -1.0;
+    double ast_preallocation_ratio = 0.0;
     unsigned long long ast_preallocation_cap = 0;
-    GalleyCOptions options;
+    GalleyOptions *options = NULL;
     GalleySession *session = NULL;
 
     static char *list[] = {
@@ -912,36 +912,98 @@ static int Session_init(SessionObject *self, PyObject *args, PyObject *keywords)
         "ast_preallocation_cap", NULL
     };
     static const char *format = "|$iipIidK:Session";
+    /* One flag per keyword, in `list` order: a keyword the caller gave is
+     * set on the options object; an omitted or None one is unset and keeps
+     * the core default. */
+    int given[7] = {0};
+    PyObject *filtered = NULL;
+    PyObject *parse_keywords = keywords;
 
-    if (!PyArg_ParseTupleAndKeywords(args, keywords, format, list,
+    /* None means "leave at the core default": drop those entries before
+     * the typed parse below, which knows only the concrete types. */
+    if (keywords != NULL && PyDict_Check(keywords)) {
+        for (int i = 0; list[i] != NULL; ++i) {
+            PyObject *value = PyDict_GetItemString(keywords, list[i]);
+            if (value == NULL)
+                continue;
+            if (value != Py_None) {
+                given[i] = 1;
+                continue;
+            }
+            if (filtered == NULL) {
+                filtered = PyDict_Copy(keywords);
+                if (filtered == NULL)
+                    return -1;
+                parse_keywords = filtered;
+            }
+            if (PyDict_DelItemString(filtered, list[i]) < 0) {
+                Py_DECREF(filtered);
+                return -1;
+            }
+        }
+    }
+
+    if (!PyArg_ParseTupleAndKeywords(args, parse_keywords, format, list,
                                      &max_errors, &recovery_window,
                                      &stack_overflow_recovery,
                                      &syntax_error_stack_depth, &verbosity,
                                      &ast_preallocation_ratio,
-                                     &ast_preallocation_cap))
+                                     &ast_preallocation_cap)) {
+        Py_XDECREF(filtered);
         return -1;
+    }
+    Py_XDECREF(filtered);
 
-    options.max_errors = max_errors;
-    options.recovery_window = recovery_window;
-    options.stack_overflow_recovery = stack_overflow_recovery;
-    options.syntax_error_stack_depth = syntax_error_stack_depth;
-    options.verbosity = verbosity;
-    options.ast_preallocation_ratio = ast_preallocation_ratio;
-    options.ast_preallocation_cap = ast_preallocation_cap;
+    /* One options object holds just this session's values: each of its
+     * setters owns the option's domain and refuses a stranger with the
+     * core's invalid-argument status. */
+    if (check_status(galley_options_create(&options)) < 0)
+        return -1;
+    long long status = galley_ok;
+    if (given[0])
+        status = galley_options_set_max_errors(options, max_errors);
+    if (status == galley_ok && given[1])
+        status = galley_options_set_recovery_window(options, recovery_window);
+    if (status == galley_ok && given[2])
+        status = galley_options_set_stack_overflow_recovery(
+            options, stack_overflow_recovery);
+    if (status == galley_ok && given[3])
+        status = galley_options_set_syntax_error_stack_depth(
+            options, syntax_error_stack_depth);
+    if (status == galley_ok && given[4])
+        status = galley_options_set_verbosity(options, verbosity);
+    if (status == galley_ok && given[5])
+        status = galley_options_set_ast_preallocation_ratio(
+            options, ast_preallocation_ratio);
+    if (status == galley_ok && given[6])
+        status = galley_options_set_ast_preallocation_cap(
+            options, ast_preallocation_cap);
+    if (status < 0) {
+        galley_options_destroy(options);
+        set_error_from_status(status);
+        return -1;
+    }
 
     /* The session's own hooks start as a copy of its parser's defaults,
      * taken now: a default installed on the parser later reaches only
      * sessions opened later. */
     PyObject *live_defaults = session_defaults(Py_TYPE(self));
-    if (live_defaults == NULL)
+    if (live_defaults == NULL) {
+        galley_options_destroy(options);
         return -1;
+    }
     PyObject *defaults = PyDict_Copy(live_defaults);
     Py_DECREF(live_defaults);
-    if (defaults == NULL)
+    if (defaults == NULL) {
+        galley_options_destroy(options);
         return -1;
-    /* The core owns the options' domain: a refused value raises with the
-     * core's status, never a host-side default. */
-    if (check_status(galley_session_create(&options, &session)) < 0) {
+    }
+    /* The session copies what the options object holds, so it belongs to
+     * no session: destroy it as soon as creation has been attempted, on
+     * every path. */
+    status = galley_session_create(options, &session);
+    galley_options_destroy(options);
+    if (check_status(status) < 0) {
         Py_DECREF(defaults);
         return -1;
     }
@@ -3601,10 +3663,12 @@ PyDoc_STRVAR(session_doc,
 "Session(**options)\n"
 "\n"
 "Creates a parsing session bound to this library's parser. Keyword\n"
-"options (all optional): max_errors=10, recovery_window=500,\n"
-"stack_overflow_recovery=False, syntax_error_stack_depth=0,\n"
-"verbosity=0, ast_preallocation_ratio=-1.0 (negative selects the runtime\n"
-"default), ast_preallocation_cap=0.\n"
+"options: max_errors, recovery_window, stack_overflow_recovery,\n"
+"syntax_error_stack_depth, verbosity, ast_preallocation_ratio, and\n"
+"ast_preallocation_cap. Omitting one, or passing None, keeps the core\n"
+"default; the core owns each option's default and domain (see\n"
+"docs/configuration.md, \"Runtime API options\"), and a value outside its\n"
+"domain raises GalleyError with ERROR_INVALID_ARGUMENT.\n"
 "\n"
 "Sessions are not thread-safe: use one per thread or guard it externally.\n"
 "A session owns its procedure hooks, a copy of its parser's defaults taken\n"

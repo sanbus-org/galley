@@ -6,7 +6,10 @@ fn two_parses() -> (Session, galley::NodeHandle, galley::NodeHandle) {
     session.parse(b"alpha:12").expect("first parse");
     let first = session.root_node().expect("root read").expect("first root");
     session.parse(b"alpha:12,beta:3").expect("second parse");
-    let second = session.root_node().expect("root read").expect("second root");
+    let second = session
+        .root_node()
+        .expect("root read")
+        .expect("second root");
     (session, first, second)
 }
 
@@ -29,14 +32,35 @@ fn a_handle_of_an_earlier_parse_is_refused_on_every_edit() {
     let (session, first, second) = two_parses();
     assert_eq!(session.tree_clean_children(first), Err(Error::StaleTree));
     assert_eq!(session.tree_remove_self(first), Err(Error::StaleTree));
-    assert_eq!(session.tree_remove_siblings(first, 1), Err(Error::StaleTree));
-    assert_eq!(session.tree_remove_children_at(first, 0, 1), Err(Error::StaleTree));
+    assert_eq!(
+        session.tree_remove_siblings(first, 1),
+        Err(Error::StaleTree)
+    );
+    assert_eq!(
+        session.tree_remove_children_at(first, 0, 1),
+        Err(Error::StaleTree)
+    );
     // A call that names two trees is refused whichever side is stale.
-    assert_eq!(session.tree_append_children(first, second), Err(Error::StaleTree));
-    assert_eq!(session.tree_append_children(second, first), Err(Error::StaleTree));
-    assert_eq!(session.tree_insert_before(second, first), Err(Error::StaleTree));
-    assert_eq!(session.tree_insert_after(second, first), Err(Error::StaleTree));
-    assert_eq!(session.tree_insert_children_at(second, 0, first), Err(Error::StaleTree));
+    assert_eq!(
+        session.tree_append_children(first, second),
+        Err(Error::StaleTree)
+    );
+    assert_eq!(
+        session.tree_append_children(second, first),
+        Err(Error::StaleTree)
+    );
+    assert_eq!(
+        session.tree_insert_before(second, first),
+        Err(Error::StaleTree)
+    );
+    assert_eq!(
+        session.tree_insert_after(second, first),
+        Err(Error::StaleTree)
+    );
+    assert_eq!(
+        session.tree_insert_children_at(second, 0, first),
+        Err(Error::StaleTree)
+    );
     // The live tree is untouched by every refusal.
     assert!(session.child_count(second).expect("child count") > 0);
 }
@@ -45,7 +69,7 @@ fn a_handle_of_an_earlier_parse_is_refused_on_every_edit() {
 // publishes nothing.
 fn strict_session() -> Session {
     Session::with_options(SessionOptions {
-        max_errors: 1,
+        max_errors: Some(1),
         ..SessionOptions::default()
     })
     .expect("session")

@@ -21,7 +21,6 @@ import type {
   CurrentDiagnosticFamily,
   HookTicket,
   DispatchHandler,
-  SessionCOptions,
   SnapshotColumns,
 } from "@sanbus/galley-core";
 import { GalleyError, MissingArtifactError, NATIVE_LITTLE_ENDIAN, Status } from "@sanbus/galley-core";
@@ -148,8 +147,21 @@ export interface AddonApi
   galley_symbol_is_terminal(session: bigint, index: bigint): boolean | number;
   galley_variable_name(session: bigint, index: bigint): Buffer | number;
 
+  // session options: an opaque options object (the galley_options_* family
+  // in galley.h); no getter is bound. Handles stay BigInt, statuses cross as
+  // negative Numbers, and a setter's refusal leaves the object unchanged.
+  galley_options_create(): { status: number; handle: bigint | null };
+  galley_options_destroy(options: bigint): bigint;
+  galley_options_set_max_errors(options: bigint, value: number): bigint;
+  galley_options_set_recovery_window(options: bigint, value: number): bigint;
+  galley_options_set_stack_overflow_recovery(options: bigint, value: number): bigint;
+  galley_options_set_syntax_error_stack_depth(options: bigint, value: number): bigint;
+  galley_options_set_verbosity(options: bigint, value: number): bigint;
+  galley_options_set_ast_preallocation_ratio(options: bigint, value: number): bigint;
+  galley_options_set_ast_preallocation_cap(options: bigint, value: bigint): bigint;
+
   // session
-  galley_session_create(options: SessionCOptions | null): { status: number; handle: bigint | null };
+  galley_session_create(options: bigint | null): { status: number; handle: bigint | null };
   galley_session_destroy(session: bigint): bigint;
   galley_session_set_message_override(
     session: bigint,
@@ -567,8 +579,47 @@ export class NodePort implements FfiPort {
 
   // -- sessions ---------------------------------------------------------
 
-  createSession(options: SessionCOptions | null): { status: number; handle: Handle | null } {
-    const { status, handle } = this.api.galley_session_create(options);
+  createOptions(): { status: number; handle: Handle | null } {
+    const { status, handle } = this.api.galley_options_create();
+    return { status, handle: handle === 0n ? null : handle };
+  }
+
+  destroyOptions(options: Handle): number {
+    return toNumber(this.api.galley_options_destroy(options as bigint));
+  }
+
+  setMaxErrors(options: Handle, value: number): number {
+    return toNumber(this.api.galley_options_set_max_errors(options as bigint, value));
+  }
+
+  setRecoveryWindow(options: Handle, value: number): number {
+    return toNumber(this.api.galley_options_set_recovery_window(options as bigint, value));
+  }
+
+  setStackOverflowRecovery(options: Handle, value: number): number {
+    return toNumber(this.api.galley_options_set_stack_overflow_recovery(options as bigint, value));
+  }
+
+  setSyntaxErrorStackDepth(options: Handle, value: number): number {
+    return toNumber(this.api.galley_options_set_syntax_error_stack_depth(options as bigint, value));
+  }
+
+  setVerbosity(options: Handle, value: number): number {
+    return toNumber(this.api.galley_options_set_verbosity(options as bigint, value));
+  }
+
+  setAstPreallocationRatio(options: Handle, value: number): number {
+    return toNumber(this.api.galley_options_set_ast_preallocation_ratio(options as bigint, value));
+  }
+
+  setAstPreallocationCap(options: Handle, value: bigint): number {
+    return toNumber(this.api.galley_options_set_ast_preallocation_cap(options as bigint, value));
+  }
+
+  createSession(options: Handle | null): { status: number; handle: Handle | null } {
+    const { status, handle } = this.api.galley_session_create(
+      options === null ? null : (options as bigint),
+    );
     return { status, handle: handle === 0n ? null : handle };
   }
 

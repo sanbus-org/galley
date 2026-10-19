@@ -47,25 +47,14 @@ fn abiValue(comptime entries: anytype, comptime name: []const u8) i64 {
 /// Opaque session handle owned by the C side.
 pub const GalleySession = opaque {};
 
-/// Session creation options; zero/negative fields select defaults. Mirrors
-/// `GalleyCOptions` in `galley.h`.
-pub const GalleyCOptions = extern struct {
-    max_errors: c_int = 0,
-    recovery_window: c_int = 0,
-    stack_overflow_recovery: c_int = 0,
-    syntax_error_stack_depth: c_uint = 0,
-    /// Debug-build parse tracing level; ignored in release builds.
-    verbosity: c_int = 0,
-    /// Nodes preallocated per byte of input. Negative selects the runtime
-    /// default (2.0); 0 disables the ratio contribution (the floor still applies).
-    /// The scaled contribution reserves address space without committed
-    /// pages on reserved-arena platforms; on segment platforms (Windows,
-    /// wasm) it is ignored and only the floor below is prepared eagerly.
-    ast_preallocation_ratio: f64 = -1.0,
-    /// Minimum ready node storage per parse; 0 selects the runtime default.
-    /// Demand past the reservation appends segments, so this bounds the
-    /// fast path rather than total capacity.
-    ast_preallocation_cap: u64 = 0,
+/// Opaque session options: one setter and one getter per option, over an
+/// object that starts at the core defaults. A setter refuses a value outside
+/// its option's domain with `galley_error_invalid_argument` and leaves the
+/// object unchanged; `galley_session_create` copies what it holds, so the
+/// object belongs to no session and is reusable the moment creation returns.
+/// Mirrors `GalleyOptions` in `galley.h`.
+pub const GalleyOptions = struct {
+    parse: root.ParseOptions = .{},
 };
 
 /// Node addresses are stable indices into the session's node storage.
@@ -974,31 +963,184 @@ fn recordedSyntaxDiagnostic(door: *const Door, diag_index: u64) ?root.SyntaxDiag
     };
 }
 
-/// Creates a parsing session with explicit options and writes it to
-/// `out_session`. Passing null options selects the runtime defaults, as do
-/// zero fields of a non-null options struct. Fails with
-/// `galley_error_null_argument` for a null `out_session`,
-/// `galley_error_invalid_argument` for an option value outside its domain (a
-/// negative `max_errors`, `recovery_window`, or `verbosity`, a non-finite
-/// `ast_preallocation_ratio`, a `syntax_error_stack_depth` above 64, or
-/// `stack_overflow_recovery` where the platform does not support it), and
+// --- session options -------------------------------------------------------
+// An opaque object with one setter and one getter per option. The object
+// starts at the core defaults; a setter refuses a value outside its option's
+// domain with `galley_error_invalid_argument` and leaves the object
+// unchanged; a getter reports the held value. `galley_session_create` copies
+// what the object holds, so it belongs to no session.
+
+/// Creates an options object holding the core defaults and writes it to
+/// `out_options`. A null `out_options` is `galley_error_null_argument`;
+/// allocation failure is `galley_error_out_of_memory`; `*out_options` is
+/// written only on success. Destroy it with `galley_options_destroy`.
+export fn galley_options_create(out_options: ?*?*GalleyOptions) i64 {
+    const out = out_options orelse return galley_error_null_argument;
+    const options = std.heap.c_allocator.create(GalleyOptions) catch return galley_error_out_of_memory;
+    options.* = .{};
+    out.* = options;
+    return galley_ok;
+}
+
+/// Destroys an options object created by `galley_options_create`. Null is
+/// ignored and returns `galley_ok` (like `free(NULL)`), so a repeated
+/// cleanup stays a no-op.
+export fn galley_options_destroy(options_ptr: ?*GalleyOptions) i64 {
+    const options = options_ptr orelse return galley_ok;
+    std.heap.c_allocator.destroy(options);
+    return galley_ok;
+}
+
+/// Sets `max_errors`: the number of errors recorded before a parse stops.
+/// Refuses a value below 1 with `galley_error_invalid_argument`, leaving the
+/// held value unchanged.
+export fn galley_options_set_max_errors(options_ptr: ?*GalleyOptions, value: c_int) i64 {
+    const options = options_ptr orelse return galley_error_null_argument;
+    const count = std.math.cast(usize, value) orelse return galley_error_invalid_argument;
+    options.parse.max_errors = root.validateMaxErrors(count) catch return galley_error_invalid_argument;
+    return galley_ok;
+}
+
+/// Writes the held `max_errors` (the core default while unset) to
+/// `out_value`. A null `options` or `out_value` is `galley_error_null_argument`.
+export fn galley_options_get_max_errors(options_ptr: ?*const GalleyOptions, out_value: ?*c_int) i64 {
+    const options = options_ptr orelse return galley_error_null_argument;
+    const out = out_value orelse return galley_error_null_argument;
+    out.* = @intCast(options.parse.max_errors);
+    return galley_ok;
+}
+
+/// Sets `recovery_window`: the bytes scanned for a recovery point. Refuses a
+/// value below 1 with `galley_error_invalid_argument`, leaving the held value
+/// unchanged.
+export fn galley_options_set_recovery_window(options_ptr: ?*GalleyOptions, value: c_int) i64 {
+    const options = options_ptr orelse return galley_error_null_argument;
+    const window = std.math.cast(usize, value) orelse return galley_error_invalid_argument;
+    options.parse.recovery_window = root.validateRecoveryWindow(window) catch return galley_error_invalid_argument;
+    return galley_ok;
+}
+
+/// Writes the held `recovery_window` (the core default while unset) to
+/// `out_value`. A null `options` or `out_value` is `galley_error_null_argument`.
+export fn galley_options_get_recovery_window(options_ptr: ?*const GalleyOptions, out_value: ?*c_int) i64 {
+    const options = options_ptr orelse return galley_error_null_argument;
+    const out = out_value orelse return galley_error_null_argument;
+    out.* = @intCast(options.parse.recovery_window);
+    return galley_ok;
+}
+
+/// Sets `stack_overflow_recovery`: nonzero enables recovery. Where
+/// `galley_stack_overflow_recovery_available()` is 0, enabling is refused
+/// with `galley_error_invalid_argument`, leaving the held value unchanged.
+export fn galley_options_set_stack_overflow_recovery(options_ptr: ?*GalleyOptions, value: c_int) i64 {
+    const options = options_ptr orelse return galley_error_null_argument;
+    options.parse.stack_overflow_recovery = root.validateStackOverflowRecovery(value != 0) catch
+        return galley_error_invalid_argument;
+    return galley_ok;
+}
+
+/// Writes the held `stack_overflow_recovery` (1 enabled, 0 not; the core
+/// default while unset) to `out_value`. A null `options` or `out_value` is
+/// `galley_error_null_argument`.
+export fn galley_options_get_stack_overflow_recovery(options_ptr: ?*const GalleyOptions, out_value: ?*c_int) i64 {
+    const options = options_ptr orelse return galley_error_null_argument;
+    const out = out_value orelse return galley_error_null_argument;
+    out.* = @intFromBool(options.parse.stack_overflow_recovery);
+    return galley_ok;
+}
+
+/// Sets `syntax_error_stack_depth`: the in-progress variables reported in LL
+/// syntax-error messages, 0 inheriting the generated parser's depth. Refuses
+/// a value above 64 with `galley_error_invalid_argument`, leaving the held
+/// value unchanged.
+export fn galley_options_set_syntax_error_stack_depth(options_ptr: ?*GalleyOptions, value: c_uint) i64 {
+    const options = options_ptr orelse return galley_error_null_argument;
+    options.parse.syntax_error_stack_depth = root.validateSyntaxErrorStackDepth(value) catch
+        return galley_error_invalid_argument;
+    return galley_ok;
+}
+
+/// Writes the held `syntax_error_stack_depth` (the core default while unset)
+/// to `out_value`. A null `options` or `out_value` is
+/// `galley_error_null_argument`.
+export fn galley_options_get_syntax_error_stack_depth(options_ptr: ?*const GalleyOptions, out_value: ?*c_uint) i64 {
+    const options = options_ptr orelse return galley_error_null_argument;
+    const out = out_value orelse return galley_error_null_argument;
+    out.* = @intCast(options.parse.syntax_error_stack_depth);
+    return galley_ok;
+}
+
+/// Sets `verbosity`: the debug-build parse tracing level, ignored in release
+/// builds. Refuses a value below 0 with `galley_error_invalid_argument`,
+/// leaving the held value unchanged.
+export fn galley_options_set_verbosity(options_ptr: ?*GalleyOptions, value: c_int) i64 {
+    const options = options_ptr orelse return galley_error_null_argument;
+    options.parse.verbosity = std.math.cast(usize, value) orelse return galley_error_invalid_argument;
+    return galley_ok;
+}
+
+/// Writes the held `verbosity` (the core default while unset) to
+/// `out_value`. A null `options` or `out_value` is `galley_error_null_argument`.
+export fn galley_options_get_verbosity(options_ptr: ?*const GalleyOptions, out_value: ?*c_int) i64 {
+    const options = options_ptr orelse return galley_error_null_argument;
+    const out = out_value orelse return galley_error_null_argument;
+    out.* = @intCast(options.parse.verbosity);
+    return galley_ok;
+}
+
+/// Sets `ast_preallocation_ratio`: nodes preallocated per input byte. The
+/// scaled contribution reserves address space without committed pages on
+/// reserved-arena platforms; on segment platforms (Windows, wasm) it is
+/// ignored and only the cap below is prepared eagerly. Refuses a negative or
+/// non-finite value with `galley_error_invalid_argument`, leaving the held
+/// value unchanged.
+export fn galley_options_set_ast_preallocation_ratio(options_ptr: ?*GalleyOptions, value: f64) i64 {
+    const options = options_ptr orelse return galley_error_null_argument;
+    options.parse.ast_preallocation_ratio = root.validateAstPreallocationRatio(value) catch
+        return galley_error_invalid_argument;
+    return galley_ok;
+}
+
+/// Writes the held `ast_preallocation_ratio` (the core default while unset)
+/// to `out_value`. A null `options` or `out_value` is
+/// `galley_error_null_argument`.
+export fn galley_options_get_ast_preallocation_ratio(options_ptr: ?*const GalleyOptions, out_value: ?*f64) i64 {
+    const options = options_ptr orelse return galley_error_null_argument;
+    const out = out_value orelse return galley_error_null_argument;
+    out.* = options.parse.ast_preallocation_ratio;
+    return galley_ok;
+}
+
+/// Sets `ast_preallocation_cap`: the ready node storage floor. 0 sets no
+/// floor. Demand past the reservation appends segments, so this bounds the
+/// fast path rather than total capacity. Refuses a value the target's counts
+/// cannot hold (a wasm32 build holds 32-bit ones) with
+/// `galley_error_invalid_argument`, leaving the held value unchanged.
+export fn galley_options_set_ast_preallocation_cap(options_ptr: ?*GalleyOptions, value: u64) i64 {
+    const options = options_ptr orelse return galley_error_null_argument;
+    options.parse.ast_preallocation_cap = std.math.cast(usize, value) orelse return galley_error_invalid_argument;
+    return galley_ok;
+}
+
+/// Writes the held `ast_preallocation_cap` (the core default while unset) to
+/// `out_value`. A null `options` or `out_value` is `galley_error_null_argument`.
+export fn galley_options_get_ast_preallocation_cap(options_ptr: ?*const GalleyOptions, out_value: ?*u64) i64 {
+    const options = options_ptr orelse return galley_error_null_argument;
+    const out = out_value orelse return galley_error_null_argument;
+    out.* = options.parse.ast_preallocation_cap;
+    return galley_ok;
+}
+
+/// Creates a parsing session and writes it to `out_session`. Passing null
+/// `options` selects every default; an options object holds values its
+/// setters already checked. The session copies what the object holds, so the
+/// object can be destroyed or reused as soon as this returns. Fails with
+/// `galley_error_null_argument` for a null `out_session` and
 /// `galley_error_out_of_memory` when initialization fails; `*out_session` is
-/// written only on success. Destroy the session with
-/// `galley_session_destroy`.
-export fn galley_session_create(options: ?*const GalleyCOptions, out_session: ?*?*GalleySession) i64 {
+/// written only on success. Destroy the session with `galley_session_destroy`.
+export fn galley_session_create(options: ?*const GalleyOptions, out_session: ?*?*GalleySession) i64 {
     const out = out_session orelse return galley_error_null_argument;
-    var parse_options: root.ParseOptions = .{};
-    if (options) |o| {
-        if (o.max_errors < 0 or o.recovery_window < 0 or o.verbosity < 0) return galley_error_invalid_argument;
-        if (!std.math.isFinite(o.ast_preallocation_ratio)) return galley_error_invalid_argument;
-        if (o.max_errors > 0) parse_options.max_errors = @intCast(o.max_errors);
-        if (o.recovery_window > 0) parse_options.recovery_window = @intCast(o.recovery_window);
-        parse_options.stack_overflow_recovery = o.stack_overflow_recovery != 0;
-        if (o.syntax_error_stack_depth > 0) parse_options.syntax_error_stack_depth = o.syntax_error_stack_depth;
-        if (o.verbosity > 0) parse_options.verbosity = @intCast(o.verbosity);
-        if (o.ast_preallocation_ratio >= 0.0) parse_options.ast_preallocation_ratio = o.ast_preallocation_ratio;
-        if (o.ast_preallocation_cap > 0) parse_options.ast_preallocation_cap = @intCast(o.ast_preallocation_cap);
-    }
+    const parse_options: root.ParseOptions = if (options) |o| o.parse else .{};
 
     const embedded = std.heap.c_allocator.create(Embedded) catch return galley_error_out_of_memory;
     embedded.* = .{ .threaded = undefined, .session = undefined };
@@ -1158,8 +1300,14 @@ fn statusForError(err: anyerror) i64 {
         // No result, or a result from a dead parse: either way there are no
         // live nodes in the session's current storage to address.
         error.StaleParseResult, error.NoParseResult => galley_error_invalid_node,
-        // A session option this library cannot accept.
-        error.InvalidSyntaxErrorStackDepth, error.StackOverflowRecoveryUnsupported => galley_error_invalid_argument,
+        // A session option this library cannot accept: the C ABI's option
+        // setters and `Session.init` refuse through the same validators.
+        error.InvalidMaxErrors,
+        error.InvalidRecoveryWindow,
+        error.InvalidSyntaxErrorStackDepth,
+        error.StackOverflowRecoveryUnsupported,
+        error.InvalidASTPreallocationRatio,
+        => galley_error_invalid_argument,
         else => galley_error_internal,
     };
 }

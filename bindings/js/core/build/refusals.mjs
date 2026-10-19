@@ -389,7 +389,7 @@ export async function runRefusalScenarios({ test, assert, newParser, GalleyError
 
   await test("invalid session options are refused before a session exists", async () => {
     // A negative maxErrors is `invalid argument`, not a quiet default: the
-    // library validates the options struct before creating anything.
+    // option setter refuses the value before galley_session_create runs.
     const parser = await newParser();
     let refusal = null;
     try {

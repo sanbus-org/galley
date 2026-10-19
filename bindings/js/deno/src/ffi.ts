@@ -9,7 +9,7 @@
  * and `--allow-read` (library discovery, `parseFile`).
  */
 
-import type { FfiPort, NodeFamily, CurrentDiagnosticFamily, Handle, StagedHandle, HookTicket, DispatchHandler, SessionCOptions, SnapshotColumns } from "@sanbus/galley-core";
+import type { FfiPort, NodeFamily, CurrentDiagnosticFamily, Handle, StagedHandle, HookTicket, DispatchHandler, SnapshotColumns } from "@sanbus/galley-core";
 import { GalleyError, INVALID_NODE, NATIVE_LITTLE_ENDIAN, NO_VARIABLE, Status } from "@sanbus/galley-core";
 import { GenerationBigInt, resolveArtifactFile, resolveAdapterArtifact, artifactFileName, canonicalResolvePath, SHARED_NATIVE_LIBRARY_BASE } from "@sanbus/galley-core/internal";
 import { installDispatch } from "./dispatch.ts";
@@ -104,7 +104,19 @@ interface GalleySymbols extends DoorNames<"">, DoorNames<"hook_">, DiagNames<"">
   galley_symbol_name(session: Deno.PointerValue, index: bigint, outData: FfiOut, outLen: FfiOut): bigint;
   galley_symbol_is_terminal(session: Deno.PointerValue, index: bigint, outIsTerminal: FfiOut): bigint;
   galley_variable_name(session: Deno.PointerValue, index: bigint, outData: FfiOut, outLen: FfiOut): bigint;
-  galley_session_create(options: FfiOut | null, outSession: FfiOut): bigint;
+  galley_session_create(options: Deno.PointerValue | null, outSession: FfiOut): bigint;
+  // Session options: an opaque object (the galley_options_* family in
+  // galley.h); no getter is bound. A setter's refusal leaves the object
+  // unchanged.
+  galley_options_create(outOptions: FfiOut): bigint;
+  galley_options_destroy(options: Deno.PointerValue): bigint;
+  galley_options_set_max_errors(options: Deno.PointerValue, value: number): bigint;
+  galley_options_set_recovery_window(options: Deno.PointerValue, value: number): bigint;
+  galley_options_set_stack_overflow_recovery(options: Deno.PointerValue, value: number): bigint;
+  galley_options_set_syntax_error_stack_depth(options: Deno.PointerValue, value: number): bigint;
+  galley_options_set_verbosity(options: Deno.PointerValue, value: number): bigint;
+  galley_options_set_ast_preallocation_ratio(options: Deno.PointerValue, value: number): bigint;
+  galley_options_set_ast_preallocation_cap(options: Deno.PointerValue, value: bigint): bigint;
   galley_session_destroy(session: Deno.PointerValue): bigint;
   galley_session_set_message_override(session: Deno.PointerValue, name: FfiOut, nameLen: number, message: FfiOut, messageLen: number): bigint;
   galley_parse(session: Deno.PointerValue, data: FfiOut, len: number): bigint;
@@ -238,9 +250,18 @@ const BASE_SYMBOLS = {
   galley_symbol_name: { parameters: ["pointer", "u64", "buffer", "buffer"], result: "i64" },
   galley_symbol_is_terminal: { parameters: ["pointer", "u64", "buffer"], result: "i64" },
   galley_variable_name: { parameters: ["pointer", "u64", "buffer", "buffer"], result: "i64" },
-  galley_session_create: { parameters: ["buffer", "buffer"], result: "i64" },
+  galley_session_create: { parameters: ["pointer", "buffer"], result: "i64" },
   galley_session_destroy: { parameters: ["pointer"], result: "i64" },
   galley_session_set_message_override: { parameters: ["pointer", "buffer", "usize", "buffer", "usize"], result: "i64" },
+  galley_options_create: { parameters: ["buffer"], result: "i64" },
+  galley_options_destroy: { parameters: ["pointer"], result: "i64" },
+  galley_options_set_max_errors: { parameters: ["pointer", "i32"], result: "i64" },
+  galley_options_set_recovery_window: { parameters: ["pointer", "i32"], result: "i64" },
+  galley_options_set_stack_overflow_recovery: { parameters: ["pointer", "i32"], result: "i64" },
+  galley_options_set_syntax_error_stack_depth: { parameters: ["pointer", "u32"], result: "i64" },
+  galley_options_set_verbosity: { parameters: ["pointer", "i32"], result: "i64" },
+  galley_options_set_ast_preallocation_ratio: { parameters: ["pointer", "f64"], result: "i64" },
+  galley_options_set_ast_preallocation_cap: { parameters: ["pointer", "u64"], result: "i64" },
   galley_parse: { parameters: ["pointer", "buffer", "usize"], result: "i64" },
   galley_parse_file: { parameters: ["pointer", "buffer"], result: "i64" },
   galley_last_input: { parameters: ["pointer", "buffer", "buffer"], result: "i64" },
@@ -791,25 +812,55 @@ export class DenoPort implements FfiPort {
 
   // -- sessions ---------------------------------------------------------
 
-  createSession(options: SessionCOptions | null): { status: number; handle: Handle | null } {
-    // Null options crosses as a NULL pointer (the library's defaults), never
-    // as a zeroed struct.
-    let optionsBytes: Uint8Array | null = null;
-    if (options !== null) {
-      // GalleyCOptions layout: int32 x5, double, uint64 (40 bytes, LE).
-      const buf = new ArrayBuffer(40);
-      const view = new DataView(buf);
-      view.setInt32(0, options.maxErrors, true);
-      view.setInt32(4, options.recoveryWindow, true);
-      view.setInt32(8, options.stackOverflowRecovery, true);
-      view.setUint32(12, options.syntaxErrorStackDepth, true);
-      view.setInt32(16, options.verbosity, true);
-      view.setFloat64(24, options.astPreallocationRatio, true);
-      view.setBigUint64(32, options.astPreallocationCap, true);
-      optionsBytes = new Uint8Array(buf);
-    }
+  createOptions(): { status: number; handle: Handle | null } {
     const out = ptrOut();
-    const status = Number(this.native.galley_session_create(optionsBytes, out));
+    const status = Number(this.native.galley_options_create(out));
+    if (status < 0) return { status, handle: null };
+    return { status, handle: Deno.UnsafePointer.create(out[0]) };
+  }
+
+  destroyOptions(options: Handle): number {
+    return Number(this.native.galley_options_destroy(options as Deno.PointerValue));
+  }
+
+  setMaxErrors(options: Handle, value: number): number {
+    return Number(this.native.galley_options_set_max_errors(options as Deno.PointerValue, value));
+  }
+
+  setRecoveryWindow(options: Handle, value: number): number {
+    return Number(this.native.galley_options_set_recovery_window(options as Deno.PointerValue, value));
+  }
+
+  setStackOverflowRecovery(options: Handle, value: number): number {
+    return Number(this.native.galley_options_set_stack_overflow_recovery(options as Deno.PointerValue, value));
+  }
+
+  setSyntaxErrorStackDepth(options: Handle, value: number): number {
+    return Number(this.native.galley_options_set_syntax_error_stack_depth(options as Deno.PointerValue, value));
+  }
+
+  setVerbosity(options: Handle, value: number): number {
+    return Number(this.native.galley_options_set_verbosity(options as Deno.PointerValue, value));
+  }
+
+  setAstPreallocationRatio(options: Handle, value: number): number {
+    return Number(this.native.galley_options_set_ast_preallocation_ratio(options as Deno.PointerValue, value));
+  }
+
+  setAstPreallocationCap(options: Handle, value: bigint): number {
+    return Number(this.native.galley_options_set_ast_preallocation_cap(options as Deno.PointerValue, value));
+  }
+
+  createSession(options: Handle | null): { status: number; handle: Handle | null } {
+    // Null options crosses as a NULL pointer (the library's defaults), never
+    // as a zeroed object.
+    const out = ptrOut();
+    const status = Number(
+      this.native.galley_session_create(
+        options === null ? null : (options as Deno.PointerValue),
+        out,
+      ),
+    );
     if (status < 0) return { status, handle: null };
     return { status, handle: Deno.UnsafePointer.create(out[0]) };
   }

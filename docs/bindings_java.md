@@ -306,8 +306,8 @@ instead; the build detects it and compiles it into the shared library.
 ```java
 Parser parser = Galley.load(path);
 try (Session session = parser.openSession(SessionOptions.builder()
-        .maxErrors(10)
-        .recoveryWindow(500)
+        .maxErrors(20)
+        .recoveryWindow(200)
         .build())) {
     int parsed = session.parse("alpha:12,beta:3");
     Node root = session.rootNode();
@@ -338,6 +338,18 @@ A parse failure's `getDiagnostic()` is the frozen `Diagnostic` its parse
 recorded, and `null` when it recorded none: a parse call that fails
 before its parse runs (a missing file), or is refused with
 `ERROR_SESSION_IN_USE`, carries none.
+
+`SessionOptions` fields are optional: a field left unset keeps the core's
+default for that option, documented under
+[Runtime API Options](/configuration#runtime-api-options). The core owns
+validation: `openSession` refuses a value outside its option's domain with a
+`GalleyException` carrying `Status.ERROR_INVALID_ARGUMENT`, and no session is
+created. `maxErrors` and `recoveryWindow` are at least 1, `verbosity` at
+least 0, `syntaxErrorStackDepth` at most 64 (0 asks for the generated
+default), `stackOverflowRecovery` is accepted only where
+`parser.stackOverflowRecoveryAvailable()` is true, `astPreallocationRatio`
+must be finite and non-negative, and `astPreallocationCap` may be any value
+the target's counts can hold.
 
 Parsing entry points: `parse(byte[])`, `parse(ByteBuffer)`, `parse(String)`, `parseSentinel(String|byte[]|ByteBuffer)`, and `parseFile(String|File)`. `ByteBuffer` honors `position`/`remaining`/`arrayOffset`; direct buffers are passed by pointer, and no reachability fence is needed because the segment `MemorySegment.ofBuffer` returns keeps the buffer — and its backing memory — reachable for the call.
 

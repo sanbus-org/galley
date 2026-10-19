@@ -248,10 +248,10 @@ or past a table's count is `ErrOutOfRange`; a closed session refuses the
 session-handled reads with `ErrNullArgument`.
 
 The shared statuses include `ErrOutOfRange` (-17, "out of range") and
-`ErrInvalidArgument` (-18, "invalid argument"). Option values are
-validated by the core alone: a negative `MaxErrors`, `RecoveryWindow`, or
-`Verbosity`, or a non-finite `ASTPreallocationRatio`, comes back from
-`WithOptions` as `ErrInvalidArgument`.
+`ErrInvalidArgument` (-18, "invalid argument"). Option values are checked
+by the core alone: a value outside its option's domain comes back from
+`WithOptions` as `ErrInvalidArgument`, and no session is handed out (see
+Sessions).
 
 ## Tree Walking
 
@@ -291,9 +291,9 @@ empty answer.
 ## Sessions
 
 ```go
+maxErrors := int32(25)
 session, err := galley.WithOptions(galley.SessionOptions{
-    MaxErrors:      10,
-    RecoveryWindow: 500,
+    MaxErrors: &maxErrors,
 })
 if err != nil { ... }
 defer func() {
@@ -304,6 +304,12 @@ defer func() {
 
 parsed, err := session.ParseSentinel("alpha:12,beta:3")
 ```
+
+Only the fields you set are passed to the core as option setters; a nil
+field keeps the core's default for that option, so "unset" stays distinct
+from "set to zero". Each option's meaning, default, and domain are
+documented under
+[Runtime API Options](/configuration#runtime-api-options).
 
 Sessions own their IO backend and allocator and are not safe for
 concurrent use — keep one per goroutine or guard it externally. Node

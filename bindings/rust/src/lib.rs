@@ -24,10 +24,25 @@ use std::path::Path;
 /// Opaque session handle; never constructed in Rust.
 enum GalleySessionRaw {}
 
+/// Opaque options handle; never constructed in Rust.
+enum GalleyOptionsRaw {}
+
 extern "C" {
     fn galley_version() -> *const c_char;
+    fn galley_options_create(out_options: *mut *mut GalleyOptionsRaw) -> i64;
+    fn galley_options_destroy(options: *mut GalleyOptionsRaw) -> i64;
+    fn galley_options_set_max_errors(options: *mut GalleyOptionsRaw, value: i32) -> i64;
+    fn galley_options_set_recovery_window(options: *mut GalleyOptionsRaw, value: i32) -> i64;
+    fn galley_options_set_stack_overflow_recovery(
+        options: *mut GalleyOptionsRaw,
+        value: i32,
+    ) -> i64;
+    fn galley_options_set_syntax_error_stack_depth(
+        options: *mut GalleyOptionsRaw,
+        value: u32,
+    ) -> i64;
     fn galley_session_create(
-        options: *const RawOptions,
+        options: *const GalleyOptionsRaw,
         out_session: *mut *mut GalleySessionRaw,
     ) -> i64;
     fn galley_session_destroy(session: *mut GalleySessionRaw) -> i64;
@@ -229,44 +244,22 @@ extern "C" {
     fn galley_status_string(status: i64) -> *const c_char;
 }
 
-#[repr(C)]
-struct RawOptions {
-    max_errors: i32,
-    recovery_window: i32,
-    stack_overflow_recovery: i32,
-    syntax_error_stack_depth: u32,
-    verbosity: i32,
-    ast_preallocation_ratio: f64,
-    ast_preallocation_cap: u64,
-}
-
-/// Runtime options for [`Session::with_options`]. Zero fields select the
-/// library defaults. The core owns option validation: a negative
-/// `max_errors` or `recovery_window` fails session creation with
-/// [`Error::InvalidArgument`] instead of being clamped here.
-#[derive(Debug, Clone)]
+/// Runtime options for [`Session::with_options`]. A field left `None` keeps
+/// its option at the core's default; only fields actually set are handed to
+/// the core, which owns every default and every option's domain: a refused
+/// value fails session creation with [`Error::InvalidArgument`] instead of
+/// being clamped here.
+#[derive(Debug, Clone, Default)]
 pub struct SessionOptions {
-    pub max_errors: i32,
-    pub recovery_window: i32,
-    pub stack_overflow_recovery: bool,
-    pub syntax_error_stack_depth: u32,
+    pub max_errors: Option<i32>,
+    pub recovery_window: Option<i32>,
+    pub stack_overflow_recovery: Option<bool>,
+    pub syntax_error_stack_depth: Option<u32>,
     /// Message overrides applied to the session after creation: when a
     /// syntax-error site's resolution chain contains the name, the site
     /// reports the message verbatim, ahead of grammar hooks and the
     /// built-in renderer.
     pub message_overrides: Vec<(String, String)>,
-}
-
-impl Default for SessionOptions {
-    fn default() -> Self {
-        SessionOptions {
-            max_errors: 10,
-            recovery_window: 500,
-            stack_overflow_recovery: false,
-            syntax_error_stack_depth: 0,
-            message_overrides: Vec::new(),
-        }
-    }
 }
 
 // >>> generated: error enum (bindings/abi_values.zon; regenerate: zig build abi-values)
@@ -333,10 +326,14 @@ pub enum Error {
     /// its diagnostic's table. An address outside the live node storage is
     /// `galley_error_invalid_node` instead.
     OutOfRange,
-    /// A value in `GalleyCOptions` is outside its domain (a negative
-    /// `max_errors`, `recovery_window`, or `verbosity`, or a non-finite
-    /// `ast_preallocation_ratio`), or the enable-flag count passed to
-    /// `galley_session_set_hooks` does not match `galley_hooks_count()`.
+    /// A value passed to a `galley_options_set_*` call is outside its option's
+    /// domain: `max_errors` or `recovery_window` below 1, a negative
+    /// `verbosity`, a `syntax_error_stack_depth` above 64,
+    /// `stack_overflow_recovery` where
+    /// `galley_stack_overflow_recovery_available()` is 0, a negative or
+    /// non-finite `ast_preallocation_ratio`, or an `ast_preallocation_cap` the
+    /// target cannot hold. It is also the enable-flag count passed to
+    /// `galley_session_set_hooks` not matching `galley_hooks_count()`.
     InvalidArgument,
 }
 
@@ -718,21 +715,48 @@ impl Session {
         Self::with_options(SessionOptions::default())
     }
 
-    /// Creates a session with explicit runtime options. The core owns option
-    /// validation: an out-of-domain value fails with
-    /// [`Error::InvalidArgument`].
+    /// Creates a session with explicit runtime options. Each field set to
+    /// `Some` goes through the core's matching options setter, and a value
+    /// the core refuses fails with [`Error::InvalidArgument`]; unset fields
+    /// stay at the core defaults. The session copies the values, so the
+    /// options can be dropped as soon as this returns.
     pub fn with_options(options: SessionOptions) -> Result<Self, Error> {
-        let raw = RawOptions {
-            max_errors: options.max_errors,
-            recovery_window: options.recovery_window,
-            stack_overflow_recovery: options.stack_overflow_recovery as i32,
-            syntax_error_stack_depth: options.syntax_error_stack_depth,
-            verbosity: 0,
-            ast_preallocation_ratio: -1.0,
-            ast_preallocation_cap: 0,
-        };
+        let mut raw: *mut GalleyOptionsRaw = std::ptr::null_mut();
+        map_status(unsafe { galley_options_create(&mut raw) })?;
+        if raw.is_null() {
+            return Err(Error::Internal);
+        }
+        // Only options the caller actually set go through a setter; an unset
+        // option makes no call and keeps its core default. The object belongs
+        // to no session and is destroyed on every path after creation,
+        // creation refusal included.
+        let applied = (|| -> Result<(), Error> {
+            if let Some(value) = options.max_errors {
+                map_status(unsafe { galley_options_set_max_errors(raw, value) })?;
+            }
+            if let Some(value) = options.recovery_window {
+                map_status(unsafe { galley_options_set_recovery_window(raw, value) })?;
+            }
+            if let Some(value) = options.stack_overflow_recovery {
+                map_status(unsafe {
+                    galley_options_set_stack_overflow_recovery(raw, value as i32)
+                })?;
+            }
+            if let Some(value) = options.syntax_error_stack_depth {
+                map_status(unsafe { galley_options_set_syntax_error_stack_depth(raw, value) })?;
+            }
+            Ok(())
+        })();
+        if let Err(error) = applied {
+            unsafe { galley_options_destroy(raw) };
+            return Err(error);
+        }
         let mut inner: *mut GalleySessionRaw = std::ptr::null_mut();
-        map_status(unsafe { galley_session_create(&raw, &mut inner) })?;
+        let status = unsafe { galley_session_create(raw, &mut inner) };
+        // The session copies what the object holds, so the object is done
+        // here, on the failure path as much as on the success path.
+        unsafe { galley_options_destroy(raw) };
+        map_status(status)?;
         if inner.is_null() {
             return Err(Error::Internal);
         }
@@ -1624,5 +1648,16 @@ mod tests {
     fn an_unknown_status_is_internal() {
         assert_eq!(Error::from_status(-999), Error::Internal);
         assert_eq!(Error::from_status(7), Error::Internal);
+    }
+
+    // Unset options are `None`, never a host-side copy of a core default.
+    #[test]
+    fn default_options_leave_every_option_unset() {
+        let options = SessionOptions::default();
+        assert_eq!(options.max_errors, None);
+        assert_eq!(options.recovery_window, None);
+        assert_eq!(options.stack_overflow_recovery, None);
+        assert_eq!(options.syntax_error_stack_depth, None);
+        assert!(options.message_overrides.is_empty());
     }
 }

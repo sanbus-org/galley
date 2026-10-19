@@ -28,6 +28,7 @@ import { runRefusalScenarios } from "../../../js/core/build/refusals.mjs";
 import { runPublishedFailureScenarios } from "../../../js/core/build/published-failures.mjs";
 import { runHookFailureScenarios } from "../../../js/core/build/hook-failures.mjs";
 import { runHookNameScenarios } from "../../../js/core/build/hook-names.mjs";
+import { runOptionScenarios, runOptionSeamScenarios } from "../../../js/core/build/options.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const exampleLib = artifactFileName("galley-js-bun", process.platform);
@@ -49,6 +50,7 @@ const {
   Status,
   INVALID_NODE,
   getBunPort,
+  Parser,
 } = await import("../src/index.ts");
 
 const { galley, openLanguageDirectory } = await import("../../universal/dist/index.js");
@@ -1692,6 +1694,8 @@ await runPublishedFailureScenarios({ test, assert, newParser, StaleTreeError, Ga
 await runHookFailureScenarios({ test, assert, newParser, StaleTreeError, GalleyError, Status, DiagnosticKind });
 await runHookNameScenarios({ test, assert, newParser, newDisabledParser });
 await runRefusalScenarios({ test, assert, newParser, StaleTreeError, GalleyError, Status });
+await runOptionScenarios({ test, assert, newParser, GalleyError, Status });
+await runOptionSeamScenarios({ test, assert, Parser, GalleyError, Status });
 
 await test("raw port refuses hook-table misuse", async () => {
   // The raw bun:ffi symbols: a flags count that misses the hook count is

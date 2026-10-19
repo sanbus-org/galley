@@ -89,39 +89,30 @@ public final class Session implements AutoCloseable {
     private static final ThreadLocal<ParseHolder> INNERMOST_HOLDER = new ThreadLocal<>();
 
     public Session(Parser parser) {
-        this(parser, SessionOptions.defaults());
+        this(parser, SessionOptions.builder().build());
     }
 
     public Session(Parser parser, SessionOptions options) {
         if (parser == null) throw new IllegalArgumentException("parser is null");
-        if (options == null) options = SessionOptions.defaults();
+        if (options == null) options = SessionOptions.builder().build();
         this.parser = parser;
         this.lib = parser.library();
         this.sessionDoor = NodeDoor.ofSession(lib, this);
 
-        boolean hasNonDefault = options.getMaxErrors() != 10 ||
-                options.getRecoveryWindow() != 500 ||
-                options.isStackOverflowRecovery() ||
-                options.getSyntaxErrorStackDepth() != 0 ||
-                options.getVerbosity() != 0 ||
-                options.getAstPreallocationRatio() != -1.0 ||
-                options.getAstPreallocationCap() != 0;
-
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outSession = arena.allocate(ValueLayout.ADDRESS);
-            MemorySegment opts = MemorySegment.NULL;
-            if (hasNonDefault) {
-                opts = arena.allocate(GalleyLibrary.GALLEY_COPTIONS_SIZE);
-                opts.set(ValueLayout.JAVA_INT, GalleyLibrary.OFF_MAX_ERRORS, options.getMaxErrors());
-                opts.set(ValueLayout.JAVA_INT, GalleyLibrary.OFF_RECOVERY_WINDOW, options.getRecoveryWindow());
-                opts.set(ValueLayout.JAVA_INT, GalleyLibrary.OFF_STACK_OVERFLOW_RECOVERY, options.isStackOverflowRecovery() ? 1 : 0);
-                opts.set(ValueLayout.JAVA_INT, GalleyLibrary.OFF_SYNTAX_ERROR_STACK_DEPTH, options.getSyntaxErrorStackDepth());
-                opts.set(ValueLayout.JAVA_INT, GalleyLibrary.OFF_VERBOSITY, options.getVerbosity());
-                opts.set(ValueLayout.JAVA_DOUBLE, GalleyLibrary.OFF_AST_PREALLOCATION_RATIO, options.getAstPreallocationRatio());
-                opts.set(ValueLayout.JAVA_LONG, GalleyLibrary.OFF_AST_PREALLOCATION_CAP, options.getAstPreallocationCap());
+            MemorySegment outOptions = arena.allocate(ValueLayout.ADDRESS);
+            checkStatus(lib.galley_options_create(outOptions));
+            MemorySegment opts = outOptions.get(ValueLayout.ADDRESS, 0);
+            try {
+                applyOptions(opts, options);
+                checkStatus(lib.galley_session_create(opts, outSession));
+                this.handle = outSession.get(ValueLayout.ADDRESS, 0);
+            } finally {
+                // The session copies the option values, so the object dies
+                // here on every path; destroying NULL is a no-op.
+                lib.galley_options_destroy(opts);
             }
-            checkStatus(lib.galley_session_create(opts, outSession));
-            this.handle = outSession.get(ValueLayout.ADDRESS, 0);
         }
         this.handleId = parser.register(this);
         try {
@@ -134,6 +125,29 @@ public final class Session implements AutoCloseable {
         for (Map.Entry<String, byte[]> e : options.getMessageOverrides().entrySet()) {
             setMessageOverride(e.getKey(), e.getValue());
         }
+    }
+
+    /**
+     * One setter call per option the caller chose, in the core's option
+     * order; a null field makes no call, so the core's default stays in
+     * force for it. The setters are the whole gate: a value outside its
+     * option's domain fails here with the core's invalid-argument status.
+     */
+    private void applyOptions(MemorySegment opts, SessionOptions options) {
+        if (options.getMaxErrors() != null)
+            checkStatus(lib.galley_options_set_max_errors(opts, options.getMaxErrors()));
+        if (options.getRecoveryWindow() != null)
+            checkStatus(lib.galley_options_set_recovery_window(opts, options.getRecoveryWindow()));
+        if (options.isStackOverflowRecovery() != null)
+            checkStatus(lib.galley_options_set_stack_overflow_recovery(opts, options.isStackOverflowRecovery() ? 1 : 0));
+        if (options.getSyntaxErrorStackDepth() != null)
+            checkStatus(lib.galley_options_set_syntax_error_stack_depth(opts, options.getSyntaxErrorStackDepth()));
+        if (options.getVerbosity() != null)
+            checkStatus(lib.galley_options_set_verbosity(opts, options.getVerbosity()));
+        if (options.getAstPreallocationRatio() != null)
+            checkStatus(lib.galley_options_set_ast_preallocation_ratio(opts, options.getAstPreallocationRatio()));
+        if (options.getAstPreallocationCap() != null)
+            checkStatus(lib.galley_options_set_ast_preallocation_cap(opts, options.getAstPreallocationCap()));
     }
 
     /** One native call, made with the session handle it is given. */

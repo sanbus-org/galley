@@ -288,10 +288,18 @@ if (galley_session_create(NULL, &session) != galley_ok) {
     /* Initialization failed; *out_session is untouched. */
 }
 /* or with options: */
-const GalleyCOptions options = { .max_errors = 10 };
-if (galley_session_create(&options, &session) != galley_ok) {
-    /* An option value was outside its domain: galley_error_invalid_argument. */
+GalleyOptions *options = NULL;
+if (galley_options_create(&options) != galley_ok) {
+    /* Allocation failed. */
 }
+if (galley_options_set_max_errors(options, 10) != galley_ok) {
+    /* That value is outside max_errors' domain: galley_error_invalid_argument,
+       and the object still holds what it held. */
+}
+if (galley_session_create(options, &session) != galley_ok) {
+    /* Initialization failed; *out_session is untouched. */
+}
+galley_options_destroy(options); /* The session copied the values. */
 /* ... */
 if (galley_session_destroy(session) != galley_ok) {
     /* A parse is in flight (another thread or a hook): nothing was freed,
@@ -513,7 +521,9 @@ the kind accessors included.
 grammar symbol table (`galley_symbol_count` / `_name` / `_is_terminal`,
 `galley_variable_count` / `_name`) let embedders introspect exactly what the
 library was built with. An index at or past the counts is
-`galley_error_out_of_range`.
+`galley_error_out_of_range`. `galley_stack_overflow_recovery_available` is
+also what the options setter consults: enabling recovery where it answers 0
+is `galley_error_invalid_argument`.
 
 ## Storage Notes
 

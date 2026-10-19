@@ -28,6 +28,7 @@ import { runRefusalScenarios } from "../../../js/core/build/refusals.mjs";
 import { runPublishedFailureScenarios } from "../../../js/core/build/published-failures.mjs";
 import { runHookFailureScenarios } from "../../../js/core/build/hook-failures.mjs";
 import { runHookNameScenarios } from "../../../js/core/build/hook-names.mjs";
+import { runOptionScenarios, runOptionSeamScenarios } from "../../../js/core/build/options.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const exampleLib = artifactFileName("galley-js-node", process.platform);
@@ -1907,6 +1908,8 @@ async function newDisabledParser() {
 
 await runHookNameScenarios({ test, assert, newParser, newDisabledParser });
 await runRefusalScenarios({ test, assert, newParser, StaleTreeError, GalleyError, Status });
+await runOptionScenarios({ test, assert, newParser, GalleyError, Status });
+await runOptionSeamScenarios({ test, assert, Parser, GalleyError, Status });
 
 await test("raw addon refuses hook-table misuse", async () => {
   // The raw addon surface: a flags count that misses the hook count is

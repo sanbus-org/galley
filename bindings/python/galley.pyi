@@ -155,10 +155,14 @@ class Status(enum.IntEnum):
     past its diagnostic's table. An address outside the live node storage
     is `galley_error_invalid_node` instead."""
     ERROR_INVALID_ARGUMENT = -18
-    """A value in `GalleyCOptions` is outside its domain (a negative
-    `max_errors`, `recovery_window`, or `verbosity`, or a non-finite
-    `ast_preallocation_ratio`), or the enable-flag count passed to
-    `galley_session_set_hooks` does not match `galley_hooks_count()`."""
+    """A value passed to a `galley_options_set_*` call is outside its option's
+    domain: `max_errors` or `recovery_window` below 1, a negative
+    `verbosity`, a `syntax_error_stack_depth` above 64,
+    `stack_overflow_recovery` where
+    `galley_stack_overflow_recovery_available()` is 0, a negative or
+    non-finite `ast_preallocation_ratio`, or an `ast_preallocation_cap` the
+    target cannot hold. It is also the enable-flag count passed to
+    `galley_session_set_hooks` not matching `galley_hooks_count()`."""
 
 INVALID_NODE: Final[int]
 """Returned by tree queries when no node exists at that position. Every node
@@ -539,34 +543,40 @@ class Session:
     thread or guard externally.  Node handles remain valid across edits until
     the next successful parse.
 
-    Keyword options mirror ``galley.h`` defaults:
-        max_errors: maximum diagnostics before abort (10).
-        recovery_window: max bytes to scan for recovery (500).
-        stack_overflow_recovery: allow stack-overflow recovery (False).
-        syntax_error_stack_depth: extra stack frames to keep for diagnostics (0).
-        verbosity: diagnostic verbosity (0).
-        ast_preallocation_ratio: preallocation ratio (``-1.0`` selects default; ``0`` drops the scaled contribution, the floor still applies; the scaled contribution is ignored on segment platforms such as Windows/wasm, where only the floor is prepared eagerly).
-        ast_preallocation_cap: minimum ready node storage per parse in nodes (0 = default).
+    Keyword options are optional: ``None`` (or omitting the keyword) leaves
+    the option at the core default, and each given option is set when the
+    session opens. The core owns every option's meaning, default, and
+    domain — see ``docs/configuration.md``, section "Runtime API options"
+    (``#runtime-api-options``):
 
-    A negative ``max_errors``, ``recovery_window``, or ``verbosity``, or a
-    non-finite ``ast_preallocation_ratio``, raises ``GalleyError``
-    (``ERROR_INVALID_ARGUMENT``).
-    ``syntax_error_stack_depth`` and ``ast_preallocation_cap`` are unsigned
-    counts: ``0`` selects the build default, and a negative value is
-    reinterpreted as unsigned (wrapped modulo 2^32 / 2^64) rather than
-    refused.
+        max_errors: errors recorded before a parse stops; at least 1.
+        recovery_window: bytes scanned for a recovery point; at least 1.
+        stack_overflow_recovery: enable the native recovery boundary, only
+            where ``stack_overflow_recovery_available()`` is true.
+        syntax_error_stack_depth: in-progress variables reported in LL
+            syntax-error messages; 0 selects the generated parser's
+            default, at most 64.
+        verbosity: debug-build parse tracing level; at least 0.
+        ast_preallocation_ratio: AST nodes prepared per input byte; finite
+            and non-negative, and 0 drops the scaled contribution.
+        ast_preallocation_cap: minimum ready node storage per parse; any
+            count the target can hold.
+
+    A value outside its option's domain raises ``GalleyError``
+    (``ERROR_INVALID_ARGUMENT``) during construction, and no session is
+    created.
     """
 
     def __init__(
         self,
         *,
-        max_errors: int = 10,
-        recovery_window: int = 500,
-        stack_overflow_recovery: bool = False,
-        syntax_error_stack_depth: int = 0,
-        verbosity: int = 0,
-        ast_preallocation_ratio: float = -1.0,
-        ast_preallocation_cap: int = 0,
+        max_errors: int | None = None,
+        recovery_window: int | None = None,
+        stack_overflow_recovery: bool | None = None,
+        syntax_error_stack_depth: int | None = None,
+        verbosity: int | None = None,
+        ast_preallocation_ratio: float | None = None,
+        ast_preallocation_cap: int | None = None,
     ) -> None: ...
     def close(self) -> None:
         """Release the underlying session; safe to call more than once.

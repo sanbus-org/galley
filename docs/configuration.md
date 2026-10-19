@@ -142,11 +142,23 @@ var session = try parser.Session.init(io, allocator, .{
 defer session.deinit();
 ```
 
-`max_errors` and `recovery_window` configure generated error recovery.
+Every field's declaration carries the core's default, so a field left out of
+the literal keeps it. Each option has one domain, checked by the core
+wherever it is set — here, or through a host binding's session options, which
+surface a refusal as their invalid-argument error:
+
+| Option | Default | Domain |
+| --- | --- | --- |
+| `max_errors` | `10` | How many syntax errors are recorded before a parse stops. At least 1; `0` is `error.InvalidMaxErrors`. |
+| `recovery_window` | `500` | The bytes scanned for a recovery point. At least 1; `0` is `error.InvalidRecoveryWindow`. |
+| `stack_overflow_recovery` | `false` | The native recovery boundary, a debugging aid, available on Linux and macOS; asking for it elsewhere is `error.StackOverflowRecoveryUnsupported`. |
+| `syntax_error_stack_depth` | `0` | In-progress variables reported in LL syntax-error messages; `0` inherits the generated parser's depth. At most `64`; above that is `error.InvalidSyntaxErrorStackDepth`. |
+| `verbosity` | `0` | Debug-build parse tracing, ignored in release builds. |
+| `ast_preallocation_ratio` | `2` | AST nodes prepared per input byte; finite and non-negative, checked in every build. `0` drops the scaled contribution. |
+| `ast_preallocation_cap` | `16384` | The ready node storage floor per parse; `0` sets no floor. Demand past the reservation appends segments. |
+| `message_overrides` | none | Dynamic per-session syntax message overrides (layer 1 above). |
+
 `max_errors` counts syntax errors only; semantic errors have no runtime limit.
-`stack_overflow_recovery` enables the native recovery boundary, a debugging aid,
-and is disabled by default. `message_overrides` registers dynamic per-session syntax
-message overrides (layer 1 above).
 
 Without tracking, a diagnostic computes its line and column from its byte offset
 when it is recorded, so the parse pays nothing for it until an error occurs; one

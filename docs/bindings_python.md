@@ -65,7 +65,7 @@ hooks automatically:
 ```python
 import my_language
 
-with my_language.Session(max_errors=10) as session:
+with my_language.Session() as session:
     parsed = session.parse("alpha:12,beta:3")
     root = session.root_node()
 ```
@@ -77,7 +77,7 @@ scan for hooks — wire them manually through the parser API:
 import galley
 
 parser = galley.load("./my-language/galley_impl.cpython-314-darwin.so")
-with parser.Session(max_errors=10) as session:
+with parser.Session() as session:
     parsed = session.parse("alpha:12,beta:3")
     root = session.root_node()
 ```
@@ -322,7 +322,7 @@ generic renderer; `message_ansi` returns their ANSI rendering. LR grammars use
 ```python
 parser = galley.load("./my-language/galley_impl.cpython-314-darwin.so")
 
-with parser.Session(max_errors=10, recovery_window=500) as session:
+with parser.Session() as session:
     try:
         parsed = session.parse("alpha:12,beta:3")
     except parser.GalleyError as error:
@@ -330,16 +330,20 @@ with parser.Session(max_errors=10, recovery_window=500) as session:
         print(f"{diagnostic.line}:{diagnostic.column}: {diagnostic.message}")
 ```
 
-Options mirror the runtime defaults: `max_errors=10`, `recovery_window=500`,
-`stack_overflow_recovery=False`, `syntax_error_stack_depth=0`,
-`verbosity=0`, `ast_preallocation_ratio=-1.0`, `ast_preallocation_cap=0`. A
-value outside its domain (a negative `max_errors`, `recovery_window`, or
-`verbosity`, or a non-finite `ast_preallocation_ratio`) raises `GalleyError`
-with `ERROR_INVALID_ARGUMENT` at construction. `syntax_error_stack_depth`
-and `ast_preallocation_cap` are unsigned counts: `0` selects the build
-default, and a negative value is reinterpreted as unsigned (wrapped modulo
-2^32 / 2^64) rather than refused. Failures raise `parser.GalleyError`, whose
-`code` is the raw status code. A parse failure carries the frozen
+`Session` keyword options are `max_errors`, `recovery_window`,
+`stack_overflow_recovery`, `syntax_error_stack_depth`, `verbosity`,
+`ast_preallocation_ratio` and `ast_preallocation_cap`; every one is
+optional, and `None` (or omitting the keyword) leaves it at the core
+default, so only a given option is set. The core owns each option's
+meaning, default, and domain — see
+[Runtime API Options](/configuration#runtime-api-options). A value outside
+its option's domain (`max_errors` or `recovery_window` below 1, a negative
+`verbosity`, `syntax_error_stack_depth` above 64,
+`stack_overflow_recovery` where the platform does not offer it, a negative
+or non-finite `ast_preallocation_ratio`, or an `ast_preallocation_cap` the
+target cannot hold) raises `GalleyError` with `ERROR_INVALID_ARGUMENT` at
+construction, before a session exists. Failures raise `parser.GalleyError`,
+whose `code` is the raw status code. A parse failure carries the frozen
 `parser.Diagnostic` its parse recorded, and `diagnostic is None` when it
 recorded none: a parse call that fails before its parse runs (a missing
 file), or is refused with `ERROR_SESSION_IN_USE`, carries none.

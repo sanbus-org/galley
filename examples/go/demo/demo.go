@@ -47,9 +47,10 @@ func printTree(session *galley.Session, node galley.Node, depth int) {
 
 func main() {
 	fmt.Printf("galley version: %s\n", galley.Version())
-	options := galley.DefaultOptions()
-	options.MessageOverrides = map[string]string{
-		"Number": "expected a number after ':' (digits only) at line {line}",
+	options := galley.SessionOptions{
+		MessageOverrides: map[string]string{
+			"Number": "expected a number after ':' (digits only) at line {line}",
+		},
 	}
 	session, err := galley.WithOptions(options)
 	if err != nil {

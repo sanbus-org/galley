@@ -17,7 +17,6 @@ import type {
   Handle,
   HookTicket,
   NodeFamily,
-  SessionCOptions,
   SnapshotColumns,
   StagedHandle,
 } from "./port.ts";
@@ -30,29 +29,26 @@ import { ProcedureArguments, ProcedureRegistry, routerFor } from "./procedures.t
 import type { HookFn, HookOwner } from "./procedures.ts";
 
 export interface SessionOptions {
-  maxErrors?: number; // default 10
-  recoveryWindow?: number; // default 500
-  stackOverflowRecovery?: boolean; // default false
-  syntaxErrorStackDepth?: number; // default 0
-  verbosity?: number; // default 0
-  astPreallocationRatio?: number; // default -1.0 (selects library default)
-  astPreallocationCap?: number | bigint; // default 0
-}
-
-function defaultOptions(): Required<SessionOptions> {
-  return {
-    maxErrors: 10,
-    recoveryWindow: 500,
-    stackOverflowRecovery: false,
-    syntaxErrorStackDepth: 0,
-    verbosity: 0,
-    astPreallocationRatio: -1.0,
-    astPreallocationCap: 0,
-  };
+  /** Unset keeps the core's default; see docs/configuration.md, "Runtime API Options". */
+  maxErrors?: number;
+  recoveryWindow?: number;
+  stackOverflowRecovery?: boolean;
+  syntaxErrorStackDepth?: number;
+  verbosity?: number;
+  astPreallocationRatio?: number;
+  astPreallocationCap?: number | bigint;
 }
 
 /** Exactly the keys session construction accepts: the parser tunables. */
-const SESSION_TUNABLES: ReadonlySet<string> = new Set(Object.keys(defaultOptions()));
+const SESSION_TUNABLES: ReadonlySet<string> = new Set([
+  "maxErrors",
+  "recoveryWindow",
+  "stackOverflowRecovery",
+  "syntaxErrorStackDepth",
+  "verbosity",
+  "astPreallocationRatio",
+  "astPreallocationCap",
+]);
 
 /**
  * Flat bulk read of the most recent successful parse: the columns of one
@@ -425,35 +421,9 @@ export class Session implements HookOwner {
       "it takes only parser tunables: install hooks on the parser or the session, " +
         "set message overrides through setMessageOverride, and pin backends on load calls",
     );
-    const merged = { ...defaultOptions(), ...options };
     this.#port = port;
 
-    const hasNonDefault =
-      options.maxErrors !== undefined ||
-      options.recoveryWindow !== undefined ||
-      options.stackOverflowRecovery !== undefined ||
-      options.syntaxErrorStackDepth !== undefined ||
-      options.verbosity !== undefined ||
-      options.astPreallocationRatio !== undefined ||
-      options.astPreallocationCap !== undefined;
-
-    let cOptions: SessionCOptions | null = null;
-    if (hasNonDefault) {
-      cOptions = {
-        maxErrors: merged.maxErrors,
-        recoveryWindow: merged.recoveryWindow,
-        stackOverflowRecovery: merged.stackOverflowRecovery ? 1 : 0,
-        syntaxErrorStackDepth: merged.syntaxErrorStackDepth,
-        verbosity: merged.verbosity,
-        astPreallocationRatio: merged.astPreallocationRatio,
-        astPreallocationCap:
-          typeof merged.astPreallocationCap === "bigint"
-            ? merged.astPreallocationCap
-            : BigInt(merged.astPreallocationCap),
-      };
-    }
-
-    const { status, handle } = port.createSession(cOptions);
+    const { status, handle } = this.#createSession(port, options);
     if (status < 0) throw this.errorFromStatus(status);
     if (handle === null || handle === undefined) {
       // A success without a handle is a broken backend, not OOM.
@@ -467,6 +437,57 @@ export class Session implements HookOwner {
     } catch (error) {
       this.close();
       throw error;
+    }
+  }
+
+  /**
+   * The constructor's one options crossing: creates the native options
+   * object, calls one setter per key the caller actually set (an unset key
+   * keeps the core's default), passes it to `galley_session_create`, and
+   * destroys it on every path. A refused value raises here with the
+   * setter's status before any session exists.
+   */
+  #createSession(port: FfiPort, options: SessionOptions): { status: number; handle: Handle | null } {
+    const created = port.createOptions();
+    if (created.status < 0) throw this.errorFromStatus(created.status);
+    const optionsHandle = created.handle;
+    if (optionsHandle === null || optionsHandle === undefined) {
+      throw new GalleyError(
+        "galley: options create reported success without a handle",
+        Status.ErrorInternal,
+        null,
+      );
+    }
+    try {
+      if (options.maxErrors !== undefined) {
+        this.#checkStatus(port.setMaxErrors(optionsHandle, options.maxErrors));
+      }
+      if (options.recoveryWindow !== undefined) {
+        this.#checkStatus(port.setRecoveryWindow(optionsHandle, options.recoveryWindow));
+      }
+      if (options.stackOverflowRecovery !== undefined) {
+        this.#checkStatus(
+          port.setStackOverflowRecovery(optionsHandle, options.stackOverflowRecovery ? 1 : 0),
+        );
+      }
+      if (options.syntaxErrorStackDepth !== undefined) {
+        this.#checkStatus(port.setSyntaxErrorStackDepth(optionsHandle, options.syntaxErrorStackDepth));
+      }
+      if (options.verbosity !== undefined) {
+        this.#checkStatus(port.setVerbosity(optionsHandle, options.verbosity));
+      }
+      if (options.astPreallocationRatio !== undefined) {
+        this.#checkStatus(port.setAstPreallocationRatio(optionsHandle, options.astPreallocationRatio));
+      }
+      if (options.astPreallocationCap !== undefined) {
+        const cap = typeof options.astPreallocationCap === "bigint"
+          ? options.astPreallocationCap
+          : BigInt(options.astPreallocationCap);
+        this.#checkStatus(port.setAstPreallocationCap(optionsHandle, cap));
+      }
+      return port.createSession(optionsHandle);
+    } finally {
+      port.destroyOptions(optionsHandle);
     }
   }
 

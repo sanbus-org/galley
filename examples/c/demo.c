@@ -41,11 +41,16 @@ static int print_tree(GalleySession *session, GalleyNodeAddress root,
 
 int main(int argc, char **argv) {
     printf("galley version: %s\n", galley_version());
-    const GalleyCOptions options = {
-        .max_errors = 10, /* explicit; zero selects the same default */
-    };
+    /* Options: create the object, set only what differs from the core
+     * defaults, and hand it to the session, which copies the values; the
+     * object is destroyed as soon as creation returns. */
+    GalleyOptions *options = NULL;
     GalleySession *session = NULL;
-    if (galley_session_create(&options, &session) != galley_ok) {
+    long long created = galley_options_create(&options);
+    if (created == galley_ok) created = galley_options_set_max_errors(options, 10);
+    if (created == galley_ok) created = galley_session_create(options, &session);
+    galley_options_destroy(options);
+    if (created != galley_ok) {
         fprintf(stderr, "failed to create a parser session\n");
         return 1;
     }

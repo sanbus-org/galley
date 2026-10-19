@@ -2222,30 +2222,53 @@ public class GalleyTest {
         }
 
         @Test
-        void sessionCreateChecksOptionsAndOut() {
+        void optionsObjectRefusalsAndSessionCreate() {
             GalleyLibrary lib = fixtureLibrary();
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment out = arena.allocate(ValueLayout.ADDRESS);
                 assertEquals(Status.ERROR_NULL_ARGUMENT.getCode(),
                         lib.galley_session_create(MemorySegment.NULL, MemorySegment.NULL));
 
-                MemorySegment bad = arena.allocate(GalleyLibrary.GALLEY_COPTIONS_SIZE);
-                bad.set(ValueLayout.JAVA_INT, GalleyLibrary.OFF_MAX_ERRORS, -1);
-                out.set(ValueLayout.ADDRESS, 0, MemorySegment.ofAddress(0x1234L));
-                assertEquals(Status.ERROR_INVALID_ARGUMENT.getCode(),
-                        lib.galley_session_create(bad, out));
-                assertEquals(0x1234L, out.get(ValueLayout.ADDRESS, 0).address(),
-                        "the out-parameter is written only on success");
+                MemorySegment outOptions = arena.allocate(ValueLayout.ADDRESS);
+                assertEquals(Status.ERROR_NULL_ARGUMENT.getCode(),
+                        lib.galley_options_create(MemorySegment.NULL));
+                assertEquals(0, lib.galley_options_create(outOptions));
+                MemorySegment options = outOptions.get(ValueLayout.ADDRESS, 0);
+                assertNotEquals(0L, options.address());
+                try {
+                    // The setters are the whole gate: session creation no
+                    // longer checks option values.
+                    assertEquals(Status.ERROR_NULL_ARGUMENT.getCode(),
+                            lib.galley_options_set_max_errors(MemorySegment.NULL, 10));
+                    assertEquals(Status.ERROR_INVALID_ARGUMENT.getCode(),
+                            lib.galley_options_set_max_errors(options, 0));
+                    assertEquals(Status.ERROR_INVALID_ARGUMENT.getCode(),
+                            lib.galley_options_set_max_errors(options, -1));
+                    assertEquals(0, lib.galley_options_set_max_errors(options, 10));
+                    assertEquals(Status.ERROR_INVALID_ARGUMENT.getCode(),
+                            lib.galley_options_set_ast_preallocation_ratio(options, Double.NaN));
+                    assertEquals(0, lib.galley_options_set_ast_preallocation_ratio(options, 2.0));
+                    // Disabling recovery is always in domain; enabling it is
+                    // refused only where the platform lacks it.
+                    assertEquals(0, lib.galley_options_set_stack_overflow_recovery(options, 0));
+                    assertEquals(lib.galley_stack_overflow_recovery_available() != 0
+                                    ? 0 : Status.ERROR_INVALID_ARGUMENT.getCode(),
+                            lib.galley_options_set_stack_overflow_recovery(options, 1));
 
-                bad.set(ValueLayout.JAVA_INT, GalleyLibrary.OFF_MAX_ERRORS, 0);
-                bad.set(ValueLayout.JAVA_DOUBLE, GalleyLibrary.OFF_AST_PREALLOCATION_RATIO, Double.NaN);
-                assertEquals(Status.ERROR_INVALID_ARGUMENT.getCode(),
-                        lib.galley_session_create(bad, out));
+                    out.set(ValueLayout.ADDRESS, 0, MemorySegment.ofAddress(0x1234L));
+                    assertEquals(Status.ERROR_NULL_ARGUMENT.getCode(),
+                            lib.galley_session_create(options, MemorySegment.NULL));
+                    assertEquals(0x1234L, out.get(ValueLayout.ADDRESS, 0).address(),
+                            "the out-parameter is written only on success");
+                    assertEquals(0, lib.galley_session_create(options, out));
+                    MemorySegment session = out.get(ValueLayout.ADDRESS, 0);
+                    assertNotEquals(0L, session.address());
+                    assertEquals(0, lib.galley_session_destroy(session));
+                } finally {
+                    assertEquals(0, lib.galley_options_destroy(options));
+                }
 
-                assertEquals(0, lib.galley_session_create(MemorySegment.NULL, out));
-                MemorySegment session = out.get(ValueLayout.ADDRESS, 0);
-                assertNotEquals(0L, session.address());
-                assertEquals(0, lib.galley_session_destroy(session));
+                assertEquals(0, lib.galley_options_destroy(MemorySegment.NULL));
             }
         }
 
@@ -3044,24 +3067,6 @@ public class GalleyTest {
         }
 
         @Test
-        void optionsRoundTrip() {
-            Session s = parser.openSession(SessionOptions.builder()
-                    .maxErrors(3)
-                    .recoveryWindow(100)
-                    .stackOverflowRecovery(false)
-                    .syntaxErrorStackDepth(8)
-                    .verbosity(0)
-                    .astPreallocationRatio(2.0)
-                    .astPreallocationCap(4096)
-                    .build());
-            try {
-                assertTrue(s.parse("alpha:12") > 0);
-            } finally {
-                s.close();
-            }
-        }
-
-        @Test
         void messageOverride() {
             Session s = parser.openSession(SessionOptions.builder()
                     .messageOverride("Number", "custom at line {line}")
@@ -3349,6 +3354,88 @@ public class GalleyTest {
             assertFalse(warnings.contains("reductionPair"), warnings);
             assertFalse(warnings.contains("reducton_X"), warnings);
             assertFalse(warnings.contains("myHelper"), warnings);
+        }
+    }
+
+    @Nested
+    class SessionOptionsTests {
+        Parser parser;
+
+        @BeforeEach
+        void setUp() {
+            parser = fixtureParser();
+        }
+
+        @AfterEach
+        void tearDown() {
+            parser.clearProcedures();
+        }
+
+        /** Opens a session with {@code options}, which must be refused. */
+        private GalleyException refused(SessionOptions options) {
+            return assertThrows(GalleyException.class, () -> parser.openSession(options));
+        }
+
+        @Test
+        void refusedValuesSurfaceAsInvalidArgument() {
+            for (SessionOptions options : List.of(
+                    SessionOptions.builder().maxErrors(0).build(),
+                    SessionOptions.builder().maxErrors(-1).build(),
+                    SessionOptions.builder().recoveryWindow(0).build(),
+                    SessionOptions.builder().verbosity(-1).build(),
+                    SessionOptions.builder().syntaxErrorStackDepth(65).build(),
+                    SessionOptions.builder().astPreallocationRatio(-1.0).build(),
+                    SessionOptions.builder().astPreallocationRatio(Double.NaN).build(),
+                    SessionOptions.builder().astPreallocationRatio(Double.POSITIVE_INFINITY).build())) {
+                assertEquals(Status.ERROR_INVALID_ARGUMENT, refused(options).getCode());
+            }
+            if (!parser.stackOverflowRecoveryAvailable()) {
+                assertEquals(Status.ERROR_INVALID_ARGUMENT,
+                        refused(SessionOptions.builder().stackOverflowRecovery(true).build()).getCode());
+            }
+        }
+
+        @Test
+        void explicitValuesOpenAParsingSession() {
+            // Enabling stack overflow recovery is refused only where the
+            // platform lacks it (asserted above), so the value stays false
+            // here and the parse runs without a protected call.
+            SessionOptions options = SessionOptions.builder()
+                    .maxErrors(3)
+                    .recoveryWindow(100)
+                    .stackOverflowRecovery(false)
+                    .syntaxErrorStackDepth(8)
+                    .verbosity(0)
+                    .astPreallocationRatio(0.0)
+                    .astPreallocationCap(4096)
+                    .build();
+            try (Session s = parser.openSession(options)) {
+                assertTrue(s.parse("alpha:12,beta:3") > 0);
+            }
+        }
+
+        @Test
+        void unsetOptionsStayUnset() {
+            SessionOptions unset = SessionOptions.builder().build();
+            assertNull(unset.getMaxErrors());
+            assertNull(unset.getRecoveryWindow());
+            assertNull(unset.isStackOverflowRecovery());
+            assertNull(unset.getSyntaxErrorStackDepth());
+            assertNull(unset.getVerbosity());
+            assertNull(unset.getAstPreallocationRatio());
+            assertNull(unset.getAstPreallocationCap());
+            try (Session s = parser.openSession(unset)) {
+                assertTrue(s.parse("alpha:12,beta:3") > 0);
+            }
+
+            SessionOptions partial = SessionOptions.builder().maxErrors(2).build();
+            assertEquals(2, partial.getMaxErrors().intValue());
+            assertNull(partial.getRecoveryWindow());
+            assertNull(partial.isStackOverflowRecovery());
+            assertNull(partial.getSyntaxErrorStackDepth());
+            assertNull(partial.getVerbosity());
+            assertNull(partial.getAstPreallocationRatio());
+            assertNull(partial.getAstPreallocationCap());
         }
     }
 

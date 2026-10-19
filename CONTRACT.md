@@ -45,7 +45,7 @@ Every parser recognizes its grammar's language. Each parser option is enabled or
 3. A newline token after a block ends requires indentation-sensitive input, and enabling it without that is refused when the parser is compiled.
 4. A grammar that uses the [block start or block end terminals](#1-grammar-language) is refused when the parser is compiled with indentation-sensitive input disabled.
 5. Whether an input contains a syntax error does not depend on which parser options are enabled, except for the options that change the grammar's meaning: indentation-sensitive input and a newline token after a block ends.
-6. The [maximum error count](#7-errors-and-recovery) and the [message overrides](#7-errors-and-recovery) are set per session.
+6. The [maximum error count](#7-errors-and-recovery) and the [message overrides](#7-errors-and-recovery) are set per session, along with the session's other [runtime API options](docs/configuration.md#runtime-api-options); a value outside its option's domain is refused, and a refused value changes nothing.
 
 ## 4. Parsing and input
 

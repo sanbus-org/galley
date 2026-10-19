@@ -358,7 +358,9 @@ var session = try parser.Session.init(io, allocator, .{
 defer session.deinit();
 ```
 
-Recovery is currently available on Linux and macOS.
+Recovery is currently available on Linux and macOS. A session that asks for it
+where it is unavailable is refused when it is created
+(`error.StackOverflowRecoveryUnsupported`).
 
 LL and LR parsers report the first syntax error and stop by default. Enable recovery while generating the parser to report multiple diagnostics:
 

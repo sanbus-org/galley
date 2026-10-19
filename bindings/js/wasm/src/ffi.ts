@@ -27,7 +27,6 @@ import type {
   StagedHandle,
   HookTicket,
   DispatchHandler,
-  SessionCOptions,
   SnapshotColumns,
 } from "@sanbus/galley-core";
 import { GalleyError, NO_VARIABLE, Status } from "@sanbus/galley-core";
@@ -141,6 +140,18 @@ interface GalleyWasmExports extends DoorNames<"">, DoorNames<"hook_"> {
   galley_symbol_is_terminal(session: number, index: bigint, outIsTerminal: number): bigint;
   galley_variable_name(session: number, index: bigint, outData: number, outLen: number): bigint;
   galley_session_create(options: number, outSession: number): bigint;
+  // Session options: an opaque object (the galley_options_* family in
+  // galley.h); no getter is bound. A setter's refusal leaves the object
+  // unchanged.
+  galley_options_create(outOptions: number): bigint;
+  galley_options_destroy(options: number): bigint;
+  galley_options_set_max_errors(options: number, value: number): bigint;
+  galley_options_set_recovery_window(options: number, value: number): bigint;
+  galley_options_set_stack_overflow_recovery(options: number, value: number): bigint;
+  galley_options_set_syntax_error_stack_depth(options: number, value: number): bigint;
+  galley_options_set_verbosity(options: number, value: number): bigint;
+  galley_options_set_ast_preallocation_ratio(options: number, value: number): bigint;
+  galley_options_set_ast_preallocation_cap(options: number, value: bigint): bigint;
   galley_session_destroy(session: number): bigint;
   galley_session_set_message_override(
     session: number,
@@ -823,22 +834,53 @@ export class WasmPort implements FfiPort {
 
   // -- sessions ------------------------------------------------------------
 
-  createSession(options: SessionCOptions | null): { status: number; handle: Handle | null } {
-    // Null options crosses as a NULL pointer (the library's defaults), never
-    // as a zeroed struct.
-    let optionsPtr = 0;
-    if (options !== null) {
-      // GalleyCOptions layout (wasm32, little-endian): 5x i32/u32, pad, f64, u64.
-      optionsPtr = this.malloc(40);
-      const view = this.dataView();
-      view.setInt32(optionsPtr, options.maxErrors, true);
-      view.setInt32(optionsPtr + 4, options.recoveryWindow, true);
-      view.setInt32(optionsPtr + 8, options.stackOverflowRecovery, true);
-      view.setUint32(optionsPtr + 12, options.syntaxErrorStackDepth, true);
-      view.setInt32(optionsPtr + 16, options.verbosity, true);
-      view.setFloat64(optionsPtr + 24, options.astPreallocationRatio, true);
-      view.setBigUint64(optionsPtr + 32, options.astPreallocationCap, true);
+  createOptions(): { status: number; handle: Handle | null } {
+    const out = this.malloc(4);
+    try {
+      const status = toNumber(this.wasm.galley_options_create(out));
+      const options = this.dataView().getUint32(out, true);
+      return { status, handle: status < 0 || options === 0 ? null : options };
+    } finally {
+      this.free(out, 4);
     }
+  }
+
+  destroyOptions(options: Handle): number {
+    return toNumber(this.wasm.galley_options_destroy(options as number));
+  }
+
+  setMaxErrors(options: Handle, value: number): number {
+    return toNumber(this.wasm.galley_options_set_max_errors(options as number, value));
+  }
+
+  setRecoveryWindow(options: Handle, value: number): number {
+    return toNumber(this.wasm.galley_options_set_recovery_window(options as number, value));
+  }
+
+  setStackOverflowRecovery(options: Handle, value: number): number {
+    return toNumber(this.wasm.galley_options_set_stack_overflow_recovery(options as number, value));
+  }
+
+  setSyntaxErrorStackDepth(options: Handle, value: number): number {
+    return toNumber(this.wasm.galley_options_set_syntax_error_stack_depth(options as number, value));
+  }
+
+  setVerbosity(options: Handle, value: number): number {
+    return toNumber(this.wasm.galley_options_set_verbosity(options as number, value));
+  }
+
+  setAstPreallocationRatio(options: Handle, value: number): number {
+    return toNumber(this.wasm.galley_options_set_ast_preallocation_ratio(options as number, value));
+  }
+
+  setAstPreallocationCap(options: Handle, value: bigint): number {
+    return toNumber(this.wasm.galley_options_set_ast_preallocation_cap(options as number, value));
+  }
+
+  createSession(options: Handle | null): { status: number; handle: Handle | null } {
+    // Null options crosses as a NULL pointer (the library's defaults), never
+    // as a zeroed object.
+    const optionsPtr = options === null ? 0 : (options as number);
     const out = this.malloc(4);
     try {
       const status = toNumber(this.wasm.galley_session_create(optionsPtr, out));
@@ -846,7 +888,6 @@ export class WasmPort implements FfiPort {
       return { status, handle: status < 0 || session === 0 ? null : session };
     } finally {
       this.free(out, 4);
-      if (optionsPtr !== 0) this.free(optionsPtr, 40);
     }
   }
 

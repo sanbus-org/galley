@@ -13,6 +13,7 @@
  */
 #include <galley.h>
 
+#include <math.h>
 #include <pthread.h>
 #include <sched.h>
 #include <stdio.h>
@@ -65,23 +66,24 @@ static int contains_case_insensitive(const char *haystack, const char *needle) {
 }
 
 static GalleySession *make_session(void) {
-    const GalleyCOptions options = {
-        .max_errors = 10,
-    };
+    GalleyOptions *options = NULL;
+    if (galley_options_create(&options) != galley_ok) return NULL;
     GalleySession *session = NULL;
-    if (galley_session_create(&options, &session) != galley_ok) return NULL;
-    return session;
+    long long status = galley_session_create(options, &session);
+    galley_options_destroy(options);
+    return status == galley_ok ? session : NULL;
 }
 
 /* One error is the limit: the parser raises at its first syntax error
  * instead of recovering from it, so a failing parse publishes nothing. */
 static GalleySession *make_strict_session(void) {
-    const GalleyCOptions options = {
-        .max_errors = 1,
-    };
+    GalleyOptions *options = NULL;
+    if (galley_options_create(&options) != galley_ok) return NULL;
+    long long status = galley_options_set_max_errors(options, 1);
     GalleySession *session = NULL;
-    if (galley_session_create(&options, &session) != galley_ok) return NULL;
-    return session;
+    if (status == galley_ok) status = galley_session_create(options, &session);
+    galley_options_destroy(options);
+    return status == galley_ok ? session : NULL;
 }
 
 static void test_version(void) {
@@ -157,38 +159,14 @@ static void test_symbol_table(void) {
     galley_session_destroy(session);
 }
 
-/* Option and argument validation: out-of-domain values are
- * galley_error_invalid_argument, argument errors come before the gate, and
- * out-parameters are written only on success. */
+/* Argument validation: argument errors come before the gate and
+ * out-parameters are written only on success. Option values belong to the
+ * options object's own domain; test_options covers those. */
 static void test_invalid_arguments(void) {
     GalleySession *live = NULL;
     CHECK(galley_session_create(NULL, &live) == galley_ok);
     CHECK(live != NULL);
-
-    GalleySession *out = live;
     CHECK(galley_session_create(NULL, NULL) == galley_error_null_argument);
-    GalleyCOptions options;
-    memset(&options, 0, sizeof options);
-    options.max_errors = -1;
-    CHECK(galley_session_create(&options, &out) == galley_error_invalid_argument);
-    memset(&options, 0, sizeof options);
-    options.recovery_window = -1;
-    CHECK(galley_session_create(&options, &out) == galley_error_invalid_argument);
-    memset(&options, 0, sizeof options);
-    options.verbosity = -1;
-    CHECK(galley_session_create(&options, &out) == galley_error_invalid_argument);
-    memset(&options, 0, sizeof options);
-    options.ast_preallocation_ratio = 1.0 / 0.0;
-    CHECK(galley_session_create(&options, &out) == galley_error_invalid_argument);
-    memset(&options, 0, sizeof options);
-    options.syntax_error_stack_depth = 65;
-    CHECK(galley_session_create(&options, &out) == galley_error_invalid_argument);
-    CHECK(out == live);
-    /* A negative ratio selects the default instead. */
-    memset(&options, 0, sizeof options);
-    options.ast_preallocation_ratio = -1.0;
-    CHECK(galley_session_create(&options, &out) == galley_ok);
-    CHECK(galley_session_destroy(out) == galley_ok);
 
     /* Hook flags: a count that does not match galley_hooks_count is an
      * invalid argument; a NULL flag array with a nonzero count is a null
@@ -220,6 +198,95 @@ static void test_invalid_arguments(void) {
     CHECK(galley_has_diagnostic(live, &has) == galley_ok);
     CHECK(has == 0);
     galley_session_destroy(live);
+}
+
+/* The options object: one setter and one getter per option. A fresh object
+ * holds the core defaults; a setter refuses a value outside its option's
+ * domain with invalid argument and leaves the held value unchanged; a
+ * session copies what the object holds at creation. */
+static void test_options(void) {
+    CHECK(galley_options_create(NULL) == galley_error_null_argument);
+    CHECK(galley_options_destroy(NULL) == galley_ok);
+
+    GalleyOptions *options = NULL;
+    CHECK(galley_options_create(&options) == galley_ok);
+    CHECK(options != NULL);
+    if (options == NULL) return;
+
+    /* Unset options read the core defaults through the getters. */
+    int value = 0;
+    unsigned int depth = 0;
+    double ratio = 0;
+    unsigned long long cap = 0;
+    CHECK(galley_options_get_max_errors(options, &value) == galley_ok && value == 10);
+    CHECK(galley_options_get_recovery_window(options, &value) == galley_ok && value == 500);
+    CHECK(galley_options_get_stack_overflow_recovery(options, &value) == galley_ok && value == 0);
+    CHECK(galley_options_get_syntax_error_stack_depth(options, &depth) == galley_ok && depth == 0);
+    CHECK(galley_options_get_verbosity(options, &value) == galley_ok && value == 0);
+    CHECK(galley_options_get_ast_preallocation_ratio(options, &ratio) == galley_ok && ratio == 2.0);
+    CHECK(galley_options_get_ast_preallocation_cap(options, &cap) == galley_ok && cap == 16384);
+
+    /* A null options or out-value is a null argument. */
+    CHECK(galley_options_set_max_errors(NULL, 1) == galley_error_null_argument);
+    CHECK(galley_options_get_max_errors(NULL, &value) == galley_error_null_argument);
+    CHECK(galley_options_get_max_errors(options, NULL) == galley_error_null_argument);
+
+    /* Out-of-domain values are refused and leave the held value unchanged. */
+    CHECK(galley_options_set_max_errors(options, 0) == galley_error_invalid_argument);
+    CHECK(galley_options_set_max_errors(options, -1) == galley_error_invalid_argument);
+    CHECK(galley_options_get_max_errors(options, &value) == galley_ok && value == 10);
+    CHECK(galley_options_set_recovery_window(options, 0) == galley_error_invalid_argument);
+    CHECK(galley_options_set_recovery_window(options, -1) == galley_error_invalid_argument);
+    CHECK(galley_options_get_recovery_window(options, &value) == galley_ok && value == 500);
+    CHECK(galley_options_set_verbosity(options, -1) == galley_error_invalid_argument);
+    CHECK(galley_options_get_verbosity(options, &value) == galley_ok && value == 0);
+    CHECK(galley_options_set_ast_preallocation_ratio(options, -1.0) == galley_error_invalid_argument);
+    CHECK(galley_options_set_ast_preallocation_ratio(options, NAN) == galley_error_invalid_argument);
+    CHECK(galley_options_set_ast_preallocation_ratio(options, INFINITY) == galley_error_invalid_argument);
+    CHECK(galley_options_get_ast_preallocation_ratio(options, &ratio) == galley_ok && ratio == 2.0);
+    CHECK(galley_options_set_syntax_error_stack_depth(options, 65) == galley_error_invalid_argument);
+    CHECK(galley_options_get_syntax_error_stack_depth(options, &depth) == galley_ok && depth == 0);
+    if (galley_stack_overflow_recovery_available() == 0) {
+        CHECK(galley_options_set_stack_overflow_recovery(options, 1) == galley_error_invalid_argument);
+        CHECK(galley_options_get_stack_overflow_recovery(options, &value) == galley_ok && value == 0);
+    } else {
+        CHECK(galley_options_set_stack_overflow_recovery(options, 1) == galley_ok);
+        CHECK(galley_options_get_stack_overflow_recovery(options, &value) == galley_ok && value == 1);
+        CHECK(galley_options_set_stack_overflow_recovery(options, 0) == galley_ok);
+    }
+
+    /* Accepted values are held, a zero ratio included. */
+    CHECK(galley_options_set_max_errors(options, 3) == galley_ok);
+    CHECK(galley_options_set_recovery_window(options, 100) == galley_ok);
+    CHECK(galley_options_set_syntax_error_stack_depth(options, 64) == galley_ok);
+    CHECK(galley_options_set_syntax_error_stack_depth(options, 0) == galley_ok);
+    CHECK(galley_options_set_verbosity(options, 2) == galley_ok);
+    CHECK(galley_options_set_ast_preallocation_ratio(options, 0.0) == galley_ok);
+    CHECK(galley_options_set_ast_preallocation_cap(options, 4096) == galley_ok);
+    CHECK(galley_options_get_max_errors(options, &value) == galley_ok && value == 3);
+    CHECK(galley_options_get_ast_preallocation_ratio(options, &ratio) == galley_ok && ratio == 0.0);
+    CHECK(galley_options_get_ast_preallocation_cap(options, &cap) == galley_ok && cap == 4096);
+
+    /* A session copies the values at creation: the object can be reused
+     * afterwards, and NULL options stays the all-defaults path. */
+    GalleySession *first = NULL;
+    CHECK(galley_session_create(options, &first) == galley_ok);
+    if (first != NULL) {
+        CHECK(galley_parse_sentinel(first, valid_sample) >= 0);
+        galley_session_destroy(first);
+    }
+    CHECK(galley_options_set_max_errors(options, 4) == galley_ok);
+    GalleySession *second = NULL;
+    CHECK(galley_session_create(options, &second) == galley_ok);
+    galley_options_destroy(options);
+    if (second != NULL) {
+        CHECK(galley_parse_sentinel(second, valid_sample) >= 0);
+        galley_session_destroy(second);
+    }
+    GalleySession *third = NULL;
+    CHECK(galley_session_create(NULL, &third) == galley_ok);
+    CHECK(third != NULL);
+    galley_session_destroy(third);
 }
 
 static void test_valid_parse(void) {
@@ -2098,6 +2165,7 @@ int main(void) {
     test_session_lifetime();
     test_symbol_table();
     test_invalid_arguments();
+    test_options();
     test_valid_parse();
     test_buffer_parse();
     test_walker();

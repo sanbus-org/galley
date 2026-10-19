@@ -55,11 +55,18 @@ bool printTree(GalleySession &session, GalleyNodeAddress root,
 
 int main(int argc, char *argv[]) {
     std::printf("galley version: %s\n", galley_version());
-    const GalleyCOptions options = {
-        .max_errors = 10, /* explicit; zero selects the same default */
-    };
+    /* Options: create the object, set only what differs from the core
+     * defaults, and hand it to the session, which copies the values; the
+     * object is destroyed as soon as creation returns. */
+    GalleyOptions *options = nullptr;
     GalleySession *created = nullptr;
-    if (galley_session_create(&options, &created) != galley_ok) {
+    long long created_status = galley_options_create(&options);
+    if (created_status == galley_ok)
+        created_status = galley_options_set_max_errors(options, 10);
+    if (created_status == galley_ok)
+        created_status = galley_session_create(options, &created);
+    galley_options_destroy(options);
+    if (created_status != galley_ok) {
         std::fprintf(stderr, "failed to create a parser session\n");
         return 1;
     }

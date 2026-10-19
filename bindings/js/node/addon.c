@@ -117,8 +117,8 @@ static bool get_generation(napi_env env, napi_value value, unsigned long long *o
 }
 
 static bool get_i32(napi_env env, napi_value value, int32_t *out) {
-  uint64_t wide = 0;
-  if (!get_u64(env, value, &wide)) return false;
+  int64_t wide = 0;
+  if (!get_i64(env, value, &wide)) return false;
   *out = (int32_t)wide;
   return true;
 }
@@ -127,6 +127,16 @@ static bool get_u32(napi_env env, napi_value value, uint32_t *out) {
   uint64_t wide = 0;
   if (!get_u64(env, value, &wide)) return false;
   *out = (uint32_t)wide;
+  return true;
+}
+
+/* The option setter that takes a double: like the readers above, anything
+ * that is not a JS number is a TypeError. */
+static bool get_f64(napi_env env, napi_value value, double *out) {
+  if (napi_get_value_double(env, value, out) != napi_ok) {
+    napi_throw_type_error(env, NULL, "expected number");
+    return false;
+  }
   return true;
 }
 
@@ -263,6 +273,15 @@ typedef __typeof__(&galley_node_span) fn_galley_node_span_t;
 typedef __typeof__(&galley_node_symbol_name) fn_galley_node_symbol_name_t;
 typedef __typeof__(&galley_node_text) fn_galley_node_text_t;
 typedef __typeof__(&galley_node_variable_index) fn_galley_node_variable_index_t;
+typedef __typeof__(&galley_options_create) fn_galley_options_create_t;
+typedef __typeof__(&galley_options_destroy) fn_galley_options_destroy_t;
+typedef __typeof__(&galley_options_set_ast_preallocation_cap) fn_galley_options_set_ast_preallocation_cap_t;
+typedef __typeof__(&galley_options_set_ast_preallocation_ratio) fn_galley_options_set_ast_preallocation_ratio_t;
+typedef __typeof__(&galley_options_set_max_errors) fn_galley_options_set_max_errors_t;
+typedef __typeof__(&galley_options_set_recovery_window) fn_galley_options_set_recovery_window_t;
+typedef __typeof__(&galley_options_set_stack_overflow_recovery) fn_galley_options_set_stack_overflow_recovery_t;
+typedef __typeof__(&galley_options_set_syntax_error_stack_depth) fn_galley_options_set_syntax_error_stack_depth_t;
+typedef __typeof__(&galley_options_set_verbosity) fn_galley_options_set_verbosity_t;
 typedef __typeof__(&galley_parse) fn_galley_parse_t;
 typedef __typeof__(&galley_parse_file) fn_galley_parse_file_t;
 typedef __typeof__(&galley_parser_type) fn_galley_parser_type_t;
@@ -459,6 +478,15 @@ SHARED_FN_ALIAS(syntax_error_count)
   X(galley_node_symbol_name) \
   X(galley_node_text) \
   X(galley_node_variable_index) \
+  X(galley_options_create) \
+  X(galley_options_destroy) \
+  X(galley_options_set_ast_preallocation_cap) \
+  X(galley_options_set_ast_preallocation_ratio) \
+  X(galley_options_set_max_errors) \
+  X(galley_options_set_recovery_window) \
+  X(galley_options_set_stack_overflow_recovery) \
+  X(galley_options_set_syntax_error_stack_depth) \
+  X(galley_options_set_verbosity) \
   X(galley_parse) \
   X(galley_parse_file) \
   X(galley_parser_type) \
@@ -1355,67 +1383,97 @@ static napi_value method_galley_variable_name(napi_env env, Lib *lib, size_t arg
   return bytes_result(env, status, data, len);
 }
 
-static bool options_arg(napi_env env, napi_value value, GalleyCOptions *out) {
-  napi_value field;
-  int32_t max_errors = 0;
-  int32_t recovery_window = 0;
-  int32_t stack_overflow_recovery = 0;
-  uint32_t syntax_error_stack_depth = 0;
-  int32_t verbosity = 0;
-  double ast_preallocation_ratio = 0;
-  uint64_t ast_preallocation_cap = 0;
-  if (napi_get_named_property(env, value, "maxErrors", &field) != napi_ok ||
-      napi_get_value_int32(env, field, &max_errors) != napi_ok ||
-      napi_get_named_property(env, value, "recoveryWindow", &field) != napi_ok ||
-      napi_get_value_int32(env, field, &recovery_window) != napi_ok ||
-      napi_get_named_property(env, value, "stackOverflowRecovery", &field) != napi_ok ||
-      napi_get_value_int32(env, field, &stack_overflow_recovery) != napi_ok ||
-      napi_get_named_property(env, value, "syntaxErrorStackDepth", &field) != napi_ok ||
-      napi_get_value_uint32(env, field, &syntax_error_stack_depth) != napi_ok ||
-      napi_get_named_property(env, value, "verbosity", &field) != napi_ok ||
-      napi_get_value_int32(env, field, &verbosity) != napi_ok ||
-      napi_get_named_property(env, value, "astPreallocationRatio", &field) != napi_ok ||
-      napi_get_value_double(env, field, &ast_preallocation_ratio) != napi_ok ||
-      napi_get_named_property(env, value, "astPreallocationCap", &field) != napi_ok) {
-    napi_throw_type_error(env, NULL, "expected session options");
-    return false;
-  }
-  if (!get_u64(env, field, &ast_preallocation_cap)) return false;
-  out->max_errors = max_errors;
-  out->recovery_window = recovery_window;
-  out->stack_overflow_recovery = stack_overflow_recovery;
-  out->syntax_error_stack_depth = syntax_error_stack_depth;
-  out->verbosity = verbosity;
-  out->ast_preallocation_ratio = ast_preallocation_ratio;
-  out->ast_preallocation_cap = (unsigned long long)ast_preallocation_cap;
+/* An options-object handle argument: the address crosses like every other
+ * native handle in this addon. */
+static bool options_arg(napi_env env, size_t argc, napi_value *argv, GalleyOptions **out) {
+  void *handle = NULL;
+  if (!native_handle_arg(env, argc, argv, &handle)) return false;
+  *out = (GalleyOptions *)handle;
   return true;
 }
 
-/* galley_session_create(options | null, &session) -> {status, handle}:
- * the handle is present exactly on galley_ok; null options crosses as a
- * NULL pointer (the library's defaults), never as a zeroed struct. */
-static napi_value method_galley_session_create(napi_env env, Lib *lib, size_t argc,
-                                               napi_value *argv) {
-  const GalleyCOptions *options = NULL;
-  GalleyCOptions storage;
-  if (argc >= 1) {
-    napi_valuetype type;
-    if (napi_typeof(env, argv[0], &type) != napi_ok) return NULL;
-    if (type != napi_null && type != napi_undefined) {
-      if (!options_arg(env, argv[0], &storage)) return NULL;
-      options = &storage;
-    }
-  }
-  GalleySession *session = NULL;
-  long long status = ((fn_galley_session_create_t)lib->fn[SLOT_galley_session_create])(options, &session);
+/* {status, handle}: the handle is present exactly on galley_ok. */
+static napi_value handle_result(napi_env env, long long status, void *handle) {
   napi_value result;
   napi_value status_value = make_number(env, status);
-  napi_value handle_value = session == NULL ? make_null(env) : make_u64(env, (uint64_t)(uintptr_t)session);
+  napi_value handle_value = handle == NULL ? make_null(env) : make_u64(env, (uint64_t)(uintptr_t)handle);
   if (status_value == NULL || handle_value == NULL) return NULL;
   if (napi_create_object(env, &result) != napi_ok) return NULL;
   if (napi_set_named_property(env, result, "status", status_value) != napi_ok) return NULL;
   if (napi_set_named_property(env, result, "handle", handle_value) != napi_ok) return NULL;
   return result;
+}
+
+/* galley_options_create() -> {status, handle}: a fresh options object
+ * holding the core's defaults; the handle is present exactly on galley_ok. */
+static napi_value method_galley_options_create(napi_env env, Lib *lib, size_t argc,
+                                               napi_value *argv) {
+  (void)argc;
+  (void)argv;
+  GalleyOptions *options = NULL;
+  long long status = ((fn_galley_options_create_t)lib->fn[SLOT_galley_options_create])(&options);
+  return handle_result(env, status, options);
+}
+
+/* galley_options_destroy(options | null) -> status. NULL is fine: the core
+ * treats it as a no-op. */
+static napi_value method_galley_options_destroy(napi_env env, Lib *lib, size_t argc,
+                                                napi_value *argv) {
+  GalleyOptions *options = NULL;
+  if (argc >= 1) {
+    napi_valuetype type;
+    if (napi_typeof(env, argv[0], &type) != napi_ok) return NULL;
+    if (type != napi_null && type != napi_undefined && !options_arg(env, argc, argv, &options)) {
+      return NULL;
+    }
+  }
+  long long status = ((fn_galley_options_destroy_t)lib->fn[SLOT_galley_options_destroy])(options);
+  return make_i64(env, status);
+}
+
+/* One setter per option: (options, value) -> status. The value crosses as
+ * the option's own C type; the domain belongs to the core, so a value
+ * outside it travels back as galley_error_invalid_argument. */
+#define DEFINE_OPTIONS_SETTER(cfn, ctype, reader)                                \
+  static napi_value method_##cfn(napi_env env, Lib *lib, size_t argc,            \
+                                 napi_value *argv) {                             \
+    GalleyOptions *options = NULL;                                               \
+    if (!options_arg(env, argc, argv, &options)) return NULL;                    \
+    if (argc < 2) {                                                              \
+      napi_throw_type_error(env, NULL, "expected value");                        \
+      return NULL;                                                               \
+    }                                                                            \
+    ctype value = 0;                                                             \
+    if (!(reader)(env, argv[1], &value)) return NULL;                            \
+    long long status = ((fn_##cfn##_t)lib->fn[SLOT_##cfn])(options, value);      \
+    return make_i64(env, status);                                                \
+  }
+
+DEFINE_OPTIONS_SETTER(galley_options_set_max_errors, int32_t, get_i32)
+DEFINE_OPTIONS_SETTER(galley_options_set_recovery_window, int32_t, get_i32)
+DEFINE_OPTIONS_SETTER(galley_options_set_stack_overflow_recovery, int32_t, get_i32)
+DEFINE_OPTIONS_SETTER(galley_options_set_syntax_error_stack_depth, uint32_t, get_u32)
+DEFINE_OPTIONS_SETTER(galley_options_set_verbosity, int32_t, get_i32)
+DEFINE_OPTIONS_SETTER(galley_options_set_ast_preallocation_ratio, double, get_f64)
+DEFINE_OPTIONS_SETTER(galley_options_set_ast_preallocation_cap, uint64_t, get_u64)
+#undef DEFINE_OPTIONS_SETTER
+
+/* galley_session_create(options | null) -> {status, handle}: options is a
+ * native options object from galley_options_create, or null for every
+ * default; the handle is present exactly on galley_ok. */
+static napi_value method_galley_session_create(napi_env env, Lib *lib, size_t argc,
+                                               napi_value *argv) {
+  GalleyOptions *options = NULL;
+  if (argc >= 1) {
+    napi_valuetype type;
+    if (napi_typeof(env, argv[0], &type) != napi_ok) return NULL;
+    if (type != napi_null && type != napi_undefined && !options_arg(env, argc, argv, &options)) {
+      return NULL;
+    }
+  }
+  GalleySession *session = NULL;
+  long long status = ((fn_galley_session_create_t)lib->fn[SLOT_galley_session_create])(options, &session);
+  return handle_result(env, status, session);
 }
 
 static napi_value method_galley_session_destroy(napi_env env, Lib *lib, size_t argc,
@@ -2238,6 +2296,15 @@ static napi_value method_load(napi_env env, napi_callback_info info) {
   BIND_OR_THROW(api, lib, galley_session_create);
   BIND_OR_THROW(api, lib, galley_session_destroy);
   BIND_OR_THROW(api, lib, galley_session_set_message_override);
+  BIND_OR_THROW(api, lib, galley_options_create);
+  BIND_OR_THROW(api, lib, galley_options_destroy);
+  BIND_OR_THROW(api, lib, galley_options_set_ast_preallocation_cap);
+  BIND_OR_THROW(api, lib, galley_options_set_ast_preallocation_ratio);
+  BIND_OR_THROW(api, lib, galley_options_set_max_errors);
+  BIND_OR_THROW(api, lib, galley_options_set_recovery_window);
+  BIND_OR_THROW(api, lib, galley_options_set_stack_overflow_recovery);
+  BIND_OR_THROW(api, lib, galley_options_set_syntax_error_stack_depth);
+  BIND_OR_THROW(api, lib, galley_options_set_verbosity);
   BIND_OR_THROW(api, lib, galley_parse);
   BIND_OR_THROW(api, lib, galley_parse_file);
   BIND_OR_THROW(api, lib, galley_last_input);

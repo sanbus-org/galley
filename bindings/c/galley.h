@@ -183,10 +183,13 @@ enum {
      * is galley_error_invalid_node instead.
      */
     galley_error_out_of_range            = -17,
-    /* A value in GalleyCOptions is outside its domain (a negative max_errors,
-     * recovery_window, or verbosity, or a non-finite
-     * ast_preallocation_ratio), or the enable-flag count passed to
-     * galley_session_set_hooks does not match galley_hooks_count().
+    /* A value passed to a galley_options_set_* call is outside its option's
+     * domain: max_errors or recovery_window below 1, a negative verbosity, a
+     * syntax_error_stack_depth above 64, stack_overflow_recovery where
+     * galley_stack_overflow_recovery_available() is 0, a negative or
+     * non-finite ast_preallocation_ratio, or an ast_preallocation_cap the
+     * target cannot hold. It is also the enable-flag count passed to
+     * galley_session_set_hooks not matching galley_hooks_count().
      */
     galley_error_invalid_argument        = -18,
 };
@@ -256,31 +259,80 @@ unsigned long long galley_variable_count(void);
 long long galley_variable_name(GalleySession *session, unsigned long long index,
                                const char **out_data, size_t *out_len);
 
-/* Session creation options; zero fields select runtime defaults. A negative
- * max_errors, recovery_window, or verbosity, a non-finite
- * ast_preallocation_ratio, a syntax_error_stack_depth above 64, or a nonzero
- * stack_overflow_recovery where galley_stack_overflow_recovery_available() is
- * 0, is rejected with galley_error_invalid_argument.
- * A negative ast_preallocation_ratio selects the default. */
-typedef struct GalleyCOptions {
-    int max_errors;                        /* default 10 */
-    int recovery_window;                   /* default 500 */
-    int stack_overflow_recovery;           /* nonzero enables */
-    unsigned int syntax_error_stack_depth; /* 0 = generated default */
-    int verbosity;                         /* debug-build parse tracing */
-    double ast_preallocation_ratio;        /* negative = default (2.0) */
-    unsigned long long ast_preallocation_cap; /* 0 = default */
-} GalleyCOptions;
+/* Session options: an opaque object holding one value per option. Create it
+ * with galley_options_create (every option starts at the core's default),
+ * set the options you choose with the galley_options_set_* functions, and
+ * pass it to galley_session_create. A setter refuses a value outside its
+ * option's domain with galley_error_invalid_argument and leaves the object
+ * unchanged; a getter reports the held value: the value last set, or the
+ * core default while unset. The object belongs to no session:
+ * galley_session_create copies what it holds, so it can be destroyed or
+ * reused as soon as creation returns.
+ *
+ *   max_errors               errors recorded before a parse stops (at least 1)
+ *   recovery_window          bytes scanned for a recovery point (at least 1)
+ *   stack_overflow_recovery  nonzero enables, where the platform offers it
+ *   syntax_error_stack_depth in-progress variables in LL error messages,
+ *                            0 = generated default, at most 64
+ *   verbosity                debug-build parse tracing level
+ *   ast_preallocation_ratio  nodes preallocated per input byte, finite and
+ *                            non-negative; 0 drops the scaled contribution
+ *   ast_preallocation_cap    ready node storage floor; 0 sets no floor
+ */
+typedef struct GalleyOptions GalleyOptions;
 
-/* Creates a parsing session with explicit options and writes it to
- * *out_session. Passing NULL options selects the runtime defaults, as do
- * zero fields of a non-NULL options struct. A NULL out_session is
- * galley_error_null_argument; an option value outside its domain (see
- * GalleyCOptions) is galley_error_invalid_argument; initialization failure
- * (most commonly allocation failure) is galley_error_out_of_memory.
+/* Creates an options object holding the core defaults and writes it to
+ * *out_options. A NULL out_options is galley_error_null_argument;
+ * allocation failure is galley_error_out_of_memory; *out_options is written
+ * only on success. */
+long long galley_options_create(GalleyOptions **out_options);
+
+/* Destroys an options object. NULL is ignored and returns galley_ok (like
+ * free(NULL)), so a repeated cleanup stays a no-op. */
+long long galley_options_destroy(GalleyOptions *options);
+
+/* One setter per option. A value outside the option's domain is
+ * galley_error_invalid_argument and the object is left unchanged; a NULL
+ * options is galley_error_null_argument. */
+long long galley_options_set_max_errors(GalleyOptions *options, int value);
+long long galley_options_set_recovery_window(GalleyOptions *options, int value);
+long long galley_options_set_stack_overflow_recovery(GalleyOptions *options,
+                                                      int value);
+long long galley_options_set_syntax_error_stack_depth(GalleyOptions *options,
+                                                       unsigned int value);
+long long galley_options_set_verbosity(GalleyOptions *options, int value);
+long long galley_options_set_ast_preallocation_ratio(GalleyOptions *options,
+                                                      double value);
+long long galley_options_set_ast_preallocation_cap(GalleyOptions *options,
+                                                    unsigned long long value);
+
+/* One getter per option: writes the held value (the core default while
+ * unset) to *out_value, for inspecting an object; a session neither reads
+ * back nor exposes its options. A NULL options or out_value is
+ * galley_error_null_argument. */
+long long galley_options_get_max_errors(const GalleyOptions *options,
+                                        int *out_value);
+long long galley_options_get_recovery_window(const GalleyOptions *options,
+                                             int *out_value);
+long long galley_options_get_stack_overflow_recovery(
+    const GalleyOptions *options, int *out_value);
+long long galley_options_get_syntax_error_stack_depth(
+    const GalleyOptions *options, unsigned int *out_value);
+long long galley_options_get_verbosity(const GalleyOptions *options,
+                                       int *out_value);
+long long galley_options_get_ast_preallocation_ratio(
+    const GalleyOptions *options, double *out_value);
+long long galley_options_get_ast_preallocation_cap(
+    const GalleyOptions *options, unsigned long long *out_value);
+
+/* Creates a parsing session and writes it to *out_session. Passing NULL
+ * options selects every default. The session copies the option values it was
+ * given, so the object can be destroyed or reused as soon as this returns. A
+ * NULL out_session is galley_error_null_argument; initialization failure
+ * (most commonly allocation failure) is galley_error_out_of_memory;
  * *out_session is written only on success. Destroy the session with
  * galley_session_destroy. */
-long long galley_session_create(const GalleyCOptions *options,
+long long galley_session_create(const GalleyOptions *options,
                                 GalleySession **out_session);
 
 /* Destroys a session created by galley_session_create. NULL is ignored and

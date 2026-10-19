@@ -9,6 +9,7 @@ use std::ffi::{c_char, c_void};
 // test binary links the fixture's `libgalley-rust`.
 extern "C" {
     fn galley_has_diagnostic(session: *mut c_void, out_has: *mut i32) -> i64;
+    fn galley_stack_overflow_recovery_available() -> i32;
     fn galley_hooks_name(index: usize, out_data: *mut *const c_char, out_len: *mut usize) -> i64;
     fn galley_symbol_name(
         session: *mut c_void,
@@ -36,18 +37,41 @@ fn a_named_status_renders_the_library_text() {
     assert!(Error::Syntax.description().contains("syntax"));
 }
 
+// The options setters are the entire gate: a value outside its option's
+// domain comes back through the public API as `invalid argument`, before any
+// session exists. Enabling stack-overflow recovery is out of its domain only
+// where the platform reports it unsupported.
 #[test]
-fn out_of_domain_options_fail_session_creation() {
-    for options in [
+fn out_of_domain_options_fail_with_invalid_argument() {
+    let mut refused = vec![
         SessionOptions {
-            max_errors: -1,
+            max_errors: Some(0),
             ..Default::default()
         },
         SessionOptions {
-            recovery_window: -1,
+            max_errors: Some(-1),
             ..Default::default()
         },
-    ] {
+        SessionOptions {
+            recovery_window: Some(0),
+            ..Default::default()
+        },
+        SessionOptions {
+            recovery_window: Some(-1),
+            ..Default::default()
+        },
+        SessionOptions {
+            syntax_error_stack_depth: Some(65),
+            ..Default::default()
+        },
+    ];
+    if unsafe { galley_stack_overflow_recovery_available() } == 0 {
+        refused.push(SessionOptions {
+            stack_overflow_recovery: Some(true),
+            ..Default::default()
+        });
+    }
+    for options in refused {
         assert_eq!(
             Session::with_options(options).map(drop),
             Err(Error::InvalidArgument)

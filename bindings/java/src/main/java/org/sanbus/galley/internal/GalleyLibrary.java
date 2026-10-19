@@ -10,17 +10,6 @@ import java.nio.charset.StandardCharsets;
  */
 public final class GalleyLibrary {
 
-    // GalleyCOptions layout (40 bytes, align 8) — mirrors galley.h:104
-    // Do not use structLayout with automatic padding (fails alignment on JDK 26); write at fixed offsets.
-    public static final long GALLEY_COPTIONS_SIZE = 40;
-    public static final long OFF_MAX_ERRORS = 0;
-    public static final long OFF_RECOVERY_WINDOW = 4;
-    public static final long OFF_STACK_OVERFLOW_RECOVERY = 8;
-    public static final long OFF_SYNTAX_ERROR_STACK_DEPTH = 12;
-    public static final long OFF_VERBOSITY = 16;
-    public static final long OFF_AST_PREALLOCATION_RATIO = 24; // 4 bytes padding after verbosity
-    public static final long OFF_AST_PREALLOCATION_CAP = 32;
-
     private static final Linker LINKER = Linker.nativeLinker();
 
     private final SymbolLookup lookup;
@@ -52,6 +41,15 @@ public final class GalleyLibrary {
     private final MethodHandle mh_galley_symbol_name;
     private final MethodHandle mh_galley_symbol_is_terminal;
     private final MethodHandle mh_galley_variable_name;
+    private final MethodHandle mh_galley_options_create;
+    private final MethodHandle mh_galley_options_destroy;
+    private final MethodHandle mh_galley_options_set_max_errors;
+    private final MethodHandle mh_galley_options_set_recovery_window;
+    private final MethodHandle mh_galley_options_set_stack_overflow_recovery;
+    private final MethodHandle mh_galley_options_set_syntax_error_stack_depth;
+    private final MethodHandle mh_galley_options_set_verbosity;
+    private final MethodHandle mh_galley_options_set_ast_preallocation_ratio;
+    private final MethodHandle mh_galley_options_set_ast_preallocation_cap;
     private final MethodHandle mh_galley_session_create;
     private final MethodHandle mh_galley_session_destroy;
     private final MethodHandle mh_galley_session_set_message_override;
@@ -139,6 +137,15 @@ public final class GalleyLibrary {
         this.mh_galley_symbol_name = downcall("galley_symbol_name", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.mh_galley_symbol_is_terminal = downcall("galley_symbol_is_terminal", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
         this.mh_galley_variable_name = downcall("galley_variable_name", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+        this.mh_galley_options_create = downcall("galley_options_create", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
+        this.mh_galley_options_destroy = downcall("galley_options_destroy", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
+        this.mh_galley_options_set_max_errors = downcall("galley_options_set_max_errors", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+        this.mh_galley_options_set_recovery_window = downcall("galley_options_set_recovery_window", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+        this.mh_galley_options_set_stack_overflow_recovery = downcall("galley_options_set_stack_overflow_recovery", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+        this.mh_galley_options_set_syntax_error_stack_depth = downcall("galley_options_set_syntax_error_stack_depth", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+        this.mh_galley_options_set_verbosity = downcall("galley_options_set_verbosity", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+        this.mh_galley_options_set_ast_preallocation_ratio = downcall("galley_options_set_ast_preallocation_ratio", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_DOUBLE));
+        this.mh_galley_options_set_ast_preallocation_cap = downcall("galley_options_set_ast_preallocation_cap", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
         this.mh_galley_session_create = downcall("galley_session_create", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.mh_galley_session_destroy = downcall("galley_session_destroy", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
         this.mh_galley_session_set_message_override = downcall("galley_session_set_message_override", FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
@@ -250,6 +257,37 @@ public final class GalleyLibrary {
     }
     public long galley_variable_name(MemorySegment session, long index, MemorySegment outData, MemorySegment outLen) {
         try { return (long) mh_galley_variable_name.invoke(session, index, outData, outLen); } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+
+    // options — the setters only: hosts write an options object and never read one back
+    /** Creates an options object holding the core defaults; the caller destroys it. */
+    public long galley_options_create(MemorySegment outOptions) {
+        try { return (long) mh_galley_options_create.invoke(outOptions); } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+    /** Destroys an options object; NULL is ignored and returns ok. */
+    public long galley_options_destroy(MemorySegment options) {
+        try { return (long) mh_galley_options_destroy.invoke(options); } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+    public long galley_options_set_max_errors(MemorySegment options, int value) {
+        try { return (long) mh_galley_options_set_max_errors.invoke(options, value); } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+    public long galley_options_set_recovery_window(MemorySegment options, int value) {
+        try { return (long) mh_galley_options_set_recovery_window.invoke(options, value); } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+    public long galley_options_set_stack_overflow_recovery(MemorySegment options, int value) {
+        try { return (long) mh_galley_options_set_stack_overflow_recovery.invoke(options, value); } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+    public long galley_options_set_syntax_error_stack_depth(MemorySegment options, int value) {
+        try { return (long) mh_galley_options_set_syntax_error_stack_depth.invoke(options, value); } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+    public long galley_options_set_verbosity(MemorySegment options, int value) {
+        try { return (long) mh_galley_options_set_verbosity.invoke(options, value); } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+    public long galley_options_set_ast_preallocation_ratio(MemorySegment options, double value) {
+        try { return (long) mh_galley_options_set_ast_preallocation_ratio.invoke(options, value); } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+    public long galley_options_set_ast_preallocation_cap(MemorySegment options, long value) {
+        try { return (long) mh_galley_options_set_ast_preallocation_cap.invoke(options, value); } catch (Throwable t) { throw new RuntimeException(t); }
     }
 
     // session

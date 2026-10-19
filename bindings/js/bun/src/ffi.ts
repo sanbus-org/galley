@@ -12,7 +12,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import process from "node:process";
 import { dlopen, FFIType, ptr, toArrayBuffer, CString } from "bun:ffi";
-import type { FfiPort, NodeFamily, CurrentDiagnosticFamily, Handle, StagedHandle, HookTicket, DispatchHandler, SessionCOptions, SnapshotColumns } from "@sanbus/galley-core";
+import type { FfiPort, NodeFamily, CurrentDiagnosticFamily, Handle, StagedHandle, HookTicket, DispatchHandler, SnapshotColumns } from "@sanbus/galley-core";
 import { GalleyError, INVALID_NODE, NATIVE_LITTLE_ENDIAN, NO_VARIABLE, Status } from "@sanbus/galley-core";
 import { resolveArtifactFile, resolveAdapterArtifact, artifactFileName, canonicalResolvePath, SHARED_NATIVE_LIBRARY_BASE } from "@sanbus/galley-core/internal";
 import { installDispatch } from "./dispatch.ts";
@@ -106,6 +106,18 @@ interface GalleySymbols extends DoorNames<"">, DoorNames<"hook_">, DiagNames<"">
   galley_symbol_is_terminal(session: NativeHandle, index: bigint, outIsTerminal: number): bigint;
   galley_variable_name(session: NativeHandle, index: bigint, outData: number, outLen: number): bigint;
   galley_session_create(options: number | null, outSession: number): bigint;
+  // Session options: an opaque object (the galley_options_* family in
+  // galley.h); no getter is bound. A setter's refusal leaves the object
+  // unchanged.
+  galley_options_create(outOptions: number): bigint;
+  galley_options_destroy(options: number): bigint;
+  galley_options_set_max_errors(options: number, value: number): bigint;
+  galley_options_set_recovery_window(options: number, value: number): bigint;
+  galley_options_set_stack_overflow_recovery(options: number, value: number): bigint;
+  galley_options_set_syntax_error_stack_depth(options: number, value: number): bigint;
+  galley_options_set_verbosity(options: number, value: number): bigint;
+  galley_options_set_ast_preallocation_ratio(options: number, value: number): bigint;
+  galley_options_set_ast_preallocation_cap(options: number, value: bigint): bigint;
   galley_session_destroy(session: NativeHandle): bigint;
   galley_session_set_message_override(session: NativeHandle, name: number, nameLen: bigint, message: number, messageLen: bigint): bigint;
   galley_parse(session: NativeHandle, data: number, len: bigint): bigint;
@@ -235,6 +247,15 @@ const BASE_SYMBOLS = {
   galley_session_create: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   galley_session_destroy: { args: [FFIType.ptr], returns: FFIType.i64 },
   galley_session_set_message_override: { args: [FFIType.ptr, FFIType.ptr, FFIType.u64, FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
+  galley_options_create: { args: [FFIType.ptr], returns: FFIType.i64 },
+  galley_options_destroy: { args: [FFIType.ptr], returns: FFIType.i64 },
+  galley_options_set_max_errors: { args: [FFIType.ptr, FFIType.i32], returns: FFIType.i64 },
+  galley_options_set_recovery_window: { args: [FFIType.ptr, FFIType.i32], returns: FFIType.i64 },
+  galley_options_set_stack_overflow_recovery: { args: [FFIType.ptr, FFIType.i32], returns: FFIType.i64 },
+  galley_options_set_syntax_error_stack_depth: { args: [FFIType.ptr, FFIType.u32], returns: FFIType.i64 },
+  galley_options_set_verbosity: { args: [FFIType.ptr, FFIType.i32], returns: FFIType.i64 },
+  galley_options_set_ast_preallocation_ratio: { args: [FFIType.ptr, FFIType.f64], returns: FFIType.i64 },
+  galley_options_set_ast_preallocation_cap: { args: [FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
   galley_parse: { args: [FFIType.ptr, FFIType.ptr, FFIType.u64], returns: FFIType.i64 },
   galley_parse_file: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
   galley_last_input: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
@@ -770,28 +791,56 @@ export class BunPort implements FfiPort {
 
   // -- sessions ---------------------------------------------------------
 
-  createSession(options: SessionCOptions | null): { status: number; handle: Handle | null } {
+  createOptions(): { status: number; handle: Handle | null } {
+    const out = ptrOut64();
+    const status = Number(this.native.galley_options_create(ptr(out)));
+    if (status < 0) return { status, handle: null };
+    const handle = out[0];
+    return { status, handle: handle === 0n ? null : Number(handle) };
+  }
+
+  destroyOptions(options: Handle): number {
+    return Number(this.native.galley_options_destroy(options as NativeHandle));
+  }
+
+  setMaxErrors(options: Handle, value: number): number {
+    return Number(this.native.galley_options_set_max_errors(options as NativeHandle, value));
+  }
+
+  setRecoveryWindow(options: Handle, value: number): number {
+    return Number(this.native.galley_options_set_recovery_window(options as NativeHandle, value));
+  }
+
+  setStackOverflowRecovery(options: Handle, value: number): number {
+    return Number(this.native.galley_options_set_stack_overflow_recovery(options as NativeHandle, value));
+  }
+
+  setSyntaxErrorStackDepth(options: Handle, value: number): number {
+    return Number(this.native.galley_options_set_syntax_error_stack_depth(options as NativeHandle, value));
+  }
+
+  setVerbosity(options: Handle, value: number): number {
+    return Number(this.native.galley_options_set_verbosity(options as NativeHandle, value));
+  }
+
+  setAstPreallocationRatio(options: Handle, value: number): number {
+    // bun:ffi hands NaN to the C side as 0.0, which would silently become a
+    // ratio of 0 instead of being refused; answer with the refusal the core
+    // produces for every other out-of-domain value.
+    if (Number.isNaN(value)) return Status.ErrorInvalidArgument;
+    return Number(this.native.galley_options_set_ast_preallocation_ratio(options as NativeHandle, value));
+  }
+
+  setAstPreallocationCap(options: Handle, value: bigint): number {
+    return Number(this.native.galley_options_set_ast_preallocation_cap(options as NativeHandle, value));
+  }
+
+  createSession(options: Handle | null): { status: number; handle: Handle | null } {
     // Null options crosses as a NULL pointer (the library's defaults), never
-    // as a zeroed struct. The view backing the options stays bound to
-    // `optionsBytes` — a named local, not a temporary a GC could see become
-    // unreachable — until the native call has read it.
-    let optionsBytes: Uint8Array | null = null;
-    if (options !== null) {
-      // GalleyCOptions layout: int32 x5, double, uint64 (40 bytes, LE).
-      const buf = new ArrayBuffer(40);
-      const view = new DataView(buf);
-      view.setInt32(0, options.maxErrors, true);
-      view.setInt32(4, options.recoveryWindow, true);
-      view.setInt32(8, options.stackOverflowRecovery, true);
-      view.setUint32(12, options.syntaxErrorStackDepth, true);
-      view.setInt32(16, options.verbosity, true);
-      view.setFloat64(24, options.astPreallocationRatio, true);
-      view.setBigUint64(32, options.astPreallocationCap, true);
-      optionsBytes = new Uint8Array(buf);
-    }
+    // as a zeroed object.
     const out = ptrOut64();
     const status = Number(
-      this.native.galley_session_create(optionsBytes === null ? null : ptr(optionsBytes), ptr(out)),
+      this.native.galley_session_create(options === null ? null : (options as NativeHandle), ptr(out)),
     );
     if (status < 0) return { status, handle: null };
     const handle = out[0];

@@ -157,16 +157,26 @@ func TestGoHookLibrariesReportNoHookNames(t *testing.T) {
 }
 
 // Option values are checked by the core, alone: every value outside its
-// domain comes back as invalid argument and no session is handed out, while
-// zero fields and a negative finite ratio select the runtime defaults.
+// option's domain comes back from WithOptions as invalid argument and no
+// session is handed out. Where the platform does not offer stack-overflow
+// recovery, turning it on is one more refused value.
 func TestOptionValuesAreRejectedByTheCore(t *testing.T) {
 	invalid := map[string]galley.SessionOptions{
-		"negative MaxErrors":             {MaxErrors: -1},
-		"negative RecoveryWindow":        {RecoveryWindow: -1},
-		"negative Verbosity":             {Verbosity: -1},
-		"NaN ASTPreallocationRatio":      {ASTPreallocationRatio: math.NaN()},
-		"infinity ASTPreallocationRatio": {ASTPreallocationRatio: math.Inf(1)},
-		"negative infinity ratio":        {ASTPreallocationRatio: math.Inf(-1)},
+		"zero MaxErrors":             {MaxErrors: ptr(int32(0))},
+		"negative MaxErrors":         {MaxErrors: ptr(int32(-1))},
+		"zero RecoveryWindow":        {RecoveryWindow: ptr(int32(0))},
+		"negative RecoveryWindow":    {RecoveryWindow: ptr(int32(-1))},
+		"negative Verbosity":         {Verbosity: ptr(int32(-1))},
+		"deep SyntaxErrorStackDepth": {SyntaxErrorStackDepth: ptr(uint32(65))},
+		"negative ratio":             {ASTPreallocationRatio: ptr(-1.0)},
+		"NaN ratio":                  {ASTPreallocationRatio: ptr(math.NaN())},
+		"positive infinity ratio":    {ASTPreallocationRatio: ptr(math.Inf(1))},
+		"negative infinity ratio":    {ASTPreallocationRatio: ptr(math.Inf(-1))},
+	}
+	if !galley.StackOverflowRecoveryAvailable() {
+		invalid["StackOverflowRecovery where unsupported"] = galley.SessionOptions{
+			StackOverflowRecovery: ptr(true),
+		}
 	}
 	for name, options := range invalid {
 		session, err := galley.WithOptions(options)
@@ -178,22 +188,52 @@ func TestOptionValuesAreRejectedByTheCore(t *testing.T) {
 			_ = session.Close()
 		}
 	}
+}
 
-	accepted := map[string]galley.SessionOptions{
-		"zero value":       {},
-		"library defaults": galley.DefaultOptions(),
-		"finite ratio -1":  {ASTPreallocationRatio: -1},
-		"zero MaxErrors":   {MaxErrors: 0},
+// Explicit values open a session that parses; zero is a real value for the
+// ratio and the cap, not a request for the default. Stack-overflow recovery
+// is set off here; its on value is covered where the platform refuses it.
+func TestExplicitOptionValuesOpenAParsingSession(t *testing.T) {
+	options := galley.SessionOptions{
+		MaxErrors:             ptr(int32(7)),
+		RecoveryWindow:        ptr(int32(300)),
+		StackOverflowRecovery: ptr(false),
+		SyntaxErrorStackDepth: ptr(uint32(64)),
+		Verbosity:             ptr(int32(0)),
+		ASTPreallocationRatio: ptr(0.0),
+		ASTPreallocationCap:   ptr(uint64(0)),
 	}
-	for name, options := range accepted {
-		session, err := galley.WithOptions(options)
-		if err != nil {
-			t.Errorf("%s: err = %v, want a session", name, err)
-			continue
-		}
-		if _, err := session.Parse([]byte("alpha:12")); err != nil {
-			t.Errorf("%s: parse: %v", name, err)
-		}
-		_ = session.Close()
+	session, err := galley.WithOptions(options)
+	if err != nil {
+		t.Fatalf("session: %v", err)
 	}
+	t.Cleanup(func() { _ = session.Close() })
+	if _, err := session.Parse([]byte("alpha:12")); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+}
+
+// An unset option stays unset: a zero SessionOptions leaves every field nil
+// and opens a session on the core's defaults that parses.
+func TestZeroSessionOptionsLeaveEveryFieldUnset(t *testing.T) {
+	options := galley.SessionOptions{}
+	if options.MaxErrors != nil || options.RecoveryWindow != nil ||
+		options.StackOverflowRecovery != nil || options.SyntaxErrorStackDepth != nil ||
+		options.Verbosity != nil || options.ASTPreallocationRatio != nil ||
+		options.ASTPreallocationCap != nil {
+		t.Fatal("a zero SessionOptions must leave every option field nil")
+	}
+	session, err := galley.WithOptions(options)
+	if err != nil {
+		t.Fatalf("session: %v", err)
+	}
+	t.Cleanup(func() { _ = session.Close() })
+	if _, err := session.Parse([]byte("alpha:12")); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+}
+
+// ptr returns a pointer to value, for setting one SessionOptions field.
+func ptr[T any](value T) *T {
+	return &value
 }

@@ -6,20 +6,34 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Runtime options for Session. Mirrors GalleyCOptions in galley.h.
+ * Runtime options for Session. Every field is optional: a null field makes
+ * no setter call, so the core's default for that option stays in force. The
+ * defaults live with the core's runtime API options
+ * (docs/configuration.md#runtime-api-options). The core owns validation: a
+ * value outside its option's domain is refused with
+ * {@link Status#ERROR_INVALID_ARGUMENT}, which session creation throws as a
+ * {@link GalleyException}.
+ *
+ * Domains: {@code maxErrors} and {@code recoveryWindow} are at least 1;
+ * {@code verbosity} is at least 0; {@code syntaxErrorStackDepth} is at most
+ * 64, where 0 means the generated default; {@code stackOverflowRecovery} is
+ * accepted only where the parser's platform offers it;
+ * {@code astPreallocationRatio} must be finite and non-negative, where 0
+ * drops the scaled contribution; {@code astPreallocationCap} may be any
+ * value the target's counts can hold.
  *
  * Message-override UTF-8 policy: text messages are encoded as UTF-8 once
  * at the boundary; raw-byte messages pass through unmodified with no
  * re-encoding. Override names are UTF-8.
  */
 public final class SessionOptions {
-    private final int maxErrors;
-    private final int recoveryWindow;
-    private final boolean stackOverflowRecovery;
-    private final int syntaxErrorStackDepth;
-    private final int verbosity;
-    private final double astPreallocationRatio;
-    private final long astPreallocationCap;
+    private final Integer maxErrors;
+    private final Integer recoveryWindow;
+    private final Boolean stackOverflowRecovery;
+    private final Integer syntaxErrorStackDepth;
+    private final Integer verbosity;
+    private final Double astPreallocationRatio;
+    private final Long astPreallocationCap;
     private final Map<String, byte[]> messageOverrides;
 
     private SessionOptions(Builder b) {
@@ -35,13 +49,14 @@ public final class SessionOptions {
         this.messageOverrides = Collections.unmodifiableMap(overrides);
     }
 
-    public int getMaxErrors() { return maxErrors; }
-    public int getRecoveryWindow() { return recoveryWindow; }
-    public boolean isStackOverflowRecovery() { return stackOverflowRecovery; }
-    public int getSyntaxErrorStackDepth() { return syntaxErrorStackDepth; }
-    public int getVerbosity() { return verbosity; }
-    public double getAstPreallocationRatio() { return astPreallocationRatio; }
-    public long getAstPreallocationCap() { return astPreallocationCap; }
+    /** The chosen value, or null when the core's default stays in force. */
+    public Integer getMaxErrors() { return maxErrors; }
+    public Integer getRecoveryWindow() { return recoveryWindow; }
+    public Boolean isStackOverflowRecovery() { return stackOverflowRecovery; }
+    public Integer getSyntaxErrorStackDepth() { return syntaxErrorStackDepth; }
+    public Integer getVerbosity() { return verbosity; }
+    public Double getAstPreallocationRatio() { return astPreallocationRatio; }
+    public Long getAstPreallocationCap() { return astPreallocationCap; }
     public Map<String, byte[]> getMessageOverrides() {
         Map<String, byte[]> copy = new HashMap<>();
         for (Map.Entry<String, byte[]> e : messageOverrides.entrySet()) copy.put(e.getKey(), e.getValue().clone());
@@ -50,16 +65,14 @@ public final class SessionOptions {
 
     public static Builder builder() { return new Builder(); }
 
-    public static SessionOptions defaults() { return builder().build(); }
-
     public static final class Builder {
-        private int maxErrors = 10;
-        private int recoveryWindow = 500;
-        private boolean stackOverflowRecovery = false;
-        private int syntaxErrorStackDepth = 0;
-        private int verbosity = 0;
-        private double astPreallocationRatio = -1.0;
-        private long astPreallocationCap = 0;
+        private Integer maxErrors;
+        private Integer recoveryWindow;
+        private Boolean stackOverflowRecovery;
+        private Integer syntaxErrorStackDepth;
+        private Integer verbosity;
+        private Double astPreallocationRatio;
+        private Long astPreallocationCap;
         private final Map<String, byte[]> messageOverrides = new HashMap<>();
 
         public Builder maxErrors(int v) { this.maxErrors = v; return this; }

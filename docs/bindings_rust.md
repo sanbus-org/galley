@@ -295,14 +295,22 @@ session.tree_append_children(root, head.unwrap()).unwrap();
 use galley::SessionOptions;
 
 let opts = SessionOptions {
-    max_errors: 20,
-    recovery_window: 1000,
-    syntax_error_stack_depth: 3,
-    message_overrides: Vec::new(),
+    max_errors: Some(20),
+    recovery_window: Some(1000),
+    syntax_error_stack_depth: Some(3),
     ..Default::default()
 };
 let mut session = Session::with_options(opts).expect("session");
 ```
+
+Every option field is optional. `None` leaves that option at the core's
+default, and only the fields actually set are handed to the core, which owns
+every default and every option's domain (see
+[Configuration](/configuration), "Runtime API Options"): a value outside its
+domain fails with `Error::InvalidArgument`, nothing is clamped. The session
+copies the options it was given at creation, so the `SessionOptions` value
+can be dropped immediately afterwards. `message_overrides` is installed on
+the session as part of creation.
 
 ## Development builds
 

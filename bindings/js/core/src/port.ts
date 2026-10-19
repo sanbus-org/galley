@@ -42,17 +42,6 @@ const endianProbe = new Uint16Array(1);
 endianProbe[0] = 1;
 export const NATIVE_LITTLE_ENDIAN = new Uint8Array(endianProbe.buffer)[0] === 1;
 
-/** `GalleyCOptions` fields as plain data; null selects library defaults. */
-export interface SessionCOptions {
-  maxErrors: number;
-  recoveryWindow: number;
-  stackOverflowRecovery: number;
-  syntaxErrorStackDepth: number;
-  verbosity: number;
-  astPreallocationRatio: number;
-  astPreallocationCap: bigint;
-}
-
 /**
  * Flat bulk read of the published parse, one slot per node
  * address. `parent` holds `INVALID_NODE` for the root, `firstChild`/`next`
@@ -268,13 +257,41 @@ export interface FfiPort {
 
   // -- sessions ---------------------------------------------------------
   /**
-   * Creates the parser's session. The status is the call's `galley_ok` or
-   * its negative refusal (an option value outside its domain,
-   * `galley_error_invalid_argument`); the handle is present exactly when the
-   * status is `galley_ok`. Passing null options crosses as a NULL pointer
-   * (the library's defaults), never as a zeroed struct.
+   * Creates a native options object holding the core's defaults, the
+   * construction path's first crossing; the handle is present exactly when
+   * the status is `galley_ok`. The caller destroys the object with
+   * {@link FfiPort.destroyOptions} on every path.
    */
-  createSession(options: SessionCOptions | null): { status: number; handle: Handle | null };
+  createOptions(): { status: number; handle: Handle | null };
+  /**
+   * Destroys an options object: `galley_ok` (0), or the core's negative
+   * status. The object belongs to no session once a create returned, so
+   * this is safe to call there too.
+   */
+  destroyOptions(options: Handle): number;
+  /**
+   * One setter per option, over an options object: the call's status, which
+   * is `galley_error_invalid_argument` when the value is outside the
+   * option's domain — the object is then left unchanged. Session
+   * construction calls a setter only for a value the caller gave, so the
+   * core's default stays where none was. `stackOverflowRecovery` crosses as
+   * 1/0 and `astPreallocationCap` as `bigint`.
+   */
+  setMaxErrors(options: Handle, value: number): number;
+  setRecoveryWindow(options: Handle, value: number): number;
+  setStackOverflowRecovery(options: Handle, value: number): number;
+  setSyntaxErrorStackDepth(options: Handle, value: number): number;
+  setVerbosity(options: Handle, value: number): number;
+  setAstPreallocationRatio(options: Handle, value: number): number;
+  setAstPreallocationCap(options: Handle, value: bigint): number;
+  /**
+   * Creates the parser's session from an options object (or from null for
+   * every default). The session copies the values, so the object can be
+   * destroyed as soon as this returns. The status is the call's `galley_ok`
+   * or its negative refusal; the handle is present exactly when the status
+   * is `galley_ok`.
+   */
+  createSession(options: Handle | null): { status: number; handle: Handle | null };
   /**
    * Destroys the session: `galley_ok` (0) when it is gone, or the core's
    * negative status when a parse holds it — then nothing was freed.
