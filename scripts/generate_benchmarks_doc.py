@@ -370,31 +370,18 @@ def comparison_tables(datasets: Dict[str, List[Tuple[str, str, float]]]) -> List
     ]
     headers = ["Parser", "Lang", "General-purpose", "Mode", "Throughput"]
     for dataset in sorted(datasets):
-        # Parsers without SIMD first, then the SIMD libraries as a reference
-        # block, each group fastest first. Both groups in one table get a bold
-        # group row each; a table with only one group needs no grouping.
         rows = sorted(
             (comparison_row(n, m, v) for n, m, v in datasets[dataset]),
-            key=lambda row: -row[5],
+            key=lambda row: -row[4],
         )
-        scalar = [r for r in rows if r[2] != "✓"]
-        simd = [r for r in rows if r[2] == "✓"]
 
-        def cells(group):
-            return [
-                [parser, lang, cat, mode, fmt_throughput(mbps)]
-                for parser, lang, _, cat, mode, mbps in group
-            ]
+        table = [
+            [parser, lang, cat, mode, fmt_throughput(mbps)]
+            for parser, lang, cat, mode, mbps in rows
+        ]
 
         lines.append(f"### `{dataset}`\n")
-        if scalar and simd:
-            table = [["**Without SIMD**", "", "", "", "", ""]]
-            table += [[""] + row for row in cells(scalar)]
-            table.append(["**With SIMD**", "", "", "", "", ""])
-            table += [[""] + row for row in cells(simd)]
-            lines.append(md_table(["Group"] + headers, table))
-        else:
-            lines.append(md_table(headers, cells(scalar or simd)))
+        lines.append(md_table(headers, table))
         lines.append("")
     return lines
 
@@ -413,14 +400,13 @@ def section_json_comparison(files: List[BenchmarkFile]) -> str:
 The parsers below fall into two distinct categories:
 
 **General-purpose parser generators / tools** — you describe a grammar and the tool
-produces a parser for any language matching that grammar. Bison, LALRPOP, Nom, and
+produces a parser for any language matching that grammar. Bison, LALRPOP, and
 Tree-sitter all belong here. **Galley is in this category.**
 
 **Specialised JSON libraries** — simdjson, yyjson, and RapidJSON are hand-written
-libraries optimised exclusively for JSON. They exploit structural properties unique
-to JSON with SIMD intrinsics and two-pass parsing that is not generalisable to
-arbitrary grammars. They are reference points showing what a single-purpose native
-implementation can achieve, not direct competitors to a parser generator.
+libraries optimised exclusively for JSON. They are reference points showing what a
+single-purpose native implementation can achieve, not direct competitors to a
+parser generator.
 """
     )
 
@@ -448,14 +434,13 @@ implementation can achieve, not direct competitors to a parser generator.
     ]
     tree = [
         f"{label} {value}"
-        for label, value in (
-            ("LALRPOP", ratio("LL AST", "LALRPOP (Rust)", "AST")),
-            ("Nom", ratio("LL AST", "Nom (Rust)", "AST")),
-        )
+        for label, value in (("LALRPOP", ratio("LL AST", "LALRPOP (Rust)", "AST")),)
         if value
     ]
     if no_tree or tree:
-        lines.append(f"On `{headline_key}`, Galley LL's throughput divided by the other parser's, in matching modes:\n")
+        lines.append(
+            f"On `{headline_key}`, Galley LL's throughput divided by the other parser's, in matching modes:\n"
+        )
         if no_tree:
             lines.append(f"- **No AST:** {', '.join(no_tree)}.")
         if tree:
@@ -469,7 +454,7 @@ implementation can achieve, not direct competitors to a parser generator.
 
 
 def section_python_comparison(files: List[BenchmarkFile]) -> str:
-    """Head-to-head Python parsing: Galley, Tree-sitter, Ruff and CPython."""
+    """Head-to-head Python parsing: Galley, Tree-sitter, LALRPOP, Ruff and CPython."""
     datasets = third_party_datasets(files, "python")
 
     lines: List[str] = ["## Python Parsing — Throughput Comparison\n"]
@@ -478,25 +463,25 @@ def section_python_comparison(files: List[BenchmarkFile]) -> str:
         return "\n".join(lines)
     lines.append(
         """\
-Galley and Tree-sitter generate their parsers from a grammar. Ruff and CPython are
-hand-written Python parsers. Ruff, CPython and Tree-sitter parse full Python, while
-Galley's Python grammar parses a subset. No tool except Galley has a parse-only
-mode, so Galley's no-AST row has no direct counterpart.
+Galley, Tree-sitter and LALRPOP generate their parsers from a grammar. Ruff and
+CPython are hand-written Python parsers. LALRPOP's RustPython grammar, Ruff,
+CPython and Tree-sitter parse full Python, while Galley's Python grammar parses
+a subset. No tool except Galley has a parse-only mode, so Galley's no-AST row
+has no direct counterpart.
 """
     )
     lines.extend(comparison_tables(datasets))
     return "\n".join(lines)
 
 
-# Display columns for one harness row: language leaves the parser name, SIMD
-# mirrors the harness table marker, General-purpose marks parsers that take a
-# grammar for any language, and Mode uses a shared vocabulary so rows stay comparable
-# instead of each carrying its own bespoke mode string.
+# Display columns for one harness row: language leaves the parser name,
+# General-purpose marks parsers that take a grammar for any language, and Mode
+# uses a shared vocabulary so rows stay comparable instead of each carrying its
+# own bespoke mode string.
 COMPARISON_PARSERS = {
     "Bison / Flex (C)": (
         "Bison / Flex",
         "C",
-        "",
         "✓",
         {
             "No AST": "No AST",
@@ -508,32 +493,27 @@ COMPARISON_PARSERS = {
     "LALRPOP (Rust)": (
         "LALRPOP",
         "Rust",
-        "",
         "✓",
         {"No AST": "No AST", "AST": "AST"},
     ),
-    "Nom (Rust)": ("Nom", "Rust", "", "✓", {"AST": "AST"}),
-    "Tree-sitter (C)": ("Tree-sitter", "C", "", "✓", {"CST": "CST"}),
-    "Ruff (Rust)": ("Ruff", "Rust", "", "", {"AST": "AST"}),
+    "Tree-sitter (C)": ("Tree-sitter", "C", "✓", {"CST": "CST"}),
+    "Ruff (Rust)": ("Ruff", "Rust", "", {"AST": "AST"}),
     "CPython (Python)": (
         "CPython",
         "C",
-        "",
         "",
         {"AST": "AST", "AST + codegen": "AST + codegen"},
     ),
     "simdjson (C++)": (
         "simdjson",
         "C++",
-        "✓",
         "",
         {"Validate": "No AST", "DOM AST": "AST"},
     ),
-    "yyjson (C)": ("yyjson", "C", "✓", "", {"DOM AST": "AST"}),
+    "yyjson (C)": ("yyjson", "C", "", {"DOM AST": "AST"}),
     "RapidJSON (C++)": (
         "RapidJSON",
         "C++",
-        "✓",
         "",
         {"DOM AST": "AST", "SAX Validate": "No AST"},
     ),
@@ -542,16 +522,16 @@ COMPARISON_PARSERS = {
 
 def comparison_row(
     name: str, mode: str, mbps: float
-) -> Tuple[str, str, str, str, str, float]:
-    """Split a harness row into Parser/Lang/SIMD/General-purpose/Mode columns."""
+) -> Tuple[str, str, str, str, float]:
+    """Split a harness row into Parser/Lang/General-purpose/Mode/Throughput."""
     if name == "Galley (Zig)":
         # Harness modes are "LL No AST", "LL AST", "LR No AST", "LR AST".
         variant, _, rest = mode.partition(" ")
-        return (f"Galley {variant}", "Zig", "", "✓", rest, mbps)
+        return (f"Galley {variant}", "Zig", "✓", rest, mbps)
     if name in COMPARISON_PARSERS:
-        parser, lang, simd, cat, modes = COMPARISON_PARSERS[name]
-        return (parser, lang, simd, cat, modes.get(mode, mode), mbps)
-    return (name, "", "", "✓", mode, mbps)
+        parser, lang, cat, modes = COMPARISON_PARSERS[name]
+        return (parser, lang, cat, modes.get(mode, mode), mbps)
+    return (name, "", "✓", mode, mbps)
 
 
 GRAMMAR_DESCRIPTIONS: Dict[str, str] = {
@@ -652,9 +632,7 @@ def section_galley_language(files: List[BenchmarkFile], grammar: str) -> str:
         return "\n".join(lines)
 
     seen_configs: Dict[Tuple[str, str, str, str], Tuple[float, float]] = {}
-    for (ast, procedures, terminal_ast, input_file), parsers in sorted(
-        configs.items()
-    ):
+    for (ast, procedures, terminal_ast, input_file), parsers in sorted(configs.items()):
         ll_best = max((r.throughput for r in parsers.get("LL", [])), default=0)
         lr_best = max((r.throughput for r in parsers.get("LR", [])), default=0)
         seen_configs[(ast, procedures, terminal_ast, input_file)] = (
@@ -784,19 +762,22 @@ def section_methodology_third_party() -> str:
 - Each parser runs 2 untimed warmup iterations plus 5 timed iterations per
   dataset; the best run is reported.
 - Results are written below `third_party/parser-benchmark/benchmark_results/`,
-  in `json/` and `python/`. The Python parsers are Galley, Tree-sitter, Ruff
-  and CPython.
+  in `json/` and `python/`. The Python parsers are Galley, Tree-sitter,
+  LALRPOP, Ruff and CPython.
 - The standard `twitter`, `canada`, and `citm_catalog` inputs are downloaded on
   demand, checksum-verified, ignored external assets.
 - No benchmark input is stored in either repository.
-- Every parser except Tree-sitter validates string escapes and UTF-8 with the
-  same strictness as Galley's unicode grammar: the Flex lexer, both LALRPOP
-  grammars, and Nom were tightened to match, and RapidJSON runs with encoding
-  validation enabled. Tree-sitter runs upstream as-is, with laxer string
-  rules.
-- Parsers included: Tree-sitter (C, CST), Bison/Flex (C, No AST and three AST
+- The JSON parsers except Tree-sitter validate string escapes and UTF-8 with the
+  same strictness as Galley's unicode grammar: the Flex lexer and both JSON
+  LALRPOP grammars were tightened to match, and RapidJSON runs with encoding
+  validation enabled. In Python, every parser except Tree-sitter rejects
+  invalid UTF-8. Tree-sitter runs upstream as-is, with laxer string rules.
+- JSON parsers: Tree-sitter (C, CST), Bison/Flex (C, No AST and three AST
   modes), LALRPOP (Rust, No AST and AST), simdjson (C++, No AST and AST),
-  Nom (Rust, AST), RapidJSON (C++, No AST and AST), yyjson (C, AST).
+  RapidJSON (C++, No AST and AST), yyjson (C, AST).
+- Python parsers: Galley (Zig, No AST and AST), Tree-sitter (C, CST),
+  LALRPOP (Rust, AST; RustPython 0.4.0), Ruff (Rust, AST), CPython (Python,
+  AST and AST + codegen).
 - Galley rows are timed in this same harness from its unicode JSON grammar.
   Galley's long-term tracking numbers across all grammars live in
   `BENCHMARKS_INTERNAL.md` and come from `scripts/benchmark.py`, a different
@@ -812,24 +793,25 @@ UTF-8. The rows still do different work, so read a ratio between tools as an
 estimate, not a measurement of equal work:
 
 - **Different trees.** Galley builds a generic node tree of spans with no
-  decoded values. Ruff builds a typed AST with decoded values, a token list
-  and error lists. Tree-sitter builds a concrete tree of every node. CPython
-  builds Python `ast` objects, and `compile` adds code generation.
+  decoded values. LALRPOP's Python adapter and Ruff build typed ASTs with
+  decoded values, and Ruff also returns tokens and error lists. Tree-sitter
+  builds a concrete tree of every node. CPython builds Python `ast` objects,
+  and `compile` adds code generation.
 - **Memory reuse.** Galley and Bison reuse one arena between parses, and
-  their trees are valid only until the next parse. Ruff, CPython, Nom,
-  RapidJSON and yyjson allocate a new tree each time because the caller owns
-  it.
-- **Language coverage.** Galley's Python grammar parses a subset. Ruff,
-  CPython and Tree-sitter parse full Python, and Ruff also recovers from
-  errors.
+  their trees are valid only until the next parse. LALRPOP's Python adapter,
+  Ruff, CPython, RapidJSON and yyjson allocate a new tree each time because
+  the caller owns it.
+- **Language coverage.** Galley's Python grammar parses a subset. LALRPOP's
+  RustPython grammar, Ruff, CPython and Tree-sitter parse full Python, and
+  Ruff also recovers from errors.
 - **Extra passes.** Galley's Python AST row runs a procedure that resolves
   operator precedence, which the other tools do inside their parsers.
 - **No-AST rows.** For Python, no other tool has a parse-only mode, so
   Galley's no-AST row has no rival. For JSON, the no-AST rows of simdjson
   (validation) and RapidJSON (SAX with an empty handler) do the same kind of
   work.
-- **Encoding checks.** Ruff, CPython and Galley's Python adapter reject invalid
-  UTF-8. Tree-sitter does not check.
+- **Encoding checks.** LALRPOP, Ruff, CPython and Galley's Python adapter reject
+  invalid UTF-8. Tree-sitter does not check.
 - **One run each.** Results are the best of 5 on one machine and one input,
   with no variance reported.
 
